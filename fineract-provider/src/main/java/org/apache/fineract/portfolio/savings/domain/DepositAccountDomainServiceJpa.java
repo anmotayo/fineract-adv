@@ -211,7 +211,8 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(locale);
         final LocalDate closedDate = command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName);
         Long savingsTransactionId = null;
-        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth);
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
+        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, isWithHoldingTaxAppliedForPostingPeriodEnabled);
         final Integer onAccountClosureId = command.integerValueOfParameterNamed(onAccountClosureIdParamName);
         final DepositAccountOnClosureType onClosureType = DepositAccountOnClosureType.fromInt(onAccountClosureId);
         if (onClosureType.isReinvest()) {
@@ -258,6 +259,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
 
         boolean isRegularTransaction = false;
         boolean isAccountTransfer = false;
@@ -271,7 +273,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
 
         final MathContext mc = MathContext.DECIMAL64;
         Long savingsTransactionId = null;
-        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth);
+        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, isWithHoldingTaxAppliedForPostingPeriodEnabled);
         final DepositAccountOnClosureType onClosureType = DepositAccountOnClosureType.fromInt(onAccountClosureId);
         if (onClosureType.isReinvest() && account.getClosedOnDate() != null) {
             BigDecimal reInvestAmount;
@@ -335,6 +337,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
         final boolean postReversals = false;
         boolean isRegularTransaction = false;
         boolean isAccountTransfer = false;
@@ -349,7 +352,8 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(locale);
         final LocalDate closedDate = command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName);
         Long savingsTransactionId = null;
-        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, closedDate, postReversals);
+        account.postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, closedDate, postReversals,
+                isWithHoldingTaxAppliedForPostingPeriodEnabled);
         final BigDecimal transactionAmount = account.getAccountBalance();
         final Integer onAccountClosureId = command.integerValueOfParameterNamed(onAccountClosureIdParamName);
         final DepositAccountOnClosureType onClosureType = DepositAccountOnClosureType.fromInt(onAccountClosureId);
@@ -448,6 +452,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
 
         boolean isAccountTransfer = false;
         boolean isRegularTransaction = false;
@@ -464,7 +469,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
 
         // post interest
         account.postPreMaturityInterest(closedDate, isPreMatureClosure, isSavingsInterestPostingAtCurrentPeriodEnd,
-                financialYearBeginningMonth);
+                financialYearBeginningMonth, isWithHoldingTaxAppliedForPostingPeriodEnabled);
 
         final Integer closureTypeValue = command.integerValueOfParameterNamed(DepositsApiConstants.onAccountClosureIdParamName);
         DepositAccountOnClosureType closureType = DepositAccountOnClosureType.fromInt(closureTypeValue);
@@ -503,6 +508,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
         final boolean postReversals = false;
         boolean isAccountTransfer = false;
         final boolean isPreMatureClosure = true;
@@ -520,7 +526,7 @@ public class DepositAccountDomainServiceJpa implements DepositAccountDomainServi
         Long savingsTransactionId = null;
         // post interest
         account.postPreMaturityInterest(closedDate, isPreMatureClosure, isSavingsInterestPostingAtCurrentPeriodEnd,
-                financialYearBeginningMonth, postReversals);
+                financialYearBeginningMonth, postReversals, isWithHoldingTaxAppliedForPostingPeriodEnabled);
 
         final Integer closureTypeValue = command.integerValueOfParameterNamed(DepositsApiConstants.onAccountClosureIdParamName);
         DepositAccountOnClosureType closureType = DepositAccountOnClosureType.fromInt(closureTypeValue);

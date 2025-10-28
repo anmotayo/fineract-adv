@@ -275,7 +275,7 @@ public class RecurringDepositAccount extends SavingsAccount {
     }
 
     public void updateMaturityStatus(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final boolean postReversals) {
+            final boolean postReversals, final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
                 .resource(RECURRING_DEPOSIT_ACCOUNT_RESOURCE_NAME + SavingsApiConstants.updateMaturityDetailsAction);
@@ -291,7 +291,8 @@ public class RecurringDepositAccount extends SavingsAccount {
         if (!DateUtils.isAfter(this.maturityDate(), todayDate)) {
             // update account status
             this.status = SavingsAccountStatusType.MATURED.getValue();
-            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, todayDate, postReversals);
+            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, todayDate, postReversals,
+                    isWithHoldingTaxAppliedForPostingPeriodEnabled);
         }
     }
 
@@ -633,7 +634,7 @@ public class RecurringDepositAccount extends SavingsAccount {
     }
 
     public void postMaturityInterest(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final LocalDate closeDate, final boolean postReversals) {
+            final LocalDate closeDate, final boolean postReversals, final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
         LocalDate interestPostingUpToDate = maturityDate();
         if (interestPostingUpToDate == null) {
             interestPostingUpToDate = closeDate;
@@ -678,7 +679,8 @@ public class RecurringDepositAccount extends SavingsAccount {
                 }
             }
         }
-        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill);
+        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill,
+                isWithHoldingTaxAppliedForPostingPeriodEnabled);
         if (recalucateDailyBalanceDetails) {
             // update existing transactions so derived balance fields are
             // correct.
@@ -688,7 +690,8 @@ public class RecurringDepositAccount extends SavingsAccount {
     }
 
     public void postPreMaturityInterest(final LocalDate accountCloseDate, final boolean isPreMatureClosure,
-            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth, boolean postReversals) {
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth, boolean postReversals,
+            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
 
         final Money interestPostedToDate = totalInterestPosted();
         // calculate interest before one day of closure date
@@ -710,7 +713,8 @@ public class RecurringDepositAccount extends SavingsAccount {
             recalucateDailyBalance = true;
         }
 
-        applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill);
+        applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill,
+                isWithHoldingTaxAppliedForPostingPeriodEnabled);
         if (recalucateDailyBalance) {
             // update existing transactions so derived balance fields are
             // correct.

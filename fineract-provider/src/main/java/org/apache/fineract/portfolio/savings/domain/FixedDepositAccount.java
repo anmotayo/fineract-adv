@@ -237,7 +237,8 @@ public class FixedDepositAccount extends SavingsAccount {
         this.accountTermAndPreClosure.updateMaturityDetails(maturityAmount.getAmount(), maturityDate);
     }
 
-    public void updateMaturityStatus(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
+    public void updateMaturityStatus(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+                 final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
                 .resource(FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME + SavingsApiConstants.updateMaturityDetailsAction);
@@ -253,7 +254,7 @@ public class FixedDepositAccount extends SavingsAccount {
         if (!DateUtils.isDateInTheFuture(maturityDate())) {
             // update account status
             this.status = SavingsAccountStatusType.MATURED.getValue();
-            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth);
+            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, isWithHoldingTaxAppliedForPostingPeriodEnabled);
         }
     }
 
@@ -511,7 +512,8 @@ public class FixedDepositAccount extends SavingsAccount {
         this.accountTermAndPreClosure.updateOnAccountClosureStatus(onClosureType);
     }
 
-    public void postMaturityInterest(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
+    public void postMaturityInterest(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+                 final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
         final LocalDate interestPostingUpToDate = maturityDate();
         final MathContext mc = MathContext.DECIMAL64;
         final boolean isInterestTransfer = false;
@@ -555,7 +557,7 @@ public class FixedDepositAccount extends SavingsAccount {
                 }
             }
         }
-        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill);
+        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, isWithHoldingTaxAppliedForPostingPeriodEnabled);
          /*recalucateDailyBalanceDetails = applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails,
                  backdatedTxnsAllowedTill);*/
         if (recalucateDailyBalanceDetails) {
@@ -568,7 +570,8 @@ public class FixedDepositAccount extends SavingsAccount {
     }
 
     public void postPreMaturityInterest(final LocalDate accountCloseDate, final boolean isPreMatureClosure,
-            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+            final boolean isWithHoldTaxForDepositAccountsAppliedMonthlyEnabled) {
 
         Money interestPostedToDate = totalInterestPosted();
         // calculate interest before one day of closure date
@@ -589,7 +592,8 @@ public class FixedDepositAccount extends SavingsAccount {
             recalucateDailyBalance = true;
         }
 
-        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill);
+        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill,
+                isWithHoldTaxForDepositAccountsAppliedMonthlyEnabled);
         boolean postReversals = false;
         if (recalucateDailyBalance) {
             // update existing transactions so derived balance fields are

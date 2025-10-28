@@ -349,8 +349,10 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             interestPostedToDate = Money.of(currency, account.getSummary().getTotalInterestPosted());
         }
 
+        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService
+                .isWithHoldingTaxAppliedForPostingPeriodEnabled();
         boolean recalucateDailyBalanceDetails = false;
-        boolean applyWithHoldTax = account.isWithHoldTaxApplicableForInterestPosting();
+        boolean applyWithHoldTax = account.isWithHoldTaxApplicableForInterestPosting(isWithHoldingTaxAppliedForPostingPeriodEnabled);
         final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
 
         if (backdatedTxnsAllowedTill) {

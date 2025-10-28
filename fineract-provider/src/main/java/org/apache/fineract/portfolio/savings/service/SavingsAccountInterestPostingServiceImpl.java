@@ -59,7 +59,8 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
     @Override
     public SavingsAccountData postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
             final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final SavingsAccountData savingsAccountData) {
+            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final SavingsAccountData savingsAccountData,
+            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
         Money interestPostedToDate = Money.zero(savingsAccountData.getCurrency());
         LocalDate startInterestDate = getStartInterestCalculationDate(savingsAccountData);
         log.debug("  postInterest - account: {} {} {}", savingsAccountData.getAccountNo(), startInterestDate,
@@ -79,7 +80,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         log.debug(" postingPeriods: {} {}", savingsAccountData.getAccountNo(), postingPeriods.size());
 
         boolean recalucateDailyBalanceDetails = false;
-        boolean applyWithHoldTax = isWithHoldTaxApplicableForInterestPosting(savingsAccountData);
+        boolean applyWithHoldTax = isWithHoldTaxApplicableForInterestPosting(savingsAccountData, isWithHoldingTaxAppliedForPostingPeriodEnabled);
         final List<SavingsAccountTransactionData> withholdTransactions = new ArrayList<>();
 
         withholdTransactions.addAll(findWithHoldSavingsTransactionsWithPivotConfig(savingsAccountData));
@@ -546,8 +547,10 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         }
     }
 
-    private boolean isWithHoldTaxApplicableForInterestPosting(final SavingsAccountData savingsAccountData) {
-        return this.withHoldTax(savingsAccountData) && this.depositAccountType(savingsAccountData).isSavingsDeposit();
+    private boolean isWithHoldTaxApplicableForInterestPosting(final SavingsAccountData savingsAccountData,
+            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
+        return this.withHoldTax(savingsAccountData) &&
+                (this.depositAccountType(savingsAccountData).isSavingsDeposit() || isWithHoldingTaxAppliedForPostingPeriodEnabled);
     }
 
     private boolean withHoldTax(final SavingsAccountData savingsAccountData) {

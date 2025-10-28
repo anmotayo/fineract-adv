@@ -587,9 +587,11 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 postInterestOnDate = transactionDate;
             }
 
+            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService
+                    .isWithHoldingTaxAppliedForPostingPeriodEnabled();
             savingsAccountData = this.savingsAccountInterestPostingService.postInterest(mc, today, isInterestTransfer,
                     isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
-                    savingsAccountData);
+                    savingsAccountData, isWithHoldingTaxAppliedForPostingPeriodEnabled);
 
             if (!backdatedTxnsAllowedTill) {
                 List<SavingsAccountTransactionData> transactions = savingsAccountData.getSavingsAccountTransactionData();

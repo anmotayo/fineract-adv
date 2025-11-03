@@ -18,16 +18,16 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
+import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 
 @Entity
 @Table(name = "m_deposit_product_term_and_preclosure")
@@ -46,22 +46,29 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
     @Embedded
     private DepositProductAmountDetails depositProductAmountDetails;
 
+    /**
+     * A value from the {@link WithHoldTaxPostingType} enumeration.
+     */
+    @Column(name = "withhold_tax_posting_type_enum", nullable = true)
+    private Integer withHoldTaxPostingType;
+
     protected DepositProductTermAndPreClosure() {
 
     }
 
     public static DepositProductTermAndPreClosure createNew(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
-            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product) {
+            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product, WithHoldTaxPostingType withHoldTaxPostingType) {
 
-        return new DepositProductTermAndPreClosure(preClosureDetail, depositTermDetail, depositProductMinMaxAmountDetails, product);
+        return new DepositProductTermAndPreClosure(preClosureDetail, depositTermDetail, depositProductMinMaxAmountDetails, product, withHoldTaxPostingType);
     }
 
     private DepositProductTermAndPreClosure(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
-            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product) {
+            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product, WithHoldTaxPostingType withHoldTaxPostingType) {
         this.preClosureDetail = preClosureDetail;
         this.depositTermDetail = depositTermDetail;
         this.depositProductAmountDetails = depositProductMinMaxAmountDetails;
         this.product = (FixedDepositProduct) product;
+        this.withHoldTaxPostingType = (withHoldTaxPostingType == null) ? null : withHoldTaxPostingType.getValue();
     }
 
     public Map<String, Object> update(final JsonCommand command, final DataValidatorBuilder baseDataValidator) {
@@ -76,6 +83,12 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
 
         if (this.depositProductAmountDetails != null) {
             actualChanges.putAll(this.depositProductAmountDetails.update(command));
+        }
+
+        if (command.isChangeInIntegerParameterNamed(withHoldTaxPostingTypeIdParamName, this.withHoldTaxPostingType)) {
+            final Integer newValue = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+            actualChanges.put(withHoldTaxPostingTypeIdParamName, SavingsEnumerations.withHoldTaxPostingType(newValue));
+            this.withHoldTaxPostingType = newValue;
         }
         return actualChanges;
     }
@@ -94,5 +107,9 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
 
     public void updateProductReference(final SavingsProduct product) {
         this.product = (FixedDepositProduct) product;
+    }
+
+    public Integer withHoldTaxPostingType() {
+        return this.withHoldTaxPostingType;
     }
 }

@@ -295,6 +295,8 @@ public class FixedDepositProductsApiResource {
 
         // interest rate chart template
         final InterestRateChartData chartTemplate = this.interestRateChartReadPlatformService.template();
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = this.depositsDropdownReadPlatformService
+                .retrieveWithHoldTaxPostingTypeOptions();
 
         FixedDepositProductData fixedDepositProductToReturn = null;
         if (savingsProduct != null) {
@@ -302,14 +304,14 @@ public class FixedDepositProductsApiResource {
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions,
                     paymentTypeOptions, accountingRuleOptions, accountingMappingOptions, chargeOptions, penaltyOptions, chartTemplate,
-                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions);
+                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions, withHoldTaxPostingTypeOptions);
         } else {
             fixedDepositProductToReturn = FixedDepositProductData.template(currency, interestCompoundingPeriodType,
                     interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, accountingRule, currencyOptions,
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions,
                     paymentTypeOptions, accountingRuleOptions, accountingMappingOptions, chargeOptions, penaltyOptions, chartTemplate,
-                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions);
+                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions, withHoldTaxPostingTypeOptions);
         }
 
         return fixedDepositProductToReturn;

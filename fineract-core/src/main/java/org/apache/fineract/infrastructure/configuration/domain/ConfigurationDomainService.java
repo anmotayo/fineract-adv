@@ -142,7 +142,4 @@ public interface ConfigurationDomainService {
     String getAccrualDateConfigForCharge();
 
     String getNextPaymentDateConfigForLoan();
-
-    boolean isWithHoldingTaxAppliedForPostingPeriodEnabled();
-
 }

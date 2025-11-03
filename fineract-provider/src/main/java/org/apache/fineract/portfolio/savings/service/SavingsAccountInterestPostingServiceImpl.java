@@ -36,11 +36,7 @@ import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargesPaidByData;
@@ -59,8 +55,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
     @Override
     public SavingsAccountData postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
             final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final SavingsAccountData savingsAccountData,
-            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
+            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final SavingsAccountData savingsAccountData) {
         Money interestPostedToDate = Money.zero(savingsAccountData.getCurrency());
         LocalDate startInterestDate = getStartInterestCalculationDate(savingsAccountData);
         log.debug("  postInterest - account: {} {} {}", savingsAccountData.getAccountNo(), startInterestDate,
@@ -80,7 +75,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         log.debug(" postingPeriods: {} {}", savingsAccountData.getAccountNo(), postingPeriods.size());
 
         boolean recalucateDailyBalanceDetails = false;
-        boolean applyWithHoldTax = isWithHoldTaxApplicableForInterestPosting(savingsAccountData, isWithHoldingTaxAppliedForPostingPeriodEnabled);
+        boolean applyWithHoldTax = isWithHoldTaxApplicableForInterestPosting(savingsAccountData);
         final List<SavingsAccountTransactionData> withholdTransactions = new ArrayList<>();
 
         withholdTransactions.addAll(findWithHoldSavingsTransactionsWithPivotConfig(savingsAccountData));
@@ -547,10 +542,9 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         }
     }
 
-    private boolean isWithHoldTaxApplicableForInterestPosting(final SavingsAccountData savingsAccountData,
-            final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
+    private boolean isWithHoldTaxApplicableForInterestPosting(final SavingsAccountData savingsAccountData) {
         return this.withHoldTax(savingsAccountData) &&
-                (this.depositAccountType(savingsAccountData).isSavingsDeposit() || isWithHoldingTaxAppliedForPostingPeriodEnabled);
+                (this.depositAccountType(savingsAccountData).isSavingsDeposit() || this.withHoldTaxPostingType(savingsAccountData).isInterestPosting());
     }
 
     private boolean withHoldTax(final SavingsAccountData savingsAccountData) {
@@ -559,6 +553,10 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
 
     public DepositAccountType depositAccountType(final SavingsAccountData savingsAccountData) {
         return savingsAccountData.depositAccountType();
+    }
+
+    public WithHoldTaxPostingType withHoldTaxPostingType(final SavingsAccountData savingsAccountData) {
+        return savingsAccountData.withHoldTaxPostingType();
     }
 
 }

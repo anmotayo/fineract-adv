@@ -29,6 +29,8 @@ public interface DepositsDropdownReadPlatformService {
 
     Collection<EnumOptionData> maturityInstructionOptions();
 
+    Collection<EnumOptionData> retrieveWithHoldTaxPostingTypeOptions();
+
     /*
      * Collection<EnumOptionData> retrieveDepositTermTypeOptions();
      *

@@ -22,18 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.fineract.accounting.common.AccountingEnumerations;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
-import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
-import org.apache.fineract.portfolio.savings.DepositAccountOnHoldTransactionType;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.RecurringDepositType;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsWithdrawalFeesType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSubStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
@@ -58,6 +47,7 @@ public final class SavingsEnumerations {
     public static final String PRE_CLOSURE_PENAL_INTEREST_TYPE = "preClosurePenalInterestOnTypeId";
     public static final String INTEREST_CALCULATION_DAYS_IN_YEAR = "interestCalculationDaysInYearType";
     public static final String RECURRING_FREQUENCY_TYPE = "recurringFrequencyType";
+    public static final String WITHHOLD_TAX_POSTING_TYPE = "withHoldTaxPostingType";
 
     public static EnumOptionData savingEnumueration(final String typeName, final int id) {
         if (typeName.equals(INTEREST_COMPOUNDING_PERIOD_TYPE)) {
@@ -84,6 +74,8 @@ public final class SavingsEnumerations {
             return interestCalculationDaysInYearType(id);
         } else if (typeName.equals(RECURRING_FREQUENCY_TYPE)) {
             return depositPeriodFrequency(id);
+        } else if (typeName.equals(WITHHOLD_TAX_POSTING_TYPE)) {
+            return withHoldTaxPostingType(id);
         }
         return null;
     }
@@ -833,6 +825,28 @@ public final class SavingsEnumerations {
                         DepositAccountOnHoldTransactionType.RELEASE.getCode(), "release");
             break;
 
+        }
+        return optionData;
+    }
+
+    public static EnumOptionData withHoldTaxPostingType(final int id) {
+        return withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(id));
+    }
+
+    public static EnumOptionData withHoldTaxPostingType(final WithHoldTaxPostingType type) {
+        EnumOptionData optionData = new EnumOptionData(WithHoldTaxPostingType.INVALID.getValue().longValue(),
+                WithHoldTaxPostingType.INVALID.getCode(), "Invalid");
+        switch (type) {
+            case INVALID:
+            break;
+            case MATURITY:
+                optionData = new EnumOptionData(WithHoldTaxPostingType.MATURITY.getValue().longValue(),
+                        WithHoldTaxPostingType.MATURITY.getCode(), "Maturity");
+            break;
+            case INTEREST_POSTING:
+                optionData = new EnumOptionData(WithHoldTaxPostingType.INTEREST_POSTING.getValue().longValue(),
+                        WithHoldTaxPostingType.INTEREST_POSTING.getCode(), "Interest Posting");
+            break;
         }
         return optionData;
     }

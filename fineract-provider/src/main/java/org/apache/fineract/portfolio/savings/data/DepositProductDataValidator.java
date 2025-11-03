@@ -19,26 +19,7 @@
 package org.apache.fineract.portfolio.savings.data;
 
 import static org.apache.fineract.portfolio.interestratechart.InterestRateChartApiConstants.idParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.FIXED_DEPOSIT_PRODUCT_REQUEST_DATA_PARAMETERS;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.FIXED_DEPOSIT_PRODUCT_RESOURCE_NAME;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.RECURRING_DEPOSIT_PRODUCT_REQUEST_DATA_PARAMETERS;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.RECURRING_DEPOSIT_PRODUCT_RESOURCE_NAME;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.adjustAdvanceTowardsFuturePaymentsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.allowWithdrawalParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.chartsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMaxAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMinAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.isMandatoryDepositParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalApplicableParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestOnTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.currencyCodeParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.descriptionParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.digitsAfterDecimalParamName;
@@ -81,14 +62,7 @@ import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.portfolio.interestratechart.data.InterestRateChartDataValidator;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -702,5 +676,10 @@ public class DepositProductDataValidator {
             baseDataValidator.reset().parameter(taxGroupIdParamName).value(taxGroupId).notBlank();
         }
 
+        final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName, element);
+        if(withHoldTax) {
+            baseDataValidator.reset().parameter(withHoldTaxPostingTypeIdParamName).value(withHoldTaxPostingTypeId).notNull()
+                    .isOneOfTheseValues(WithHoldTaxPostingType.integerValues());
+        }
     }
 }

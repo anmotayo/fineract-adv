@@ -528,12 +528,4 @@ public class ConfigurationDomainServiceJpa implements ConfigurationDomainService
         }
         return value;
     }
-
-    @Override
-    public boolean isWithHoldingTaxAppliedForPostingPeriodEnabled() {
-        final String propertyName = "withholding-tax-applied-posting-period";
-        final GlobalConfigurationPropertyData property = getGlobalConfigurationPropertyData(propertyName);
-        return property.isEnabled();
-    }
-
 }

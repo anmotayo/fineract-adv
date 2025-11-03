@@ -55,6 +55,7 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
@@ -349,10 +350,15 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             interestPostedToDate = Money.of(currency, account.getSummary().getTotalInterestPosted());
         }
 
-        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService
-                .isWithHoldingTaxAppliedForPostingPeriodEnabled();
         boolean recalucateDailyBalanceDetails = false;
-        boolean applyWithHoldTax = account.isWithHoldTaxApplicableForInterestPosting(isWithHoldingTaxAppliedForPostingPeriodEnabled);
+
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        if(account.depositAccountType().isFixedDeposit()){
+            withHoldTaxPostingType = ((FixedDepositAccount)account).getWithHoldTaxPostingType();
+        } else if(account.depositAccountType().isRecurringDeposit()){
+            withHoldTaxPostingType = ((RecurringDepositAccount)account).getWithHoldTaxPostingType();
+        }
+        boolean applyWithHoldTax = account.isWithHoldTaxApplicable(withHoldTaxPostingType);
         final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
 
         if (backdatedTxnsAllowedTill) {

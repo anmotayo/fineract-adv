@@ -54,15 +54,7 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
-import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
-import org.apache.fineract.portfolio.savings.DepositsApiConstants;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
@@ -237,8 +229,7 @@ public class FixedDepositAccount extends SavingsAccount {
         this.accountTermAndPreClosure.updateMaturityDetails(maturityAmount.getAmount(), maturityDate);
     }
 
-    public void updateMaturityStatus(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-                 final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
+    public void updateMaturityStatus(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
                 .resource(FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME + SavingsApiConstants.updateMaturityDetailsAction);
@@ -254,7 +245,7 @@ public class FixedDepositAccount extends SavingsAccount {
         if (!DateUtils.isDateInTheFuture(maturityDate())) {
             // update account status
             this.status = SavingsAccountStatusType.MATURED.getValue();
-            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, isWithHoldingTaxAppliedForPostingPeriodEnabled);
+            postMaturityInterest(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth);
         }
     }
 
@@ -512,8 +503,7 @@ public class FixedDepositAccount extends SavingsAccount {
         this.accountTermAndPreClosure.updateOnAccountClosureStatus(onClosureType);
     }
 
-    public void postMaturityInterest(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-                 final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled) {
+    public void postMaturityInterest(final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
         final LocalDate interestPostingUpToDate = maturityDate();
         final MathContext mc = MathContext.DECIMAL64;
         final boolean isInterestTransfer = false;
@@ -557,7 +547,9 @@ public class FixedDepositAccount extends SavingsAccount {
                 }
             }
         }
-        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, isWithHoldingTaxAppliedForPostingPeriodEnabled);
+
+        final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
+        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, withHoldTaxPostingType);
          /*recalucateDailyBalanceDetails = applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails,
                  backdatedTxnsAllowedTill);*/
         if (recalucateDailyBalanceDetails) {
@@ -570,8 +562,7 @@ public class FixedDepositAccount extends SavingsAccount {
     }
 
     public void postPreMaturityInterest(final LocalDate accountCloseDate, final boolean isPreMatureClosure,
-            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final boolean isWithHoldTaxForDepositAccountsAppliedMonthlyEnabled) {
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth) {
 
         Money interestPostedToDate = totalInterestPosted();
         // calculate interest before one day of closure date
@@ -592,8 +583,8 @@ public class FixedDepositAccount extends SavingsAccount {
             recalucateDailyBalance = true;
         }
 
-        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill,
-                isWithHoldTaxForDepositAccountsAppliedMonthlyEnabled);
+        final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
+        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill, withHoldTaxPostingType);
         boolean postReversals = false;
         if (recalucateDailyBalance) {
             // update existing transactions so derived balance fields are
@@ -786,6 +777,11 @@ public class FixedDepositAccount extends SavingsAccount {
                     .failWithCodeNoParameterAddedToErrorCode("valid.interest.chart.or.nominal.interest.rate.required");
         }
 
+        //check there should be a withHoldTaxPostingType when withHoldTax is true
+        if(this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null){
+            baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("withhold.tax.posting.type.required");
+        }
+
     }
 
     public boolean isReinvestOnClosure() {
@@ -890,6 +886,11 @@ public class FixedDepositAccount extends SavingsAccount {
 
     public boolean isMatured() {
         return SavingsAccountStatusType.MATURED.getValue().equals(this.status);
+    }
+
+    public WithHoldTaxPostingType getWithHoldTaxPostingType() {
+        final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
+        return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }
 
 }

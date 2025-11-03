@@ -18,24 +18,7 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.FIXED_DEPOSIT_PRODUCT_RESOURCE_NAME;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.RECURRING_DEPOSIT_PRODUCT_RESOURCE_NAME;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.adjustAdvanceTowardsFuturePaymentsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.allowWithdrawalParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.chartsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMaxAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMinAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.isMandatoryDepositParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalApplicableParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestOnTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.chargesParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.currencyCodeParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.descriptionParamName;
@@ -71,12 +54,7 @@ import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -139,6 +117,12 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             lockinPeriodFrequencyType = SavingsPeriodFrequencyType.fromInt(lockinPeriodFrequencyTypeValue);
         }
 
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+        if (withHoldTaxPostingTypeId != null) {
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+        }
+
         final BigDecimal minBalanceForInterestCalculation = command
                 .bigDecimalValueOfParameterNamedDefaultToNullIfZero(minBalanceForInterestCalculationParamName);
 
@@ -148,7 +132,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final DepositTermDetail depositTermDetail = this.assembleDepositTermDetail(command);
         final DepositProductAmountDetails depositProductAmountDetails = this.assembleDepositAmountDetails(command);
         final DepositProductTermAndPreClosure productTermAndPreClosure = DepositProductTermAndPreClosure.createNew(preClosureDetail,
-                depositTermDetail, depositProductAmountDetails, null);
+                depositTermDetail, depositProductAmountDetails, null, withHoldTaxPostingType);
 
         // Savings product charges
         final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
@@ -233,6 +217,12 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             lockinPeriodFrequencyType = SavingsPeriodFrequencyType.fromInt(lockinPeriodFrequencyTypeValue);
         }
 
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+        if (withHoldTaxPostingTypeId != null) {
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+        }
+
         final BigDecimal minBalanceForInterestCalculation = command
                 .bigDecimalValueOfParameterNamedDefaultToNullIfZero(minBalanceForInterestCalculationParamName);
 
@@ -242,7 +232,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final DepositTermDetail depositTermDetail = this.assembleDepositTermDetail(command);
         final DepositProductAmountDetails depositProductAmountDetails = this.assembleDepositAmountDetails(command);
         final DepositProductTermAndPreClosure productTermAndPreClosure = DepositProductTermAndPreClosure.createNew(preClosureDetail,
-                depositTermDetail, depositProductAmountDetails, null);
+                depositTermDetail, depositProductAmountDetails, null, withHoldTaxPostingType);
         final DepositRecurringDetail recurringDetail = this.assembleRecurringDetail(command);
         final DepositProductRecurringDetail productRecurringDetail = DepositProductRecurringDetail.createNew(recurringDetail, null);
 

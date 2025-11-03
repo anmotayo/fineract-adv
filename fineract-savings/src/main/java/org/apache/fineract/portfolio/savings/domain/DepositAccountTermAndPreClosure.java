@@ -18,16 +18,6 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.dateFormatParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodFrequencyIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.expectedFirstDepositOnDateParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.localeParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maturityInstructionIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferInterestToSavingsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferToSavingsIdParamName;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -45,7 +35,10 @@ import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 
 @Entity
 @Table(name = "m_deposit_account_term_and_preclosure")
@@ -88,6 +81,12 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
     @Column(name = "transfer_to_savings_account_id")
     private Long transferToSavingsAccountId;
 
+    /**
+     * A value from the {@link WithHoldTaxPostingType} enumeration.
+     */
+    @Column(name = "withhold_tax_posting_type_enum", nullable = true)
+    private Integer withHoldTaxPostingType;
+
     protected DepositAccountTermAndPreClosure() {
 
     }
@@ -95,17 +94,17 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
     public static DepositAccountTermAndPreClosure createNew(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
             SavingsAccount account, BigDecimal depositAmount, BigDecimal maturityAmount, final LocalDate maturityDate,
             Integer depositPeriod, final SavingsPeriodFrequencyType depositPeriodFrequency, final LocalDate expectedFirstDepositOnDate,
-            final DepositAccountOnClosureType accountOnClosureType, Boolean trasferInterest, Long transferToSavingsId) {
+            final DepositAccountOnClosureType accountOnClosureType, Boolean transferInterest, Long transferToSavingsId, final WithHoldTaxPostingType withHoldTaxPostingType) {
 
         return new DepositAccountTermAndPreClosure(preClosureDetail, depositTermDetail, account, depositAmount, maturityAmount,
-                maturityDate, depositPeriod, depositPeriodFrequency, expectedFirstDepositOnDate, accountOnClosureType, trasferInterest,
-                transferToSavingsId);
+                maturityDate, depositPeriod, depositPeriodFrequency, expectedFirstDepositOnDate, accountOnClosureType, transferInterest,
+                transferToSavingsId, withHoldTaxPostingType);
     }
 
     private DepositAccountTermAndPreClosure(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
             SavingsAccount account, BigDecimal depositAmount, BigDecimal maturityAmount, final LocalDate maturityDate,
             Integer depositPeriod, final SavingsPeriodFrequencyType depositPeriodFrequency, final LocalDate expectedFirstDepositOnDate,
-            final DepositAccountOnClosureType accountOnClosureType, Boolean transferInterest, Long transferToSavingsId) {
+            final DepositAccountOnClosureType accountOnClosureType, Boolean transferInterest, Long transferToSavingsId, final WithHoldTaxPostingType withHoldTaxPostingType) {
         this.depositAmount = depositAmount;
         this.maturityAmount = maturityAmount;
         this.maturityDate = maturityDate;
@@ -118,6 +117,7 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
         this.onAccountClosureType = (accountOnClosureType == null) ? null : accountOnClosureType.getValue();
         this.transferInterestToLinkedAccount = transferInterest;
         this.transferToSavingsAccountId = transferToSavingsId;
+        this.withHoldTaxPostingType = (withHoldTaxPostingType == null) ? null : withHoldTaxPostingType.getValue();
     }
 
     public Map<String, Object> update(final JsonCommand command, final DataValidatorBuilder baseDataValidator) {
@@ -177,6 +177,12 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
 
         if (this.depositTermDetail != null) {
             actualChanges.putAll(this.depositTermDetail.update(command, baseDataValidator));
+        }
+
+        if (command.isChangeInIntegerParameterNamed(withHoldTaxPostingTypeIdParamName, this.withHoldTaxPostingType)) {
+            final Integer newValue = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+            actualChanges.put(withHoldTaxPostingTypeIdParamName, SavingsEnumerations.withHoldTaxPostingType(newValue));
+            this.withHoldTaxPostingType = newValue;
         }
         return actualChanges;
     }
@@ -299,12 +305,13 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
         final DepositTermDetail depositTermDetail = this.depositTermDetail.copy();
         final LocalDate expectedFirstDepositOnDate = null;
         final Boolean transferInterestToLinkedAccount = false;
+        final WithHoldTaxPostingType withHoldTaxPostingType = this.withHoldTaxPostingType == null ? null : WithHoldTaxPostingType.fromInt(this.withHoldTaxPostingType);
 
         final DepositAccountOnClosureType accountOnClosureType = null;
         final Long transferToSavingsId = null;
         return DepositAccountTermAndPreClosure.createNew(preClosureDetail, depositTermDetail, account, actualDepositAmount, maturityAmount,
                 maturityDate, depositPeriod, depositPeriodFrequency, expectedFirstDepositOnDate, accountOnClosureType,
-                transferInterestToLinkedAccount, transferToSavingsId);
+                transferInterestToLinkedAccount, transferToSavingsId, withHoldTaxPostingType);
     }
 
     public void updateExpectedFirstDepositDate(final LocalDate expectedFirstDepositOnDate) {
@@ -325,5 +332,9 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
 
     public Long getTransferToSavingsAccountId() {
         return transferToSavingsAccountId;
+    }
+
+    public Integer getWithHoldTaxPostingType() {
+        return withHoldTaxPostingType;
     }
 }

@@ -18,13 +18,6 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.time.LocalDate;
@@ -35,6 +28,8 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 
 /**
  * DepositTermDetail encapsulates all the details of a {@link FixedDepositProduct} that are also used and persisted by a

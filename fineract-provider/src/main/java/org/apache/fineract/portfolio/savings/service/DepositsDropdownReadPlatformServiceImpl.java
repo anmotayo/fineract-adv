@@ -56,8 +56,7 @@ public class DepositsDropdownReadPlatformServiceImpl implements DepositsDropdown
 
     @Override
     public Collection<EnumOptionData> retrieveWithHoldTaxPostingTypeOptions() {
-        return Arrays.asList(
-                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.MATURITY),
+        return Arrays.asList(SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.MATURITY),
                 SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.INTEREST_POSTING));
     }
 }

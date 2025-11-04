@@ -293,7 +293,8 @@ public class RecurringDepositProductsApiResource {
         // interest rate chart template
         final InterestRateChartData chartTemplate = this.interestRateChartReadPlatformService.template();
         final Collection<TaxGroupData> taxGroupOptions = this.taxReadPlatformService.retrieveTaxGroupsForLookUp();
-        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = this.depositsDropdownReadPlatformService.retrieveWithHoldTaxPostingTypeOptions();
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = this.depositsDropdownReadPlatformService
+                .retrieveWithHoldTaxPostingTypeOptions();
 
         RecurringDepositProductData recurringDepositProductToReturn = null;
         if (savingsProduct != null) {

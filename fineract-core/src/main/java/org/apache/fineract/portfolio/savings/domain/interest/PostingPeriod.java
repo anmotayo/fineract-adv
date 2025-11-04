@@ -298,8 +298,7 @@ public final class PostingPeriod {
             }
 
             if (compoundingPeriodEndDate.equals(compoundingPeriod.getPeriodInterval().endDate())
-                    && !SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.equals(this.interestCompoundingType)
-                ) {
+                    && !SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.equals(this.interestCompoundingType)) {
                 BigDecimal interestCompounded = compoundInterestValues.getcompoundedInterest().add(unCompoundedInterest);
                 compoundInterestValues.setcompoundedInterest(interestCompounded);
                 compoundInterestValues.setZeroForInterestToBeUncompounded();
@@ -441,7 +440,7 @@ public final class PostingPeriod {
             case NO_COMPOUNDING_SIMPLE_INTEREST:
                 compoundingPeriod = NoCompoundingPeriod.create(postingPeriodInterval, allEndOfDayBalances, upToInterestCalculationDate);
                 compoundingPeriods.add(compoundingPeriod);
-                break;
+            break;
         }
 
         return compoundingPeriods;
@@ -493,7 +492,7 @@ public final class PostingPeriod {
             break;
 
             case NO_COMPOUNDING_SIMPLE_INTEREST:
-                break;
+            break;
             // periodEndDate = periodStartDate.monthOfYear().withMaximumValue();
             // periodEndDate = periodEndDate.with(TemporalAdjusters.lastDayOfMonth());
             // break;

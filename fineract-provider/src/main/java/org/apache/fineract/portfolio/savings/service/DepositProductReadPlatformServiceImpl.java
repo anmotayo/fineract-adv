@@ -277,7 +277,8 @@ public class DepositProductReadPlatformServiceImpl implements DepositProductRead
 
             return FixedDepositProductData.instance(depositProductData, preClosurePenalApplicable, preClosurePenalInterest,
                     preClosurePenalInterestOnType, minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
-                    inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, minDepositAmount, depositAmount, maxDepositAmount, withHoldTaxPostingType);
+                    inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, minDepositAmount, depositAmount, maxDepositAmount,
+                    withHoldTaxPostingType);
         }
     }
 

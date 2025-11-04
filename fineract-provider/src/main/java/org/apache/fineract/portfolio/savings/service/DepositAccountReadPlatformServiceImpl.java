@@ -485,8 +485,9 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                 " and st.transaction_type_enum = ? and sa.status_enum = ? and st.is_reversed=false and st.transaction_date > coalesce(sa.lockedin_until_date_derived,sa.activatedon_date)");
 
         log.info("SQL {}", sqlBuilder.toString());
-        return this.jdbcTemplate.query(sqlBuilder.toString(), mapper, SavingsAccountTransactionType.WITHDRAWAL.getValue(),
-                SavingsAccountTransactionType.INTEREST_POSTING.getValue(), SavingsAccountStatusType.ACTIVE.getValue());
+        return this.jdbcTemplate.query(sqlBuilder.toString(), mapper, SavingsAccountTransactionType.WITHHOLD_TAX.getValue(),
+                SavingsAccountTransactionType.WITHDRAWAL.getValue(), SavingsAccountTransactionType.INTEREST_POSTING.getValue(),
+                SavingsAccountStatusType.ACTIVE.getValue());
     }
 
     @Override
@@ -928,7 +929,8 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             return FixedDepositAccountData.instance(depositAccountData, preClosurePenalApplicable, preClosurePenalInterest,
                     preClosurePenalInterestOnType, minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
                     inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, depositAmount, maturityAmount, maturityDate, depositPeriod,
-                    depositPeriodFrequencyType, onAccountClosureType, transferInterestToSavings, transferToSavingsId, withHoldTaxPostingType);
+                    depositPeriodFrequencyType, onAccountClosureType, transferInterestToSavings, transferToSavingsId,
+                    withHoldTaxPostingType);
         }
     }
 
@@ -1676,8 +1678,10 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
 
         AccountTransferMapper() {
             final StringBuilder sqlBuilder = new StringBuilder(400);
-            sqlBuilder.append(
-                    "sa.id as fromAcc ,aa.linked_savings_account_id as toAcc,st.amount as amount, st.transaction_date as transactionDate ")
+            sqlBuilder.append("sa.id as fromAcc ,aa.linked_savings_account_id as toAcc, st.transaction_date as transactionDate, ")
+                    .append(" (st.amount - coalesce((select sum(wt.amount) from m_savings_account_transaction wt ")
+                    .append(" where wt.savings_account_id = sa.id and wt.transaction_date = st.transaction_date ")
+                    .append(" and wt.transaction_type_enum = ? and wt.is_reversed = false), 0)) as amount ")
                     .append(" from m_deposit_account_term_and_preclosure da ")
                     .append(" inner join m_savings_account sa on da.savings_account_id = sa.id")
                     .append(" inner join m_savings_account_transaction st on st.savings_account_id = sa.id")

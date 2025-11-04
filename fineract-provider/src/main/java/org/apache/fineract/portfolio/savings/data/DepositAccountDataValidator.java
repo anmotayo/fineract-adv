@@ -769,9 +769,11 @@ public class DepositAccountDataValidator {
             baseDataValidator.reset().parameter(withHoldTaxParamName).value(withHoldTax).ignoreIfNull().validateForBooleanValue();
         }
 
-        if(this.fromApiJsonHelper.parameterExists(withHoldTaxPostingTypeIdParamName, element)){
-            final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName, element);
-            baseDataValidator.reset().parameter(withHoldTaxPostingTypeIdParamName).value(withHoldTaxPostingTypeId).notNull().isOneOfTheseValues(WithHoldTaxPostingType.integerValues());
+        if (this.fromApiJsonHelper.parameterExists(withHoldTaxPostingTypeIdParamName, element)) {
+            final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName,
+                    element);
+            baseDataValidator.reset().parameter(withHoldTaxPostingTypeIdParamName).value(withHoldTaxPostingTypeId).notNull()
+                    .isOneOfTheseValues(WithHoldTaxPostingType.integerValues());
         }
     }
 

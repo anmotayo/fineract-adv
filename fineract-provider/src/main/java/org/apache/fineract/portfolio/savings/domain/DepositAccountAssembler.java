@@ -384,12 +384,12 @@ public class DepositAccountAssembler {
         final Long transferToSavingsId = command.longValueOfParameterNamed(transferToSavingsIdParamName);
 
         WithHoldTaxPostingType withHoldTaxPostingType = null;
-        if(productTermAndPreclosure != null){
+        if (productTermAndPreclosure != null) {
             withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(productTermAndPreclosure.withHoldTaxPostingType());
         }
-        if(command.parameterExists(withHoldTaxPostingTypeIdParamName)){
+        if (command.parameterExists(withHoldTaxPostingTypeIdParamName)) {
             final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
-             withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
         }
 
         return DepositAccountTermAndPreClosure.createNew(updatedProductPreClosure, updatedProductTerm, account, depositAmount,

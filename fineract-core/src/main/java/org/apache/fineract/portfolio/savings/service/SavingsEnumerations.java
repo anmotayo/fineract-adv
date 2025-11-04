@@ -434,8 +434,9 @@ public final class SavingsEnumerations {
             break;
             case NO_COMPOUNDING_SIMPLE_INTEREST:
                 optionData = new EnumOptionData(SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.getValue().longValue(),
-             codePrefix + SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.getCode(), "No Compounding - Simple Interest");
-             break;
+                        codePrefix + SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.getCode(),
+                        "No Compounding - Simple Interest");
+            break;
         }
 
         return optionData;

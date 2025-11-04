@@ -676,8 +676,9 @@ public class DepositProductDataValidator {
             baseDataValidator.reset().parameter(taxGroupIdParamName).value(taxGroupId).notBlank();
         }
 
-        final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName, element);
-        if(withHoldTax) {
+        final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName,
+                element);
+        if (withHoldTax) {
             baseDataValidator.reset().parameter(withHoldTaxPostingTypeIdParamName).value(withHoldTaxPostingTypeId).notNull()
                     .isOneOfTheseValues(WithHoldTaxPostingType.integerValues());
         }

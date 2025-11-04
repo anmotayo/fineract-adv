@@ -671,7 +671,8 @@ public class RecurringDepositAccount extends SavingsAccount {
         }
 
         final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
-        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, withHoldTaxPostingType);
+        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill,
+                withHoldTaxPostingType);
         if (recalucateDailyBalanceDetails) {
             // update existing transactions so derived balance fields are
             // correct.
@@ -1088,8 +1089,8 @@ public class RecurringDepositAccount extends SavingsAccount {
          * "recurring.frequency.not.before.deposit.period"); }
          */
 
-        //check there should be a withHoldTaxPostingType when withHoldTax is true
-        if(this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null){
+        // check there should be a withHoldTaxPostingType when withHoldTax is true
+        if (this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null) {
             baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("withhold.tax.posting.type.required");
         }
     }

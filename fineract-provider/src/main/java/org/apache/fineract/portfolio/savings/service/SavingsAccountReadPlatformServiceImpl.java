@@ -589,7 +589,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     EnumOptionData withHoldTaxPostingType = null;
                     final Integer withHoldTaxPostingTypeId = JdbcSupport.getInteger(rs, "withHoldTaxPostingType");
                     if (withHoldTaxPostingTypeId != null) {
-                        withHoldTaxPostingType = SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
+                        withHoldTaxPostingType = SavingsEnumerations
+                                .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
                     }
 
                     final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
@@ -693,8 +694,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     final GLAccountData creditAccount = GLAccountData.createFrom(creditId);
 
                     if (transactionTaxComponentId != null) {
-                        final TaxComponentData taxComponent = TaxComponentData.createTaxComponent(transactionTaxComponentId, percentage, debitAccount,
-                                creditAccount);
+                        final TaxComponentData taxComponent = TaxComponentData.createTaxComponent(transactionTaxComponentId, percentage,
+                                debitAccount, creditAccount);
                         savingsAccountTransactionData.setTaxDetails(new TaxDetailsData(taxComponent, amount));
                     }
 
@@ -702,7 +703,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                 }
 
                 final String savingsIdWithTaxGroupMappingId = id + "_" + taxGroupMappingId;
-                if(taxGroupId != null && !coreTaxDetails.containsValue(savingsIdWithTaxGroupMappingId)) {
+                if (taxGroupId != null && !coreTaxDetails.containsValue(savingsIdWithTaxGroupMappingId)) {
                     final BigDecimal percentage = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "coreTaxPercentage");
                     final Long debitId = rs.getLong("coreDebitAccountId");
                     final Long creditId = rs.getLong("coreCreditAccountId");
@@ -711,18 +712,18 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     final LocalDate startDate = JdbcSupport.getLocalDate(rs, "taxGroupStartDate");
                     final LocalDate endDate = JdbcSupport.getLocalDate(rs, "taxGroupEndDate");
                     final TaxGroupData taxGroupData = savingsAccountData.getTaxGroup();
-                    if(coreTaxComponentId != null && taxGroupData != null){
-                        final TaxComponentData taxComponentData = TaxComponentData.createTaxComponent(coreTaxComponentId, percentage, debitAccount,
-                                creditAccount);
+                    if (coreTaxComponentId != null && taxGroupData != null) {
+                        final TaxComponentData taxComponentData = TaxComponentData.createTaxComponent(coreTaxComponentId, percentage,
+                                debitAccount, creditAccount);
 
-                        final TaxGroupMappingsData taxGroupMappingData = new TaxGroupMappingsData(taxGroupMappingId, taxComponentData, startDate, endDate);
-                        if(taxGroupData.getTaxAssociations() == null){
+                        final TaxGroupMappingsData taxGroupMappingData = new TaxGroupMappingsData(taxGroupMappingId, taxComponentData,
+                                startDate, endDate);
+                        if (taxGroupData.getTaxAssociations() == null) {
                             final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList();
                             taxGroupMappingsData.add(taxGroupMappingData);
-                            TaxGroupData newTaxGroupData = TaxGroupData.instance(taxGroupId,null, taxGroupMappingsData);
+                            TaxGroupData newTaxGroupData = TaxGroupData.instance(taxGroupId, null, taxGroupMappingsData);
                             savingsAccountData.setTaxGroup(newTaxGroupData);
-                        }
-                        else{
+                        } else {
                             taxGroupData.getTaxAssociations().add(taxGroupMappingData);
                         }
                     }
@@ -977,7 +978,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             EnumOptionData withholdTaxPostingType = null;
             final Integer withholdTaxPostingTypeId = JdbcSupport.getInteger(rs, "withHoldTaxPostingType");
             if (withholdTaxPostingTypeId != null) {
-                withholdTaxPostingType = SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withholdTaxPostingTypeId));
+                withholdTaxPostingType = SavingsEnumerations
+                        .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withholdTaxPostingTypeId));
             }
 
             final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
@@ -1566,7 +1568,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             EnumOptionData withHoldTaxPostingType = null;
             final Integer withHoldTaxPostingTypeId = JdbcSupport.getInteger(rs, "withholdTaxPostingType");
             if (withHoldTaxPostingTypeId != null) {
-                withHoldTaxPostingType = SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
+                withHoldTaxPostingType = SavingsEnumerations
+                        .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
             }
 
             // final BigDecimal withdrawalFeeAmount =

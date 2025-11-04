@@ -3,6 +3,7 @@ package org.apache.fineract.portfolio.savings;
 import java.util.Arrays;
 
 public enum WithHoldTaxPostingType {
+
     INVALID(0, "withHoldTaxPostingType.invalid"), //
     MATURITY(1, "withHoldTaxPostingType.maturity"), //
     INTEREST_POSTING(2, "withHoldTaxPostingType.interestPosting");
@@ -10,7 +11,7 @@ public enum WithHoldTaxPostingType {
     private final Integer value;
     private final String code;
 
-    WithHoldTaxPostingType(final Integer value, final String code){
+    WithHoldTaxPostingType(final Integer value, final String code) {
         this.value = value;
         this.code = code;
     }

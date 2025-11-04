@@ -46,8 +46,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -127,12 +125,6 @@ import org.apache.fineract.portfolio.savings.exception.SavingsAccountTransaction
 import org.apache.fineract.portfolio.savings.exception.SavingsOfficerAssignmentException;
 import org.apache.fineract.portfolio.savings.exception.SavingsOfficerUnassignmentException;
 import org.apache.fineract.portfolio.savings.exception.TransactionUpdateNotAllowedException;
-import org.apache.fineract.portfolio.tax.data.TaxComponentData;
-import org.apache.fineract.portfolio.tax.data.TaxComponentHistoryData;
-import org.apache.fineract.portfolio.tax.domain.TaxComponent;
-import org.apache.fineract.portfolio.tax.domain.TaxGroup;
-import org.apache.fineract.portfolio.tax.domain.TaxGroupMappings;
-import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 import org.apache.fineract.portfolio.transfer.api.TransferApiConstants;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.apache.fineract.useradministration.domain.AppUserRepositoryWrapper;

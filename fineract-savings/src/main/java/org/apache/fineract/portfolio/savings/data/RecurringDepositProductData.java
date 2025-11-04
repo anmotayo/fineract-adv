@@ -224,8 +224,8 @@ public final class RecurringDepositProductData extends DepositProductData {
                 existingProduct.inMultiplesOfDepositTermType, existingProduct.isMandatoryDeposit, existingProduct.allowWithdrawal,
                 existingProduct.adjustAdvanceTowardsFuturePayments, existingProduct.periodFrequencyTypeOptions,
                 existingProduct.minDepositAmount, existingProduct.depositAmount, existingProduct.maxDepositAmount,
-                existingProduct.withHoldTax, existingProduct.taxGroup, existingProduct.taxGroupOptions, existingProduct.withHoldTaxPostingType,
-                existingProduct.withHoldTaxPostingTypeOptions);
+                existingProduct.withHoldTax, existingProduct.taxGroup, existingProduct.taxGroupOptions,
+                existingProduct.withHoldTaxPostingType, existingProduct.withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositProductData instance(final DepositProductData depositProductData, final boolean preClosurePenalApplicable,
@@ -398,7 +398,7 @@ public final class RecurringDepositProductData extends DepositProductData {
             boolean adjustAdvanceTowardsFuturePayments, final Collection<EnumOptionData> periodFrequencyTypeOptions,
             final BigDecimal minDepositAmount, final BigDecimal depositAmount, final BigDecimal maxDepositAmount, final boolean withHoldTax,
             final TaxGroupData taxGroup, final Collection<TaxGroupData> taxGroupOptions, final EnumOptionData withHoldTaxPostingType,
-                                        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         super(id, name, shortName, description, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,

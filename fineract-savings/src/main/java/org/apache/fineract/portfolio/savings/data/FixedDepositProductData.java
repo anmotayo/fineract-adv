@@ -69,7 +69,7 @@ public final class FixedDepositProductData extends DepositProductData {
             final Collection<ChargeData> penaltyOptions, final InterestRateChartData chartTemplate,
             final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions,
             final Collection<EnumOptionData> periodFrequencyTypeOptions, final Collection<TaxGroupData> taxGroupOptions,
-                                                   final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         final Long id = null;
         final String name = null;
@@ -155,7 +155,7 @@ public final class FixedDepositProductData extends DepositProductData {
             final Collection<ChargeData> penaltyOptions, final InterestRateChartData chartTemplate,
             final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions,
             final Collection<EnumOptionData> periodFrequencyTypeOptions, final Collection<TaxGroupData> taxGroupOptions,
-                                                       final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         return new FixedDepositProductData(existingProduct.id, existingProduct.name, existingProduct.shortName, existingProduct.description,
                 existingProduct.currency, existingProduct.nominalAnnualInterestRate, existingProduct.interestCompoundingPeriodType,
@@ -376,8 +376,8 @@ public final class FixedDepositProductData extends DepositProductData {
             final EnumOptionData maxDepositTermType, final Integer inMultiplesOfDepositTerm,
             final EnumOptionData inMultiplesOfDepositTermType, final BigDecimal minDepositAmount, final BigDecimal depositAmount,
             final BigDecimal maxDepositAmount, final Collection<EnumOptionData> periodFrequencyTypeOptions, final boolean withHoldTax,
-            final TaxGroupData taxGroup, final Collection<TaxGroupData> taxGroupOptions,
-            final EnumOptionData withHoldTaxPostingType, final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
+            final TaxGroupData taxGroup, final Collection<TaxGroupData> taxGroupOptions, final EnumOptionData withHoldTaxPostingType,
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         super(id, name, shortName, description, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,

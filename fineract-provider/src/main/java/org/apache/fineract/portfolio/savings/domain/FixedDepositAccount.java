@@ -549,9 +549,12 @@ public class FixedDepositAccount extends SavingsAccount {
         }
 
         final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
-        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, withHoldTaxPostingType);
-         /*recalucateDailyBalanceDetails = applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails,
-                 backdatedTxnsAllowedTill);*/
+        recalucateDailyBalanceDetails = chart.getAccount().applyWithholdTaxForDepositAccounts(interestPostingUpToDate,
+                recalucateDailyBalanceDetails, backdatedTxnsAllowedTill, withHoldTaxPostingType);
+        /*
+         * recalucateDailyBalanceDetails = applyWithholdTaxForDepositAccounts(interestPostingUpToDate,
+         * recalucateDailyBalanceDetails, backdatedTxnsAllowedTill);
+         */
         if (recalucateDailyBalanceDetails) {
             // update existing transactions so derived balance fields are
             // correct.
@@ -584,7 +587,8 @@ public class FixedDepositAccount extends SavingsAccount {
         }
 
         final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
-        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill, withHoldTaxPostingType);
+        recalucateDailyBalance = applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill,
+                withHoldTaxPostingType);
         boolean postReversals = false;
         if (recalucateDailyBalance) {
             // update existing transactions so derived balance fields are
@@ -777,8 +781,8 @@ public class FixedDepositAccount extends SavingsAccount {
                     .failWithCodeNoParameterAddedToErrorCode("valid.interest.chart.or.nominal.interest.rate.required");
         }
 
-        //check there should be a withHoldTaxPostingType when withHoldTax is true
-        if(this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null){
+        // check there should be a withHoldTaxPostingType when withHoldTax is true
+        if (this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null) {
             baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("withhold.tax.posting.type.required");
         }
 

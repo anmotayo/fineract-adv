@@ -285,19 +285,21 @@ public class FixedDepositProduct extends SavingsProduct {
 
     public void validateInterestPostingAndCompoundingPeriodTypes(final DataValidatorBuilder baseDataValidator) {
         Map<SavingsPostingInterestPeriodType, List<SavingsCompoundingInterestPeriodType>> postingtoCompoundMap = new HashMap<>();
-        postingtoCompoundMap.put(SavingsPostingInterestPeriodType.MONTHLY, Arrays.asList(new SavingsCompoundingInterestPeriodType[] {
-                SavingsCompoundingInterestPeriodType.DAILY, SavingsCompoundingInterestPeriodType.MONTHLY,
-                SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST }));
+        postingtoCompoundMap.put(SavingsPostingInterestPeriodType.MONTHLY,
+                Arrays.asList(new SavingsCompoundingInterestPeriodType[] { SavingsCompoundingInterestPeriodType.DAILY,
+                        SavingsCompoundingInterestPeriodType.MONTHLY,
+                        SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST }));
 
         postingtoCompoundMap.put(SavingsPostingInterestPeriodType.QUATERLY,
                 Arrays.asList(new SavingsCompoundingInterestPeriodType[] { SavingsCompoundingInterestPeriodType.DAILY,
                         SavingsCompoundingInterestPeriodType.MONTHLY, SavingsCompoundingInterestPeriodType.QUATERLY,
-                        SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST}));
+                        SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST }));
 
         postingtoCompoundMap.put(SavingsPostingInterestPeriodType.BIANNUAL,
                 Arrays.asList(new SavingsCompoundingInterestPeriodType[] { SavingsCompoundingInterestPeriodType.DAILY,
                         SavingsCompoundingInterestPeriodType.MONTHLY, SavingsCompoundingInterestPeriodType.QUATERLY,
-                        SavingsCompoundingInterestPeriodType.BI_ANNUAL, SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST }));
+                        SavingsCompoundingInterestPeriodType.BI_ANNUAL,
+                        SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST }));
 
         postingtoCompoundMap.put(SavingsPostingInterestPeriodType.ANNUAL,
                 Arrays.asList(new SavingsCompoundingInterestPeriodType[] { SavingsCompoundingInterestPeriodType.DAILY,

@@ -680,7 +680,8 @@ public class LoanProduct extends AbstractPersistableCustom<Long> {
             final boolean enableDownPayment, final BigDecimal disbursedAmountPercentageForDownPayment,
             final boolean enableAutoRepaymentForDownPayment, final RepaymentStartDateType repaymentStartDateType,
             final boolean enableInstallmentLevelDelinquency, final LoanScheduleType loanScheduleType,
-            final LoanScheduleProcessingType loanScheduleProcessingType, final Integer fixedLength, final boolean allowAccrualPostingInArrears) {
+            final LoanScheduleProcessingType loanScheduleProcessingType, final Integer fixedLength,
+            final boolean allowAccrualPostingInArrears) {
         this.fund = fund;
         this.transactionProcessingStrategyCode = transactionProcessingStrategyCode;
 

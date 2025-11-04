@@ -353,10 +353,10 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
         boolean recalucateDailyBalanceDetails = false;
 
         WithHoldTaxPostingType withHoldTaxPostingType = null;
-        if(account.depositAccountType().isFixedDeposit()){
-            withHoldTaxPostingType = ((FixedDepositAccount)account).getWithHoldTaxPostingType();
-        } else if(account.depositAccountType().isRecurringDeposit()){
-            withHoldTaxPostingType = ((RecurringDepositAccount)account).getWithHoldTaxPostingType();
+        if (account.depositAccountType().isFixedDeposit()) {
+            withHoldTaxPostingType = ((FixedDepositAccount) account).getWithHoldTaxPostingType();
+        } else if (account.depositAccountType().isRecurringDeposit()) {
+            withHoldTaxPostingType = ((RecurringDepositAccount) account).getWithHoldTaxPostingType();
         }
         boolean applyWithHoldTax = account.isWithHoldTaxApplicable(withHoldTaxPostingType);
         final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();

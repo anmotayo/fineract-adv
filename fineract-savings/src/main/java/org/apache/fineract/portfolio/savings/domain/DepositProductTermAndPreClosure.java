@@ -18,6 +18,8 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
+
 import jakarta.persistence.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -26,8 +28,6 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
 import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
-
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 
 @Entity
 @Table(name = "m_deposit_product_term_and_preclosure")
@@ -57,13 +57,16 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
     }
 
     public static DepositProductTermAndPreClosure createNew(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
-            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product, WithHoldTaxPostingType withHoldTaxPostingType) {
+            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product,
+            WithHoldTaxPostingType withHoldTaxPostingType) {
 
-        return new DepositProductTermAndPreClosure(preClosureDetail, depositTermDetail, depositProductMinMaxAmountDetails, product, withHoldTaxPostingType);
+        return new DepositProductTermAndPreClosure(preClosureDetail, depositTermDetail, depositProductMinMaxAmountDetails, product,
+                withHoldTaxPostingType);
     }
 
     private DepositProductTermAndPreClosure(DepositPreClosureDetail preClosureDetail, DepositTermDetail depositTermDetail,
-            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product, WithHoldTaxPostingType withHoldTaxPostingType) {
+            DepositProductAmountDetails depositProductMinMaxAmountDetails, SavingsProduct product,
+            WithHoldTaxPostingType withHoldTaxPostingType) {
         this.preClosureDetail = preClosureDetail;
         this.depositTermDetail = depositTermDetail;
         this.depositProductAmountDetails = depositProductMinMaxAmountDetails;

@@ -18,6 +18,8 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.time.LocalDate;
@@ -28,8 +30,6 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
-
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 
 /**
  * DepositTermDetail encapsulates all the details of a {@link FixedDepositProduct} that are also used and persisted by a

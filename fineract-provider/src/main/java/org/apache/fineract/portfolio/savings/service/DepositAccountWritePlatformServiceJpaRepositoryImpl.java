@@ -1361,7 +1361,6 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
-        final boolean isWithHoldingTaxAppliedForPostingPeriodEnabled = this.configurationDomainService.isWithHoldingTaxAppliedForPostingPeriodEnabled();
         final boolean postReversals = false;
         final SavingsAccount account = this.depositAccountAssembler.assembleFrom(depositAccountId, depositAccountType);
         final Set<Long> existingTransactionIds = new HashSet<>();
@@ -1369,8 +1368,7 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
         updateExistingTransactionsDetails(account, existingTransactionIds, existingReversedTransactionIds);
 
         if (depositAccountType.isFixedDeposit()) {
-            ((FixedDepositAccount) account).updateMaturityStatus(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
-                    isWithHoldingTaxAppliedForPostingPeriodEnabled);
+            ((FixedDepositAccount) account).updateMaturityStatus(isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth);
             FixedDepositAccount fdAccount = ((FixedDepositAccount) account);
             // handle maturity instructions
 
@@ -1398,7 +1396,7 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
             }
         } else if (depositAccountType.isRecurringDeposit()) {
             ((RecurringDepositAccount) account).updateMaturityStatus(isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postReversals, isWithHoldingTaxAppliedForPostingPeriodEnabled);
+                    financialYearBeginningMonth, postReversals);
         }
         this.savingAccountRepositoryWrapper.saveAndFlush(account);
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds);

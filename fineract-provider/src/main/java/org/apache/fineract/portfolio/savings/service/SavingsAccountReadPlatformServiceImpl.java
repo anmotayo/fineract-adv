@@ -64,12 +64,7 @@ import org.apache.fineract.portfolio.group.data.GroupGeneralData;
 import org.apache.fineract.portfolio.group.service.GroupReadPlatformService;
 import org.apache.fineract.portfolio.paymentdetail.data.PaymentDetailData;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
@@ -90,6 +85,7 @@ import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundExc
 import org.apache.fineract.portfolio.tax.data.TaxComponentData;
 import org.apache.fineract.portfolio.tax.data.TaxDetailsData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
+import org.apache.fineract.portfolio.tax.data.TaxGroupMappingsData;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -380,7 +376,11 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("txd.id as taxDetailsId, txd.amount as taxAmount, ");
             sqlBuilder.append("apm1.gl_account_id as glAccountIdForInterestOnSavings, apm.gl_account_id as glAccountIdForSavingsControl, ");
             sqlBuilder.append(
-                    "mtc.id as taxComponentId, mtc.debit_account_id as debitAccountId, mtc.credit_account_id as creditAccountId, mtc.percentage as taxPercentage ");
+                    "mtc.id as transactionTaxComponentId, mtc.debit_account_id as transactionDebitAccountId, mtc.credit_account_id as transactionCreditAccountId, mtc.percentage as transactionTaxPercentage, ");
+            sqlBuilder.append(
+                    "mtc2.id as coreTaxComponentId, mtc2.debit_account_id as coreDebitAccountId, mtc2.credit_account_id as coreCreditAccountId, mtc2.percentage as coreTaxPercentage, ");
+            sqlBuilder.append("mtgm.start_date as taxGroupStartDate, mtgm.end_date as taxGroupEndDate, mtgm.id as taxGroupMappingId, ");
+            sqlBuilder.append("mdatp.withhold_tax_posting_type_enum as withHoldTaxPostingType ");
             sqlBuilder.append("from m_savings_account sa ");
             sqlBuilder.append("join m_savings_product sp ON sa.product_id = sp.id ");
             sqlBuilder.append("join m_currency curr on curr.code = sa.currency_code ");
@@ -394,6 +394,9 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("left join m_tax_group tg on tg.id = sa.tax_group_id ");
             sqlBuilder.append("left join m_savings_account_transaction_tax_details txd on txd.savings_transaction_id = tr.id ");
             sqlBuilder.append("left join m_tax_component mtc on mtc.id = txd.tax_component_id ");
+            sqlBuilder.append("left join m_tax_group_mappings mtgm on mtgm.tax_group_id = tg.id ");
+            sqlBuilder.append("left join m_tax_component mtc2 on mtc2.id = mtgm.tax_component_id ");
+            sqlBuilder.append("left join m_deposit_account_term_and_preclosure mdatp on mdatp.savings_account_id = sa.id ");
             sqlBuilder.append("left join acc_product_mapping apm on apm.product_id = sp.id and apm.financial_account_type=2 ");
             sqlBuilder.append("left join acc_product_mapping apm1 on apm1.product_id = sp.id and apm1.financial_account_type=17 ");
 
@@ -415,6 +418,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             CurrencyData currency = null;
             HashMap<String, Long> transMap = new HashMap<>();
             HashMap<String, Long> taxDetails = new HashMap<>();
+            HashMap<String, String> coreTaxDetails = new HashMap<>();
             HashMap<String, Long> chargeDetails = new HashMap<>();
             SavingsAccountTransactionData savingsAccountTransactionData = null;
             SavingsAccountData savingsAccountData = null;
@@ -424,9 +428,12 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                 final Long id = rs.getLong("id");
                 final Long transactionId = rs.getLong("transactionId");
                 final Long taxDetailId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxDetailsId");
-                final Long taxComponentId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxComponentId");
+                final Long transactionTaxComponentId = JdbcSupport.getLongDefaultToNullIfZero(rs, "transactionTaxComponentId");
+                final Long coreTaxComponentId = JdbcSupport.getLongDefaultToNullIfZero(rs, "coreTaxComponentId");
+                final Long taxGroupMappingId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxGroupMappingId");
                 final String accountNo = rs.getString("accountNo");
                 final Long chargeId = rs.getLong("chargeId");
+                final Long taxGroupId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxGroupId");
 
                 if (!savingsMap.containsValue(id)) {
                     if (count > 0) {
@@ -546,7 +553,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     summary.setPrevInterestPostedTillDate(interestPostedTillDate);
 
                     final boolean withHoldTax = rs.getBoolean("withHoldTax");
-                    final Long taxGroupId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxGroupId");
                     TaxGroupData taxGroupData = null;
                     if (taxGroupId != null) {
                         taxGroupData = TaxGroupData.lookup(taxGroupId, null);
@@ -580,6 +586,13 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                         lockinPeriodFrequencyType = SavingsEnumerations.lockinPeriodFrequencyType(lockinPeriodType);
                     }
 
+                    EnumOptionData withHoldTaxPostingType = null;
+                    final Integer withHoldTaxPostingTypeId = JdbcSupport.getInteger(rs, "withHoldTaxPostingType");
+                    if (withHoldTaxPostingTypeId != null) {
+                        withHoldTaxPostingType = SavingsEnumerations
+                                .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
+                    }
+
                     final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
 
                     final boolean allowOverdraft = rs.getBoolean("allowOverdraft");
@@ -601,7 +614,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                             enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation, onHoldFunds,
                             nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroupData,
                             lastActiveTransactionDate, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat,
-                            onHoldAmount);
+                            onHoldAmount, withHoldTaxPostingType);
 
                     savingsAccountData.setClientData(clientData);
                     savingsAccountData.setGroupGeneralData(groupGeneralData);
@@ -674,19 +687,48 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
 
                 if (taxDetailId != null && !taxDetails.containsValue(taxDetailId)) {
                     final BigDecimal amount = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "taxAmount");
-                    final BigDecimal percentage = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "taxPercentage");
-                    final Long debitId = rs.getLong("debitAccountId");
-                    final Long creditId = rs.getLong("creditAccountId");
+                    final BigDecimal percentage = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "transactionTaxPercentage");
+                    final Long debitId = rs.getLong("transactionDebitAccountId");
+                    final Long creditId = rs.getLong("transactionCreditAccountId");
                     final GLAccountData debitAccount = GLAccountData.createFrom(debitId);
                     final GLAccountData creditAccount = GLAccountData.createFrom(creditId);
 
-                    if (taxComponentId != null) {
-                        final TaxComponentData taxComponent = TaxComponentData.createTaxComponent(taxComponentId, percentage, debitAccount,
-                                creditAccount);
+                    if (transactionTaxComponentId != null) {
+                        final TaxComponentData taxComponent = TaxComponentData.createTaxComponent(transactionTaxComponentId, percentage,
+                                debitAccount, creditAccount);
                         savingsAccountTransactionData.setTaxDetails(new TaxDetailsData(taxComponent, amount));
                     }
 
                     taxDetails.put("id", taxDetailId);
+                }
+
+                final String savingsIdWithTaxGroupMappingId = id + "_" + taxGroupMappingId;
+                if (taxGroupId != null && !coreTaxDetails.containsValue(savingsIdWithTaxGroupMappingId)) {
+                    final BigDecimal percentage = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "coreTaxPercentage");
+                    final Long debitId = rs.getLong("coreDebitAccountId");
+                    final Long creditId = rs.getLong("coreCreditAccountId");
+                    final GLAccountData debitAccount = GLAccountData.createFrom(debitId);
+                    final GLAccountData creditAccount = GLAccountData.createFrom(creditId);
+                    final LocalDate startDate = JdbcSupport.getLocalDate(rs, "taxGroupStartDate");
+                    final LocalDate endDate = JdbcSupport.getLocalDate(rs, "taxGroupEndDate");
+                    final TaxGroupData taxGroupData = savingsAccountData.getTaxGroup();
+                    if (coreTaxComponentId != null && taxGroupData != null) {
+                        final TaxComponentData taxComponentData = TaxComponentData.createTaxComponent(coreTaxComponentId, percentage,
+                                debitAccount, creditAccount);
+
+                        final TaxGroupMappingsData taxGroupMappingData = new TaxGroupMappingsData(taxGroupMappingId, taxComponentData,
+                                startDate, endDate);
+                        if (taxGroupData.getTaxAssociations() == null) {
+                            final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList();
+                            taxGroupMappingsData.add(taxGroupMappingData);
+                            TaxGroupData newTaxGroupData = TaxGroupData.instance(taxGroupId, null, taxGroupMappingsData);
+                            savingsAccountData.setTaxGroup(newTaxGroupData);
+                        } else {
+                            taxGroupData.getTaxAssociations().add(taxGroupMappingData);
+                        }
+                    }
+
+                    coreTaxDetails.put("id", savingsIdWithTaxGroupMappingId);
                 }
 
             }
@@ -787,7 +829,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sp.is_dormancy_tracking_active as isDormancyTrackingActive, ");
             sqlBuilder.append("sp.days_to_inactive as daysToInactive, ");
             sqlBuilder.append("sp.days_to_dormancy as daysToDormancy, ");
-            sqlBuilder.append("sp.days_to_escheat as daysToEscheat ");
+            sqlBuilder.append("sp.days_to_escheat as daysToEscheat, ");
+            sqlBuilder.append("datp.withhold_tax_posting_type_enum as withholdTaxPostingType ");
             sqlBuilder.append("from m_savings_account sa ");
             sqlBuilder.append("join m_savings_product sp ON sa.product_id = sp.id ");
             sqlBuilder.append("join m_currency curr on curr.code = sa.currency_code ");
@@ -801,6 +844,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("left join m_appuser avbu on avbu.id = sa.activatedon_userid ");
             sqlBuilder.append("left join m_appuser cbu on cbu.id = sa.closedon_userid ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sa.tax_group_id ");
+            sqlBuilder.append("left join m_deposit_account_term_and_preclosure datp on datp.savings_account_id = sa.id ");
 
             this.schemaSql = sqlBuilder.toString();
         }
@@ -931,6 +975,13 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                 lockinPeriodFrequencyType = SavingsEnumerations.lockinPeriodFrequencyType(lockinPeriodType);
             }
 
+            EnumOptionData withholdTaxPostingType = null;
+            final Integer withholdTaxPostingTypeId = JdbcSupport.getInteger(rs, "withHoldTaxPostingType");
+            if (withholdTaxPostingTypeId != null) {
+                withholdTaxPostingType = SavingsEnumerations
+                        .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withholdTaxPostingTypeId));
+            }
+
             final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
 
             final boolean allowOverdraft = rs.getBoolean("allowOverdraft");
@@ -1004,7 +1055,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     withdrawalFeeForTransfers, summary, allowOverdraft, overdraftLimit, minRequiredBalance, enforceMinRequiredBalance,
                     maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation, onHoldFunds, nominalAnnualInterestRateOverdraft,
                     minOverdraftForInterestCalculation, withHoldTax, taxGroupData, lastActiveTransactionDate, isDormancyTrackingActive,
-                    daysToInactive, daysToDormancy, daysToEscheat, onHoldAmount);
+                    daysToInactive, daysToDormancy, daysToEscheat, onHoldAmount, withholdTaxPostingType);
         }
     }
 
@@ -1461,10 +1512,12 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sp.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sp.enforce_min_required_balance as enforceMinRequiredBalance, ");
             sqlBuilder.append("sp.max_allowed_lien_limit as maxAllowedLienLimit, ");
-            sqlBuilder.append("sp.is_lien_allowed as lienAllowed ");
+            sqlBuilder.append("sp.is_lien_allowed as lienAllowed, ");
+            sqlBuilder.append("dptp.withhold_tax_posting_type_enum as withholdTaxPostingType ");
             sqlBuilder.append("from m_savings_product sp ");
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id  ");
+            sqlBuilder.append("left join m_deposit_product_term_and_preclosure dptp on dptp.savings_product_id = sp.id ");
 
             this.schemaSql = sqlBuilder.toString();
         }
@@ -1510,6 +1563,13 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             if (lockinPeriodFrequencyTypeValue != null) {
                 final SavingsPeriodFrequencyType lockinPeriodType = SavingsPeriodFrequencyType.fromInt(lockinPeriodFrequencyTypeValue);
                 lockinPeriodFrequencyType = SavingsEnumerations.lockinPeriodFrequencyType(lockinPeriodType);
+            }
+
+            EnumOptionData withHoldTaxPostingType = null;
+            final Integer withHoldTaxPostingTypeId = JdbcSupport.getInteger(rs, "withholdTaxPostingType");
+            if (withHoldTaxPostingTypeId != null) {
+                withHoldTaxPostingType = SavingsEnumerations
+                        .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
             }
 
             // final BigDecimal withdrawalFeeAmount =
@@ -1594,7 +1654,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     withdrawalFeeForTransfers, summary, allowOverdraft, overdraftLimit, minRequiredBalance, enforceMinRequiredBalance,
                     maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation, onHoldFunds, nominalAnnualInterestRateOverdraft,
                     minOverdraftForInterestCalculation, withHoldTax, taxGroupData, lastActiveTransactionDate, isDormancyTrackingActive,
-                    daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold);
+                    daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold, withHoldTaxPostingType);
         }
     }
 

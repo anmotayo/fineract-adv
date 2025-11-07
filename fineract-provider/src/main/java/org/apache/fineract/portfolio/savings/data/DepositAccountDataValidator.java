@@ -18,34 +18,7 @@
  */
 package org.apache.fineract.portfolio.savings.data;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.adjustAdvanceTowardsFuturePaymentsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.allowWithdrawalParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.annualInterestRateParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodFrequencyIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.interestCompoundingPeriodInMonthsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.interestPostingPeriodInMonthsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.isCalendarInheritedParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.isMandatoryDepositParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.linkedAccountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.mandatoryRecommendedDepositAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maturityInstructionIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalApplicableParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestOnTypeIdParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.principalAmountParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.recurringFrequencyParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.recurringFrequencyTypeParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.tenureInMonthsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferInterestToSavingsParamName;
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferToSavingsIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.accountNoParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.amountParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.chargeIdParamName;
@@ -86,15 +59,7 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
-import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.DepositsApiConstants;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -802,6 +767,13 @@ public class DepositAccountDataValidator {
         if (this.fromApiJsonHelper.parameterExists(withHoldTaxParamName, element)) {
             final String withHoldTax = this.fromApiJsonHelper.extractStringNamed(withHoldTaxParamName, element);
             baseDataValidator.reset().parameter(withHoldTaxParamName).value(withHoldTax).ignoreIfNull().validateForBooleanValue();
+        }
+
+        if (this.fromApiJsonHelper.parameterExists(withHoldTaxPostingTypeIdParamName, element)) {
+            final Integer withHoldTaxPostingTypeId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(withHoldTaxPostingTypeIdParamName,
+                    element);
+            baseDataValidator.reset().parameter(withHoldTaxPostingTypeIdParamName).value(withHoldTaxPostingTypeId).notNull()
+                    .isOneOfTheseValues(WithHoldTaxPostingType.integerValues());
         }
     }
 

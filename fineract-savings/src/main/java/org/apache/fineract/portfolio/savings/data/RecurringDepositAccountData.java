@@ -64,6 +64,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
     private final boolean isCalendarInherited;
     private final Integer recurringFrequency;
     private final EnumOptionData recurringFrequencyType;
+    private final EnumOptionData withHoldTaxPostingType;
 
     // used for account close
     private final EnumOptionData onAccountClosure;
@@ -71,6 +72,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
     private final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions;
     private final Collection<EnumOptionData> periodFrequencyTypeOptions;
     private Collection<SavingsAccountData> savingsAccounts;
+    private final Collection<EnumOptionData> withHoldTaxPostingTypeOptions;
 
     // for account close
     private final Collection<EnumOptionData> onAccountClosureOptions;
@@ -143,6 +145,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         this.locale = locale;
         this.submittedOnDate = submittedOnDate;
         this.depositPeriodFrequencyId = depositPeriodFrequencyId;
+        this.withHoldTaxPostingType = null;
+        this.withHoldTaxPostingTypeOptions = null;
     }
 
     public Integer getRowIndex() {
@@ -157,7 +161,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
             final EnumOptionData depositPeriodFrequency, final BigDecimal mandatoryRecommendedDepositAmount,
             final EnumOptionData onAccountClosure, final LocalDate expectedFirstDepositOnDate, final BigDecimal totalOverdueAmount,
             final Integer noOfOverdueInstallments, final boolean isMandatoryDeposit, final boolean allowWithdrawal,
-            final boolean adjustAdvanceTowardsFuturePayments, final boolean isCalendarInherited) {
+            final boolean adjustAdvanceTowardsFuturePayments, final boolean isCalendarInherited,
+            final EnumOptionData withHoldTaxPostingType) {
 
         final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions = null;
         final Collection<EnumOptionData> periodFrequencyTypeOptions = null;
@@ -168,6 +173,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         final Collection<SavingsAccountData> savingsAccountDatas = null;
         final Integer recurringFrequency = null;
         final EnumOptionData recurringFrequencyType = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         return new RecurringDepositAccountData(depositAccountData.id, depositAccountData.accountNo, depositAccountData.externalId,
                 depositAccountData.groupId, depositAccountData.groupName, depositAccountData.clientId, depositAccountData.clientName,
@@ -190,7 +196,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 onAccountClosure, onAccountClosureOptions, paymentTypeOptions, savingsAccountDatas, expectedFirstDepositOnDate,
                 totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments,
                 isCalendarInherited, recurringFrequency, recurringFrequencyType, depositAccountData.withHoldTax,
-                depositAccountData.taxGroup);
+                depositAccountData.taxGroup, withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositAccountData withInterestChartAndRecurringDetails(final RecurringDepositAccountData account,
@@ -215,7 +221,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 account.paymentTypeOptions, account.savingsAccounts, account.expectedFirstDepositOnDate, account.totalOverdueAmount,
                 account.noOfOverdueInstallments, account.isMandatoryDeposit, account.allowWithdrawal,
                 account.adjustAdvanceTowardsFuturePayments, account.isCalendarInherited, recurringFrequency, recurringFrequencyType,
-                account.withHoldTax, account.taxGroup);
+                account.withHoldTax, account.taxGroup, account.withHoldTaxPostingType, account.withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositAccountData withTemplateOptions(final RecurringDepositAccountData account,
@@ -236,11 +242,12 @@ public final class RecurringDepositAccountData extends DepositAccountData {
             final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions = null;
             final Collection<EnumOptionData> periodFrequencyTypeOptions = null;
             final Collection<SavingsAccountData> savingsAccounts = null;
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
             return withTemplateOptions(account, productOptions, fieldOfficerOptions, interestCompoundingPeriodTypeOptions,
                     interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
                     lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, transactions, charges, chargeOptions,
-                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, savingsAccounts);
+                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, savingsAccounts, withHoldTaxPostingTypeOptions);
         }
 
         return new RecurringDepositAccountData(account.id, account.accountNo, account.externalId, account.groupId, account.groupName,
@@ -262,7 +269,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 account.paymentTypeOptions, account.savingsAccounts, account.expectedFirstDepositOnDate, account.totalOverdueAmount,
                 account.noOfOverdueInstallments, account.isMandatoryDeposit, account.allowWithdrawal,
                 account.adjustAdvanceTowardsFuturePayments, account.isCalendarInherited, account.recurringFrequency,
-                account.recurringFrequencyType, account.withHoldTax, account.taxGroup);
+                account.recurringFrequencyType, account.withHoldTax, account.taxGroup, account.withHoldTaxPostingType,
+                account.withHoldTaxPostingTypeOptions);
 
     }
 
@@ -275,7 +283,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
             final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions, final Collection<EnumOptionData> withdrawalFeeTypeOptions,
             final Collection<SavingsAccountTransactionData> transactions, final Collection<SavingsAccountChargeData> charges,
             final Collection<ChargeData> chargeOptions, final Collection<EnumOptionData> preClosurePenalInterestOnTypeOptions,
-            final Collection<EnumOptionData> periodFrequencyTypeOptions, final Collection<SavingsAccountData> savingsAccounts) {
+            final Collection<EnumOptionData> periodFrequencyTypeOptions, final Collection<SavingsAccountData> savingsAccounts,
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         return new RecurringDepositAccountData(account.id, account.accountNo, account.externalId, account.groupId, account.groupName,
                 account.clientId, account.clientName, account.depositProductId, account.depositProductName, account.fieldOfficerId,
@@ -295,7 +304,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 account.paymentTypeOptions, savingsAccounts, account.expectedFirstDepositOnDate, account.totalOverdueAmount,
                 account.noOfOverdueInstallments, account.isMandatoryDeposit, account.allowWithdrawal,
                 account.adjustAdvanceTowardsFuturePayments, account.isCalendarInherited, account.recurringFrequency,
-                account.recurringFrequencyType, account.withHoldTax, account.taxGroup);
+                account.recurringFrequencyType, account.withHoldTax, account.taxGroup, account.withHoldTaxPostingType,
+                withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositAccountData withClientTemplate(final Long clientId, final String clientName, final Long groupId,
@@ -375,6 +385,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         final EnumOptionData recurringFrequencyType = null;
         final boolean withHoldTax = false;
         final TaxGroupData taxGroup = null;
+        final EnumOptionData withHoldTaxPostingType = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         return new RecurringDepositAccountData(id, accountNo, externalId, groupId, groupName, clientId, clientName, productId, productName,
                 fieldOfficerId, fieldOfficerName, status, timeline, currency, nominalAnnualInterestRate, interestPeriodType,
@@ -388,7 +400,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 depositAmount, maturityAmount, maturityDate, depositPeriod, depositPeriodFrequency, mandatoryRecommendedDepositAmount,
                 periodFrequencyTypeOptions, depositType, onAccountClosure, onAccountClosureOptions, paymentTypeOptions, savingsAccountDatas,
                 expectedFirstDepositOnDate, totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal,
-                adjustAdvanceTowardsFuturePayments, isCalendarInherited, recurringFrequency, recurringFrequencyType, withHoldTax, taxGroup);
+                adjustAdvanceTowardsFuturePayments, isCalendarInherited, recurringFrequency, recurringFrequencyType, withHoldTax, taxGroup,
+                withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositAccountData preClosureDetails(final Long accountId, final BigDecimal maturityAmount,
@@ -466,6 +479,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         final EnumOptionData recurringFrequencyType = null;
         final boolean withHoldTax = false;
         final TaxGroupData taxGroup = null;
+        final EnumOptionData withHoldTaxPostingType = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         return new RecurringDepositAccountData(accountId, accountNo, externalId, groupId, groupName, clientId, clientName, productId,
                 productName, fieldOfficerId, fieldOfficerName, status, timeline, currency, nominalAnnualInterestRate, interestPeriodType,
@@ -479,7 +494,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 depositAmount, maturityAmount, maturityDate, depositPeriod, depositPeriodFrequency, mandatoryRecommendedDepositAmount,
                 periodFrequencyTypeOptions, depositType, onAccountClosure, onAccountClosureOptions, paymentTypeOptions, savingsAccountDatas,
                 expectedFirstDepositOnDate, totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal,
-                adjustAdvanceTowardsFuturePayments, isCalendarInherited, recurringFrequency, recurringFrequencyType, withHoldTax, taxGroup);
+                adjustAdvanceTowardsFuturePayments, isCalendarInherited, recurringFrequency, recurringFrequencyType, withHoldTax, taxGroup,
+                withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static RecurringDepositAccountData withClosureTemplateDetails(final RecurringDepositAccountData account,
@@ -505,7 +521,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
                 paymentTypeOptions, savingsAccountDatas, account.expectedFirstDepositOnDate, account.totalOverdueAmount,
                 account.noOfOverdueInstallments, account.isMandatoryDeposit, account.allowWithdrawal,
                 account.adjustAdvanceTowardsFuturePayments, account.isCalendarInherited, account.recurringFrequency,
-                account.recurringFrequencyType, account.withHoldTax, account.taxGroup);
+                account.recurringFrequencyType, account.withHoldTax, account.taxGroup, account.withHoldTaxPostingType,
+                account.withHoldTaxPostingTypeOptions);
     }
 
     private RecurringDepositAccountData(final Long id, final String accountNo, final String externalId, final Long groupId,
@@ -538,7 +555,8 @@ public final class RecurringDepositAccountData extends DepositAccountData {
             final BigDecimal totalOverdueAmount, final Integer noOfOverdueInstallments, final boolean isMandatoryDeposit,
             final boolean allowWithdrawal, final boolean adjustAdvanceTowardsFuturePayments, final boolean isCalendarInherited,
             final Integer recurringFrequency, final EnumOptionData recurringFrequencyType, final boolean withHoldTax,
-            final TaxGroupData taxGroup) {
+            final TaxGroupData taxGroup, final EnumOptionData withHoldTaxPostingType,
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         super(id, accountNo, externalId, groupId, groupName, clientId, clientName, productId, productName, fieldofficerId, fieldofficerName,
                 status, timeline, currency, nominalAnnualInterestRate, interestPeriodType, interestPostingPeriodType,
@@ -573,6 +591,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         this.isCalendarInherited = isCalendarInherited;
         this.recurringFrequency = recurringFrequency;
         this.recurringFrequencyType = recurringFrequencyType;
+        this.withHoldTaxPostingType = withHoldTaxPostingType;
 
         this.preClosurePenalInterestOnTypeOptions = preClosurePenalInterestOnTypeOptions;
         this.periodFrequencyTypeOptions = periodFrequencyTypeOptions;
@@ -582,6 +601,7 @@ public final class RecurringDepositAccountData extends DepositAccountData {
         // account close template options
         this.onAccountClosureOptions = onAccountClosureOptions;
         this.paymentTypeOptions = paymentTypeOptions;
+        this.withHoldTaxPostingTypeOptions = withHoldTaxPostingTypeOptions;
     }
 
     @Override

@@ -293,6 +293,8 @@ public class RecurringDepositProductsApiResource {
         // interest rate chart template
         final InterestRateChartData chartTemplate = this.interestRateChartReadPlatformService.template();
         final Collection<TaxGroupData> taxGroupOptions = this.taxReadPlatformService.retrieveTaxGroupsForLookUp();
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = this.depositsDropdownReadPlatformService
+                .retrieveWithHoldTaxPostingTypeOptions();
 
         RecurringDepositProductData recurringDepositProductToReturn = null;
         if (savingsProduct != null) {
@@ -300,14 +302,14 @@ public class RecurringDepositProductsApiResource {
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions,
                     paymentTypeOptions, accountingRuleOptions, accountingMappingOptions, chargeOptions, penaltyOptions, chartTemplate,
-                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions);
+                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions, withHoldTaxPostingTypeOptions);
         } else {
             recurringDepositProductToReturn = RecurringDepositProductData.template(currency, interestCompoundingPeriodType,
                     interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, accountingRule, currencyOptions,
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions,
                     paymentTypeOptions, accountingRuleOptions, accountingMappingOptions, chargeOptions, penaltyOptions, chartTemplate,
-                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions);
+                    preClosurePenalInterestOnTypeOptions, periodFrequencyTypeOptions, taxGroupOptions, withHoldTaxPostingTypeOptions);
         }
 
         return recurringDepositProductToReturn;

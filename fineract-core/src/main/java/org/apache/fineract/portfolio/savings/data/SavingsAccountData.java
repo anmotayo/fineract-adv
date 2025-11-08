@@ -143,6 +143,7 @@ public final class SavingsAccountData implements Serializable {
     private transient Set<Long> existingReversedTransactionIds = new HashSet<>();
     private transient Long glAccountIdForSavingsControl;
     private transient Long glAccountIdForInterestOnSavings;
+    private transient LocalDate maturityDate;
 
     public static SavingsAccountData importInstanceIndividual(Long clientId, Long productId, Long fieldOfficerId, LocalDate submittedOnDate,
             BigDecimal nominalAnnualInterestRate, EnumOptionData interestCompoundingPeriodTypeEnum,
@@ -259,6 +260,10 @@ public final class SavingsAccountData implements Serializable {
 
     public void setLockedInUntilDate(final LocalDate lockedInUntilDate) {
         this.lockedInUntilDate = lockedInUntilDate;
+    }
+
+    public void setMaturityDate(final LocalDate maturityDate) {
+        this.maturityDate = maturityDate;
     }
 
     public void setStartInterestCalculationDate(final LocalDate startInterestCalculationDate) {

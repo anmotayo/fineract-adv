@@ -380,7 +380,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append(
                     "mtc2.id as coreTaxComponentId, mtc2.debit_account_id as coreDebitAccountId, mtc2.credit_account_id as coreCreditAccountId, mtc2.percentage as coreTaxPercentage, ");
             sqlBuilder.append("mtgm.start_date as taxGroupStartDate, mtgm.end_date as taxGroupEndDate, mtgm.id as taxGroupMappingId, ");
-            sqlBuilder.append("mdatp.withhold_tax_posting_type_enum as withHoldTaxPostingType ");
+            sqlBuilder.append("mdatp.withhold_tax_posting_type_enum as withHoldTaxPostingType, ");
+            sqlBuilder.append("mdatp.maturity_date as maturityDate ");
             sqlBuilder.append("from m_savings_account sa ");
             sqlBuilder.append("join m_savings_product sp ON sa.product_id = sp.id ");
             sqlBuilder.append("join m_currency curr on curr.code = sa.currency_code ");
@@ -593,6 +594,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                                 .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
                     }
 
+                    final LocalDate maturityDate = JdbcSupport.getLocalDate(rs, "maturityDate");
+
                     final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
 
                     final boolean allowOverdraft = rs.getBoolean("allowOverdraft");
@@ -621,6 +624,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     savingsAccountData.setSavingsProduct(savingsProductData);
                     savingsAccountData.setGlAccountIdForInterestOnSavings(glAccountIdForInterestOnSavings);
                     savingsAccountData.setGlAccountIdForSavingsControl(glAccountIdForSavingsControl);
+                    savingsAccountData.setMaturityDate(maturityDate);
                 }
 
                 if (!transMap.containsValue(transactionId)) {

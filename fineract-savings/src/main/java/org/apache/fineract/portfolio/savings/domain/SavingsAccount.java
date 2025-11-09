@@ -826,7 +826,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         final List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = new ArrayList<>();
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
-            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
+            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
+                || transaction.isWithHoldTaxAndNotReversed())
                     && transaction.isNotReversed() && !transaction.isReversalTransaction() && !transaction.isAccrual()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
@@ -841,7 +842,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         final List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = new ArrayList<>();
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
-            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
+            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
+                || transaction.isWithHoldTaxAndNotReversed())
                     && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
@@ -3492,7 +3494,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             final boolean backdatedTxnsAllowedTill, final WithHoldTaxPostingType withHoldTaxPostingType) {
         final List<SavingsAccountTransaction> withholdTransactions = findWithHoldTransactions();
         if (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()) {
-            for (SavingsAccountTransaction transaction : getTransactions()) {
+            final List<SavingsAccountTransaction> transactions = new ArrayList<>(getTransactions());
+            for (SavingsAccountTransaction transaction : transactions) {
                 if (transaction.isInterestPostingAndNotReversed()) {
                     SavingsAccountTransaction withholdTransaction = findTransactionFor(transaction.getTransactionDate(),
                             withholdTransactions);

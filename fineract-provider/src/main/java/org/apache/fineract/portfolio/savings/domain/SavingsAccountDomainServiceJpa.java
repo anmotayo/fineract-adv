@@ -338,6 +338,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             final boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
             final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
             final boolean postReversals) {
+
         final List<PostingPeriod> postingPeriods = account.calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
                 isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
                 postReversals);
@@ -608,4 +609,5 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             }
         }
     }
+
 }

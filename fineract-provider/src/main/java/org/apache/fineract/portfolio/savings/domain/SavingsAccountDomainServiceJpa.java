@@ -338,10 +338,8 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             final boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
             final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
             final boolean postReversals) {
-        // Cap interest posting date at maturity date for deposit accounts
-        final LocalDate effectiveInterestPostingUpToDate = getEffectiveInterestPostingDate(account, interestPostingUpToDate);
 
-        final List<PostingPeriod> postingPeriods = account.calculateInterestUsing(mc, effectiveInterestPostingUpToDate, isInterestTransfer,
+        final List<PostingPeriod> postingPeriods = account.calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
                 isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
                 postReversals);
         log.debug("postInterest {}", postingPeriods.size());
@@ -377,7 +375,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
             final Money interestEarnedToBePostedForPeriod = interestPostingPeriod.getInterestEarned();
             log.debug("  interestEarnedToBePostedForPeriod: {}", interestEarnedToBePostedForPeriod.toString());
 
-            if (!interestPostingTransactionDate.isAfter(effectiveInterestPostingUpToDate)) {
+            if (!interestPostingTransactionDate.isAfter(interestPostingUpToDate)) {
                 interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);
 
                 SavingsAccountTransaction postingTransaction = null;
@@ -507,7 +505,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
 
             // update existing transactions so derived balance fields are
             // correct.
-            account.recalculateDailyBalances(openingAccountBalance, effectiveInterestPostingUpToDate, backdatedTxnsAllowedTill, postReversals);
+            account.recalculateDailyBalances(openingAccountBalance, interestPostingUpToDate, backdatedTxnsAllowedTill, postReversals);
         }
 
         if (!backdatedTxnsAllowedTill) {
@@ -612,21 +610,4 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
         }
     }
 
-    private LocalDate getEffectiveInterestPostingDate(final SavingsAccount account, final LocalDate requestedDate) {
-        LocalDate maturityDate = null;
-
-        if (account.depositAccountType().isFixedDeposit()) {
-            maturityDate = ((FixedDepositAccount) account).maturityDate();
-        } else if (account.depositAccountType().isRecurringDeposit()) {
-            maturityDate = ((RecurringDepositAccount) account).maturityDate();
-        }
-
-        if (maturityDate != null && DateUtils.isAfter(requestedDate, maturityDate)) {
-            log.debug("Capping interest posting date from {} to maturity date {} for {} account {}",
-                    requestedDate, maturityDate, account.depositAccountType().getCode(), account.getId());
-            return maturityDate;
-        }
-
-        return requestedDate;
-    }
 }

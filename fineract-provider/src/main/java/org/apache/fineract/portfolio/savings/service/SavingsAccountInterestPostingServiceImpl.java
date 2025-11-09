@@ -53,7 +53,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
     private final SavingsHelper savingsHelper;
 
     @Override
-    public SavingsAccountData postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
+    public SavingsAccountData postInterest(final MathContext mc, LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
             final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
             final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final SavingsAccountData savingsAccountData) {
         Money interestPostedToDate = Money.zero(savingsAccountData.getCurrency());
@@ -61,7 +61,10 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         log.debug("  postInterest - account: {} {} {}", savingsAccountData.getAccountNo(), startInterestDate,
                 savingsAccountData.getSummary().getInterestPostedTillDate());
 
-        LocalDate effectiveInterestPostingUpToDate = getEffectiveInterestPostingUptoDate(savingsAccountData, interestPostingUpToDate);
+        LocalDate effectiveInterestPostingUpToDate = interestPostingUpToDate(savingsAccountData, interestPostingUpToDate);
+        if(DateUtils.isAfter(interestPostingUpToDate, effectiveInterestPostingUpToDate)){
+            interestPostingUpToDate = effectiveInterestPostingUpToDate.plusDays(1);
+        }
 
         if (backdatedTxnsAllowedTill && savingsAccountData.getSummary().getInterestPostedTillDate() != null) {
             interestPostedToDate = Money.of(savingsAccountData.getCurrency(), savingsAccountData.getSummary().getTotalInterestPosted());
@@ -86,7 +89,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
             final LocalDate interestPostingTransactionDate = interestPostingPeriod.dateOfPostingTransaction();
             final Money interestEarnedToBePostedForPeriod = interestPostingPeriod.getInterestEarned();
 
-            if (!DateUtils.isAfter(interestPostingTransactionDate, effectiveInterestPostingUpToDate)) {
+            if (!DateUtils.isAfter(interestPostingTransactionDate, interestPostingUpToDate)) {
                 interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);
                 final SavingsAccountTransactionData postingTransaction = findInterestPostingTransactionFor(interestPostingTransactionDate,
                         savingsAccountData);
@@ -174,7 +177,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
 
             // update existing transactions so derived balance fields are
             // correct.
-            recalculateDailyBalances(openingAccountBalance, effectiveInterestPostingUpToDate, backdatedTxnsAllowedTill, savingsAccountData);
+            recalculateDailyBalances(openingAccountBalance, interestPostingUpToDate, backdatedTxnsAllowedTill, savingsAccountData);
         }
 
         if (!backdatedTxnsAllowedTill) {
@@ -561,13 +564,17 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         return savingsAccountData.withHoldTaxPostingType();
     }
 
-    private LocalDate getEffectiveInterestPostingUptoDate(final SavingsAccountData savingsAccountData, final LocalDate interestPostingUpToDate) {
-        LocalDate maturityDate = interestPostingUpToDate;
-        if(!savingsAccountData.depositAccountType().isSavingsDeposit() && savingsAccountData.getMaturityDate() != null){
-            maturityDate = savingsAccountData.getMaturityDate();
-            log.debug("Capping interest posting up to date from {} to maturity date {} for {} account with id {}",
-                    interestPostingUpToDate, maturityDate, savingsAccountData.depositAccountType().getCode(), savingsAccountData.getId());
+    private LocalDate interestPostingUpToDate(final SavingsAccountData savingsAccountData, final LocalDate interestPostingDate) {
+        LocalDate interestPostingUpToDate = interestPostingDate;
+        LocalDate uptoMaturityDate = savingsAccountData.getMaturityDate();
+        if (uptoMaturityDate != null) {
+            uptoMaturityDate = uptoMaturityDate.minusDays(1);
         }
-        return maturityDate;
+        if(uptoMaturityDate != null && DateUtils.isBefore(uptoMaturityDate, interestPostingUpToDate)){
+            interestPostingUpToDate = uptoMaturityDate;
+            log.debug("Capping interest posting up to date from {} to maturity date {} for {} account with id {}",
+                    interestPostingDate, uptoMaturityDate, savingsAccountData.depositAccountType().getCode(), savingsAccountData.getId());
+        }
+        return interestPostingUpToDate;
     }
 }

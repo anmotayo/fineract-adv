@@ -3494,7 +3494,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             final boolean backdatedTxnsAllowedTill, final WithHoldTaxPostingType withHoldTaxPostingType) {
         final List<SavingsAccountTransaction> withholdTransactions = findWithHoldTransactions();
         if (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()) {
-            for (SavingsAccountTransaction transaction : getTransactions()) {
+            final List<SavingsAccountTransaction> transactions = new ArrayList<>(getTransactions());
+            for (SavingsAccountTransaction transaction : transactions) {
                 if (transaction.isInterestPostingAndNotReversed()) {
                     SavingsAccountTransaction withholdTransaction = findTransactionFor(transaction.getTransactionDate(),
                             withholdTransactions);

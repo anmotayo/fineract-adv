@@ -593,13 +593,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             Map<TaxComponent, BigDecimal> taxSplit = TaxUtils.splitTax(amount, withholdTransaction.getTransactionDate(),
                     this.taxGroup.getTaxGroupMappings(), amount.scale());
             BigDecimal totalTax = TaxUtils.totalTaxAmount(taxSplit);
+            Money totalTaxMoney = Money.of(currency, totalTax);
             if (totalTax.compareTo(BigDecimal.ZERO) > 0) {
                 if (withholdTransaction.getId() == null) {
                     withholdTransaction.setAmount(Money.of(currency, totalTax));
                     withholdTransaction.getTaxDetails().clear();
                     SavingsAccountTransaction.updateTaxDetails(taxSplit, withholdTransaction);
                     isTaxAdded = true;
-                } else if (totalTax.compareTo(withholdTransaction.getAmount()) != 0) {
+                } else if (withholdTransaction.hasNotAmount(totalTaxMoney)) {
                     withholdTransaction.reverse();
                     SavingsAccountTransaction newWithholdTransaction = SavingsAccountTransaction.withHoldTax(this, office(),
                             withholdTransaction.getTransactionDate(), Money.of(currency, totalTax), taxSplit);

@@ -791,6 +791,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return allPostingPeriods;
     }
 
+    public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
+        return interestPostingDate;
+    }
+
     private BigDecimal getEffectiveOverdraftInterestRateAsFraction(MathContext mc) {
         return this.nominalAnnualInterestRateOverdraft.divide(BigDecimal.valueOf(100L), mc);
     }

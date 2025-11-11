@@ -649,7 +649,7 @@ public class FixedDepositAccount extends SavingsAccount {
                 financialYearBeginningMonth, postAsInterestOn, backdatedTxnsAllowedTill, postReversals);
     }
 
-    private LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
+    public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
         LocalDate interestPostingUpToDate = interestPostingDate;
         final LocalDate uptoMaturityDate = interestCalculatedUpto();
         if (uptoMaturityDate != null && DateUtils.isBefore(uptoMaturityDate, interestPostingDate)) {

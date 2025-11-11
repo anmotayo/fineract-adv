@@ -103,7 +103,7 @@ public final class PostingPeriod {
             boolean skipTransaction = false;
             // this check is to make sure to add interest if withdrawal is
             // happened for already
-//            if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
+            // if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
             if (transaction.getId() == null) {
                 interestTransfered = isInterestTransfer;
                 skipTransaction = isInterestTransfer;
@@ -111,9 +111,9 @@ public final class PostingPeriod {
                 interestTransfered = true;
                 skipTransaction = true;
             }
-//            }
+            // }
 
-            if(skipTransaction){
+            if (skipTransaction) {
                 // skip interest transfer transactions from contributing to interest calculation
                 continue;
             }

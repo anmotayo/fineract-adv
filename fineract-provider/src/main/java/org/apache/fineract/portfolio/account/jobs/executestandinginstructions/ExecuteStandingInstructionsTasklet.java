@@ -43,6 +43,7 @@ import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.DefaultScheduledDateGenerator;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.ScheduledDateGenerator;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
@@ -58,12 +59,14 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
     private final JdbcTemplate jdbcTemplate;
     private final DatabaseSpecificSQLGenerator sqlGenerator;
     private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
+    private final SavingsAccountAssembler savingsAccountAssembler;
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
         Collection<StandingInstructionData> instructionData = standingInstructionReadPlatformService
                 .retrieveAll(StandingInstructionStatus.ACTIVE.getValue());
         List<Throwable> errors = new ArrayList<>();
+
         for (StandingInstructionData data : instructionData) {
             boolean isDueForTransfer = false;
             AccountTransferRecurrenceType recurrenceType = data.recurrenceType();
@@ -88,13 +91,29 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                         transactionDate);
 
             }
+
             BigDecimal transactionAmount = data.amount();
             if (data.toAccountType().isLoanAccount()
                     && (recurrenceType.isDuesRecurrence() || (isDueForTransfer && instructionType.isDuesAmoutTransfer()))) {
                 StandingInstructionDuesData standingInstructionDuesData = standingInstructionReadPlatformService
                         .retriveLoanDuesData(data.toAccount().getId());
                 if (data.instructionType().isDuesAmoutTransfer()) {
-                    transactionAmount = standingInstructionDuesData.totalDueAmount();
+                    final SavingsAccount fromSavingsAccount =
+                            this.savingsAccountAssembler.assembleFrom(data.fromAccount().getId(), false);
+                    BigDecimal availableBalance = fromSavingsAccount.getSummary().getAccountBalance();
+                    if (fromSavingsAccount.isAllowOverdraft()) {
+                        availableBalance = availableBalance.add(fromSavingsAccount.getOverdraftLimit());
+                    }
+                    if (availableBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                         continue;
+                    }
+                    BigDecimal totalDueAmount = standingInstructionDuesData.totalDueAmount();
+                    if (availableBalance.compareTo(totalDueAmount) >= 0) {
+                        transactionAmount = totalDueAmount;
+                    }
+                    else {
+                        transactionAmount = availableBalance;
+                    }
                 }
                 if (recurrenceType.isDuesRecurrence()) {
                     isDueForTransfer = isDueForTransfer(standingInstructionDuesData);

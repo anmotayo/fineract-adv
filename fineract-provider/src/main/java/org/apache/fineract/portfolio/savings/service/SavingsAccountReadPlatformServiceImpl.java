@@ -1430,7 +1430,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             final String note = rs.getString("transactionNote");
             return SavingsAccountTransactionData.create(id, transactionType, paymentDetailData, savingsId, accountNo, date, currency,
                     amount, outstandingChargeAmount, runningBalance, reversed, transfer, submittedOnDate, postInterestAsOn,
-                    submittedByUsername, note, isReversal, originalTransactionId, lienTransaction, releaseTransactionId, reasonForBlock, createdOnUtc);
+                    submittedByUsername, note, isReversal, originalTransactionId, lienTransaction, releaseTransactionId, reasonForBlock,
+                    createdOnUtc);
         }
     }
 

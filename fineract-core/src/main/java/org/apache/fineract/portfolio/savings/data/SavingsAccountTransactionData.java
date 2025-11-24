@@ -165,10 +165,12 @@ public final class SavingsAccountTransactionData implements Serializable {
             final CurrencyData currency, final BigDecimal amount, final BigDecimal outstandingChargeAmount, final BigDecimal runningBalance,
             final boolean reversed, final AccountTransferData transfer, final LocalDate submittedOnDate, final boolean interestedPostedAsOn,
             final String submittedByUsername, final String note, final Boolean isReversal, final Long originalTransactionId,
-            final Boolean lienTransaction, final Long releaseTransactionId, final String reasonForBlock, final OffsetDateTime createdOnUtc) {
+            final Boolean lienTransaction, final Long releaseTransactionId, final String reasonForBlock,
+            final OffsetDateTime createdOnUtc) {
         return new SavingsAccountTransactionData(id, transactionType, paymentDetailData, savingsId, savingsAccountNo, date, currency,
                 amount, outstandingChargeAmount, runningBalance, reversed, transfer, null, submittedOnDate, interestedPostedAsOn,
-                submittedByUsername, note, isReversal, originalTransactionId, false, lienTransaction, releaseTransactionId, reasonForBlock, createdOnUtc);
+                submittedByUsername, note, isReversal, originalTransactionId, false, lienTransaction, releaseTransactionId, reasonForBlock,
+                createdOnUtc);
     }
 
     public static SavingsAccountTransactionData create(final Long id, final SavingsAccountTransactionEnumData transactionType,
@@ -196,7 +198,8 @@ public final class SavingsAccountTransactionData implements Serializable {
     }
 
     public static SavingsAccountTransactionData create(final Long id) {
-        return createData(id, null, null, null, null, null, null, null, null, null, false, null, null, null, false, null, null, false, null);
+        return createData(id, null, null, null, null, null, null, null, null, null, false, null, null, null, false, null, null, false,
+                null);
     }
 
     public static SavingsAccountTransactionData withWithDrawalTransactionDetails(
@@ -211,7 +214,8 @@ public final class SavingsAccountTransactionData implements Serializable {
                 savingsAccountTransactionData.isReversed(), savingsAccountTransactionData.getTransfer(),
                 savingsAccountTransactionData.getPaymentTypeOptions(), savingsAccountTransactionData.getSubmittedOnDate(),
                 savingsAccountTransactionData.isInterestedPostedAsOn(), savingsAccountTransactionData.getSubmittedByUsername(),
-                savingsAccountTransactionData.getNote(), savingsAccountTransactionData.getLienTransaction(), savingsAccountTransactionData.getCreatedOnUtc());
+                savingsAccountTransactionData.getNote(), savingsAccountTransactionData.getLienTransaction(),
+                savingsAccountTransactionData.getCreatedOnUtc());
     }
 
     public static SavingsAccountTransactionData template(final Long savingsId, final String savingsAccountNo,
@@ -272,7 +276,8 @@ public final class SavingsAccountTransactionData implements Serializable {
     }
 
     private static SavingsAccountTransactionData createImport(SavingsAccountTransactionEnumData transactionType, Long savingsAccountId,
-            LocalDate transactionDate, BigDecimal transactionAmount, final LocalDate submittedOnDate, boolean isManualTransaction, final OffsetDateTime createdOnUtc) {
+            LocalDate transactionDate, BigDecimal transactionAmount, final LocalDate submittedOnDate, boolean isManualTransaction,
+            final OffsetDateTime createdOnUtc) {
         // import transaction
         return createImport(transactionType, null, savingsAccountId, null, transactionDate, transactionAmount, false, submittedOnDate,
                 isManualTransaction, false, createdOnUtc);
@@ -286,7 +291,8 @@ public final class SavingsAccountTransactionData implements Serializable {
         SavingsAccountTransactionEnumData transactionType = new SavingsAccountTransactionEnumData(
                 savingsAccountTransactionType.getValue().longValue(), savingsAccountTransactionType.getCode(),
                 savingsAccountTransactionType.getValue().toString());
-        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction, createdOnUtc);
+        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction,
+                createdOnUtc);
     }
 
     public static SavingsAccountTransactionData accrual(final SavingsAccountData savingsAccount, final LocalDate date, final Money amount,
@@ -297,7 +303,8 @@ public final class SavingsAccountTransactionData implements Serializable {
         SavingsAccountTransactionEnumData transactionType = new SavingsAccountTransactionEnumData(
                 savingsAccountTransactionType.getValue().longValue(), savingsAccountTransactionType.getCode(),
                 savingsAccountTransactionType.getValue().toString());
-        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction, createdOnUtc);
+        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction,
+                createdOnUtc);
     }
 
     public static SavingsAccountTransactionData overdraftInterest(final SavingsAccountData savingsAccount, final LocalDate date,
@@ -308,7 +315,8 @@ public final class SavingsAccountTransactionData implements Serializable {
         SavingsAccountTransactionEnumData transactionType = new SavingsAccountTransactionEnumData(
                 savingsAccountTransactionType.getValue().longValue(), savingsAccountTransactionType.getCode(),
                 savingsAccountTransactionType.getValue().toString());
-        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction, createdOnUtc);
+        return createImport(transactionType, savingsAccount.getId(), date, amount.getAmount(), submittedOnDate, isManualTransaction,
+                createdOnUtc);
     }
 
     public static SavingsAccountTransactionData withHoldTax(final SavingsAccountData savingsAccount, final LocalDate date,

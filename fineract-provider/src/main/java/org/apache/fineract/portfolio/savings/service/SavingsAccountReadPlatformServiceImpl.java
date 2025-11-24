@@ -25,6 +25,7 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -364,6 +365,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("tr.id as transactionId, tr.transaction_type_enum as transactionType, ");
             sqlBuilder.append("tr.transaction_date as transactionDate, tr.amount as transactionAmount,");
             sqlBuilder.append("tr.submitted_on_date as transSubmittedOnDate,tr.cumulative_balance_derived as cumulativeBalance,");
+            sqlBuilder.append("tr.created_on_utc as createdOnUtc, ");
             sqlBuilder.append("tr.running_balance_derived as runningBalance, tr.is_reversed as reversed,");
             sqlBuilder.append("tr.balance_end_date_derived as balanceEndDate, tr.overdraft_amount_derived as overdraftAmount,");
             sqlBuilder.append("tr.is_manual as manualTransaction,tr.office_id as officeId, ");
@@ -642,6 +644,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     final boolean reversed = rs.getBoolean("reversed");
                     final Long officeId = rs.getLong("officeId");
                     final BigDecimal cumulativeBalance = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "cumulativeBalance");
+                    final OffsetDateTime createdOnUtc = JdbcSupport.getOffsetDateTime(rs, "createdOnUtc");
 
                     final boolean postInterestAsOn = false;
 
@@ -658,7 +661,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
 
                     savingsAccountTransactionData = SavingsAccountTransactionData.create(transactionId, transactionType, paymentDetailData,
                             id, accountNo, date, currency, amount, outstandingChargeAmount, runningBalance, reversed, transSubmittedOnDate,
-                            postInterestAsOn, cumulativeBalance, balanceEndDate);
+                            postInterestAsOn, cumulativeBalance, balanceEndDate, createdOnUtc);
                     savingsAccountTransactionData.setOverdraftAmount(overdraftAmount);
 
                     transMap.put("id", transactionId);
@@ -1318,7 +1321,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     + "tr.transaction_date as transactionDate, tr.amount as transactionAmount, "
                     + "tr.release_id_of_hold_amount as releaseTransactionId, tr.reason_for_block as reasonForBlock, "
                     + "tr.submitted_on_date as submittedOnDate, au.username as submittedByUsername, nt.note as transactionNote, "
-                    + "tr.running_balance_derived as runningBalance, tr.is_reversed as reversed, "
+                    + "tr.running_balance_derived as runningBalance, tr.is_reversed as reversed, tr.created_on_utc as createdOnUtc, "
                     + "tr.is_reversal as isReversal, tr.original_transaction_id as originalTransactionId, tr.is_lien_transaction as lienTransaction, "
                     + "fromtran.id as fromTransferId, fromtran.is_reversed as fromTransferReversed, "
                     + "fromtran.transaction_date as fromTransferDate, fromtran.amount as fromTransferAmount, "
@@ -1363,6 +1366,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
 
             final LocalDate date = JdbcSupport.getLocalDate(rs, "transactionDate");
             final LocalDate submittedOnDate = JdbcSupport.getLocalDate(rs, "submittedOnDate");
+            final OffsetDateTime createdOnUtc = JdbcSupport.getOffsetDateTime(rs, "createdOnUtc");
             final BigDecimal amount = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "transactionAmount");
             final Long releaseTransactionId = rs.getLong("releaseTransactionId");
             final String reasonForBlock = rs.getString("reasonForBlock");
@@ -1426,7 +1430,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             final String note = rs.getString("transactionNote");
             return SavingsAccountTransactionData.create(id, transactionType, paymentDetailData, savingsId, accountNo, date, currency,
                     amount, outstandingChargeAmount, runningBalance, reversed, transfer, submittedOnDate, postInterestAsOn,
-                    submittedByUsername, note, isReversal, originalTransactionId, lienTransaction, releaseTransactionId, reasonForBlock);
+                    submittedByUsername, note, isReversal, originalTransactionId, lienTransaction, releaseTransactionId, reasonForBlock, createdOnUtc);
         }
     }
 

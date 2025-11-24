@@ -21,6 +21,7 @@ package org.apache.fineract.portfolio.savings.data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -103,6 +104,7 @@ public final class SavingsAccountTransactionData implements Serializable {
     private BigDecimal overdraftAmount;
     private transient Long modifiedId;
     private transient String refNo;
+    private final transient LocalDateTime createdOn;
 
     private SavingsAccountTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType,
             final PaymentDetailData paymentDetailData, final Long savingsId, final String savingsAccountNo, final LocalDate transactionDate,
@@ -144,6 +146,7 @@ public final class SavingsAccountTransactionData implements Serializable {
         this.lienTransaction = lienTransaction;
         this.releaseTransactionId = releaseTransactionId;
         this.reasonForBlock = reasonForBlock;
+        this.createdOn = LocalDateTime.now();
     }
 
     private static SavingsAccountTransactionData createData(final Long id, final SavingsAccountTransactionEnumData transactionType,

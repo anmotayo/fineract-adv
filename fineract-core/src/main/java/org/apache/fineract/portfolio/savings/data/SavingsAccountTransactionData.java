@@ -680,4 +680,8 @@ public final class SavingsAccountTransactionData implements Serializable {
     public TransactionEntryType getEntryType() {
         return entryType;
     }
+
+    public boolean isAccrualAndNotReversed() {
+        return this.transactionType.isAccrual() && isNotReversed();
+    }
 }

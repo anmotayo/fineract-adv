@@ -537,7 +537,8 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         for (int i = accountTransactionsSorted.size() - 1; i >= 0; i--) {
             final SavingsAccountTransactionData transaction = accountTransactionsSorted.get(i);
             if (transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())) {
+                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
+                    && !transaction.isAccrualAndNotReversed()) {
                 transaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
                         endOfBalanceDate);
                 // this transactions transaction date is end of balance date for

@@ -897,4 +897,8 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
                 this.amount, currency, this.balanceNumberOfDays, isDeposit(), isWithdrawal(), isAllowOverDraft,
                 isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed());
     }
+
+    public boolean isAccrualAndNotReversed() {
+        return getTransactionType().isAccrual() && isNotReversed();
+    }
 }

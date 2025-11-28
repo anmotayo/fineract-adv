@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
 import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 
 @NoArgsConstructor
 public class DepositsDropdownReadPlatformServiceImpl implements DepositsDropdownReadPlatformService {
@@ -51,5 +52,11 @@ public class DepositsDropdownReadPlatformServiceImpl implements DepositsDropdown
                 SavingsEnumerations.depositAccountOnClosureType(DepositAccountOnClosureType.REINVEST_PRINCIPAL_AND_INTEREST),
                 SavingsEnumerations.depositAccountOnClosureType(DepositAccountOnClosureType.REINVEST_PRINCIPAL_ONLY));
 
+    }
+
+    @Override
+    public Collection<EnumOptionData> retrieveWithHoldTaxPostingTypeOptions() {
+        return Arrays.asList(SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.MATURITY),
+                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.INTEREST_POSTING));
     }
 }

@@ -380,7 +380,7 @@ public class AuditReadPlatformServiceImpl implements AuditReadPlatformService {
             final String[] enumTypes = { "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType",
                     "lockinPeriodFrequencyType", "minDepositTermTypeId", "maxDepositTermTypeId", "inMultiplesOfDepositTermTypeId",
                     "depositPeriodFrequencyId", "accountingRule", "interestCalculationDaysInYearType", "preClosurePenalInterestOnTypeId",
-                    "recurringFrequencyType" };
+                    "recurringFrequencyType", "withHoldTaxPostingType" };
 
             for (final String typeName : enumTypes) {
                 if (commandAsJsonMap.containsKey(typeName)) {

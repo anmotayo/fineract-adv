@@ -67,6 +67,8 @@ public class SearchingClientRepositoryImpl implements SearchingClientRepository 
             Path<Office> o = r.get("office");
             Join<Client, ClientIdentifier> identity = r.join("identifiers", JoinType.LEFT);
 
+            q.distinct(true);
+
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.like(o.get("hierarchy"), hierarchyLikeValue));
 

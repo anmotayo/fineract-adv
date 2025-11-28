@@ -34,6 +34,10 @@ public class SavingsAccountTransactionDataComparator implements Comparator<Savin
         if (result != 0) {
             return result;
         }
+        result = DateUtils.compare(o1.getCreatedOnUtc(), o2.getCreatedOnUtc());
+        if (result != 0) {
+            return result;
+        }
         if (o1.getId() != null && o2.getId() != null) {
             return o1.getId().compareTo(o2.getId());
         }

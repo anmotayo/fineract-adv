@@ -59,16 +59,7 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
-import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
-import org.apache.fineract.portfolio.savings.DepositAccountUtils;
-import org.apache.fineract.portfolio.savings.DepositsApiConstants;
-import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -678,7 +669,10 @@ public class RecurringDepositAccount extends SavingsAccount {
                 }
             }
         }
-        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill);
+
+        final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
+        applyWithholdTaxForDepositAccounts(interestPostingUpToDate, recalucateDailyBalanceDetails, backdatedTxnsAllowedTill,
+                withHoldTaxPostingType);
         if (recalucateDailyBalanceDetails) {
             // update existing transactions so derived balance fields are
             // correct.
@@ -710,7 +704,8 @@ public class RecurringDepositAccount extends SavingsAccount {
             recalucateDailyBalance = true;
         }
 
-        applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill);
+        final WithHoldTaxPostingType withHoldTaxPostingType = getWithHoldTaxPostingType();
+        applyWithholdTaxForDepositAccounts(accountCloseDate, recalucateDailyBalance, backdatedTxnsAllowedTill, withHoldTaxPostingType);
         if (recalucateDailyBalance) {
             // update existing transactions so derived balance fields are
             // correct.
@@ -770,7 +765,7 @@ public class RecurringDepositAccount extends SavingsAccount {
                 financialYearBeginningMonth, postAsInterestOn, backdatedTxnsAllowedTill, postReversals);
     }
 
-    private LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
+    public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
         LocalDate interestPostingUpToDate = interestPostingDate;
         final LocalDate uptoMaturityDate = interestCalculatedUpto();
         if (uptoMaturityDate != null && DateUtils.isBefore(uptoMaturityDate, interestPostingDate)) {
@@ -1093,6 +1088,11 @@ public class RecurringDepositAccount extends SavingsAccount {
          * baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(
          * "recurring.frequency.not.before.deposit.period"); }
          */
+
+        // check there should be a withHoldTaxPostingType when withHoldTax is true
+        if (this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null) {
+            baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("withhold.tax.posting.type.required");
+        }
     }
 
     public boolean isReinvestOnClosure() {
@@ -1269,5 +1269,10 @@ public class RecurringDepositAccount extends SavingsAccount {
 
     public BigDecimal getDepositAmount() {
         return this.accountTermAndPreClosure.depositAmount();
+    }
+
+    public WithHoldTaxPostingType getWithHoldTaxPostingType() {
+        final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
+        return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }
 }

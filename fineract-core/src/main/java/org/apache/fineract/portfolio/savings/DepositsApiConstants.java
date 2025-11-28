@@ -141,6 +141,7 @@ public final class DepositsApiConstants {
     public static final String depositMaxAmountParamName = "maxDepositAmount";
     public static final String depositPeriodParamName = "depositPeriod";
     public static final String depositPeriodFrequencyIdParamName = "depositPeriodFrequencyId";
+    public static final String withHoldTaxPostingTypeIdParamName = "withHoldTaxPostingTypeId";
 
     // recurring parameters
     public static final String mandatoryRecommendedDepositAmountParamName = "mandatoryRecommendedDepositAmount";
@@ -226,7 +227,7 @@ public final class DepositsApiConstants {
             SavingProductAccountingParams.PENALTY_INCOME_ACCOUNT_MAPPING.getValue(),
             SavingProductAccountingParams.INTEREST_PAYABLE.getValue(), SavingProductAccountingParams.PENALTIES_RECEIVABLE.getValue(),
             SavingProductAccountingParams.FEES_RECEIVABLE.getValue(), chartsParamName, SavingsApiConstants.withHoldTaxParamName,
-            SavingsApiConstants.taxGroupIdParamName));
+            SavingsApiConstants.taxGroupIdParamName, withHoldTaxPostingTypeIdParamName));
 
     private static final Set<String> PRECLOSURE_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(preClosurePenalApplicableParamName, preClosurePenalInterestParamName, preClosurePenalInterestOnTypeIdParamName));
@@ -308,7 +309,7 @@ public final class DepositsApiConstants {
             interestCalculationDaysInYearTypeParamName, lockinPeriodFrequencyParamName, lockinPeriodFrequencyTypeParamName,
             chargesParamName, chartsParamName, depositAmountParamName, depositPeriodParamName, depositPeriodFrequencyIdParamName,
             savingsAccounts, expectedFirstDepositOnDateParamName, SavingsApiConstants.withHoldTaxParamName, maturityInstructionIdParamName,
-            transferToSavingsIdParamName, linkedAccountParamName, transferInterestToSavingsParamName));
+            transferToSavingsIdParamName, linkedAccountParamName, transferInterestToSavingsParamName, withHoldTaxPostingTypeIdParamName));
 
     public static final Set<String> FIXED_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS = fixedDepositAccountRequestData();
     public static final Set<String> FIXED_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS = fixedDepositAccountResponseData();

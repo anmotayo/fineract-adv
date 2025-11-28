@@ -100,14 +100,7 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
-import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
-import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
-import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
-import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
-import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.*;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -532,8 +525,9 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return withholdTransactions;
     }
 
-    public boolean isWithHoldTaxApplicableForInterestPosting() {
-        return this.withHoldTax() && this.depositAccountType().isSavingsDeposit();
+    public boolean isWithHoldTaxApplicable(final WithHoldTaxPostingType withHoldTaxPostingType) {
+        return this.withHoldTax() && (this.depositAccountType().isSavingsDeposit()
+                || (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()));
     }
 
     protected SavingsAccountTransaction findInterestPostingTransactionFor(final LocalDate postingDate) {
@@ -599,13 +593,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             Map<TaxComponent, BigDecimal> taxSplit = TaxUtils.splitTax(amount, withholdTransaction.getTransactionDate(),
                     this.taxGroup.getTaxGroupMappings(), amount.scale());
             BigDecimal totalTax = TaxUtils.totalTaxAmount(taxSplit);
+            Money totalTaxMoney = Money.of(currency, totalTax);
             if (totalTax.compareTo(BigDecimal.ZERO) > 0) {
                 if (withholdTransaction.getId() == null) {
                     withholdTransaction.setAmount(Money.of(currency, totalTax));
                     withholdTransaction.getTaxDetails().clear();
                     SavingsAccountTransaction.updateTaxDetails(taxSplit, withholdTransaction);
                     isTaxAdded = true;
-                } else if (totalTax.compareTo(withholdTransaction.getAmount()) != 0) {
+                } else if (withholdTransaction.hasNotAmount(totalTaxMoney)) {
                     withholdTransaction.reverse();
                     SavingsAccountTransaction newWithholdTransaction = SavingsAccountTransaction.withHoldTax(this, office(),
                             withholdTransaction.getTransactionDate(), Money.of(currency, totalTax), taxSplit);
@@ -796,6 +791,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return allPostingPeriods;
     }
 
+    public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
+        return interestPostingDate;
+    }
+
     private BigDecimal getEffectiveOverdraftInterestRateAsFraction(MathContext mc) {
         return this.nominalAnnualInterestRateOverdraft.divide(BigDecimal.valueOf(100L), mc);
     }
@@ -832,8 +831,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         final List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = new ArrayList<>();
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
-            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
-                    && transaction.isNotReversed() && !transaction.isReversalTransaction() && !transaction.isAccrual()) {
+            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
+                    || transaction.isWithHoldTaxAndNotReversed() || (transaction.isPayCharge() && transaction.isNotReversed())) // temporary: transaction.isPayCharge()  backed out so interest is based on the principal amount. This is subject to review from Mifos Implementation team (Bharath)
+                    && transaction.isNotReversed() && !transaction.isReversalTransaction()
+                    && !transaction.isAccrual()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }
@@ -847,8 +848,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         final List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = new ArrayList<>();
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
-            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
-                    && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
+            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
+                    || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }
@@ -970,7 +971,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         for (int i = accountTransactionsSorted.size() - 1; i >= 0; i--) {
             final SavingsAccountTransaction transaction = accountTransactionsSorted.get(i);
             if (transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())) {
+                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
+                    && !transaction.isAccrualAndNotReversed()) {
                 transaction.updateCumulativeBalanceAndDates(this.currency, endOfBalanceDate);
                 // this transactions transaction date is end of balance date for
                 // previous transaction.
@@ -3495,19 +3497,39 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     protected boolean applyWithholdTaxForDepositAccounts(final LocalDate interestPostingUpToDate, boolean recalucateDailyBalance,
-            final boolean backdatedTxnsAllowedTill) {
+            final boolean backdatedTxnsAllowedTill, final WithHoldTaxPostingType withHoldTaxPostingType) {
         final List<SavingsAccountTransaction> withholdTransactions = findWithHoldTransactions();
-        SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingUpToDate, withholdTransactions);
-        final BigDecimal totalInterestPosted = this.savingsAccountTransactionSummaryWrapper.calculateTotalInterestPosted(this.currency,
-                this.transactions);
-        if (withholdTransaction == null && this.withHoldTax()) {
-            boolean isWithholdTaxAdded = createWithHoldTransaction(totalInterestPosted, interestPostingUpToDate, backdatedTxnsAllowedTill);
-            recalucateDailyBalance = recalucateDailyBalance || isWithholdTaxAdded;
-        } else  if (withholdTransaction != null) {
-            boolean isWithholdTaxAdded = updateWithHoldTransaction(totalInterestPosted, withholdTransaction);
-            recalucateDailyBalance = recalucateDailyBalance || isWithholdTaxAdded;
+        if (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()) {
+            final List<SavingsAccountTransaction> transactions = new ArrayList<>(getTransactions());
+            for (SavingsAccountTransaction transaction : transactions) {
+                if (transaction.isInterestPostingAndNotReversed()) {
+                    SavingsAccountTransaction withholdTransaction = findTransactionFor(transaction.getTransactionDate(),
+                            withholdTransactions);
+                    final BigDecimal interestAmountPosted = transaction.getAmount();
+                    recalucateDailyBalance = shouldRecalculateDailyBalance(transaction.getTransactionDate(), recalucateDailyBalance,
+                            backdatedTxnsAllowedTill, withholdTransaction, interestAmountPosted);
+                }
+            }
+        } else {
+            SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingUpToDate, withholdTransactions);
+            final BigDecimal totalInterestPosted = this.savingsAccountTransactionSummaryWrapper.calculateTotalInterestPosted(this.currency,
+                    this.transactions);
+            recalucateDailyBalance = shouldRecalculateDailyBalance(interestPostingUpToDate, recalucateDailyBalance,
+                    backdatedTxnsAllowedTill, withholdTransaction, totalInterestPosted);
         }
 
+        return recalucateDailyBalance;
+    }
+
+    private boolean shouldRecalculateDailyBalance(LocalDate interestPostingUpToDate, boolean recalucateDailyBalance,
+            boolean backdatedTxnsAllowedTill, SavingsAccountTransaction withholdTransaction, BigDecimal interestAmountPosted) {
+        if (withholdTransaction == null && this.withHoldTax()) {
+            boolean isWithholdTaxAdded = createWithHoldTransaction(interestAmountPosted, interestPostingUpToDate, backdatedTxnsAllowedTill);
+            recalucateDailyBalance = recalucateDailyBalance || isWithholdTaxAdded;
+        } else if (withholdTransaction != null) {
+            boolean isWithholdTaxAdded = updateWithHoldTransaction(interestAmountPosted, withholdTransaction);
+            recalucateDailyBalance = recalucateDailyBalance || isWithholdTaxAdded;
+        }
         return recalucateDailyBalance;
     }
 

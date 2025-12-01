@@ -832,8 +832,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !transaction.isAccrual()) {
+                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed()
+                    && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }
@@ -848,7 +848,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
+                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed()
+                    && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }

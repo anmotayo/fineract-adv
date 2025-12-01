@@ -324,8 +324,8 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         final List<SavingsAccountTransactionData> orderedNonInterestPostingTransactions = new ArrayList<>();
 
         for (final SavingsAccountTransactionData transaction : listOfTransactionsSorted) {
-            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
-                    && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
+            if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
+                    || transaction.isAccrualAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }

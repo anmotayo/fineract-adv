@@ -96,8 +96,7 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                 StandingInstructionDuesData standingInstructionDuesData = standingInstructionReadPlatformService
                         .retriveLoanDuesData(data.toAccount().getId());
                 if (data.instructionType().isDuesAmoutTransfer()) {
-                    final SavingsAccount fromSavingsAccount =
-                            this.savingsAccountAssembler.assembleFrom(data.fromAccount().getId(), false);
+                    final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFrom(data.fromAccount().getId(), false);
                     BigDecimal availableBalance = fromSavingsAccount.getSummary().getAccountBalance();
                     if (fromSavingsAccount.isAllowOverdraft()) {
                         availableBalance = availableBalance.add(fromSavingsAccount.getOverdraftLimit());
@@ -108,8 +107,7 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                     BigDecimal totalDueAmount = standingInstructionDuesData.totalDueAmount();
                     if (availableBalance.compareTo(totalDueAmount) >= 0) {
                         transactionAmount = totalDueAmount;
-                    }
-                    else {
+                    } else {
                         transactionAmount = availableBalance;
                     }
                 }

@@ -832,9 +832,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isWithHoldTaxAndNotReversed() || (transaction.isPayCharge() && transaction.isNotReversed())) // temporary: transaction.isPayCharge()  backed out so interest is based on the principal amount. This is subject to review from Mifos Implementation team (Bharath)
-                    && transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !transaction.isAccrual()) {
+                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()
+                    || (transaction.isPayCharge() && transaction.isNotReversed())) && transaction.isNotReversed()
+                    && !transaction.isReversalTransaction()) { // temporary: transaction.isPayCharge() backed out so
+                                                               // interest is based on the principal amount. This is
+                                                               // subject to review from Mifos Implementation team
+                                                               // (Bharath)
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }
@@ -849,7 +852,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
+                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed()
+                    && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }

@@ -60,7 +60,8 @@ public class ProvisioningEntriesReadPlatformServiceImpl implements ProvisioningE
     private static final class LoanProductProvisioningEntryMapper implements RowMapper<LoanProductProvisioningEntryData> {
 
         private final StringBuilder sqlQuery;
-        //Changed total_outstanding_derived to principal_outstanding_derived
+
+        // Changed total_outstanding_derived to principal_outstanding_derived
         private LoanProductProvisioningEntryMapper(DatabaseSpecificSQLGenerator sqlGenerator) {
             sqlQuery = new StringBuilder().append(
                     "select (CASE WHEN loan.loan_type_enum=1 THEN mclient.office_id ELSE mgroup.office_id END) as office_id, loan.loan_type_enum, pcd.criteria_id as criteriaid, loan.product_id,loan.currency_code,")

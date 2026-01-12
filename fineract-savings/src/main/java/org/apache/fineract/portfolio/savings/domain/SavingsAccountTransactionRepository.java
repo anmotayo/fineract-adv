@@ -53,4 +53,8 @@ public interface SavingsAccountTransactionRepository
     @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf <= :transactionDate and sat.reversed=false")
     List<SavingsAccountTransaction> findBySavingsAccountIdAndLessThanDateOfAndReversedIsFalse(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.typeOf <>10")
+    List<SavingsAccountTransaction> findNonAccrualTransactionBeforeRunningDate(@Param("savingsId") Long savingsId,
+            @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
 }

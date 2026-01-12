@@ -31,19 +31,19 @@ import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.service.CurrencyReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.data.OutstandingAmountsDTO;
 import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanDisbursementDetails;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanLifecycleStateMachine;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleTransactionProcessorFactory;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanSummaryWrapper;
 import org.apache.fineract.portfolio.loanaccount.domain.transactionprocessor.LoanRepaymentScheduleTransactionProcessor;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanScheduleData;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanSchedulePeriodData;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanApplicationTerms;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleModel;
+import org.apache.fineract.portfolio.loanaccount.mapper.LoanTermVariationsMapper;
 import org.apache.fineract.portfolio.loanaccount.serialization.LoanApplicationValidator;
 import org.apache.fineract.portfolio.loanaccount.serialization.LoanScheduleValidator;
 import org.apache.fineract.portfolio.loanaccount.service.LoanUtilService;
@@ -62,8 +62,7 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
     private final CurrencyReadPlatformService currencyReadPlatformService;
     private final LoanUtilService loanUtilService;
     private final LoanRepositoryWrapper loanRepository;
-    private final LoanLifecycleStateMachine defaultLoanLifecycleStateMachine;
-    private final LoanSummaryWrapper loanSummaryWrapper;
+    private final LoanTermVariationsMapper loanTermVariationsMapper;
 
     @Override
     public LoanScheduleModel calculateLoanSchedule(final JsonQuery query, Boolean validateParams) {
@@ -89,16 +88,15 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
         final LoanRepaymentScheduleTransactionProcessor loanRepaymentScheduleTransactionProcessor = loanRepaymentScheduleTransactionProcessorFactory
                 .determineProcessor(loan.transactionProcessingStrategy());
 
-        if (!loan.repaymentScheduleDetail().isInterestRecalculationEnabled() || loan.isNpa() || loan.isChargedOff()
-                || !loan.getStatus().isActive()
+        if (!loan.isInterestBearingAndInterestRecalculationEnabled() || loan.isNpa() || loan.isChargedOff() || !loan.getStatus().isActive()
                 || !loanRepaymentScheduleTransactionProcessor.isInterestFirstRepaymentScheduleTransactionProcessor()) {
             return;
         }
 
         if (loan.loanProduct().isMultiDisburseLoan()) {
             BigDecimal disbursedAmount = loan.getDisbursedAmount();
-            BigDecimal principalRepaid = loan.getLoanSummary().getTotalPrincipalRepaid();
-            BigDecimal principalWrittenOff = loan.getLoanSummary().getTotalPrincipalWrittenOff();
+            BigDecimal principalRepaid = loan.getSummary().getTotalPrincipalRepaid();
+            BigDecimal principalWrittenOff = loan.getSummary().getTotalPrincipalWrittenOff();
             if (disbursedAmount.subtract(principalWrittenOff).subtract(principalRepaid).compareTo(BigDecimal.ZERO) <= 0) {
                 return;
             }
@@ -115,15 +113,13 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
             }
         }
         LoanApplicationTerms loanApplicationTerms = constructLoanApplicationTerms(loan);
-        LoanRepaymentScheduleInstallment loanRepaymentScheduleInstallment = this.loanScheduleAssembler.calculatePrepaymentAmount(currency,
-                today, loanApplicationTerms, loan, loan.getOfficeId(), loanRepaymentScheduleTransactionProcessor);
-        Money totalAmount = totalPrincipal.plus(loanRepaymentScheduleInstallment.getFeeChargesOutstanding(currency))
-                .plus(loanRepaymentScheduleInstallment.getPenaltyChargesOutstanding(currency));
-        Money interestDue = Money.zero(currency);
-        if (loanRepaymentScheduleInstallment.isInterestDue(currency)) {
-            interestDue = loanRepaymentScheduleInstallment.getInterestOutstanding(currency);
-            totalAmount = totalAmount.plus(interestDue);
-        }
+        OutstandingAmountsDTO outstandingAmountsDTO = this.loanScheduleAssembler.calculatePrepaymentAmount(currency, today,
+                loanApplicationTerms, loan, loan.getOfficeId(), loanRepaymentScheduleTransactionProcessor);
+        LoanRepaymentScheduleInstallment loanRepaymentScheduleInstallment = new LoanRepaymentScheduleInstallment(null, 0, today, today,
+                outstandingAmountsDTO.principal().getAmount(), outstandingAmountsDTO.interest().getAmount(),
+                outstandingAmountsDTO.feeCharges().getAmount(), outstandingAmountsDTO.penaltyCharges().getAmount(), false, null);
+
+        Money interestDue = loanRepaymentScheduleInstallment.getInterestOutstanding(currency);
         boolean isNewPaymentRequired = loanRepaymentScheduleInstallment.isInterestDue(currency) || totalPrincipal.isGreaterThanZero();
 
         LoanScheduleModel model = this.loanScheduleAssembler.assembleForInterestRecalculation(loanApplicationTerms, loan.getOfficeId(),
@@ -136,14 +132,12 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
                         periodData.getFromDate(), periodData.getDueDate(), totalPrincipal.getAmount(),
                         periodData.getPrincipalLoanBalanceOutstanding(), interestDue.getAmount(),
                         loanRepaymentScheduleInstallment.getFeeChargesCharged(currency).getAmount(),
-                        loanRepaymentScheduleInstallment.getPenaltyChargesCharged(currency).getAmount(), totalAmount.getAmount(),
-                        totalPrincipal.plus(interestDue).getAmount());
+                        loanRepaymentScheduleInstallment.getPenaltyChargesCharged(currency).getAmount());
                 futureInstallments.add(loanSchedulePeriodData);
                 isNewPaymentRequired = false;
             } else if (DateUtils.isAfter(periodData.getDueDate(), today)) {
                 futureInstallments.add(periodData);
             }
-
         }
         loanScheduleData.updateFuturePeriods(futureInstallments);
     }
@@ -193,8 +187,7 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
             LoanSchedulePeriodData loanSchedulePeriodData = LoanSchedulePeriodData.repaymentOnlyPeriod(installment.getInstallmentNumber(),
                     installment.getFromDate(), installment.getDueDate(), installment.getPrincipal(currency).getAmount(),
                     outstanding.getAmount(), installment.getInterestCharged(currency).getAmount(),
-                    installment.getFeeChargesCharged(currency).getAmount(), installment.getPenaltyChargesCharged(currency).getAmount(),
-                    installment.getDue(currency).getAmount(), installment.getTotalPrincipalAndInterest(currency).getAmount());
+                    installment.getFeeChargesCharged(currency).getAmount(), installment.getPenaltyChargesCharged(currency).getAmount());
             installmentData.add(loanSchedulePeriodData);
             totalInterest = totalInterest.plus(installment.getInterestCharged(currency));
             totalCharge = totalCharge.plus(installment.getFeeChargesCharged(currency));
@@ -209,17 +202,12 @@ public class LoanScheduleCalculationPlatformServiceImpl implements LoanScheduleC
     }
 
     private LoanApplicationTerms constructLoanApplicationTerms(final Loan loan) {
-        final LocalDate recalculateFrom = null;
-        ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, recalculateFrom);
-        return loan.constructLoanApplicationTerms(scheduleGeneratorDTO);
+        final ScheduleGeneratorDTO scheduleGeneratorDTO = this.loanUtilService.buildScheduleGeneratorDTO(loan, null);
+        return loanTermVariationsMapper.constructLoanApplicationTerms(scheduleGeneratorDTO, loan);
     }
 
     private Loan fetchLoan(final Long accountId) {
-        final Loan loanAccount = this.loanRepository.findOneWithNotFoundDetection(accountId, true);
-        loanAccount.setHelpers(defaultLoanLifecycleStateMachine, this.loanSummaryWrapper,
-                this.loanRepaymentScheduleTransactionProcessorFactory);
-
-        return loanAccount;
+        return loanRepository.findOneWithNotFoundDetection(accountId, true);
     }
 
 }

@@ -98,20 +98,19 @@ public class SavingsProductDataValidator {
             SavingProductAccountingParams.INCOME_FROM_FEES.getValue(), SavingProductAccountingParams.INCOME_FROM_PENALTIES.getValue(),
             SavingProductAccountingParams.INTEREST_ON_SAVINGS.getValue(), SavingProductAccountingParams.PENALTIES_RECEIVABLE.getValue(),
             SavingProductAccountingParams.PAYMENT_CHANNEL_FUND_SOURCE_MAPPING.getValue(),
-            SavingProductAccountingParams.INTEREST_PAYABLE.getValue(), SavingProductAccountingParams.SAVINGS_CONTROL.getValue(),
-            SavingProductAccountingParams.TRANSFERS_SUSPENSE.getValue(), SavingProductAccountingParams.SAVINGS_REFERENCE.getValue(),
-            SavingProductAccountingParams.FEE_INCOME_ACCOUNT_MAPPING.getValue(),
+            SavingProductAccountingParams.SAVINGS_CONTROL.getValue(), SavingProductAccountingParams.TRANSFERS_SUSPENSE.getValue(),
+            SavingProductAccountingParams.SAVINGS_REFERENCE.getValue(), SavingProductAccountingParams.FEE_INCOME_ACCOUNT_MAPPING.getValue(),
             SavingProductAccountingParams.PENALTY_INCOME_ACCOUNT_MAPPING.getValue(),
             SavingProductAccountingParams.FEES_RECEIVABLE.getValue(), SavingProductAccountingParams.INTEREST_PAYABLE.getValue(),
             SavingProductAccountingParams.OVERDRAFT_PORTFOLIO_CONTROL.getValue(),
             SavingProductAccountingParams.LOSSES_WRITTEN_OFF.getValue(), SavingProductAccountingParams.INCOME_FROM_INTEREST.getValue(),
-            SavingProductAccountingParams.ESCHEAT_LIABILITY.getValue(), isDormancyTrackingActiveParamName, daysToDormancyParamName,
-            daysToInactiveParamName, daysToEscheatParamName, allowOverdraftParamName, overdraftLimitParamName,
-            nominalAnnualInterestRateOverdraftParamName, minOverdraftForInterestCalculationParamName,
-            SavingsApiConstants.minRequiredBalanceParamName, SavingsApiConstants.enforceMinRequiredBalanceParamName,
-            SavingsApiConstants.maxAllowedLienLimitParamName, SavingsApiConstants.lienAllowedParamName,
-            minBalanceForInterestCalculationParamName, withHoldTaxParamName, taxGroupIdParamName,
-            SavingsApiConstants.accrualChargesParamName));
+            SavingProductAccountingParams.ESCHEAT_LIABILITY.getValue(), SavingProductAccountingParams.INTEREST_RECEIVABLE.getValue(),
+            isDormancyTrackingActiveParamName, daysToDormancyParamName, daysToInactiveParamName, daysToEscheatParamName,
+            allowOverdraftParamName, overdraftLimitParamName, nominalAnnualInterestRateOverdraftParamName,
+            minOverdraftForInterestCalculationParamName, SavingsApiConstants.minRequiredBalanceParamName,
+            SavingsApiConstants.enforceMinRequiredBalanceParamName, SavingsApiConstants.maxAllowedLienLimitParamName,
+            SavingsApiConstants.lienAllowedParamName, minBalanceForInterestCalculationParamName, withHoldTaxParamName,
+            taxGroupIdParamName));
 
     public void validateForCreate(final String json) {
 

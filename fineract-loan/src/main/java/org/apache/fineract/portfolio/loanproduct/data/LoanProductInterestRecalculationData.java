@@ -26,7 +26,7 @@ import java.io.Serializable;
 import lombok.Getter;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestRecalculationCompoundingMethod;
-import org.apache.fineract.portfolio.loanproduct.domain.LoanPreClosureInterestCalculationStrategy;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanPreCloseInterestCalculationStrategy;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanRescheduleStrategyMethod;
 
 @Getter
@@ -50,6 +50,7 @@ public class LoanProductInterestRecalculationData implements Serializable {
     private final boolean isCompoundingToBePostedAsTransaction;
     private final EnumOptionData preClosureInterestCalculationStrategy;
     private final boolean allowCompoundingOnEod;
+    private final Boolean disallowInterestCalculationOnPastDue;
 
     public LoanProductInterestRecalculationData(final Long id, final Long productId,
             final EnumOptionData interestRecalculationCompoundingType, final EnumOptionData rescheduleStrategyType,
@@ -59,7 +60,8 @@ public class LoanProductInterestRecalculationData implements Serializable {
             final Integer recalculationCompoundingFrequencyInterval, final EnumOptionData recalculationCompoundingFrequencyNthDay,
             final EnumOptionData recalculationCompoundingFrequencyWeekday, final Integer recalculationCompoundingFrequencyOnDay,
             final boolean isArrearsBasedOnOriginalSchedule, boolean isCompoundingToBePostedAsTransaction,
-            final EnumOptionData preCloseInterestCalculationStrategy, final boolean allowCompoundingOnEod) {
+            final EnumOptionData preCloseInterestCalculationStrategy, final boolean allowCompoundingOnEod,
+            final Boolean disallowInterestCalculationOnPastDue) {
         this.id = id;
         this.productId = productId;
         this.interestRecalculationCompoundingType = interestRecalculationCompoundingType;
@@ -78,6 +80,7 @@ public class LoanProductInterestRecalculationData implements Serializable {
         this.preClosureInterestCalculationStrategy = preCloseInterestCalculationStrategy;
         this.isCompoundingToBePostedAsTransaction = isCompoundingToBePostedAsTransaction;
         this.allowCompoundingOnEod = allowCompoundingOnEod;
+        this.disallowInterestCalculationOnPastDue = disallowInterestCalculationOnPastDue;
     }
 
     public static LoanProductInterestRecalculationData sensibleDefaultsForNewLoanProductCreation() {
@@ -99,14 +102,17 @@ public class LoanProductInterestRecalculationData implements Serializable {
         final boolean isArrearsBasedOnOriginalSchedule = false;
         final boolean isCompoundingToBePostedAsTransaction = false;
         final EnumOptionData preCloseInterestCalculationStrategy = preCloseInterestCalculationStrategy(
-                LoanPreClosureInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE);
+                LoanPreCloseInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE);
         final boolean allowCompoundingOnEod = false;
+        final boolean disallowInterestCalculationOnPastDue = false;
+
         return new LoanProductInterestRecalculationData(id, productId, interestRecalculationCompoundingType, rescheduleStrategyType,
                 recalculationRestFrequencyType, recalculationRestFrequencyInterval, recalculationRestFrequencyNthDay,
                 recalculationRestFrequencyWeekday, recalculationRestFrequencyOnDay, recalculationCompoundingFrequencyType,
                 recalculationCompoundingFrequencyInterval, recalculationCompoundingFrequencyNthDay,
                 recalculationCompoundingFrequencyWeekday, recalculationCompoundingFrequencyOnDay, isArrearsBasedOnOriginalSchedule,
-                isCompoundingToBePostedAsTransaction, preCloseInterestCalculationStrategy, allowCompoundingOnEod);
+                isCompoundingToBePostedAsTransaction, preCloseInterestCalculationStrategy, allowCompoundingOnEod,
+                disallowInterestCalculationOnPastDue);
     }
 
     public boolean isArrearsBasedOnOriginalSchedule() {
@@ -123,5 +129,9 @@ public class LoanProductInterestRecalculationData implements Serializable {
 
     public boolean isIsCompoundingToBePostedAsTransaction() {
         return isCompoundingToBePostedAsTransaction;
+    }
+
+    public Boolean disallowInterestCalculationOnPastDue() {
+        return disallowInterestCalculationOnPastDue;
     }
 }

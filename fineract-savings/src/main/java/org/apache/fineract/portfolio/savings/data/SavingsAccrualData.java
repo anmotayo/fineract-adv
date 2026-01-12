@@ -18,13 +18,12 @@
  */
 package org.apache.fineract.portfolio.savings.data;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
-import org.apache.fineract.organisation.monetary.data.CurrencyData;
-import org.apache.fineract.portfolio.tax.data.TaxGroupData;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 
 @Data
 @RequiredArgsConstructor
@@ -32,21 +31,15 @@ public class SavingsAccrualData {
 
     private final Long id;
     private final String accountNo;
-    private final EnumOptionData depositType;
-    private final SavingsAccountStatusEnumData status;
-    private final Long savingsProductId;
-    private final Long officeId;
     private final LocalDate accruedTill;
-    private final LocalDate postedTill;
-    private final CurrencyData currencyData;
-    private final BigDecimal nominalAnnualInterestRate;
-    private final EnumOptionData interestCompoundingPeriodType;
-    private final EnumOptionData interestPostingPeriodType;
-    private final EnumOptionData interestCalculationType;
-    private final EnumOptionData interestCalculationDaysInYearType;
+    private final Boolean isTypeInterestReceivable;
+    private final Boolean isAllowOverdraft;
+    private final Integer depositType;
 
-    private final BigDecimal accruedInterestIncome;
-    private LocalDate interestCalculatedFrom;
-    private TaxGroupData taxGroup;
+    public DepositAccountType getDepositType() {
+        final EnumOptionData depositType = SavingsEnumerations.depositType(this.depositType);
+        DepositAccountType depositAccountType = DepositAccountType.fromInt(depositType.getId().intValue());
+        return depositAccountType;
+    }
 
 }

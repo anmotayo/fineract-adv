@@ -245,12 +245,12 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
     @Override
     @Transactional
     public void reverseTransfersWithFromAccountType(final Long accountNumber, final PortfolioAccountType accountTypeId) {
-        List<AccountTransferTransaction> acccountTransfers = null;
+        List<AccountTransferTransaction> accountTransfers = null;
         if (accountTypeId.isLoanAccount()) {
-            acccountTransfers = this.accountTransferRepository.findByFromLoanId(accountNumber);
+            accountTransfers = this.accountTransferRepository.findByFromLoanId(accountNumber);
         }
-        if (acccountTransfers != null && acccountTransfers.size() > 0) {
-            undoTransactions(acccountTransfers);
+        if (accountTransfers != null && !accountTransfers.isEmpty()) {
+            undoTransactions(accountTransfers);
         }
 
     }
@@ -259,35 +259,31 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
     @Transactional
     public void reverseTransfersWithFromAccountTransactions(final Collection<Long> fromTransactionIds,
             final PortfolioAccountType accountTypeId) {
-        List<AccountTransferTransaction> acccountTransfers = new ArrayList<>();
+        List<AccountTransferTransaction> accountTransfers = new ArrayList<>();
         if (accountTypeId.isLoanAccount()) {
             List<List<Long>> partitions = Lists.partition(fromTransactionIds.stream().toList(),
                     fineractProperties.getQuery().getInClauseParameterSizeLimit());
-            partitions.forEach(partition -> acccountTransfers.addAll(this.accountTransferRepository.findByFromLoanTransactions(partition)));
+            partitions.forEach(partition -> accountTransfers.addAll(this.accountTransferRepository.findByFromLoanTransactions(partition)));
         }
-        if (acccountTransfers.size() > 0) {
-            undoTransactions(acccountTransfers);
+        if (!accountTransfers.isEmpty()) {
+            undoTransactions(accountTransfers);
         }
-
     }
 
     @Override
     @Transactional
     public void reverseAllTransactions(final Long accountId, final PortfolioAccountType accountTypeId) {
-        List<AccountTransferTransaction> acccountTransfers = null;
+        List<AccountTransferTransaction> accountTransfers = null;
         if (accountTypeId.isLoanAccount()) {
-            acccountTransfers = this.accountTransferRepository.findAllByLoanId(accountId);
+            accountTransfers = this.accountTransferRepository.findAllByLoanId(accountId);
         }
-        if (acccountTransfers != null && acccountTransfers.size() > 0) {
-            undoTransactions(acccountTransfers);
+        if (accountTransfers != null && !accountTransfers.isEmpty()) {
+            undoTransactions(accountTransfers);
         }
     }
 
-    /**
-     * @param acccountTransfers
-     */
-    private void undoTransactions(final List<AccountTransferTransaction> acccountTransfers) {
-        for (final AccountTransferTransaction accountTransfer : acccountTransfers) {
+    private void undoTransactions(final List<AccountTransferTransaction> accountTransfers) {
+        for (final AccountTransferTransaction accountTransfer : accountTransfers) {
             if (accountTransfer.getFromLoanTransaction() != null) {
                 this.loanAccountDomainService.reverseTransfer(accountTransfer.getFromLoanTransaction());
             }
@@ -332,14 +328,12 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
                     toLoanAccount = this.loanAccountAssembler.assembleFrom(accountTransferDTO.getToAccountId());
                 } else {
                     toLoanAccount = accountTransferDTO.getLoan();
-                    this.loanAccountAssembler.setHelpers(toLoanAccount);
                 }
 
             } else {
                 fromSavingsAccount = accountTransferDetails.fromSavingsAccount();
                 this.savingsAccountAssembler.setHelpers(fromSavingsAccount);
                 toLoanAccount = accountTransferDetails.toLoanAccount();
-                this.loanAccountAssembler.setHelpers(toLoanAccount);
             }
 
             final SavingsTransactionBooleanValues transactionBooleanValues = new SavingsTransactionBooleanValues(isAccountTransfer,
@@ -450,12 +444,10 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
                     fromLoanAccount = this.loanAccountAssembler.assembleFrom(accountTransferDTO.getFromAccountId());
                 } else {
                     fromLoanAccount = accountTransferDTO.getLoan();
-                    this.loanAccountAssembler.setHelpers(fromLoanAccount);
                 }
                 toSavingsAccount = this.savingsAccountAssembler.assembleFrom(accountTransferDTO.getToAccountId(), backdatedTxnsAllowedTill);
             } else {
                 fromLoanAccount = accountTransferDetails.fromLoanAccount();
-                this.loanAccountAssembler.setHelpers(fromLoanAccount);
                 toSavingsAccount = accountTransferDetails.toSavingsAccount();
                 this.savingsAccountAssembler.setHelpers(toSavingsAccount);
             }
@@ -508,14 +500,12 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
             fromLoanAccount = this.loanAccountAssembler.assembleFrom(accountTransferDTO.getFromAccountId());
         } else {
             fromLoanAccount = accountTransferDTO.getFromLoan();
-            this.loanAccountAssembler.setHelpers(fromLoanAccount);
         }
         Loan toLoanAccount = null;
         if (accountTransferDTO.getToLoan() == null) {
             toLoanAccount = this.loanAccountAssembler.assembleFrom(accountTransferDTO.getToAccountId());
         } else {
             toLoanAccount = accountTransferDTO.getToLoan();
-            this.loanAccountAssembler.setHelpers(toLoanAccount);
         }
 
         ExternalId externalIdForDisbursement = accountTransferDTO.getTxnExternalId();
@@ -536,16 +526,6 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
         this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
 
         return accountTransferDetails;
-    }
-
-    @Override
-    @Transactional
-    public void updateLoanTransaction(final Long loanTransactionId, final LoanTransaction newLoanTransaction) {
-        final AccountTransferTransaction transferTransaction = this.accountTransferRepository.findByToLoanTransactionId(loanTransactionId);
-        if (transferTransaction != null) {
-            transferTransaction.updateToLoanTransaction(newLoanTransaction);
-            this.accountTransferRepository.save(transferTransaction);
-        }
     }
 
     private boolean isLoanToSavingsAccountTransfer(final PortfolioAccountType fromAccountType, final PortfolioAccountType toAccountType) {

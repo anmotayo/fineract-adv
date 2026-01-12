@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.domain.AbstractAuditableWithUTCDateTimeCustom;
-import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
@@ -200,10 +199,9 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
     }
 
     public static SavingsAccountTransaction accrual(final SavingsAccount savingsAccount, final Office office, final LocalDate date,
-            final Money amount, final boolean isManualTransaction) {
+            final Money amount, final boolean isManualTransaction, final String refNo) {
         final boolean isReversed = false;
         final Boolean lienTransaction = false;
-        final String refNo = ExternalId.generate().getValue();
         return new SavingsAccountTransaction(savingsAccount, office, SavingsAccountTransactionType.ACCRUAL.getValue(), date, amount,
                 isReversed, isManualTransaction, lienTransaction, refNo);
     }
@@ -425,7 +423,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return Money.of(currency, this.overdraftAmount);
     }
 
-    void setOverdraftAmount(Money overdraftAmount) {
+    public void setOverdraftAmount(Money overdraftAmount) {
         this.overdraftAmount = overdraftAmount == null ? null : overdraftAmount.getAmount();
     }
 
@@ -521,6 +519,10 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return this.isDeposit() || this.isWithdrawal() || this.isChargeTransaction() || this.isDividendPayout() || this.isInterestPosting();
     }
 
+    public boolean isAccrual() {
+        return getTransactionType().isAccrual();
+    }
+
     public boolean isInterestPostingAndNotReversed() {
         return getTransactionType().isInterestPosting() && isNotReversed();
     }
@@ -569,10 +571,6 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return isTransferInitiation() || isTransferApproval() || isTransferRejection() || isTransferWithdrawal();
     }
 
-    public boolean isAccrual() {
-        return getTransactionType().isAccrual();
-    }
-
     public void zeroBalanceFields() {
         this.runningBalance = null;
         this.cumulativeBalance = null;
@@ -604,7 +602,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return transactionAmount.isNotEqualTo(amountToCheck);
     }
 
-    public Map<String, Object> toMapData(final String currencyCode, final List<Long> accrualChargeIds) {
+    public Map<String, Object> toMapData(final String currencyCode) {
         final Map<String, Object> thisTransactionData = new LinkedHashMap<>();
 
         final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations.transactionType(this.typeOf);
@@ -630,9 +628,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
             final List<Map<String, Object>> savingsChargesPaidData = new ArrayList<>();
             for (final SavingsAccountChargePaidBy chargePaidBy : this.savingsAccountChargesPaid) {
                 final Map<String, Object> savingChargePaidData = new LinkedHashMap<>();
-                final Long chargeId = chargePaidBy.getSavingsAccountCharge().getCharge().getId();
-                savingChargePaidData.put("chargeId", chargeId);
-                savingChargePaidData.put("accrualRecognized", accrualChargeIds.contains(chargeId));
+                savingChargePaidData.put("chargeId", chargePaidBy.getSavingsAccountCharge().getCharge().getId());
                 savingChargePaidData.put("isPenalty", chargePaidBy.getSavingsAccountCharge().getCharge().isPenalty());
                 savingChargePaidData.put("savingsChargeId", chargePaidBy.getSavingsAccountCharge().getId());
                 savingChargePaidData.put("amount", chargePaidBy.getAmount());

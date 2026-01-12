@@ -24,17 +24,25 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Map;
 import java.util.TreeMap;
-import lombok.RequiredArgsConstructor;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.organisation.monetary.mapper.CurrencyMapper;
 import org.apache.fineract.portfolio.loanaccount.data.LoanTermVariationsData;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
 public class CumulativeFlatInterestLoanScheduleGenerator extends AbstractCumulativeLoanScheduleGenerator {
 
     private final ScheduledDateGenerator scheduledDateGenerator;
     private final PaymentPeriodsInOneYearCalculator paymentPeriodsInOneYearCalculator;
+
+    public CumulativeFlatInterestLoanScheduleGenerator(final ScheduledDateGenerator scheduledDateGenerator,
+            final PaymentPeriodsInOneYearCalculator paymentPeriodsInOneYearCalculator,
+            final LoanTransactionRepository loanTransactionRepository, final CurrencyMapper currencyMapper) {
+        super(loanTransactionRepository, currencyMapper);
+        this.scheduledDateGenerator = scheduledDateGenerator;
+        this.paymentPeriodsInOneYearCalculator = paymentPeriodsInOneYearCalculator;
+    }
 
     @Override
     public ScheduledDateGenerator getScheduledDateGenerator() {

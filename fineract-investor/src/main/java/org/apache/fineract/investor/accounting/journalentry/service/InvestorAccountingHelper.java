@@ -61,11 +61,8 @@ public class InvestorAccountingHelper {
          * check if an accounting closure has happened for this branch after the transaction Date
          **/
         GLClosure gLClosure = getLatestClosureByBranch(officeId);
-        if (gLClosure != null) {
-            if (!DateUtils.isAfter(transactionDate, gLClosure.getClosingDate())) {
-                throw new JournalEntryInvalidException(GlJournalEntryInvalidReason.ACCOUNTING_CLOSED, gLClosure.getClosingDate(), null,
-                        null);
-            }
+        if (gLClosure != null && !DateUtils.isAfter(transactionDate, gLClosure.getClosingDate())) {
+            throw new JournalEntryInvalidException(GlJournalEntryInvalidReason.ACCOUNTING_CLOSED, gLClosure.getClosingDate(), null, null);
         }
     }
 
@@ -88,6 +85,11 @@ public class InvestorAccountingHelper {
         } else {
             return createCreditJournalEntryForInvestor(office, currencyCode, account, loanId, transactionId, transactionDate, amount);
         }
+    }
+
+    public ProductToGLAccountMapping getChargeOffMappingByCodeValue(final Long loanProductId, final PortfolioProductType productType,
+            final Long chargeOffReasonId) {
+        return accountMappingRepository.findChargeOffReasonMapping(loanProductId, productType.getValue(), chargeOffReasonId);
     }
 
     private JournalEntry createCreditJournalEntryForInvestor(final Office office, final String currencyCode, final GLAccount account,

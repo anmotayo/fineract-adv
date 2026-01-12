@@ -55,6 +55,7 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanCharge;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanSummary;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
+import org.apache.fineract.portfolio.loanaccount.domain.arrears.LoanArrearsData;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.data.LoanSchedulePeriodData;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -104,8 +105,8 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
         OriginalScheduleExtractor originalScheduleExtractor = new OriginalScheduleExtractor(loan.getId().toString(), sqlGenerator);
         Map<Long, List<LoanSchedulePeriodData>> scheduleDate = this.jdbcTemplate.query(originalScheduleExtractor.schema,
                 originalScheduleExtractor);
-        if (scheduleDate.size() > 0) {
-            List<Map<String, Object>> transactions = getLoanSummary(loan.getId(), loan.getLoanSummary());
+        if (!scheduleDate.isEmpty()) {
+            List<Map<String, Object>> transactions = getLoanSummary(loan.getId(), loan.getSummary());
             updateScheduleWithPaidDetail(scheduleDate, transactions);
             createInsertStatements(updateStatement, scheduleDate, count == 0);
             if (updateStatement.size() == 1) {
@@ -138,8 +139,8 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
         }
     }
 
-    private String constructUpdateStatement(final Loan loan, boolean isInsertStatement) {
-        String updateSql = null;
+    @Override
+    public LoanArrearsData calculateArrearsForLoan(Loan loan) {
         List<LoanRepaymentScheduleInstallment> installments = loan.getRepaymentScheduleInstallments();
         BigDecimal principalOverdue = BigDecimal.ZERO;
         BigDecimal interestOverdue = BigDecimal.ZERO;
@@ -158,9 +159,33 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
                 }
             }
         }
-
         BigDecimal totalOverDue = principalOverdue.add(interestOverdue).add(feeOverdue).add(penaltyOverdue);
-        if (totalOverDue.compareTo(BigDecimal.ZERO) > 0) {
+        boolean isOverdue = totalOverDue.compareTo(BigDecimal.ZERO) > 0;
+        if (!isOverdue) {
+            overDueSince = null;
+        }
+
+        LoanArrearsData result = new LoanArrearsData();
+        result.setPrincipalOverdue(principalOverdue);
+        result.setInterestOverdue(interestOverdue);
+        result.setFeeOverdue(feeOverdue);
+        result.setPenaltyOverdue(penaltyOverdue);
+        result.setTotalOverdue(totalOverDue);
+        result.setOverDueSince(overDueSince);
+        result.setOverdue(isOverdue);
+        return result;
+    }
+
+    private String constructUpdateStatement(final Loan loan, boolean isInsertStatement) {
+        String updateSql = null;
+        LoanArrearsData arrearsData = calculateArrearsForLoan(loan);
+        BigDecimal principalOverdue = arrearsData.getPrincipalOverdue();
+        BigDecimal interestOverdue = arrearsData.getInterestOverdue();
+        BigDecimal feeOverdue = arrearsData.getFeeOverdue();
+        BigDecimal penaltyOverdue = arrearsData.getPenaltyOverdue();
+        LocalDate overDueSince = arrearsData.getOverDueSince();
+
+        if (arrearsData.isOverdue()) {
             if (isInsertStatement) {
                 updateSql = constructInsertStatement(loan.getId(), principalOverdue, interestOverdue, feeOverdue, penaltyOverdue,
                         overDueSince);
@@ -201,6 +226,7 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
             BigDecimal penaltyOverdue = BigDecimal.ZERO;
             LocalDate overDueSince = DateUtils.getBusinessLocalDate();
 
+            // TODO: this needs to be refactored to use the calculateArrearsForLoan method.
             for (LoanSchedulePeriodData loanSchedulePeriodData : entry.getValue()) {
                 if (!loanSchedulePeriodData.getComplete()) {
                     principalOverdue = principalOverdue
@@ -341,7 +367,8 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
 
         OriginalScheduleExtractor(final String loanIdsAsString, DatabaseSpecificSQLGenerator sqlGenerator) {
             final StringBuilder scheduleDetail = new StringBuilder();
-            scheduleDetail.append("select ml.id as loanId, mr.duedate as dueDate, mr.principal_amount as principalAmount, ");
+            scheduleDetail.append(
+                    "select ml.id as loanId, mr.installment as installmentNumber, mr.fromdate as fromDate, mr.duedate as dueDate, mr.principal_amount as principalAmount, ");
             scheduleDetail.append(
                     "mr.interest_amount as interestAmount, mr.fee_charges_amount as feeAmount, mr.penalty_charges_amount as penaltyAmount  ");
             scheduleDetail.append("from m_loan ml  INNER JOIN m_loan_repayment_schedule_history mr on mr.loan_id = ml.id ");
@@ -369,25 +396,22 @@ public class LoanArrearsAgingServiceImpl implements LoanArrearsAgingService {
         }
 
         private LoanSchedulePeriodData fetchLoanSchedulePeriodData(ResultSet rs) throws SQLException {
+            final Integer installmentNumber = JdbcSupport.getInteger(rs, "installmentNumber");
+            final LocalDate fromDate = JdbcSupport.getLocalDate(rs, "fromDate");
             final LocalDate dueDate = JdbcSupport.getLocalDate(rs, "dueDate");
             final BigDecimal principalDue = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "principalAmount");
             final BigDecimal interestDueOnPrincipalOutstanding = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "interestAmount");
-            final BigDecimal totalInstallmentAmount = principalDue.add(interestDueOnPrincipalOutstanding);
             final BigDecimal feeChargesDueForPeriod = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "feeAmount");
             final BigDecimal penaltyChargesDueForPeriod = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "penaltyAmount");
-            final Integer periodNumber = null;
-            final LocalDate fromDate = null;
-            final BigDecimal principalOutstanding = null;
-            final BigDecimal totalDueForPeriod = null;
-            return LoanSchedulePeriodData.repaymentOnlyPeriod(periodNumber, fromDate, dueDate, principalDue, principalOutstanding,
-                    interestDueOnPrincipalOutstanding, feeChargesDueForPeriod, penaltyChargesDueForPeriod, totalDueForPeriod,
-                    totalInstallmentAmount);
+
+            return LoanSchedulePeriodData.repaymentOnlyPeriod(installmentNumber, fromDate, dueDate, principalDue, null,
+                    interestDueOnPrincipalOutstanding, feeChargesDueForPeriod, penaltyChargesDueForPeriod);
 
         }
     }
 
     private void handleArrearsForLoan(Loan loan) {
-        if (loan != null && loan.isOpen() && loan.repaymentScheduleDetail().isInterestRecalculationEnabled()
+        if (loan != null && loan.isOpen() && loan.isInterestBearingAndInterestRecalculationEnabled()
                 && loan.loanProduct().isArrearsBasedOnOriginalSchedule()) {
             updateLoanArrearsAgeingDetailsWithOriginalSchedule(loan);
         } else {

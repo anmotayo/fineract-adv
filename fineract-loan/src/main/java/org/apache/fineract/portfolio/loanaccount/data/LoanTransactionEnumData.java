@@ -18,6 +18,8 @@
  */
 package org.apache.fineract.portfolio.loanaccount.data;
 
+import java.io.Serial;
+import java.io.Serializable;
 import lombok.Getter;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 
@@ -25,7 +27,10 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
  * Immutable data object represent loan status enumerations.
  */
 @Getter
-public class LoanTransactionEnumData {
+public class LoanTransactionEnumData implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final Long id;
     private final String code;
@@ -59,6 +64,18 @@ public class LoanTransactionEnumData {
     private final boolean downPayment;
     private final boolean reAge;
     private final boolean reAmortize;
+    private final boolean accrualActivity;
+    private final boolean interestRefund;
+    private final boolean accrualAdjustment;
+    private final boolean capitalizedIncome;
+    private final boolean capitalizedIncomeAmortization;
+    private final boolean capitalizedIncomeAdjustment;
+    private final boolean capitalizedIncomeAmortizationAdjustment;
+    private final boolean contractTermination;
+    private final boolean buyDownFee;
+    private final boolean buyDownFeeAdjustment;
+    private final boolean buyDownFeeAmortization;
+    private final boolean buyDownFeeAmortizationAdjustment;
 
     public LoanTransactionEnumData(final Long id, final String code, final String value) {
         this.id = id;
@@ -90,8 +107,22 @@ public class LoanTransactionEnumData {
         this.chargeoff = Long.valueOf(27).equals(this.id);
         this.downPayment = Long.valueOf(28).equals(this.id);
         this.interestPaymentWaiver = Long.valueOf(31).equals(this.id);
+        this.accrualActivity = Long.valueOf(32).equals(this.id);
         this.reAge = Long.valueOf(LoanTransactionType.REAGE.getValue()).equals(this.id);
         this.reAmortize = Long.valueOf(LoanTransactionType.REAMORTIZE.getValue()).equals(this.id);
+        this.interestRefund = Long.valueOf(LoanTransactionType.INTEREST_REFUND.getValue()).equals(this.id);
+        this.accrualAdjustment = Long.valueOf(LoanTransactionType.ACCRUAL_ADJUSTMENT.getValue()).equals(this.id);
+        this.capitalizedIncome = Long.valueOf(LoanTransactionType.CAPITALIZED_INCOME.getValue()).equals(this.id);
+        this.capitalizedIncomeAmortization = Long.valueOf(LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION.getValue()).equals(this.id);
+        this.capitalizedIncomeAdjustment = Long.valueOf(LoanTransactionType.CAPITALIZED_INCOME_ADJUSTMENT.getValue()).equals(this.id);
+        this.capitalizedIncomeAmortizationAdjustment = Long
+                .valueOf(LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT.getValue()).equals(this.id);
+        this.contractTermination = Long.valueOf(LoanTransactionType.CONTRACT_TERMINATION.getValue()).equals(this.id);
+        this.buyDownFee = Long.valueOf(LoanTransactionType.BUY_DOWN_FEE.getValue()).equals(this.id);
+        this.buyDownFeeAdjustment = Long.valueOf(LoanTransactionType.BUY_DOWN_FEE_ADJUSTMENT.getValue()).equals(this.id);
+        this.buyDownFeeAmortization = Long.valueOf(LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION.getValue()).equals(this.id);
+        this.buyDownFeeAmortizationAdjustment = Long.valueOf(LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT.getValue())
+                .equals(this.id);
     }
 
     public boolean isRepaymentType() {

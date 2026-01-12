@@ -73,6 +73,10 @@ public final class BatchHelper {
      * @param batchRequests
      * @return JSON String of BatchRequest
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static String toJsonString(final List<BatchRequest> batchRequests) {
         return new Gson().toJson(batchRequests);
     }
@@ -83,6 +87,10 @@ public final class BatchHelper {
      * @param
      * @return Map
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static Map generateMapFromJsonString(final String jsonString) {
         return new Gson().fromJson(jsonString, Map.class);
     }
@@ -93,6 +101,10 @@ public final class BatchHelper {
      * @param json
      * @return {@code List<BatchResponse>}
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     private static List<BatchResponse> fromJsonString(final String json) {
         return new Gson().fromJson(json, new TypeToken<List<BatchResponse>>() {}.getType());
     }
@@ -106,6 +118,10 @@ public final class BatchHelper {
      * @param jsonifiedBatchRequests
      * @return a list of BatchResponse
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static List<BatchResponse> postBatchRequestsWithoutEnclosingTransaction(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final String jsonifiedBatchRequests) {
         final String response = Utils.performServerPost(requestSpec, responseSpec, BATCH_API_WITHOUT_ENCLOSING_URL_EXT,
@@ -114,6 +130,10 @@ public final class BatchHelper {
         return BatchHelper.fromJsonString(response);
     }
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static ErrorResponse postBatchRequestsWithoutEnclosingTransactionError(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final String jsonifiedBatchRequests) {
         final String response = Utils.performServerPost(requestSpec, responseSpec, BATCH_API_WITHOUT_ENCLOSING_URL_EXT,
@@ -131,6 +151,10 @@ public final class BatchHelper {
      * @param jsonifiedBatchRequests
      * @return a list of BatchResponse
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static List<BatchResponse> postBatchRequestsWithEnclosingTransaction(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final String jsonifiedBatchRequests) {
         final String response = Utils.performServerPost(requestSpec, responseSpec, BATCH_API_URL_EXT, jsonifiedBatchRequests, null);
@@ -143,6 +167,10 @@ public final class BatchHelper {
      * @param
      * @return {@code List<BatchResponse>}
      */
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static List<BatchResponse> postWithSingleRequest(final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec, final BatchRequest br) {
 
@@ -443,7 +471,7 @@ public final class BatchHelper {
         final String dateString = LocalDate.now(Utils.getZoneIdOfTenant()).format(DateTimeFormatter.ofPattern(dateFormat));
 
         final String body = String.format(
-                "{\"chargeId\": \"%d\", \"locale\": \"en\", \"amount\": \"11.15\", " + "\"dateFormat\": \"%s\", \"dueDate\": \"%s\"}",
+                "{\"chargeId\": \"%d\", \"locale\": \"en\", \"amount\": \"100.0\", " + "\"dateFormat\": \"%s\", \"dueDate\": \"%s\"}",
                 chargeId, dateFormat, dateString);
         br.setBody(body);
 
@@ -968,6 +996,24 @@ public final class BatchHelper {
      */
     public static BatchRequest payoutRefundRequest(final Long requestId, final Long reference, final String amount) {
         return createTransactionRequest(requestId, reference, "payoutRefund", amount, LocalDate.now(Utils.getZoneIdOfTenant()));
+    }
+
+    public static BatchRequest chargeOffRequest(final Long requestId, final Long referenceId) {
+        return chargeOffRequest(requestId, referenceId, LocalDate.now(Utils.getZoneIdOfTenant()));
+    }
+
+    public static BatchRequest chargeOffRequest(final Long requestId, final Long referenceId, LocalDate date) {
+        final BatchRequest br = new BatchRequest();
+
+        br.setRequestId(requestId);
+        br.setReference(referenceId);
+        br.setRelativeUrl(String.format("v1/loans/$.loanId/transactions?command=%s", "charge-off"));
+        br.setMethod("POST");
+        String dateString = date.format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
+        br.setBody(String.format("{\"locale\": \"en\", \"dateFormat\": \"dd MMMM yyyy\", " + "\"transactionDate\": \"%s\", \"note\":null}",
+                dateString));
+
+        return br;
     }
 
     /**

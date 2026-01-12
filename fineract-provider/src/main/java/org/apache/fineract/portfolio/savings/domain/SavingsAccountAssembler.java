@@ -369,6 +369,11 @@ public class SavingsAccountAssembler {
                 } else {
                     savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account,
                             account.getSummary().getInterestPostedTillDate());
+
+                    if (savingsAccountTransactions != null && !savingsAccountTransactions.isEmpty()) {
+                        account.getSummary().setRunningBalanceOnPivotDate(savingsAccountTransactions.stream().filter(x -> !x.isAccrual())
+                                .toList().get(savingsAccountTransactions.size() - 1).getRunningBalance(account.getCurrency()).getAmount());
+                    }
                 }
 
                 if (savingsAccountTransactions != null && savingsAccountTransactions.size() > 0) {

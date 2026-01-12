@@ -140,6 +140,11 @@ public class SavingsAccountRepositoryWrapper {
         return this.savingsAccountTransactionRepository.findTransactionRunningBalanceBeforePivotDate(savingsAccount, date);
     }
 
+    public List<SavingsAccountTransaction> findTransactionsBeforePivotDate(@Param("savingsId") Long savingsId,
+            @Param("date") LocalDate date, Pageable pageable) {
+        return this.savingsAccountTransactionRepository.findNonAccrualTransactionBeforeRunningDate(savingsId, date, pageable);
+    }
+
     @Transactional
     public List<SavingsAccountTransaction> findAllTransactions(@Param("savingsAccount") SavingsAccount savingsAccount) {
         return this.savingsAccountTransactionRepository.findBySavingsAccount(savingsAccount);

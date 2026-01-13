@@ -90,4 +90,13 @@ public class SavingsDropdownReadPlatformServiceImpl implements SavingsDropdownRe
 
         return allowedOptions;
     }
+
+    @Override
+    public Collection<EnumOptionData> retrieveWithHoldTaxPostingTypeOptions() {
+        final List<EnumOptionData> allowedOptions = Arrays.asList(
+                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.MATURITY),
+                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.INTEREST_POSTING));
+
+        return allowedOptions;
+    }
 }

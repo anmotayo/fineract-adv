@@ -107,6 +107,7 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -526,7 +527,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
 
         boolean recalucateDailyBalanceDetails = false;
-        boolean applyWithHoldTax = isWithHoldTaxApplicableForInterestPosting();
+        boolean applyWithHoldTax = isWithHoldTaxApplicable(withHoldTaxPostingType());
         final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
 
         if (backdatedTxnsAllowedTill) {
@@ -3921,4 +3922,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     public DepositAccountType depositAccountType() {
         return DepositAccountType.fromInt(100);
     }
+
+    protected WithHoldTaxPostingType withHoldTaxPostingType(){ return null; }
 }

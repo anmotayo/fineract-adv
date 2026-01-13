@@ -35,6 +35,11 @@ public final class TaxGroupData implements Serializable {
     @SuppressWarnings("unused")
     private final Collection<TaxComponentData> taxComponents;
 
+    public static TaxGroupData instance(final Long id, final String name, final Collection<TaxGroupMappingsData> taxAssociations) {
+        final Collection<TaxComponentData> taxComponents = null;
+        return new TaxGroupData(id, name, taxAssociations, taxComponents);
+    }
+
     public static TaxGroupData lookup(final Long id, final String name) {
         final Collection<TaxComponentData> taxComponents = null;
         final Collection<TaxGroupMappingsData> taxAssociations = null;

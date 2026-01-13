@@ -48,6 +48,7 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
@@ -142,6 +143,9 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
             // update charges from Product charges
             final Collection<SavingsAccountChargeData> charges = fromChargesToSavingsCharges(productCharges);
 
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = this.dropdownReadPlatformService
+                    .retrieveWithHoldTaxPostingTypeOptions();
+
             final boolean feeChargesOnly = false;
             final Collection<ChargeData> chargeOptions = this.chargeReadPlatformService
                     .retrieveSavingsProductApplicableCharges(feeChargesOnly);
@@ -175,7 +179,7 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
             template = SavingsAccountData.withTemplateOptions(template, productOptions, fieldOfficerOptions,
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, transactions,
-                    charges, chargeOptions);
+                    charges, chargeOptions, withHoldTaxPostingTypeOptions);
         } else {
 
             String clientName = null;
@@ -200,6 +204,7 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
 
             final Collection<SavingsAccountTransactionData> transactions = null;
             final Collection<SavingsAccountChargeData> charges = null;
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
             final boolean feeChargesOnly = false;
             final Collection<ChargeData> chargeOptions = this.chargeReadPlatformService
@@ -208,7 +213,7 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
             template = SavingsAccountData.withTemplateOptions(template, productOptions, fieldOfficerOptions,
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, transactions,
-                    charges, chargeOptions);
+                    charges, chargeOptions, withHoldTaxPostingTypeOptions);
         }
 
         final List<DatatableData> datatableTemplates = this.entityDatatableChecksReadService.retrieveTemplates(StatusEnum.CREATE.getValue(),
@@ -263,10 +268,12 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
             sqlBuilder.append("sp.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sp.enforce_min_required_balance as enforceMinRequiredBalance, ");
             sqlBuilder.append("sp.max_allowed_lien_limit as maxAllowedLienLimit, ");
-            sqlBuilder.append("sp.is_lien_allowed as lienAllowed ");
+            sqlBuilder.append("sp.is_lien_allowed as lienAllowed, ");
+            sqlBuilder.append("dptap.withhold_tax_posting_type_enum as withHoldTaxPostingType ");
             sqlBuilder.append("from m_savings_product sp ");
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id  ");
+            sqlBuilder.append("left join m_deposit_product_term_and_preclosure dptap on dptap.savings_product_id = sp.id ");
 
             this.schemaSql = sqlBuilder.toString();
         }
@@ -312,6 +319,13 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
             if (lockinPeriodFrequencyTypeValue != null) {
                 final SavingsPeriodFrequencyType lockinPeriodType = SavingsPeriodFrequencyType.fromInt(lockinPeriodFrequencyTypeValue);
                 lockinPeriodFrequencyType = SavingsEnumerations.lockinPeriodFrequencyType(lockinPeriodType);
+            }
+
+            EnumOptionData withHoldTaxPostingType = null;
+            final Integer withHoldTaxPostingTypeId = JdbcSupport.getInteger(rs, "withHoldTaxPostingType");
+            if (withHoldTaxPostingTypeId != null) {
+                withHoldTaxPostingType = SavingsEnumerations
+                        .withHoldTaxPostingType(WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId));
             }
 
             // final BigDecimal withdrawalFeeAmount =
@@ -396,7 +410,7 @@ public class SavingsAccountTemplateReadPlatformServiceImpl implements SavingsAcc
                     withdrawalFeeForTransfers, summary, allowOverdraft, overdraftLimit, minRequiredBalance, enforceMinRequiredBalance,
                     maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation, onHoldFunds, nominalAnnualInterestRateOverdraft,
                     minOverdraftForInterestCalculation, withHoldTax, taxGroupData, lastActiveTransactionDate, isDormancyTrackingActive,
-                    daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold);
+                    daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold, withHoldTaxPostingType);
         }
     }
 

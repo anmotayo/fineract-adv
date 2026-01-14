@@ -18,7 +18,6 @@
  */
 package org.apache.fineract.portfolio.savings.service;
 
-import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;

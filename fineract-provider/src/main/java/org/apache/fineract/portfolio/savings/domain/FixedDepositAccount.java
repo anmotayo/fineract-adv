@@ -659,6 +659,7 @@ public class FixedDepositAccount extends SavingsAccount {
                 financialYearBeginningMonth, postAsInterestOn, backdatedTxnsAllowedTill, postReversals);
     }
 
+    @Override
     public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
         LocalDate interestPostingUpToDate = interestPostingDate;
         final LocalDate uptoMaturityDate = interestCalculatedUpto();
@@ -912,7 +913,7 @@ public class FixedDepositAccount extends SavingsAccount {
     }
 
     @Override
-    protected WithHoldTaxPostingType withHoldTaxPostingType(){
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
         return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }

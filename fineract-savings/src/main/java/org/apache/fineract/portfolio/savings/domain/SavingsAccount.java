@@ -3923,5 +3923,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return DepositAccountType.fromInt(100);
     }
 
-    protected WithHoldTaxPostingType withHoldTaxPostingType(){ return null; }
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
+        return null;
+    }
 }

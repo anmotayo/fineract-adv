@@ -161,11 +161,13 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         existingReversedTransactionIds.addAll(savingsAccount.findExistingReversedTransactionIds());
 
         List<LocalDate> postedAsOnTransactionDates = savingsAccount.getManualPostingDates();
-        final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType
-                .fromInt(savingsAccount.getInterestCalculationType());
+     /*   final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType
+                .fromInt(savingsAccount.getInterestCalculationType());*/
+
+        final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType.DAILY;
 
         final SavingsCompoundingInterestPeriodType compoundingPeriodType = SavingsCompoundingInterestPeriodType
-                .fromInt(savingsAccount.getInterestPostingPeriodType());
+                .fromInt(savingsAccount.getInterestCompoundingPeriodType());
 
         final SavingsInterestCalculationDaysInYearType daysInYearType = SavingsInterestCalculationDaysInYearType
                 .fromInt(savingsAccount.getInterestCalculationDaysInYearType());

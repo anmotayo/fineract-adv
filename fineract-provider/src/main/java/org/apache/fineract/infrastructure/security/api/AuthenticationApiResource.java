@@ -59,6 +59,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -127,6 +128,8 @@ public class AuthenticationApiResource {
             // Audit authentication with masked password
             try {
                 if (Boolean.TRUE.equals(principal.getEnableReadAudit())) {
+                    // Set the security context before saving so entity listeners can access the authenticated user
+                    SecurityContextHolder.getContext().setAuthentication(authenticationCheck);
                     CommandSource authAudit = CommandSource.authenticationAuditEntry(request.username, principal);
                     this.commandSourceRepository.save(authAudit);
                 }

@@ -24,6 +24,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
@@ -154,24 +155,24 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         return commandSource;
     }
 
-    public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final AppUser maker) {
-        return readAuditEntry(entityName, resourceId, null, maker);
-    }
-
     public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final ExternalId resourceExternalId,
             final AppUser maker) {
-        CommandSource commandSource = new CommandSource("READ", entityName, null, resourceId, null,
-                null, maker, null, CommandProcessingResultType.PROCESSED.getValue());
+        String resourceUrl = "/" + entityName.toLowerCase() + "s/" + resourceId;
+        CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null,
+                "{}", maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
+        commandSource.resultStatusCode = 200;
         return commandSource;
     }
 
     public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
         String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
-        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", null, maker.getId(), null,
-                maskedJson, maker, null, CommandProcessingResultType.PROCESSED.getValue());
+        String resourceUrl = "/authentication";
+        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", resourceUrl, maker.getId(), null,
+                maskedJson, maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
+        commandSource.resultStatusCode = 200;
         return commandSource;
     }
 

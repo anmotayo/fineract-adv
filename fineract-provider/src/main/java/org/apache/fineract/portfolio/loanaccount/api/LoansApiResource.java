@@ -863,8 +863,8 @@ public class LoansApiResource {
         this.context.authenticatedUser().validateHasReadPermission(RESOURCE_NAME_FOR_PERMISSIONS);
         ExternalId loanExternalId = ExternalIdFactory.produce(loanExternalIdStr);
         Long resolvedLoanId = getResolvedLoanId(loanId, loanExternalId);
-        this.readAuditService.auditRead("LOAN", resolvedLoanId, loanExternalId);
         LoanAccountData loanBasicDetails = this.loanReadPlatformService.retrieveOne(resolvedLoanId);
+        this.readAuditService.auditRead("LOAN", resolvedLoanId, loanBasicDetails.getExternalId());
         if (loanBasicDetails.isInterestRecalculationEnabled()) {
             Collection<CalendarData> interestRecalculationCalendarDatas = this.calendarReadPlatformService.retrieveCalendarsByEntity(
                     loanBasicDetails.getInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue(),

@@ -67,6 +67,7 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.service.SqlValidator;
@@ -203,10 +204,9 @@ public class RecurringDepositAccountsApiResource {
             throw new UnrecognizedQueryParamException("status", chargeStatus, new Object[] { "all", "active", "inactive" });
         }
 
-        this.readAuditService.auditRead("RECURRINGDEPOSITACCOUNT", accountId);
-
         final RecurringDepositAccountData account = (RecurringDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.RECURRING_DEPOSIT, accountId);
+        this.readAuditService.auditRead("RECURRINGDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()));
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final RecurringDepositAccountData accountTemplate = populateTemplateAndAssociations(accountId, account, staffInSelectedOfficeOnly,

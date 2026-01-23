@@ -69,6 +69,7 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.service.SqlValidator;
@@ -201,7 +202,6 @@ public class FixedDepositAccountsApiResource {
             @Context final UriInfo uriInfo) {
 
         this.context.authenticatedUser().validateHasReadPermission(DepositsApiConstants.FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME);
-        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId);
 
         if (!(CommandParameterUtil.is(chargeStatus, "all") || CommandParameterUtil.is(chargeStatus, "active")
                 || CommandParameterUtil.is(chargeStatus, "inactive"))) {
@@ -210,6 +210,7 @@ public class FixedDepositAccountsApiResource {
 
         final FixedDepositAccountData account = (FixedDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.FIXED_DEPOSIT, accountId);
+        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()));
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final FixedDepositAccountData accountTemplate = populateTemplateAndAssociations(accountId, account, staffInSelectedOfficeOnly,

@@ -54,6 +54,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.data.GlobalEntityType;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
@@ -108,6 +109,7 @@ public class FixedDepositAccountsApiResource {
     private final BulkImportWorkbookPopulatorService bulkImportWorkbookPopulatorService;
     private final FixedDepositAccountInterestCalculationService fixedDepositAccountInterestCalculationService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
 
     @GET
     @Path("template")
@@ -199,6 +201,7 @@ public class FixedDepositAccountsApiResource {
             @Context final UriInfo uriInfo) {
 
         this.context.authenticatedUser().validateHasReadPermission(DepositsApiConstants.FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId);
 
         if (!(CommandParameterUtil.is(chargeStatus, "all") || CommandParameterUtil.is(chargeStatus, "active")
                 || CommandParameterUtil.is(chargeStatus, "inactive"))) {

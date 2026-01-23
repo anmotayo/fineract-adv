@@ -27,6 +27,9 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.commands.domain.CommandSource;
+import org.apache.fineract.commands.domain.CommandSourceRepository;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.POST;
@@ -63,6 +66,7 @@ import org.springframework.stereotype.Component;
 @Path("/v1/authentication")
 @Tag(name = "Authentication HTTP Basic", description = "An API capability that allows client applications to verify authentication details using HTTP Basic Authentication.")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthenticationApiResource {
 
     @Value("${fineract.security.2fa.enabled}")
@@ -79,6 +83,7 @@ public class AuthenticationApiResource {
     private final ToApiJsonSerializer<AuthenticatedUserData> apiJsonSerializerService;
     private final SpringSecurityPlatformSecurityContext springSecurityPlatformSecurityContext;
     private final ClientReadPlatformService clientReadPlatformService;
+    private final CommandSourceRepository commandSourceRepository;
 
     @POST
     @Consumes({ MediaType.APPLICATION_JSON })
@@ -118,6 +123,17 @@ public class AuthenticationApiResource {
                     .encode((request.username + ":" + request.password).getBytes(StandardCharsets.UTF_8));
 
             final AppUser principal = (AppUser) authenticationCheck.getPrincipal();
+
+            // Audit authentication with masked password
+            try {
+                if (Boolean.TRUE.equals(principal.getEnableReadAudit())) {
+                    CommandSource authAudit = CommandSource.authenticationAuditEntry(request.username, principal);
+                    this.commandSourceRepository.save(authAudit);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to audit AUTHENTICATE operation for user {}: {}", request.username, e.getMessage());
+            }
+
             final Collection<RoleData> roles = new ArrayList<>();
             final Set<Role> userRoles = principal.getRoles();
             for (final Role role : userRoles) {

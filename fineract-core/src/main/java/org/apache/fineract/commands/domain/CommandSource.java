@@ -154,6 +154,27 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         return commandSource;
     }
 
+    public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final AppUser maker) {
+        return readAuditEntry(entityName, resourceId, null, maker);
+    }
+
+    public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final ExternalId resourceExternalId,
+            final AppUser maker) {
+        CommandSource commandSource = new CommandSource("READ", entityName, null, resourceId, null,
+                null, maker, null, CommandProcessingResultType.PROCESSED.getValue());
+        commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
+        commandSource.resourceExternalId = resourceExternalId;
+        return commandSource;
+    }
+
+    public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
+        String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
+        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", null, maker.getId(), null,
+                maskedJson, maker, null, CommandProcessingResultType.PROCESSED.getValue());
+        commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
+        return commandSource;
+    }
+
     protected CommandSource() {
         //
     }

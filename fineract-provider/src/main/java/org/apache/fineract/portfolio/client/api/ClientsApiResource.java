@@ -48,6 +48,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
@@ -95,6 +96,7 @@ public class ClientsApiResource {
     private final BulkImportWorkbookPopulatorService bulkImportWorkbookPopulatorService;
     private final GuarantorReadPlatformService guarantorReadPlatformService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
 
     @GET
     @Path("template")
@@ -530,6 +532,8 @@ public class ClientsApiResource {
 
         ExternalId clientExternalId = ExternalIdFactory.produce(externalId);
         clientId = getResolvedClientId(clientId, clientExternalId);
+
+        readAuditService.auditRead("CLIENT", clientId, clientExternalId);
 
         final ApiRequestJsonSerializationSettings settings = apiRequestParameterHelper.process(uriInfo.getQueryParameters());
         final ClientData clientData = retrieveClientData(clientId, staffInSelectedOfficeOnly, settings.isTemplate());

@@ -52,6 +52,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.data.GlobalEntityType;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
@@ -101,6 +102,7 @@ public class RecurringDepositAccountsApiResource {
     private final BulkImportWorkbookService bulkImportWorkbookService;
     private final BulkImportWorkbookPopulatorService bulkImportWorkbookPopulatorService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
 
     @GET
     @Path("template")
@@ -200,6 +202,8 @@ public class RecurringDepositAccountsApiResource {
                 || CommandParameterUtil.is(chargeStatus, "inactive"))) {
             throw new UnrecognizedQueryParamException("status", chargeStatus, new Object[] { "all", "active", "inactive" });
         }
+
+        this.readAuditService.auditRead("RECURRINGDEPOSITACCOUNT", accountId);
 
         final RecurringDepositAccountData account = (RecurringDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.RECURRING_DEPOSIT, accountId);

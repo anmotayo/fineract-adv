@@ -163,4 +163,5 @@
     <include file="parts/0140_trial_balance_with_asset_transfer_update.xml" relativeToChangelogFile="true" />
     <include file="parts/0141_add_interest_payment_waiver_transaction_type.xml" relativeToChangelogFile="true" />
     <include file="parts/0142_add_withhold_tax_posting_type.xml" relativeToChangelogFile="true" />
+    <include file="parts/0143_add_is_api_user_to_appuser.xml" relativeToChangelogFile="true" />
 </databaseChangeLog>

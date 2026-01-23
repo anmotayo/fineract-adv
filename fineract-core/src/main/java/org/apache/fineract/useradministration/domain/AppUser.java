@@ -119,6 +119,9 @@ public class AppUser extends AbstractPersistableCustom<Long> implements Platform
     @Column(name = "cannot_change_password", nullable = true)
     private Boolean cannotChangePassword;
 
+    @Column(name = "enable_read_audit", nullable = true)
+    private Boolean enableReadAudit;
+
     public static AppUser fromJson(final Office userOffice, final Staff linkedStaff, final Set<Role> allRoles,
             final Collection<Client> clients, final JsonCommand command) {
 
@@ -711,6 +714,10 @@ public class AppUser extends AbstractPersistableCustom<Long> implements Platform
 
     public boolean isSelfServiceUser() {
         return this.isSelfServiceUser;
+    }
+
+    public Boolean getEnableReadAudit() {
+        return this.enableReadAudit;
     }
 
     public Set<AppUserClientMapping> getAppUserClientMappings() {

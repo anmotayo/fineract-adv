@@ -220,14 +220,13 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 period.calculateInterest(compoundInterestValues);
                 log.debug("  period {} {} : {}", period.getPeriodInterval().startDate(), period.getPeriodInterval().endDate(),
                         period.getInterestEarned());
-                if (!accrualTransactionDates.contains(period.getPeriodInterval().endDate())) {
-                    final LocalDate dateOfTransaction = period.dateOfPostingTransaction();
-                    final LocalDate accrualTransactionDate = isAverageDailyBalance ? dateOfTransaction : period.getPeriodInterval().endDate();
-                    if(!dateOfTransaction.isAfter(tillDate)){
-                        SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
-                                savingsAccount.office(), accrualTransactionDate, period.getInterestEarned(), false);
-                        savingsAccount.addTransaction(savingsAccountTransaction);
-                    }
+
+                final LocalDate dateOfTransaction = period.dateOfPostingTransaction();
+                final LocalDate accrualTransactionDate = isAverageDailyBalance ? dateOfTransaction : period.getPeriodInterval().endDate();
+                if (!accrualTransactionDates.contains(accrualTransactionDate) && !dateOfTransaction.isAfter(tillDate)) {
+                    SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
+                            savingsAccount.office(), accrualTransactionDate, period.getInterestEarned(), false);
+                    savingsAccount.addTransaction(savingsAccountTransaction);
                 }
             }
         }

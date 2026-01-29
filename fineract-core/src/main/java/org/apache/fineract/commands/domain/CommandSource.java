@@ -166,6 +166,12 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
         commandSource.resultStatusCode = 200;
+        switch (entityName) {
+            case "CLIENT" -> commandSource.clientId = resourceId;
+            case "LOAN" -> commandSource.loanId = resourceId;
+            case "SAVINGSACCOUNT", "FIXEDDEPOSITACCOUNT", "RECURRINGDEPOSITACCOUNT" -> commandSource.savingsId = resourceId;
+            default -> { }
+        }
         return commandSource;
     }
 

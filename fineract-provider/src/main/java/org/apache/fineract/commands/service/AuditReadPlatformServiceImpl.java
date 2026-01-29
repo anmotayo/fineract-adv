@@ -458,7 +458,7 @@ public class AuditReadPlatformServiceImpl implements AuditReadPlatformService {
                     + " join m_appuser_role ur on ur.role_id = r.id and ur.appuser_id = " + currentUser.getId();
 
         }
-        sql += " where p.action_name is not null and p.action_name <> 'READ' ";
+        sql += " where p.action_name is not null ";
         if (isLimitedChecker) {
             sql += "and p.code like '%\\_CHECKER'";
         }

@@ -54,6 +54,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.data.GlobalEntityType;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
@@ -68,6 +69,7 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.service.SqlValidator;
@@ -108,6 +110,7 @@ public class FixedDepositAccountsApiResource {
     private final BulkImportWorkbookPopulatorService bulkImportWorkbookPopulatorService;
     private final FixedDepositAccountInterestCalculationService fixedDepositAccountInterestCalculationService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
 
     @GET
     @Path("template")
@@ -207,6 +210,7 @@ public class FixedDepositAccountsApiResource {
 
         final FixedDepositAccountData account = (FixedDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.FIXED_DEPOSIT, accountId);
+        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()));
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final FixedDepositAccountData accountTemplate = populateTemplateAndAssociations(accountId, account, staffInSelectedOfficeOnly,

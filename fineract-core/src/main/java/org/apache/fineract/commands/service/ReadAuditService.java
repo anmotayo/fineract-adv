@@ -48,19 +48,6 @@ public class ReadAuditService {
     private final CommandSourceRepository commandSourceRepository;
 
     /**
-     * Audits a READ operation for the specified entity and resource.
-     *
-     * @param entityName
-     *            the name of the entity being read (e.g., "CLIENT", "LOAN", "SAVINGSACCOUNT")
-     * @param resourceId
-     *            the ID of the resource being read
-     */
-    @Transactional
-    public void auditRead(final String entityName, final Long resourceId) {
-        auditRead(entityName, resourceId, null);
-    }
-
-    /**
      * Audits a READ operation for the specified entity and resource with external ID.
      *
      * @param entityName

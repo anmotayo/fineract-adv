@@ -110,8 +110,8 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         existingReversedTransactionIds.addAll(savingsAccount.findExistingReversedTransactionIds());
 
         List<LocalDate> postedAsOnTransactionDates = savingsAccount.getManualPostingDates();
-        final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType
-                .fromInt(savingsAccount.getInterestCalculationType());
+
+        final SavingsPostingInterestPeriodType postingPeriodType = getSavingsPostingInterestPeriodType(savingsAccount);
 
         final SavingsCompoundingInterestPeriodType compoundingPeriodType = SavingsCompoundingInterestPeriodType
                 .fromInt(savingsAccount.getInterestPostingPeriodType());
@@ -128,6 +128,8 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
 
         final SavingsInterestCalculationType interestCalculationType = SavingsInterestCalculationType
                 .fromInt(savingsAccount.getInterestCalculationType());
+        final boolean isAverageDailyBalance = interestCalculationType.equals(SavingsInterestCalculationType.AVERAGE_DAILY_BALANCE);
+
         final BigDecimal interestRateAsFraction = savingsAccount.getEffectiveInterestRateAsFractionAccrual(mc, tillDate);
         final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(savingsAccount.getId());
         boolean isInterestTransfer = false;
@@ -164,18 +166,17 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         LocalDate accruedTillDate = fromDate;
 
         for (PostingPeriod period : allPostingPeriods) {
-            LocalDate valueDate = period.getPeriodInterval().endDate();
+            final LocalDate valueDate = isAverageDailyBalance ? period.dateOfPostingTransaction() : period.getPeriodInterval().endDate();
             List<LocalDate> matchingAccrualDates = accrualTransactionDates.stream().filter(accrualDate -> accrualDate.equals(valueDate))
                     .toList();
             List<LocalDate> matchingAccrualReverseDates = reversedAccrualTransactionDates.stream()
                     .filter(accrualDate -> accrualDate.equals(valueDate)).toList();
             period.calculateInterest(compoundInterestValues);
-            final LocalDate endDate = period.getPeriodInterval().endDate();
-            if (!accrualTransactionDates.contains(period.getPeriodInterval().endDate())
+            if (!accrualTransactionDates.contains(valueDate)
                     || (!matchingAccrualReverseDates.isEmpty() && matchingAccrualDates.size() == matchingAccrualReverseDates.size())) {
-                String refNo = (refNoProvider != null) ? refNoProvider.apply(endDate) : null;
+                String refNo = (refNoProvider != null) ? refNoProvider.apply(valueDate) : null;
                 SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
-                        savingsAccount.office(), period.getPeriodInterval().endDate(), period.getInterestEarned().abs(), false, refNo);
+                        savingsAccount.office(), valueDate, period.getInterestEarned().abs(), false, refNo);
                 savingsAccountTransaction.setRunningBalance(period.getClosingBalance());
                 savingsAccountTransaction.setOverdraftAmount(period.getInterestEarned());
                 if (!MathUtil.isZero(savingsAccountTransaction.getAmount())) {
@@ -187,6 +188,15 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         savingsAccount.setAccruedTillDate(accruedTillDate);
         savingsAccountRepository.saveAndFlush(savingsAccount);
         savingsAccountDomainService.postJournalEntries(savingsAccount, existingTransactionIds, existingReversedTransactionIds, false);
+    }
+
+    private static SavingsPostingInterestPeriodType getSavingsPostingInterestPeriodType(SavingsAccount savingsAccount) {
+        final SavingsInterestCalculationType interestCalculationType = SavingsInterestCalculationType
+                .fromInt(savingsAccount.getInterestCalculationType());
+        final boolean isDailyBalance = interestCalculationType.equals(SavingsInterestCalculationType.DAILY_BALANCE);
+
+        return isDailyBalance ? SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestCalculationType())
+                : SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestPostingPeriodType());
     }
 
 }

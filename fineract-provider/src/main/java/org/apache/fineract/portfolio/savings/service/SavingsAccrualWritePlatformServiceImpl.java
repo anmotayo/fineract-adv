@@ -221,11 +221,10 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 log.debug("  period {} {} : {}", period.getPeriodInterval().startDate(), period.getPeriodInterval().endDate(),
                         period.getInterestEarned());
 
-                final LocalDate dateOfTransaction = period.dateOfPostingTransaction();
-                final LocalDate accrualTransactionDate = isAverageDailyBalance ? dateOfTransaction : period.getPeriodInterval().endDate();
-                if (!accrualTransactionDates.contains(accrualTransactionDate) && !dateOfTransaction.isAfter(tillDate)) {
+                final LocalDate valueDate = period.getPeriodInterval().endDate();
+                if (!accrualTransactionDates.contains(valueDate)) {
                     SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
-                            savingsAccount.office(), accrualTransactionDate, period.getInterestEarned(), false);
+                            savingsAccount.office(), valueDate, period.getInterestEarned(), false);
                     savingsAccount.addTransaction(savingsAccountTransaction);
                 }
             }

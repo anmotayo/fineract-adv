@@ -114,7 +114,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         final SavingsPostingInterestPeriodType postingPeriodType = getSavingsPostingInterestPeriodType(savingsAccount);
 
         final SavingsCompoundingInterestPeriodType compoundingPeriodType = SavingsCompoundingInterestPeriodType
-                .fromInt(savingsAccount.getInterestPostingPeriodType());
+                .fromInt(savingsAccount.getInterestCompoundingPeriodType());
 
         final SavingsInterestCalculationDaysInYearType daysInYearType = SavingsInterestCalculationDaysInYearType
                 .fromInt(savingsAccount.getInterestCalculationDaysInYearType());
@@ -128,7 +128,6 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
 
         final SavingsInterestCalculationType interestCalculationType = SavingsInterestCalculationType
                 .fromInt(savingsAccount.getInterestCalculationType());
-        final boolean isAverageDailyBalance = interestCalculationType.equals(SavingsInterestCalculationType.AVERAGE_DAILY_BALANCE);
 
         final BigDecimal interestRateAsFraction = savingsAccount.getEffectiveInterestRateAsFractionAccrual(mc, tillDate);
         final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(savingsAccount.getId());
@@ -166,7 +165,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         LocalDate accruedTillDate = fromDate;
 
         for (PostingPeriod period : allPostingPeriods) {
-            final LocalDate valueDate = isAverageDailyBalance ? period.dateOfPostingTransaction() : period.getPeriodInterval().endDate();
+            final LocalDate valueDate = period.getPeriodInterval().endDate();
             List<LocalDate> matchingAccrualDates = accrualTransactionDates.stream().filter(accrualDate -> accrualDate.equals(valueDate))
                     .toList();
             List<LocalDate> matchingAccrualReverseDates = reversedAccrualTransactionDates.stream()

@@ -183,10 +183,10 @@ public class AuditsApiResource {
         extraCriteria.addNonNullCriteria("aud.resource_id = ", resourceId);
         extraCriteria.addNonNullCriteria("aud.maker_id = ", makerId);
         extraCriteria.addNonNullCriteria("aud.checker_id = ", checkerId);
-        extraCriteria.addNonNullCriteria("aud.made_on_date >= ", makerDateTimeFrom);
-        extraCriteria.addNonNullCriteria("aud.made_on_date <= ", makerDateTimeTo);
-        extraCriteria.addNonNullCriteria("aud.checked_on_date >= ", checkerDateTimeFrom);
-        extraCriteria.addNonNullCriteria("aud.checked_on_date <= ", checkerDateTimeTo);
+        extraCriteria.addNonNullCriteria("aud.made_on_date_utc >= ", makerDateTimeFrom);
+        extraCriteria.addNonNullCriteria("aud.made_on_date_utc <= ", makerDateTimeTo);
+        extraCriteria.addNonNullCriteria("aud.checked_on_date_utc >= ", checkerDateTimeFrom);
+        extraCriteria.addNonNullCriteria("aud.checked_on_date_utc <= ", checkerDateTimeTo);
         extraCriteria.addNonNullCriteria("aud.status = ", status);
         extraCriteria.addNonNullCriteria("aud.office_id = ", officeId);
         extraCriteria.addNonNullCriteria("aud.group_id = ", groupId);

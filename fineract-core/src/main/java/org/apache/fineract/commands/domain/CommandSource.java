@@ -158,11 +158,20 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
     public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final ExternalId resourceExternalId,
             final AppUser maker) {
         String resourceUrl = "/" + entityName.toLowerCase() + "s/" + resourceId;
+        String externalIdValue = resourceExternalId != null ? resourceExternalId.getValue() : null;
+        String commandJson = "{\"ResourceId\":" + resourceId
+                + (externalIdValue != null ? ",\"ResourceExternalId\":\"" + externalIdValue + "\"" : "") + "}";
         CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null,
-                "{}", maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+                commandJson, maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
         commandSource.resultStatusCode = 200;
+        switch (entityName) {
+            case "CLIENT" -> commandSource.clientId = resourceId;
+            case "LOAN" -> commandSource.loanId = resourceId;
+            case "SAVINGSACCOUNT", "FIXEDDEPOSITACCOUNT", "RECURRINGDEPOSITACCOUNT" -> commandSource.savingsId = resourceId;
+            default -> { }
+        }
         return commandSource;
     }
 

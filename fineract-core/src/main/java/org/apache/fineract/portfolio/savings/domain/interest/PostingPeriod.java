@@ -188,6 +188,22 @@ public final class PostingPeriod {
         Money closeOfDayBalance = openingDayBalance;
 
         for (final SavingsAccountTransactionData transaction : orderedListOfTransactions) {
+            boolean skipTransaction = false;
+            // this check is to make sure to add interest if withdrawal is
+            // happened for already
+//            if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
+            if (transaction.getId() == null) {
+                interestTransfered = isInterestTransfer;
+                skipTransaction = isInterestTransfer;
+            } else if (interestPostTransactions.contains(transaction.getId())) {
+                interestTransfered = true;
+                skipTransaction = true;
+            }
+
+            if (skipTransaction) {
+                // skip interest transfer transactions from contributing to interest calculation
+                continue;
+            }
 
             if (transaction.fallsWithin(periodInterval)) {
                 // the balance of the transaction falls entirely within this
@@ -204,16 +220,6 @@ public final class PostingPeriod {
 
                 closeOfDayBalance = endOfDayBalance.closingBalance();
                 openingDayBalance = closeOfDayBalance;
-            }
-
-            // this check is to make sure to add interest if withdrawal is
-            // happened for already
-            if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
-                if (transaction.getId() == null) {
-                    interestTransfered = isInterestTransfer;
-                } else if (interestPostTransactions.contains(transaction.getId())) {
-                    interestTransfered = true;
-                }
             }
 
         }

@@ -56,15 +56,17 @@ public class ReadAuditService {
      *            the ID of the resource being read
      * @param resourceExternalId
      *            the external ID of the resource being read (optional)
+     * @param clientId
+     *            the client ID associated with the resource (optional, can be same as resourceId for CLIENT entity)
      */
     @Transactional
-    public void auditRead(final String entityName, final Long resourceId, final ExternalId resourceExternalId) {
+    public void auditRead(final String entityName, final Long resourceId, final ExternalId resourceExternalId, final Long clientId) {
         try {
             AppUser user = securityContext.authenticatedUser();
 
             // Only audit if enableReadAudit is explicitly true
             if (Boolean.TRUE.equals(user.getEnableReadAudit())) {
-                CommandSource readAudit = CommandSource.readAuditEntry(entityName, resourceId, resourceExternalId, user);
+                CommandSource readAudit = CommandSource.readAuditEntry(entityName, resourceId, resourceExternalId, clientId, user);
                 commandSourceRepository.save(readAudit);
             }
         } catch (Exception e) {

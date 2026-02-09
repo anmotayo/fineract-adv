@@ -210,7 +210,7 @@ public class FixedDepositAccountsApiResource {
 
         final FixedDepositAccountData account = (FixedDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.FIXED_DEPOSIT, accountId);
-        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()));
+        this.readAuditService.auditRead("FIXEDDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()), account.getClientId());
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final FixedDepositAccountData accountTemplate = populateTemplateAndAssociations(accountId, account, staffInSelectedOfficeOnly,

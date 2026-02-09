@@ -206,7 +206,7 @@ public class RecurringDepositAccountsApiResource {
 
         final RecurringDepositAccountData account = (RecurringDepositAccountData) this.depositAccountReadPlatformService
                 .retrieveOneWithChartSlabs(DepositAccountType.RECURRING_DEPOSIT, accountId);
-        this.readAuditService.auditRead("RECURRINGDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()));
+        this.readAuditService.auditRead("RECURRINGDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(account.getExternalId()), account.getClientId());
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final RecurringDepositAccountData accountTemplate = populateTemplateAndAssociations(accountId, account, staffInSelectedOfficeOnly,

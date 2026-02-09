@@ -534,7 +534,7 @@ public class ClientsApiResource {
         clientId = getResolvedClientId(clientId, clientExternalId);
         final ApiRequestJsonSerializationSettings settings = apiRequestParameterHelper.process(uriInfo.getQueryParameters());
         final ClientData clientData = retrieveClientData(clientId, staffInSelectedOfficeOnly, settings.isTemplate());
-        readAuditService.auditRead("CLIENT", clientId, clientData.getExternalId());
+        readAuditService.auditRead("CLIENT", clientId, clientData.getExternalId(), clientId);
         return toApiJsonSerializer.serialize(settings, clientData, ClientApiConstants.CLIENT_RESPONSE_DATA_PARAMETERS);
     }
 

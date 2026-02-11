@@ -47,6 +47,7 @@ import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.data.PaginationParameters;
 import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSerializationSettings;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
+import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.service.SqlValidator;
@@ -112,8 +113,13 @@ public class AuditsApiResource {
         sqlValidator.validate(sortOrder);
         final PaginationParameters parameters = PaginationParameters.builder().paged(Boolean.TRUE.equals(paged)).limit(limit).offset(offset)
                 .orderBy(orderBy).sortOrder(sortOrder).build();
-        final SQLBuilder extraCriteria = getExtraCriteria(actionName, entityName, resourceId, makerId, makerDateTimeFrom, makerDateTimeTo,
-                checkerId, checkerDateTimeFrom, checkerDateTimeTo, processingResult, officeId, groupId, clientId, loanId, savingsAccountId);
+
+        // Add 1 day to "To" dates to include the entire end date
+        final String adjustedMakerDateTimeTo = DateUtils.addOneDayToDate(makerDateTimeTo);
+        final String adjustedCheckerDateTimeTo = DateUtils.addOneDayToDate(checkerDateTimeTo);
+
+        final SQLBuilder extraCriteria = getExtraCriteria(actionName, entityName, resourceId, makerId, makerDateTimeFrom, adjustedMakerDateTimeTo,
+                checkerId, checkerDateTimeFrom, adjustedCheckerDateTimeTo, processingResult, officeId, groupId, clientId, loanId, savingsAccountId);
 
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
 

@@ -380,7 +380,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         final SavingsTransactionBooleanValues transactionBooleanValues = new SavingsTransactionBooleanValues(isAccountTransfer,
                 isRegularTransaction, isApplyWithdrawFee, isInterestTransfer, isWithdrawBalance);
         final SavingsAccountTransaction withdrawal = this.savingsAccountDomainService.handleWithdrawal(account, fmt, transactionDate,
-                transactionAmount, paymentDetail, transactionBooleanValues, backdatedTxnsAllowedTill);
+                transactionAmount, paymentDetail, transactionBooleanValues, backdatedTxnsAllowedTill, false);
 
         if (isGsim && (withdrawal.getId() != null)) {
             GroupSavingsIndividualMonitoring gsim = gsimRepository.findById(account.getGsim().getId()).orElseThrow();
@@ -945,7 +945,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                     isRegularTransaction, isApplyWithdrawFee, isInterestTransfer, isWithdrawBalance);
 
             this.savingsAccountDomainService.handleWithdrawal(account, fmt, closedDate, transactionAmount, paymentDetail,
-                    transactionBooleanValues, false);
+                    transactionBooleanValues, false, false);
 
         }
 

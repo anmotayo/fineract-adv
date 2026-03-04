@@ -167,9 +167,9 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
 
         final boolean isAverageDailyBalance = interestCalculationType.equals(SavingsInterestCalculationType.AVERAGE_DAILY_BALANCE);
 
-        final SavingsPostingInterestPeriodType postingPeriodType = isAverageDailyBalance ?
-                SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestPostingPeriodType()) :
-                SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestCalculationType());
+        final SavingsPostingInterestPeriodType postingPeriodType = isAverageDailyBalance
+                ? SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestPostingPeriodType())
+                : SavingsPostingInterestPeriodType.fromInt(savingsAccount.getInterestCalculationType());
 
         final SavingsCompoundingInterestPeriodType compoundingPeriodType = SavingsCompoundingInterestPeriodType
                 .fromInt(savingsAccount.getInterestCompoundingPeriodType());
@@ -183,7 +183,6 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         final List<PostingPeriod> allPostingPeriods = new ArrayList<>();
         final MonetaryCurrency currency = savingsAccount.getCurrency();
         Money periodStartingBalance = Money.zero(currency);
-
 
         final BigDecimal interestRateAsFraction = savingsAccount.getEffectiveInterestRateAsFraction(mc, tillDate);
         final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(savingsAccount.getId());

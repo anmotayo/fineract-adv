@@ -405,17 +405,19 @@ public final class SavingsAccountTransactionData implements Serializable {
         this.balanceNumberOfDays = balanceNumberOfDays;
     }
 
-    public EndOfDayBalance toEndOfDayBalance(final Money openingBalance) {
+    public EndOfDayBalance toEndOfDayBalance(final Money openingBalance, final boolean shouldNotAffectInterestPosting) {
         final MonetaryCurrency currency = openingBalance.getCurrency();
         Money endOfDayBalance = openingBalance.copy();
-        if (isDeposit() || isDividendPayoutAndNotReversed()) {
-            endOfDayBalance = openingBalance.plus(getAmount());
-        } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
+        if (!shouldNotAffectInterestPosting) {
+            if (isDeposit() || isDividendPayoutAndNotReversed()) {
+                endOfDayBalance = openingBalance.plus(getAmount());
+            } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
 
-            if (openingBalance.isGreaterThanZero()) {
-                endOfDayBalance = openingBalance.minus(getAmount());
-            } else {
-                endOfDayBalance = Money.of(currency, this.runningBalance);
+                if (openingBalance.isGreaterThanZero()) {
+                    endOfDayBalance = openingBalance.minus(getAmount());
+                } else {
+                    endOfDayBalance = Money.of(currency, this.runningBalance);
+                }
             }
         }
 
@@ -431,7 +433,7 @@ public final class SavingsAccountTransactionData implements Serializable {
     }
 
     public EndOfDayBalance toEndOfDayBalanceBoundedBy(final Money openingBalance, final LocalDateInterval boundedBy,
-            final boolean isAllowOverdraft) {
+            final boolean isAllowOverdraft, final boolean shouldNotAffectInterestPosting) {
 
         final MonetaryCurrency currency = openingBalance.getCurrency();
         Money endOfDayBalance = openingBalance.copy();
@@ -446,13 +448,15 @@ public final class SavingsAccountTransactionData implements Serializable {
             final LocalDateInterval spanOfBalance = LocalDateInterval.create(balanceStartDate, balanceEndDate);
             numberOfDaysOfBalance = spanOfBalance.daysInPeriodInclusiveOfEndDate();
         } else {
-            if (isDeposit() || isDividendPayoutAndNotReversed()) {
-                endOfDayBalance = endOfDayBalance.plus(getAmount());
-            } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
-                if (endOfDayBalance.isGreaterThanZero() || isAllowOverdraft) {
-                    endOfDayBalance = endOfDayBalance.minus(getAmount());
-                } else {
-                    endOfDayBalance = Money.of(currency, this.runningBalance);
+            if (!shouldNotAffectInterestPosting) {
+                if (isDeposit() || isDividendPayoutAndNotReversed()) {
+                    endOfDayBalance = endOfDayBalance.plus(getAmount());
+                } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
+                    if (endOfDayBalance.isGreaterThanZero() || isAllowOverdraft) {
+                        endOfDayBalance = endOfDayBalance.minus(getAmount());
+                    } else {
+                        endOfDayBalance = Money.of(currency, this.runningBalance);
+                    }
                 }
             }
         }

@@ -95,24 +95,30 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                         savingsAccountData);
 
                 if (postingTransaction == null) {
-                    SavingsAccountTransactionData newPostingTransaction;
+                    SavingsAccountTransactionData newPostingTransaction = null;
                     if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(savingsAccountData.getCurrency()))) {
-                        newPostingTransaction = SavingsAccountTransactionData.interestPosting(savingsAccountData,
-                                interestPostingTransactionDate, interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting());
+                        if (interestEarnedToBePostedForPeriod.isGreaterThanZero()) {
+                            newPostingTransaction = SavingsAccountTransactionData.interestPosting(savingsAccountData,
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
+                                    interestPostingPeriod.isUserPosting());
+                        }
                     } else {
                         newPostingTransaction = SavingsAccountTransactionData.overdraftInterest(savingsAccountData,
                                 interestPostingTransactionDate, interestEarnedToBePostedForPeriod.negated(),
                                 interestPostingPeriod.isUserPosting());
                     }
 
-                    savingsAccountData.updateTransactions(newPostingTransaction);
-                    if (savingsAccountData.getSavingsProductData().isAccrualBasedAccountingEnabled()) {
-                        savingsAccountData.updateTransactions(SavingsAccountTransactionData.accrual(savingsAccountData,
-                                interestPostingTransactionDate, interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting()));
-                    }
-                    if (applyWithHoldTax) {
-                        createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
-                                savingsAccountData);
+                    if (newPostingTransaction != null) {
+                        savingsAccountData.updateTransactions(newPostingTransaction);
+                        if (savingsAccountData.getSavingsProductData().isAccrualBasedAccountingEnabled()) {
+                            savingsAccountData.updateTransactions(
+                                    SavingsAccountTransactionData.accrual(savingsAccountData, interestPostingTransactionDate,
+                                            interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting()));
+                        }
+                        if (applyWithHoldTax) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    savingsAccountData);
+                        }
                     }
                     recalucateDailyBalanceDetails = true;
                 } else {

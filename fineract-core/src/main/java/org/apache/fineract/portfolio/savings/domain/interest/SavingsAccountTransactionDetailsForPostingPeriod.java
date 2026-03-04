@@ -43,6 +43,7 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
     private final boolean isAllowOverdraft;
     private final boolean isChargeTransactionAndNotReversed;
     private final boolean isDividendPayoutAndNotReversed;
+    private final boolean isWithHoldTaxAndNotReversed;
 
     public boolean fallsWithin(final LocalDateInterval periodInterval) {
         final LocalDateInterval balanceInterval = LocalDateInterval.create(getTransactionDate(), getEndOfBalanceDate());
@@ -58,17 +59,19 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
         return DateUtils.isEqual(occursOnDate, getTransactionDate());
     }
 
-    public EndOfDayBalance toEndOfDayBalance(final Money openingBalance) {
+    public EndOfDayBalance toEndOfDayBalance(final Money openingBalance, final boolean shouldNotAffectInterestPosting) {
         final MonetaryCurrency currency = openingBalance.getCurrency();
         Money endOfDayBalance = openingBalance.copy();
-        if (isDeposit() || isDividendPayoutAndNotReversed()) {
-            endOfDayBalance = openingBalance.plus(getAmount(currency));
-        } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
+        if (!shouldNotAffectInterestPosting) {
+            if (isDeposit() || isDividendPayoutAndNotReversed()) {
+                endOfDayBalance = openingBalance.plus(getAmount(currency));
+            } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
 
-            if (openingBalance.isGreaterThanZero() || isAllowOverdraft()) {
-                endOfDayBalance = openingBalance.minus(getAmount(currency));
-            } else {
-                endOfDayBalance = Money.of(currency, this.runningBalance);
+                if (openingBalance.isGreaterThanZero() || isAllowOverdraft()) {
+                    endOfDayBalance = openingBalance.minus(getAmount(currency));
+                } else {
+                    endOfDayBalance = Money.of(currency, this.runningBalance);
+                }
             }
         }
 
@@ -92,7 +95,8 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
         return EndOfDayBalance.from(balanceDate, openingBalance, endOfDayBalance, numberOfDays);
     }
 
-    public EndOfDayBalance toEndOfDayBalanceBoundedBy(final Money openingBalance, final LocalDateInterval boundedBy) {
+    public EndOfDayBalance toEndOfDayBalanceBoundedBy(final Money openingBalance, final LocalDateInterval boundedBy,
+            final boolean shouldNotAffectInterestPosting) {
         final MonetaryCurrency currency = openingBalance.getCurrency();
         Money endOfDayBalance = openingBalance.copy();
 
@@ -106,17 +110,19 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
             final LocalDateInterval spanOfBalance = LocalDateInterval.create(balanceStartDate, balanceEndDate);
             numberOfDaysOfBalance = spanOfBalance.daysInPeriodInclusiveOfEndDate();
         } else {
-            if (isDeposit() || isDividendPayoutAndNotReversed()) {
-                // endOfDayBalance = openingBalance.plus(getAmount(currency));
-                // if (endOfDayBalance.isLessThanZero()) {
-                endOfDayBalance = endOfDayBalance.plus(getAmount(currency));
-                // }
-            } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
-                // endOfDayBalance = openingBalance.minus(getAmount(currency));
-                if (endOfDayBalance.isGreaterThanZero() || isAllowOverdraft()) {
-                    endOfDayBalance = endOfDayBalance.minus(getAmount(currency));
-                } else {
-                    endOfDayBalance = Money.of(currency, this.runningBalance);
+            if (!shouldNotAffectInterestPosting) {
+                if (isDeposit() || isDividendPayoutAndNotReversed()) {
+                    // endOfDayBalance = openingBalance.plus(getAmount(currency));
+                    // if (endOfDayBalance.isLessThanZero()) {
+                    endOfDayBalance = endOfDayBalance.plus(getAmount(currency));
+                    // }
+                } else if (isWithdrawal() || isChargeTransactionAndNotReversed()) {
+                    // endOfDayBalance = openingBalance.minus(getAmount(currency));
+                    if (endOfDayBalance.isGreaterThanZero() || isAllowOverdraft()) {
+                        endOfDayBalance = endOfDayBalance.minus(getAmount(currency));
+                    } else {
+                        endOfDayBalance = Money.of(currency, this.runningBalance);
+                    }
                 }
             }
         }

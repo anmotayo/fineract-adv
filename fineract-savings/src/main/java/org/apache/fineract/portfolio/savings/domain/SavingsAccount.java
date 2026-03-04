@@ -832,12 +832,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()
-                    || (transaction.isPayCharge() && transaction.isNotReversed())) && transaction.isNotReversed()
-                    && !transaction.isReversalTransaction()) { // temporary: transaction.isPayCharge() backed out so
-                                                               // interest is based on the principal amount. This is
-                                                               // subject to review from Mifos Implementation team
-                                                               // (Bharath)
+                    || transaction.isAccrualAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }
@@ -852,8 +847,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
         for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
             if (!(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed()
-                    || transaction.isAccrualAndNotReversed() || transaction.isWithHoldTaxAndNotReversed()) && transaction.isNotReversed()
-                    && !transaction.isReversalTransaction()) {
+                    || transaction.isAccrualAndNotReversed()) && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
                 orderedNonInterestPostingTransactions.add(transaction);
             }
         }

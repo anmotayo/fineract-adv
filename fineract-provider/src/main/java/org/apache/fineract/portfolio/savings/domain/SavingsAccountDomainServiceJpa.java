@@ -84,7 +84,8 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
     @Override
     public SavingsAccountTransaction handleWithdrawal(final SavingsAccount account, final DateTimeFormatter fmt,
             final LocalDate transactionDate, final BigDecimal transactionAmount, final PaymentDetail paymentDetail,
-            final SavingsTransactionBooleanValues transactionBooleanValues, final boolean backdatedTxnsAllowedTill, final boolean isFromJob) {
+            final SavingsTransactionBooleanValues transactionBooleanValues, final boolean backdatedTxnsAllowedTill,
+            final boolean isFromJob) {
         context.authenticatedUser();
         account.validateForAccountBlock();
         account.validateForDebitBlock();
@@ -466,20 +467,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
                                 account.addTransaction(reversal);
                             }
                         }
-                        if (account.savingsProduct().isAccrualBasedAccountingEnabled()
-                                && MathUtil.isGreaterThanZero(interestEarnedToBePostedForPeriod)) {
-                            log.info("TX2: {}", interestEarnedToBePostedForPeriod.getAmount());
-                            SavingsAccountTransaction accrualTransaction = SavingsAccountTransaction.accrual(account, account.office(),
-                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
-                                    interestPostingPeriod.isUserPosting());
-                            if (backdatedTxnsAllowedTill) {
-                                account.addTransactionToExisting(accrualTransaction);
-                            } else {
-                                account.addTransaction(accrualTransaction);
-                            }
-                        } else {
-                            log.info("Accrual for Overdraft2 interest");
-                        }
+
                         if (applyWithHoldTaxForOldTransaction) {
                             account.createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     backdatedTxnsAllowedTill);

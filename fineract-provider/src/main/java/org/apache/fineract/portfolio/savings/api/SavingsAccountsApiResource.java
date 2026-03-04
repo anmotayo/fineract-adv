@@ -493,7 +493,8 @@ public class SavingsAccountsApiResource {
         ExternalId accountExternalId = ExternalIdFactory.produce(externalId);
         accountId = getResolvedAccountId(accountId, accountExternalId);
         final SavingsAccountData savingsAccount = savingsAccountReadPlatformService.retrieveOne(accountId);
-        readAuditService.auditRead("SAVINGSACCOUNT", accountId, ExternalIdFactory.produce(savingsAccount.getExternalId()), savingsAccount.getClientId());
+        readAuditService.auditRead("SAVINGSACCOUNT", accountId, ExternalIdFactory.produce(savingsAccount.getExternalId()),
+                savingsAccount.getClientId());
 
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final SavingsAccountData savingsAccountTemplate = populateTemplateAndAssociations(accountId, savingsAccount,

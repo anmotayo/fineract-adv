@@ -161,8 +161,8 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         String externalIdValue = resourceExternalId != null ? resourceExternalId.getValue() : null;
         String commandJson = "{\"ResourceId\":" + resourceId
                 + (externalIdValue != null ? ",\"ResourceExternalId\":\"" + externalIdValue + "\"" : "") + "}";
-        CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null,
-                commandJson, maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null, commandJson, maker,
+                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
         commandSource.resultStatusCode = 200;
@@ -170,7 +170,8 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         switch (entityName) {
             case "LOAN" -> commandSource.loanId = resourceId;
             case "SAVINGSACCOUNT", "FIXEDDEPOSITACCOUNT", "RECURRINGDEPOSITACCOUNT" -> commandSource.savingsId = resourceId;
-            default -> { }
+            default -> {
+            }
         }
         return commandSource;
     }
@@ -178,8 +179,8 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
     public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
         String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
         String resourceUrl = "/authentication";
-        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", resourceUrl, maker.getId(), null,
-                maskedJson, maker, UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", resourceUrl, maker.getId(), null, maskedJson, maker,
+                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resultStatusCode = 200;
         return commandSource;

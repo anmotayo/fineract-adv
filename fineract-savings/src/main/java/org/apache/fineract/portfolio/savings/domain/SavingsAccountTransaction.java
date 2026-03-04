@@ -895,7 +895,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
             boolean isAllowOverDraft) {
         return new SavingsAccountTransactionDetailsForPostingPeriod(getId(), this.dateOf, this.balanceEndDate, this.runningBalance,
                 this.amount, currency, this.balanceNumberOfDays, isDeposit(), isWithdrawal(), isAllowOverDraft,
-                isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed());
+                isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed(), isWithHoldTaxAndNotReversed());
     }
 
     public boolean isAccrualAndNotReversed() {

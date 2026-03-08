@@ -139,6 +139,11 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                             withholdTransaction.reverse();
                             applyWithHoldTaxForOldTransaction = true;
                         }
+
+                        if (applyWithHoldTax){
+                            applyWithHoldTaxForOldTransaction = true;
+                        }
+
                         SavingsAccountTransactionData newPostingTransaction;
                         if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(savingsAccountData.getCurrency()))) {
                             newPostingTransaction = SavingsAccountTransactionData.interestPosting(savingsAccountData,

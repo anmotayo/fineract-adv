@@ -110,11 +110,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
 
                     if (newPostingTransaction != null) {
                         savingsAccountData.updateTransactions(newPostingTransaction);
-                        if (savingsAccountData.getSavingsProductData().isAccrualBasedAccountingEnabled()) {
-                            savingsAccountData.updateTransactions(
-                                    SavingsAccountTransactionData.accrual(savingsAccountData, interestPostingTransactionDate,
-                                            interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting()));
-                        }
+
                         if (applyWithHoldTax) {
                             createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     savingsAccountData);
@@ -140,7 +136,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                             applyWithHoldTaxForOldTransaction = true;
                         }
 
-                        if (applyWithHoldTax){
+                        if (applyWithHoldTax) {
                             applyWithHoldTaxForOldTransaction = true;
                         }
 
@@ -156,11 +152,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                         }
 
                         savingsAccountData.updateTransactions(newPostingTransaction);
-                        if (savingsAccountData.getSavingsProductData().isAccrualBasedAccountingEnabled()) {
-                            savingsAccountData.updateTransactions(
-                                    SavingsAccountTransactionData.accrual(savingsAccountData, interestPostingTransactionDate,
-                                            interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting()));
-                        }
+
                         if (applyWithHoldTaxForOldTransaction) {
                             createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     savingsAccountData);

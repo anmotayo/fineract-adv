@@ -618,7 +618,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         SavingsAccountTransaction savingsTransaction = null;
         List<SavingsAccountTransaction> trans = getTransactions();
         for (final SavingsAccountTransaction transaction : trans) {
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)) {
+            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)
+                    && !transaction.isAccrual()) {
                 savingsTransaction = transaction;
                 break;
             }
@@ -631,7 +632,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         SavingsAccountTransaction savingsTransaction = null;
         List<SavingsAccountTransaction> trans = getSavingsAccountTransactionsWithPivotConfig();
         for (final SavingsAccountTransaction transaction : trans) {
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)) {
+            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)
+                    && !transaction.isAccrual()) {
                 savingsTransaction = transaction;
                 break;
             }
@@ -727,8 +729,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                     transaction = findLastTransaction(startInterestCalculationDate);
                 }
 
-                if (transaction == null) {
-                    periodStartingBalance = Money.zero(this.currency);
+                if (transaction == null) { // no transaction occured on start interest calculation date
+                    if (this.summary.getRunningBalanceOnPivotDate() != null) {
+                        periodStartingBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
+                    } else {
+                        periodStartingBalance = Money.zero(this.currency);
+                    }
                 } else {
                     periodStartingBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
                 }
@@ -745,6 +751,13 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             final Money minBalanceForInterestCalculation = Money.of(getCurrency(), minBalanceForInterestCalculation());
             final Money minOverdraftForInterestCalculation = Money.of(getCurrency(), this.minOverdraftForInterestCalculation);
 
+            List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = null;
+            if (backdatedTxnsAllowedTill) {
+                orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingSavingsTransactionsWithPivotConfig();
+            } else {
+                orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingTransactions();
+            }
+
             for (final LocalDateInterval periodInterval : postingPeriodIntervals) {
                 log.debug("  periodInterval: {} {}", periodInterval.startDate(), periodInterval.endDate());
 
@@ -754,12 +767,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 }
 
                 PostingPeriod postingPeriod = null;
-                List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = null;
-                if (backdatedTxnsAllowedTill) {
-                    orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingSavingsTransactionsWithPivotConfig();
-                } else {
-                    orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingTransactions();
-                }
 
                 List<SavingsAccountTransactionDetailsForPostingPeriod> savingsAccountTransactionDetailsForPostingPeriod = toSavingsAccountTransactionDetailsForPostingPeriodList(
                         orderedNonInterestPostingTransactions);

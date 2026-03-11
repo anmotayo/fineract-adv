@@ -790,7 +790,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
             if (hasStartInterestCalculationDate && !backdatedTxnsAllowedTill) {
                 this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods,
-                        this.savingsAccountTransactionSummaryWrapper, this.transactions,this.startInterestCalculationDate);
+                        this.savingsAccountTransactionSummaryWrapper, this.transactions, this.startInterestCalculationDate);
             } else {
                 this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods);
             }

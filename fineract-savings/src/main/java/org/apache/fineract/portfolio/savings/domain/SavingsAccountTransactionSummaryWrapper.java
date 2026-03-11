@@ -81,7 +81,7 @@ public final class SavingsAccountTransactionSummaryWrapper {
         for (final SavingsAccountTransaction transaction : transactions) {
             if (transaction.isInterestPostingAndNotReversed() && transaction.isNotReversed() && !transaction.isReversalTransaction()
                     && (DateUtils.isBefore(transaction.getTransactionDate(), startInterestCalculationDate)
-                    || DateUtils.isEqual(transaction.getTransactionDate(), startInterestCalculationDate))) {
+                            || DateUtils.isEqual(transaction.getTransactionDate(), startInterestCalculationDate))) {
                 total = total.plus(transaction.getAmount());
             }
         }

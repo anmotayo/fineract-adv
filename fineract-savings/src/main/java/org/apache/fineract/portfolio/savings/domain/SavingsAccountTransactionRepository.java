@@ -55,7 +55,8 @@ public interface SavingsAccountTransactionRepository
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.typeOf <>10")
-    List<SavingsAccountTransaction> findNonAccrualTransactionBeforeRunningDate(@Param("savingsId") Long savingsId,
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.typeOf not in (3, 10, 18)")
+    List<SavingsAccountTransaction> findNonInterestTransactionBeforeRunningDate(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
 }

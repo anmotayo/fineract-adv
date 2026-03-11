@@ -28,6 +28,7 @@ import java.util.List;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 
 /**
@@ -259,6 +260,24 @@ public final class SavingsAccountSummary {
             totalEarned = totalEarned.plus(interestEarned);
         }
         this.lastInterestCalculationDate = DateUtils.getBusinessLocalDate();
+        this.totalInterestEarned = totalEarned.getAmount();
+    }
+
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final SavingsAccountTransactionSummaryWrapper wrapper, final List<SavingsAccountTransaction> transactions,
+            final LocalDate startInterestCalculationDate) {
+
+        final BigDecimal interestPostedBeforeInterestCalculationDate = wrapper
+                .calculateTotalInterestPostedBeforeStartInterestCalculationDate(currency, transactions, startInterestCalculationDate);
+        Money totalEarned = interestPostedBeforeInterestCalculationDate == null ? Money.zero(currency)
+                : Money.of(currency, interestPostedBeforeInterestCalculationDate);
+        LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
+        for (final PostingPeriod period : allPostingPeriods) {
+            Money interestEarned = period.interest();
+            interestEarned = interestEarned == null ? Money.zero(currency) : interestEarned;
+            totalEarned = totalEarned.plus(interestEarned);
+        }
+        this.lastInterestCalculationDate = interestCalculationDate;
         this.totalInterestEarned = totalEarned.getAmount();
     }
 

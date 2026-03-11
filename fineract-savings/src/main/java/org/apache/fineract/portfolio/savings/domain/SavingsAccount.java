@@ -720,6 +720,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
             Money periodStartingBalance;
             log.debug("  startInterestCalculationDate: {}", this.startInterestCalculationDate);
+            boolean hasStartInterestCalculationDate = false;
             if (this.startInterestCalculationDate != null && !this.getStartInterestCalculationDate().equals(this.getActivationDate())) {
                 LocalDate startInterestCalculationDate = this.startInterestCalculationDate;
                 SavingsAccountTransaction transaction = null;
@@ -738,6 +739,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 } else {
                     periodStartingBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
                 }
+
+                hasStartInterestCalculationDate = true;
             } else {
                 periodStartingBalance = Money.zero(this.currency);
             }
@@ -785,7 +788,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             this.savingsHelper.calculateInterestForAllPostingPeriods(this.currency, allPostingPeriods, getLockedInUntilDate(),
                     isTransferInterestToOtherAccount());
 
-            this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods);
+            if (hasStartInterestCalculationDate && !backdatedTxnsAllowedTill) {
+                this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods,
+                        this.savingsAccountTransactionSummaryWrapper, this.transactions,this.startInterestCalculationDate);
+            } else {
+                this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods);
+            }
         }
 
         if (backdatedTxnsAllowedTill) {

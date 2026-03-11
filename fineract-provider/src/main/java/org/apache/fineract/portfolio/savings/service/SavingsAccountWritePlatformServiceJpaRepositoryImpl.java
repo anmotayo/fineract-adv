@@ -63,7 +63,6 @@ import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidati
 import org.apache.fineract.infrastructure.core.exception.PlatformDataIntegrityException;
 import org.apache.fineract.infrastructure.core.exception.PlatformServiceUnavailableException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
-import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.infrastructure.dataqueries.data.EntityTables;
 import org.apache.fineract.infrastructure.dataqueries.data.StatusEnum;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
@@ -284,7 +283,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         final boolean backdatedTxnsAllowedTill = this.savingAccountAssembler.getPivotConfigStatus();
 
-        final SavingsAccount account = this.savingAccountAssembler.assembleFrom(savingsId, backdatedTxnsAllowedTill);
+        final SavingsAccount account = this.savingAccountAssembler.assembleFromOptimized(savingsId, backdatedTxnsAllowedTill);
 
         if (account.getGsim() != null) {
             isGsim = true;
@@ -298,7 +297,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         final LocalDate transactionDate = command.localDateValueOfParameterNamed("transactionDate");
         final BigDecimal transactionAmount = command.bigDecimalValueOfParameterNamed("transactionAmount");
 
-        this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDate(transactionDate, account);
+        this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDateOptimized(transactionDate, account);
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = this.paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
@@ -363,14 +362,14 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         final boolean backdatedTxnsAllowedTill = this.savingAccountAssembler.getPivotConfigStatus();
 
-        final SavingsAccount account = this.savingAccountAssembler.assembleFrom(savingsId, backdatedTxnsAllowedTill);
+        final SavingsAccount account = this.savingAccountAssembler.assembleFromOptimized(savingsId, backdatedTxnsAllowedTill);
 
         if (account.getGsim() != null) {
             isGsim = true;
         }
         checkClientOrGroupActive(account);
 
-        this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDate(transactionDate, account);
+        this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDateOptimized(transactionDate, account);
 
         final boolean isAccountTransfer = false;
         final boolean isRegularTransaction = true;
@@ -573,35 +572,36 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
 
-        if (MathUtil.isGreaterThanZero(savingsAccountData.getNominalAnnualInterestRate()) || (savingsAccountData.isAllowOverdraft()
-                && MathUtil.isGreaterThanZero(savingsAccountData.getNominalAnnualInterestRateOverdraft()))) {
-            final Set<Long> existingTransactionIds = new HashSet<>();
-            final Set<Long> existingReversedTransactionIds = new HashSet<>();
-            updateExistingTransactionsDetails(savingsAccountData, existingTransactionIds, existingReversedTransactionIds);
+        // if (MathUtil.isGreaterThanZero(savingsAccountData.getNominalAnnualInterestRate()) ||
+        // (savingsAccountData.isAllowOverdraft()
+        // && MathUtil.isGreaterThanZero(savingsAccountData.getNominalAnnualInterestRateOverdraft()))) {
+        final Set<Long> existingTransactionIds = new HashSet<>();
+        final Set<Long> existingReversedTransactionIds = new HashSet<>();
+        updateExistingTransactionsDetails(savingsAccountData, existingTransactionIds, existingReversedTransactionIds);
 
-            final LocalDate today = DateUtils.getBusinessLocalDate();
-            final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
-            boolean isInterestTransfer = false;
-            LocalDate postInterestOnDate = null;
-            if (postInterestAs) {
-                postInterestOnDate = transactionDate;
-            }
+        final LocalDate today = DateUtils.getBusinessLocalDate();
+        final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
+        boolean isInterestTransfer = false;
+        LocalDate postInterestOnDate = null;
+        if (postInterestAs) {
+            postInterestOnDate = transactionDate;
+        }
 
-            savingsAccountData = this.savingsAccountInterestPostingService.postInterest(mc, today, isInterestTransfer,
-                    isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
-                    savingsAccountData);
+        savingsAccountData = this.savingsAccountInterestPostingService.postInterest(mc, today, isInterestTransfer,
+                isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
+                savingsAccountData);
 
-            if (!backdatedTxnsAllowedTill) {
-                List<SavingsAccountTransactionData> transactions = savingsAccountData.getSavingsAccountTransactionData();
-                for (SavingsAccountTransactionData accountTransaction : transactions) {
-                    if (accountTransaction.getId() == null) {
-                        savingsAccountData.setNewSavingsAccountTransactionData(accountTransaction);
-                    }
+        if (!backdatedTxnsAllowedTill) {
+            List<SavingsAccountTransactionData> transactions = savingsAccountData.getSavingsAccountTransactionData();
+            for (SavingsAccountTransactionData accountTransaction : transactions) {
+                if (accountTransaction.getId() == null) {
+                    savingsAccountData.setNewSavingsAccountTransactionData(accountTransaction);
                 }
             }
-            savingsAccountData.setExistingTransactionIds(existingTransactionIds);
-            savingsAccountData.setExistingReversedTransactionIds(existingReversedTransactionIds);
         }
+        savingsAccountData.setExistingTransactionIds(existingTransactionIds);
+        savingsAccountData.setExistingReversedTransactionIds(existingReversedTransactionIds);
+        // }
         return savingsAccountData;
     }
 

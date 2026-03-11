@@ -347,6 +347,11 @@ public class SavingsAccountAssembler {
         return loadTransactionsToSavingsAccount(account, backdatedTxnsAllowedTill);
     }
 
+    public SavingsAccount assembleFromOptimized(final Long savingsId, final boolean backdatedTxnsAllowedTill) {
+        SavingsAccount account = this.savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, backdatedTxnsAllowedTill);
+        return loadTransactionsToSavingsAccountOptimized(account, backdatedTxnsAllowedTill);
+    }
+
     public SavingsAccount loadTransactionsToSavingsAccount(final SavingsAccount account, final boolean backdatedTxnsAllowedTill) {
         List<SavingsAccountTransaction> savingsAccountTransactions = null;
         final boolean hasStartInterestCalculationDateSet = account.getStartInterestCalculationDate() != null
@@ -403,6 +408,70 @@ public class SavingsAccountAssembler {
             loadTransactionsForStartInterestCalculationDate(account);
         }
 
+        final List<SavingsAccountTransaction> unReversedInterestAndOverdraftTransactions = this.savingsAccountRepository
+                .findNonReversedInterestAndOverdraftTransactions(account.getId());
+        if (!unReversedInterestAndOverdraftTransactions.isEmpty())
+            account.setInterestAndOverdraftTransactions(unReversedInterestAndOverdraftTransactions);
+
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        return account;
+    }
+
+    // for withdrawal, deposit and transfers
+    public SavingsAccount loadTransactionsToSavingsAccountOptimized(final SavingsAccount account, final boolean backdatedTxnsAllowedTill) {
+        List<SavingsAccountTransaction> savingsAccountTransactions = null;
+        if (backdatedTxnsAllowedTill) {
+            LocalDate pivotDate = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation()
+                    ? account.getSummary().getInterestPostedTillDate()
+                    : account.getSummary().getLastInterestCalculationDate();
+            boolean isNotPresent = pivotDate == null;
+            if (!isNotPresent) {
+                // Get savings account transactions
+                if (isRelaxingDaysConfigForPivotDateEnabled()) {
+                    final Long relaxingDaysForPivotDate = this.configurationDomainService.retrieveRelaxingDaysConfigForPivotDate();
+                    savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account,
+                            pivotDate.minusDays(relaxingDaysForPivotDate));
+
+                    if (!savingsAccountTransactions.isEmpty()) {
+                        savingsAccountTransactions.get(0).getSavingsAccount()
+                                .setStartInterestCalculationDate(pivotDate.minusDays(relaxingDaysForPivotDate));
+                    }
+
+                    Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
+                    List<SavingsAccountTransaction> pivotDateTransaction = this.savingsAccountRepository.findTransactionsBeforePivotDate(
+                            account.getId(), pivotDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc);
+                    if (pivotDateTransaction != null && !pivotDateTransaction.isEmpty()) {
+                        account.getSummary().setRunningBalanceOnPivotDate(pivotDateTransaction.get(pivotDateTransaction.size() - 1)
+                                .getRunningBalance(account.getCurrency()).getAmount());
+                    }
+                } else {
+                    savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account, pivotDate);
+
+                    Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
+
+                    List<SavingsAccountTransaction> beforePivotDateTransactions = this.savingsAccountRepository
+                            .findTransactionsBeforePivotDate(account.getId(), pivotDate, sortedByDateAndIdDesc);
+
+                    if (!beforePivotDateTransactions.isEmpty()) {
+                        account.getSummary().setRunningBalanceOnPivotDate(beforePivotDateTransactions
+                                .get(beforePivotDateTransactions.size() - 1).getRunningBalance(account.getCurrency()).getAmount());
+                    }
+                }
+
+                if (savingsAccountTransactions != null && !savingsAccountTransactions.isEmpty()) {
+                    // Update transient variable
+                    account.setSavingsAccountTransactions(savingsAccountTransactions);
+                }
+            } else {
+                savingsAccountTransactions = this.savingsAccountRepository.findAllTransactions(account);
+                account.setSavingsAccountTransactions(savingsAccountTransactions);
+            }
+        }
+        final List<SavingsAccountTransaction> unReversedInterestAndOverdraftTransactions = this.savingsAccountRepository
+                .findNonReversedInterestAndOverdraftTransactions(account.getId());
+        if (!unReversedInterestAndOverdraftTransactions.isEmpty())
+            account.setInterestAndOverdraftTransactions(unReversedInterestAndOverdraftTransactions);
+
         account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
         return account;
     }
@@ -434,7 +503,8 @@ public class SavingsAccountAssembler {
                     SavingsAccountTransactionData savingsAccountTransaction = account.getSavingsAccountTransactionData().get(i);
                     if (savingsAccountTransaction.getTransactionDate().isBefore(account.getStartInterestCalculationDate())
                             && !savingsAccountTransaction.isReversalTransaction() && !savingsAccountTransaction.isAccrualAndNotReversed()
-                            && !savingsAccountTransaction.isInterestPostingAndNotReversed()
+                            && !(savingsAccountTransaction.isInterestPostingAndNotReversed()
+                                    || savingsAccountTransaction.isOverdraftInterestAndNotReversed())
                             && !savingsAccountTransaction.isWithHoldTaxAndNotReversed()) {
                         account.getSummary().setRunningBalanceOnPivotDate(savingsAccountTransaction.getRunningBalance());
                         account.setLastSavingsAccountTransaction(savingsAccountTransaction);

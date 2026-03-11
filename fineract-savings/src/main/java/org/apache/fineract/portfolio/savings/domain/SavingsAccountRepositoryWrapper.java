@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.util.List;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -149,6 +150,11 @@ public class SavingsAccountRepositoryWrapper {
     @Transactional
     public List<SavingsAccountTransaction> findAllTransactions(@Param("savingsAccount") SavingsAccount savingsAccount) {
         return this.savingsAccountTransactionRepository.findBySavingsAccount(savingsAccount);
+    }
+
+    public List<SavingsAccountTransaction> findNonReversedInterestAndOverdraftTransactions(@Param("savingsId") Long savingsId) {
+        return this.savingsAccountTransactionRepository.findNotReversedInterestAndOverdraftTransactions(savingsId,
+                SavingsAccountTransactionType.INTEREST_POSTING.getValue(), SavingsAccountTransactionType.OVERDRAFT_INTEREST.getValue());
     }
 
     // Root Entity is enough

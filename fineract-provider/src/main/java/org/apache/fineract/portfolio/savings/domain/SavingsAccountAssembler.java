@@ -390,27 +390,26 @@ public class SavingsAccountAssembler {
                     account.setSavingsAccountTransactions(savingsAccountTransactions);
                 }
             } else {
-                if (account.getStartInterestCalculationDate() != null) {
-                    final LocalDate startInterestCalculationDate = account.getStartInterestCalculationDate();
-                    savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account,
-                            startInterestCalculationDate);
+                savingsAccountTransactions = this.savingsAccountRepository.findAllTransactions(account);
+                account.setSavingsAccountTransactions(savingsAccountTransactions);
+            }
+        } else if (account.getStartInterestCalculationDate() != null) {
+            final LocalDate startInterestCalculationDate = account.getStartInterestCalculationDate();
+            savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account,
+                    startInterestCalculationDate);
 
-                    Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
+            Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
 
-                    List<SavingsAccountTransaction> beforeStartInterestDateTransaction = this.savingsAccountRepository
-                            .findTransactionsBeforePivotDate(account.getId(), startInterestCalculationDate, sortedByDateAndIdDesc);
+            List<SavingsAccountTransaction> beforeStartInterestDateTransaction = this.savingsAccountRepository
+                    .findTransactionsBeforePivotDate(account.getId(), startInterestCalculationDate, sortedByDateAndIdDesc);
 
-                    if (!beforeStartInterestDateTransaction.isEmpty()) {
-                        account.getSummary().setRunningBalanceOnPivotDate(beforeStartInterestDateTransaction
-                                .get(beforeStartInterestDateTransaction.size() - 1).getRunningBalance(account.getCurrency()).getAmount());
-                    }
-                } else {
-                    savingsAccountTransactions = this.savingsAccountRepository.findAllTransactions(account);
-                }
+            if (!beforeStartInterestDateTransaction.isEmpty()) {
+                account.getSummary().setRunningBalanceOnPivotDate(beforeStartInterestDateTransaction
+                        .get(beforeStartInterestDateTransaction.size() - 1).getRunningBalance(account.getCurrency()).getAmount());
+            }
 
-                if (savingsAccountTransactions != null && !savingsAccountTransactions.isEmpty()) {
-                    account.setSavingsAccountTransactions(savingsAccountTransactions);
-                }
+            if (savingsAccountTransactions != null && !savingsAccountTransactions.isEmpty()) {
+                account.setSavingsAccountTransactions(savingsAccountTransactions);
             }
         }
 
@@ -439,7 +438,8 @@ public class SavingsAccountAssembler {
             }
             account.getSavingsAccountTransactionData().removeAll(removalList);
         } else {
-            if (account.getStartInterestCalculationDate() != null) {
+            if (account.getStartInterestCalculationDate() != null
+                    && !account.getActivationLocalDate().isEqual(account.getStartInterestCalculationDate())) {
                 for (int i = account.getSavingsAccountTransactionData().size() - 1; i >= 0; i--) {
                     SavingsAccountTransactionData savingsAccountTransaction = account.getSavingsAccountTransactionData().get(i);
                     if (savingsAccountTransaction.getTransactionDate().isBefore(account.getStartInterestCalculationDate())

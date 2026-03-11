@@ -257,6 +257,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         final List<PostingPeriod> allPostingPeriods = new ArrayList<>();
 
         Money periodStartingBalance;
+        boolean hasStartInterestCalculationDate = false;
         if (savingsAccountData.getStartInterestCalculationDate() != null
                 && !savingsAccountData.getStartInterestCalculationDate().equals(savingsAccountData.getActivationLocalDate())) {
             final SavingsAccountTransactionData transaction = retrieveLastTransaction(savingsAccountData);
@@ -268,6 +269,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                         savingsAccountData.getSummary().getRunningBalanceOnPivotDate());
             }
 
+            hasStartInterestCalculationDate = true;
         } else {
             periodStartingBalance = Money.zero(savingsAccountData.getCurrency());
         }
@@ -307,7 +309,13 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         this.savingsHelper.calculateInterestForAllPostingPeriods(monetaryCurrency, allPostingPeriods,
                 getLockedInUntilLocalDate(savingsAccountData), false);
 
-        savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods);
+        if (hasStartInterestCalculationDate && !backdatedTxnsAllowedTill) {
+            savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods,
+                    savingsAccountData.getSavingsAccountTransactionSummaryWrapper(), savingsAccountData.getSavingsAccountTransactionData(),
+                    savingsAccountData.getStartInterestCalculationDate());
+        } else {
+            savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods);
+        }
 
         if (backdatedTxnsAllowedTill) {
             savingsAccountData.getSummary().updateSummaryWithPivotConfig(savingsAccountData.getCurrency(),

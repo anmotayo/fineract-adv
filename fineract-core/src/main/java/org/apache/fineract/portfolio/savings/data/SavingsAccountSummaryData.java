@@ -197,6 +197,24 @@ public class SavingsAccountSummaryData implements Serializable {
         this.totalInterestEarned = totalEarned.getAmount();
     }
 
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final SavingsAccountTransactionDataSummaryWrapper wrapper, final List<SavingsAccountTransactionData> transactions,
+            final LocalDate startInterestCalculationDate) {
+
+        final BigDecimal interestPostedBeforeInterestCalculationDate = wrapper
+                .calculateTotalInterestPostedBeforeStartInterestCalculationDate(currency, transactions, startInterestCalculationDate);
+        Money totalEarned = interestPostedBeforeInterestCalculationDate == null ? Money.zero(currency)
+                : Money.of(currency, interestPostedBeforeInterestCalculationDate);
+        LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
+        for (final PostingPeriod period : allPostingPeriods) {
+            Money interestEarned = period.interest();
+            interestEarned = interestEarned == null ? Money.zero(currency) : interestEarned;
+            totalEarned = totalEarned.plus(interestEarned);
+        }
+        this.lastInterestCalculationDate = interestCalculationDate;
+        this.totalInterestEarned = totalEarned.getAmount();
+    }
+
     @SuppressWarnings("unchecked")
     private HashMap<String, Money> updateRunningBalanceAndPivotDate(final boolean backdatedTxnsAllowedTill,
             final List<SavingsAccountTransactionData> savingsAccountTransactions, Money interestTotal, Money overdraftInterestTotal,

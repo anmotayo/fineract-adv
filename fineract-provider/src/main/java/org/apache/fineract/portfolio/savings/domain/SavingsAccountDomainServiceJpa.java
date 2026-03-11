@@ -39,7 +39,6 @@ import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.exception.PlatformServiceUnavailableException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
-import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsDepositBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsWithdrawalBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
@@ -405,20 +404,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
                         } else {
                             account.addTransaction(newPostingTransaction);
                         }
-                        if (account.savingsProduct().isAccrualBasedAccountingEnabled()) {
-                            if (MathUtil.isGreaterThanZero(interestEarnedToBePostedForPeriod)) {
-                                SavingsAccountTransaction accrualTransaction = SavingsAccountTransaction.accrual(account, account.office(),
-                                        interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
-                                        interestPostingPeriod.isUserPosting());
-                                if (backdatedTxnsAllowedTill) {
-                                    account.addTransactionToExisting(accrualTransaction);
-                                } else {
-                                    account.addTransaction(accrualTransaction);
-                                }
-                            } else {
-                                log.info("Accrual for Overdraft interest");
-                            }
-                        }
+
                         if (applyWithHoldTax) {
                             account.createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     backdatedTxnsAllowedTill);

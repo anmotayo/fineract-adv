@@ -372,7 +372,7 @@ public class SavingsAccountAssembler {
 
                     Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
                     List<SavingsAccountTransaction> pivotDateTransaction = this.savingsAccountRepository.findTransactionsBeforePivotDate(
-                            account.getId(), interestPostedTillDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc);
+                            account.getId(), interestPostedTillDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc, true);
                     if (pivotDateTransaction != null && !pivotDateTransaction.isEmpty()) {
                         account.getSummary().setRunningBalanceOnPivotDate(pivotDateTransaction.get(pivotDateTransaction.size() - 1)
                                 .getRunningBalance(account.getCurrency()).getAmount());
@@ -384,7 +384,7 @@ public class SavingsAccountAssembler {
                     Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
 
                     List<SavingsAccountTransaction> beforePivotDateTransactions = this.savingsAccountRepository
-                            .findTransactionsBeforePivotDate(account.getId(), pivotDate, sortedByDateAndIdDesc);
+                            .findTransactionsBeforePivotDate(account.getId(), pivotDate, sortedByDateAndIdDesc, true);
 
                     if (!beforePivotDateTransactions.isEmpty()) {
                         account.getSummary().setRunningBalanceOnPivotDate(beforePivotDateTransactions
@@ -421,7 +421,8 @@ public class SavingsAccountAssembler {
     public SavingsAccount loadTransactionsToSavingsAccountOptimized(final SavingsAccount account, final boolean backdatedTxnsAllowedTill) {
         List<SavingsAccountTransaction> savingsAccountTransactions = null;
         if (backdatedTxnsAllowedTill) {
-            LocalDate pivotDate = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation()
+            final boolean hasInterestRate = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
+            LocalDate pivotDate = hasInterestRate
                     ? account.getSummary().getInterestPostedTillDate()
                     : account.getSummary().getLastInterestCalculationDate();
             boolean isNotPresent = pivotDate == null;
@@ -439,7 +440,7 @@ public class SavingsAccountAssembler {
 
                     Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
                     List<SavingsAccountTransaction> pivotDateTransaction = this.savingsAccountRepository.findTransactionsBeforePivotDate(
-                            account.getId(), pivotDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc);
+                            account.getId(), pivotDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc, hasInterestRate);
                     if (pivotDateTransaction != null && !pivotDateTransaction.isEmpty()) {
                         account.getSummary().setRunningBalanceOnPivotDate(pivotDateTransaction.get(pivotDateTransaction.size() - 1)
                                 .getRunningBalance(account.getCurrency()).getAmount());
@@ -450,7 +451,7 @@ public class SavingsAccountAssembler {
                     Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
 
                     List<SavingsAccountTransaction> beforePivotDateTransactions = this.savingsAccountRepository
-                            .findTransactionsBeforePivotDate(account.getId(), pivotDate, sortedByDateAndIdDesc);
+                            .findTransactionsBeforePivotDate(account.getId(), pivotDate, sortedByDateAndIdDesc, hasInterestRate);
 
                     if (!beforePivotDateTransactions.isEmpty()) {
                         account.getSummary().setRunningBalanceOnPivotDate(beforePivotDateTransactions
@@ -597,7 +598,7 @@ public class SavingsAccountAssembler {
         Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
 
         List<SavingsAccountTransaction> beforeStartInterestDateTransaction = this.savingsAccountRepository
-                .findTransactionsBeforePivotDate(account.getId(), startInterestCalculationDate, sortedByDateAndIdDesc);
+                .findTransactionsBeforePivotDate(account.getId(), startInterestCalculationDate, sortedByDateAndIdDesc, true);
 
         if (!beforeStartInterestDateTransaction.isEmpty()) {
             account.getSummary().setRunningBalanceOnPivotDate(beforeStartInterestDateTransaction

@@ -730,7 +730,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                         final TaxGroupMappingsData taxGroupMappingData = new TaxGroupMappingsData(taxGroupMappingId, taxComponentData,
                                 startDate, endDate);
                         if (taxGroupData.getTaxAssociations() == null) {
-                            final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList();
+                            final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList<>();
                             taxGroupMappingsData.add(taxGroupMappingData);
                             TaxGroupData newTaxGroupData = TaxGroupData.instance(taxGroupId, null, taxGroupMappingsData);
                             savingsAccountData.setTaxGroup(newTaxGroupData);

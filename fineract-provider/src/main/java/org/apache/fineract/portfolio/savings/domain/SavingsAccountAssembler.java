@@ -422,8 +422,7 @@ public class SavingsAccountAssembler {
         List<SavingsAccountTransaction> savingsAccountTransactions = null;
         if (backdatedTxnsAllowedTill) {
             final boolean hasInterestRate = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
-            LocalDate pivotDate = hasInterestRate
-                    ? account.getSummary().getInterestPostedTillDate()
+            LocalDate pivotDate = hasInterestRate ? account.getSummary().getInterestPostedTillDate()
                     : account.getSummary().getLastInterestCalculationDate();
             boolean isNotPresent = pivotDate == null;
             if (!isNotPresent) {

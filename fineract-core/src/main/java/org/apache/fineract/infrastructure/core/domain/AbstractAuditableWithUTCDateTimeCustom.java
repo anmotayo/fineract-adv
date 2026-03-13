@@ -69,6 +69,9 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
     @Setter(onMethod = @__(@Override))
     private OffsetDateTime lastModifiedDate;
 
+    private transient OffsetDateTime transientCreatedDateTime;
+    private transient OffsetDateTime transientLastModifiedDateTime;
+
     @Override
     @NotNull
     public Optional<Long> getCreatedBy() {
@@ -83,7 +86,13 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
 
     @NotNull
     public OffsetDateTime getCreatedDateTime() {
-        return getCreatedDate().orElseGet(DateUtils::getAuditOffsetDateTime);
+        if (createdDate != null) {
+            return createdDate;
+        }
+        if (transientCreatedDateTime == null) {
+            transientCreatedDateTime = DateUtils.getAuditOffsetDateTime();
+        }
+        return transientCreatedDateTime;
     }
 
     @Override
@@ -100,6 +109,12 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
 
     @NotNull
     public OffsetDateTime getLastModifiedDateTime() {
-        return getLastModifiedDate().orElseGet(DateUtils::getAuditOffsetDateTime);
+        if (lastModifiedDate != null) {
+            return lastModifiedDate;
+        }
+        if (transientLastModifiedDateTime == null) {
+            transientLastModifiedDateTime = DateUtils.getAuditOffsetDateTime();
+        }
+        return transientLastModifiedDateTime;
     }
 }

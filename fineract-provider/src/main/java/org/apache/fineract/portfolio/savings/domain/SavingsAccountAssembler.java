@@ -502,7 +502,8 @@ public class SavingsAccountAssembler {
                 for (int i = account.getSavingsAccountTransactionData().size() - 1; i >= 0; i--) {
                     SavingsAccountTransactionData savingsAccountTransaction = account.getSavingsAccountTransactionData().get(i);
                     if (savingsAccountTransaction.getTransactionDate().isBefore(account.getStartInterestCalculationDate())
-                            && !savingsAccountTransaction.isReversalTransaction() && !savingsAccountTransaction.isAccrualAndNotReversed()
+                            && savingsAccountTransaction.isNotReversed() && !savingsAccountTransaction.isReversalTransaction()
+                            && !savingsAccountTransaction.isAccrualAndNotReversed()
                             && !(savingsAccountTransaction.isInterestPostingAndNotReversed()
                                     || savingsAccountTransaction.isOverdraftInterestAndNotReversed())
                             && !savingsAccountTransaction.isWithHoldTaxAndNotReversed()) {

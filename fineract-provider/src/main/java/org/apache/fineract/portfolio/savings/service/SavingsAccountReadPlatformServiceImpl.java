@@ -317,6 +317,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.total_savings_amount_on_hold as onHoldAmount, ");
             sqlBuilder.append("sa.interest_posted_till_date as interestPostedTillDate, ");
             sqlBuilder.append("sa.start_interest_calculation_date as startInterestCalculationDate, ");
+            sqlBuilder.append("sa.version as version, ");
             sqlBuilder.append("tg.id as taxGroupId, ");
             sqlBuilder.append("(select COALESCE(max(sat.transaction_date),sa.activatedon_date) ");
             sqlBuilder.append("from m_savings_account_transaction as sat ");
@@ -615,6 +616,8 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     savingsAccountData.setGlAccountIdForSavingsControl(glAccountIdForSavingsControl);
                     savingsAccountData.setMaturityDate(maturityDate);
                     savingsAccountData.setStartInterestCalculationDate(startInterestCalculationDate);
+                    final Integer version = JdbcSupport.getInteger(rs, "version");
+                    savingsAccountData.setVersion(version);
                 }
 
                 if (!transMap.containsValue(transactionId)) {

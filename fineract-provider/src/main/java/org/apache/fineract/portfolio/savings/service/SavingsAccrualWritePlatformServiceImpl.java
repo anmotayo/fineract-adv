@@ -83,7 +83,12 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 SavingsAccount savingsAccount = savingsAccountAssembler.assembleFrom(savingsAccrual.getId(), false);
                 LocalDate fromDate = savingsAccrual.getAccruedTill();
                 if (fromDate == null) {
-                    fromDate = savingsAccount.getActivationDate();
+                    if (savingsAccount.getStartInterestCalculationDate() != null) {
+                        fromDate = savingsAccount.getStartInterestCalculationDate();
+                    }
+                    else {
+                        fromDate = savingsAccount.getActivationDate();
+                    }
                 }
                 log.debug("Processing savings account {} from date {} till date {}", savingsAccrual.getAccountNo(), fromDate, tillDate);
                 addAccrualTransactions(savingsAccount, fromDate, tillDate, financialYearBeginningMonth,

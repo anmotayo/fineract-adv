@@ -30,6 +30,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import java.util.UUID;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
@@ -168,6 +169,37 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
                 .organisationCreditBureauId(command.getOrganisationCreditBureauId()) //
                 .clientIp(IpAddressUtils.getClientIp()) //
                 .loanExternalId(command.getLoanExternalId()).sanitized(sanitized).build(); //
+    }
+
+    public static CommandSource readAuditEntry(final String entityName, final Long resourceId, final ExternalId resourceExternalId,
+            final Long clientId, final AppUser maker) {
+        String resourceUrl = "/" + entityName.toLowerCase() + "s/" + resourceId;
+        String externalIdValue = resourceExternalId != null ? resourceExternalId.getValue() : null;
+        String commandJson = "{\"ResourceId\":" + resourceId
+                + (externalIdValue != null ? ",\"ResourceExternalId\":\"" + externalIdValue + "\"" : "") + "}";
+        CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null, commandJson, maker,
+                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
+        commandSource.resourceExternalId = resourceExternalId;
+        commandSource.resultStatusCode = 200;
+        commandSource.clientId = clientId;
+        switch (entityName) {
+            case "LOAN" -> commandSource.loanId = resourceId;
+            case "SAVINGSACCOUNT", "FIXEDDEPOSITACCOUNT", "RECURRINGDEPOSITACCOUNT" -> commandSource.savingsId = resourceId;
+            default -> {
+            }
+        }
+        return commandSource;
+    }
+
+    public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
+        String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
+        String resourceUrl = "/authentication";
+        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", resourceUrl, maker.getId(), null, maskedJson, maker,
+                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
+        commandSource.resultStatusCode = 200;
+        return commandSource;
     }
 
     public String getPermissionCode() {

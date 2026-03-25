@@ -108,34 +108,32 @@ public final class PostingPeriod {
         Money closeOfDayBalance = openingDayBalance;
 
         for (final SavingsAccountTransactionDetailsForPostingPeriod transaction : orderedListOfTransactions) {
-            boolean skipTransaction = false;
+            boolean shouldNotAffectInterestPosting = false;
             // this check is to make sure to add interest if withdrawal is
             // happened for already
             // if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
             if (transaction.getId() == null) {
                 interestTransfered = isInterestTransfer;
-                skipTransaction = isInterestTransfer;
+                shouldNotAffectInterestPosting = isInterestTransfer;
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
-                skipTransaction = true;
+                shouldNotAffectInterestPosting = true;
+            } else if (transaction.isWithHoldTaxAndNotReversed()) {
+                shouldNotAffectInterestPosting = true;
             }
             // }
-
-            if (skipTransaction) {
-                // skip interest transfer transactions from contributing to interest calculation
-                continue;
-            }
 
             if (transaction.fallsWithin(periodInterval)) {
                 // the balance of the transaction falls entirely within this
                 // period so no need to do any cropping/bounding
-                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalance(openingDayBalance);
+                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalance(openingDayBalance, shouldNotAffectInterestPosting);
                 accountEndOfDayBalances.add(endOfDayBalance);
 
                 openingDayBalance = endOfDayBalance.closingBalance();
 
             } else if (transaction.spansAnyPortionOf(periodInterval)) {
-                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalanceBoundedBy(openingDayBalance, periodInterval);
+                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalanceBoundedBy(openingDayBalance, periodInterval,
+                        shouldNotAffectInterestPosting);
                 accountEndOfDayBalances.add(endOfDayBalance);
 
                 closeOfDayBalance = endOfDayBalance.closingBalance();
@@ -205,17 +203,32 @@ public final class PostingPeriod {
                 continue;
             }
 
+            boolean shouldNotAffectInterestPosting = false;
+            // this check is to make sure to add interest if withdrawal is
+            // happened for already
+            // if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
+            if (transaction.getId() == null) {
+                interestTransfered = isInterestTransfer;
+                shouldNotAffectInterestPosting = isInterestTransfer;
+            } else if (interestPostTransactions.contains(transaction.getId())) {
+                interestTransfered = true;
+                shouldNotAffectInterestPosting = true;
+            } else if (transaction.isWithHoldTaxAndNotReversed()) {
+                shouldNotAffectInterestPosting = true;
+            }
+            // }
+
             if (transaction.fallsWithin(periodInterval)) {
                 // the balance of the transaction falls entirely within this
                 // period so no need to do any cropping/bounding
-                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalance(openingDayBalance);
+                final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalance(openingDayBalance, shouldNotAffectInterestPosting);
                 accountEndOfDayBalances.add(endOfDayBalance);
 
                 openingDayBalance = endOfDayBalance.closingBalance();
 
             } else if (transaction.spansAnyPortionOf(periodInterval)) {
                 final EndOfDayBalance endOfDayBalance = transaction.toEndOfDayBalanceBoundedBy(openingDayBalance, periodInterval,
-                        isAllowOverdraft);
+                        isAllowOverdraft, shouldNotAffectInterestPosting);
                 accountEndOfDayBalances.add(endOfDayBalance);
 
                 closeOfDayBalance = endOfDayBalance.closingBalance();

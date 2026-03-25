@@ -50,11 +50,22 @@ public interface SavingsAccountTransactionRepository
 
     List<SavingsAccountTransaction> findByRefNo(@Param("refNo") String refNo);
 
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf <= :transactionDate and sat.reversed=false")
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf <= :transactionDate and sat.reversed=false and sat.reversalTransaction = false ")
     List<SavingsAccountTransaction> findBySavingsAccountIdAndLessThanDateOfAndReversedIsFalse(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
 
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.typeOf <>10")
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf not in (3, 10, 17, 18)")
+    List<SavingsAccountTransaction> findNonInterestTransactionBeforePivotDate(@Param("savingsId") Long savingsId,
+            @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf <> 10")
     List<SavingsAccountTransaction> findNonAccrualTransactionBeforeRunningDate(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and (sat.typeOf = :interestPosting or sat.typeOf = :overdraftInterest)  and sat.reversed=false and sat.reversalTransaction = false")
+    List<SavingsAccountTransaction> findNotReversedInterestAndOverdraftTransactions(@Param("savingsId") Long savingsId,
+            @Param("interestPosting") int interestPosting, @Param("overdraftInterest") int overdraftInterest);
+
 }

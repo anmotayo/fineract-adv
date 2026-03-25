@@ -62,6 +62,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.data.GlobalEntityType;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
@@ -304,6 +305,7 @@ public class LoansApiResource {
     private final DefaultToApiJsonSerializer<LoanDelinquencyTagHistoryData> jsonSerializerTagHistory;
     private final DelinquencyReadPlatformService delinquencyReadPlatformService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
     private final LoanSummaryBalancesRepository loanSummaryBalancesRepository;
     private final ClientReadPlatformService clientReadPlatformService;
     private final LoanTermVariationsRepository loanTermVariationsRepository;
@@ -993,6 +995,7 @@ public class LoansApiResource {
         ExternalId loanExternalId = ExternalIdFactory.produce(loanExternalIdStr);
         Long resolvedLoanId = loanId == null ? loanReadPlatformService.getResolvedLoanId(loanExternalId) : loanId;
         LoanAccountData loanBasicDetails = this.loanReadPlatformService.retrieveOne(resolvedLoanId);
+        this.readAuditService.auditRead("LOAN", resolvedLoanId, loanBasicDetails.getExternalId(), loanBasicDetails.getClientId());
         if (loanBasicDetails.isInterestRecalculationEnabled()) {
             Collection<CalendarData> interestRecalculationCalendarDatas = this.calendarReadPlatformService.retrieveCalendarsByEntity(
                     loanBasicDetails.getInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue(),

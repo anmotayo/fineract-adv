@@ -83,7 +83,8 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
     @Override
     public SavingsAccountTransaction handleWithdrawal(final SavingsAccount account, final DateTimeFormatter fmt,
             final LocalDate transactionDate, final BigDecimal transactionAmount, final PaymentDetail paymentDetail,
-            final SavingsTransactionBooleanValues transactionBooleanValues, final boolean backdatedTxnsAllowedTill) {
+            final SavingsTransactionBooleanValues transactionBooleanValues, final boolean backdatedTxnsAllowedTill,
+            final boolean isFromJob) {
         context.authenticatedUser();
         account.validateForAccountBlock();
         account.validateForDebitBlock();
@@ -115,7 +116,7 @@ public class SavingsAccountDomainServiceJpa implements SavingsAccountDomainServi
 
         final LocalDate today = DateUtils.getBusinessLocalDate();
 
-        if (account.isBeforeLastPostingPeriod(transactionDate, backdatedTxnsAllowedTill)) {
+        if (account.isBeforeLastPostingPeriod(transactionDate, backdatedTxnsAllowedTill) && !isFromJob) {
             account.postInterest(mc, today, transactionBooleanValues.isInterestTransfer(), isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
         } else {

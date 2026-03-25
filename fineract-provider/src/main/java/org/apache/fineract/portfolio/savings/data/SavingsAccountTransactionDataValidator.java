@@ -89,6 +89,23 @@ public class SavingsAccountTransactionDataValidator {
         }
     }
 
+    public void validateTransactionWithPivotDateOptimized(final LocalDate transactionDate, final SavingsAccount savingsAccount) {
+        final boolean backdatedTxnsAllowedTill = this.configurationDomainService.retrievePivotDateConfig();
+        final boolean isRelaxingDaysConfigOn = this.configurationDomainService.isRelaxingDaysConfigForPivotDateEnabled();
+
+        final LocalDate lastInterestCalculationDate = savingsAccount.getSummary().getLastInterestCalculationDate();
+
+        if (backdatedTxnsAllowedTill && lastInterestCalculationDate != null) {
+            LocalDate pivotDate = lastInterestCalculationDate;
+            if (isRelaxingDaysConfigOn) {
+                pivotDate = pivotDate.minusDays(this.configurationDomainService.retrieveRelaxingDaysConfigForPivotDate());
+            }
+            if (DateUtils.isAfter(pivotDate, transactionDate)) {
+                throw new TransactionBeforePivotDateNotAllowed(transactionDate, pivotDate);
+            }
+        }
+    }
+
     public void validate(final JsonCommand command) {
         final String json = command.json();
 

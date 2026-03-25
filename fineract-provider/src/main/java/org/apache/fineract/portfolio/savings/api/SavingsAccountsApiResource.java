@@ -49,6 +49,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.bulkimport.data.GlobalEntityType;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookPopulatorService;
 import org.apache.fineract.infrastructure.bulkimport.service.BulkImportWorkbookService;
@@ -96,6 +97,7 @@ public class SavingsAccountsApiResource {
     private final BulkImportWorkbookService bulkImportWorkbookService;
     private final BulkImportWorkbookPopulatorService bulkImportWorkbookPopulatorService;
     private final SqlValidator sqlValidator;
+    private final ReadAuditService readAuditService;
 
     @GET
     @Path("template")
@@ -483,6 +485,8 @@ public class SavingsAccountsApiResource {
         ExternalId accountExternalId = ExternalIdFactory.produce(externalId);
         accountId = getResolvedAccountId(accountId, accountExternalId);
         final SavingsAccountData savingsAccount = savingsAccountReadPlatformService.retrieveOne(accountId);
+        readAuditService.auditRead("SAVINGSACCOUNT", accountId, ExternalIdFactory.produce(savingsAccount.getExternalId()),
+                savingsAccount.getClientId());
 
         return populateTemplateAndAssociations(accountId, savingsAccount, staffInSelectedOfficeOnly, chargeStatus, uriInfo);
     }

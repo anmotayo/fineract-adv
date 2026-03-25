@@ -325,6 +325,27 @@ public final class DateUtils {
         return first == null ? null : first.minusDays(days);
     }
 
+    /**
+     * Adds one day to the given date string to include the entire end date in range queries.
+     *
+     * @param dateString
+     *            the date string in yyyy-MM-dd format (can be null)
+     * @return the date string with one day added, or null if input is null/empty, or the original string if parsing
+     *         fails
+     */
+    public static String addOneDayToDate(final String dateString) {
+        if (dateString == null || dateString.isEmpty()) {
+            return null;
+        }
+        try {
+            LocalDate date = LocalDate.parse(dateString, DEFAULT_DATE_FORMATTER);
+            return date.plusDays(1).format(DEFAULT_DATE_FORMATTER);
+        } catch (DateTimeParseException e) {
+            // If the date format is not yyyy-MM-dd, return as is
+            return dateString;
+        }
+    }
+
     // Parse, format
 
     public static LocalDate parseLocalDate(String stringDate) {

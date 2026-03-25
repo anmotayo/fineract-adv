@@ -262,6 +262,24 @@ public final class SavingsAccountSummary {
         this.totalInterestEarned = totalEarned.getAmount();
     }
 
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final SavingsAccountTransactionSummaryWrapper wrapper, final List<SavingsAccountTransaction> transactions,
+            final LocalDate startInterestCalculationDate) {
+
+        final BigDecimal interestPostedBeforeInterestCalculationDate = wrapper
+                .calculateTotalInterestPostedBeforeStartInterestCalculationDate(currency, transactions, startInterestCalculationDate);
+        Money totalEarned = interestPostedBeforeInterestCalculationDate == null ? Money.zero(currency)
+                : Money.of(currency, interestPostedBeforeInterestCalculationDate);
+        LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
+        for (final PostingPeriod period : allPostingPeriods) {
+            Money interestEarned = period.interest();
+            interestEarned = interestEarned == null ? Money.zero(currency) : interestEarned;
+            totalEarned = totalEarned.plus(interestEarned);
+        }
+        this.lastInterestCalculationDate = interestCalculationDate;
+        this.totalInterestEarned = totalEarned.getAmount();
+    }
+
     public boolean isLessThanOrEqualToAccountBalance(final Money amount) {
         final Money accountBalance = getAccountBalance(amount.getCurrency());
         return accountBalance.isGreaterThanOrEqualTo(amount);

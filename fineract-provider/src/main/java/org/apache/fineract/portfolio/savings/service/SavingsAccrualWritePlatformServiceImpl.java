@@ -189,6 +189,10 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         final MonetaryCurrency currency = savingsAccount.getCurrency();
         Money periodStartingBalance = Money.zero(currency);
 
+        if (savingsAccount.getStartInterestCalculationDate() != null) { // interest calculation start date
+            periodStartingBalance = Money.of(currency, savingsAccount.getSummary().getRunningBalanceOnPivotDate());
+        }
+
         final BigDecimal interestRateAsFraction = savingsAccount.getEffectiveInterestRateAsFraction(mc, tillDate);
         final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(savingsAccount.getId());
         boolean isInterestTransfer = false;

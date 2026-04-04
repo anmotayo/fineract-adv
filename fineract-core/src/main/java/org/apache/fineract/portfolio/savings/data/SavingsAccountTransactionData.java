@@ -652,11 +652,7 @@ public final class SavingsAccountTransactionData implements Serializable {
     }
 
     public boolean isWithHoldTaxAndNotReversed() {
-        return isWithHoldTax() && isNotReversed();
-    }
-
-    public boolean isWithHoldTax() {
-        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isWithHoldTax();
+        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isWithHoldTax() && isNotReversed();
     }
 
     public boolean isNotReversed() {

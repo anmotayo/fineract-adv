@@ -119,12 +119,12 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
         boolean isAccountTransfer = true;
         Long fromLoanAccountId = null;
         boolean isWithdrawBalance = false;
-        final boolean backdatedTxnsAllowedTill = this.savingsAccountAssembler.getPivotConfigStatus();
+        final boolean backdatedTxnsAllowedTill = false;
 
         if (isSavingsToSavingsAccountTransfer(fromAccountType, toAccountType)) {
 
             fromSavingsAccountId = command.longValueOfParameterNamed(fromAccountIdParamName);
-            final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFromOptimized(fromSavingsAccountId,
+            final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFrom(fromSavingsAccountId,
                     backdatedTxnsAllowedTill);
 
             final SavingsTransactionBooleanValues transactionBooleanValues = new SavingsTransactionBooleanValues(isAccountTransfer,
@@ -133,8 +133,7 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
                     transactionDate, transactionAmount, paymentDetail, transactionBooleanValues, backdatedTxnsAllowedTill, isFromJob);
 
             final Long toSavingsId = command.longValueOfParameterNamed(toAccountIdParamName);
-            final SavingsAccount toSavingsAccount = this.savingsAccountAssembler.assembleFromOptimized(toSavingsId,
-                    backdatedTxnsAllowedTill);
+            final SavingsAccount toSavingsAccount = this.savingsAccountAssembler.assembleFrom(toSavingsId, backdatedTxnsAllowedTill);
 
             final SavingsAccountTransaction deposit = this.savingsAccountDomainService.handleDeposit(toSavingsAccount, fmt, transactionDate,
                     transactionAmount, paymentDetail, isAccountTransfer, isRegularTransaction, backdatedTxnsAllowedTill);

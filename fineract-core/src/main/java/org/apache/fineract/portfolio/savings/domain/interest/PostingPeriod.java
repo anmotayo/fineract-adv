@@ -110,7 +110,7 @@ public final class PostingPeriod {
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
                 shouldNotAffectInterestPosting = true;
-            } else if (transaction.isWithHoldTaxAndNotReversed()) {
+            } else if (transaction.isDividendPayoutAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
             // }

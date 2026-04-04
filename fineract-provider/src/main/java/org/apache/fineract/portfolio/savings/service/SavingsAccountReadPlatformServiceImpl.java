@@ -350,7 +350,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.last_interest_calculation_date as lastInterestCalculationDate, ");
             sqlBuilder.append("sa.total_savings_amount_on_hold as onHoldAmount, ");
             sqlBuilder.append("sa.interest_posted_till_date as interestPostedTillDate, ");
-            sqlBuilder.append("sa.start_interest_calculation_date as startInterestCalculationDate, ");
             sqlBuilder.append("tg.id as taxGroupId, ");
             sqlBuilder.append("(select COALESCE(max(sat.transaction_date),sa.activatedon_date) ");
             sqlBuilder.append("from m_savings_account_transaction as sat ");
@@ -599,8 +598,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
 
                     final LocalDate maturityDate = JdbcSupport.getLocalDate(rs, "maturityDate");
 
-                    final LocalDate startInterestCalculationDate = JdbcSupport.getLocalDate(rs, "startInterestCalculationDate");
-
                     final boolean withdrawalFeeForTransfers = rs.getBoolean("withdrawalFeeForTransfers");
 
                     final boolean allowOverdraft = rs.getBoolean("allowOverdraft");
@@ -630,7 +627,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     savingsAccountData.setGlAccountIdForInterestOnSavings(glAccountIdForInterestOnSavings);
                     savingsAccountData.setGlAccountIdForSavingsControl(glAccountIdForSavingsControl);
                     savingsAccountData.setMaturityDate(maturityDate);
-                    savingsAccountData.setStartInterestCalculationDate(startInterestCalculationDate);
                 }
 
                 if (!transMap.containsValue(transactionId)) {
@@ -730,7 +726,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                         final TaxGroupMappingsData taxGroupMappingData = new TaxGroupMappingsData(taxGroupMappingId, taxComponentData,
                                 startDate, endDate);
                         if (taxGroupData.getTaxAssociations() == null) {
-                            final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList<>();
+                            final Collection<TaxGroupMappingsData> taxGroupMappingsData = new ArrayList();
                             taxGroupMappingsData.add(taxGroupMappingData);
                             TaxGroupData newTaxGroupData = TaxGroupData.instance(taxGroupId, null, taxGroupMappingsData);
                             savingsAccountData.setTaxGroup(newTaxGroupData);

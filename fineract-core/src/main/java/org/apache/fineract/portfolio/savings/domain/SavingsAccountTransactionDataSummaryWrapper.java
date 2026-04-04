@@ -19,11 +19,8 @@
 package org.apache.fineract.portfolio.savings.domain;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
-import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
-import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.springframework.stereotype.Component;
@@ -59,19 +56,6 @@ public final class SavingsAccountTransactionDataSummaryWrapper {
         Money total = Money.zero(currency);
         for (final SavingsAccountTransactionData transaction : transactions) {
             if (transaction.isInterestPostingAndNotReversed() && transaction.isNotReversed() && !transaction.isReversalTransaction()) {
-                total = total.plus(transaction.getAmount());
-            }
-        }
-        return total.getAmountDefaultedToNullIfZero();
-    }
-
-    public BigDecimal calculateTotalInterestPostedBeforeStartInterestCalculationDate(final MonetaryCurrency currency,
-            final List<SavingsAccountTransactionData> transactions, final LocalDate startInterestCalculationDate) {
-        Money total = Money.zero(currency);
-        for (final SavingsAccountTransactionData transaction : transactions) {
-            if (transaction.isInterestPostingAndNotReversed() && transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && (DateUtils.isBefore(transaction.getTransactionDate(), startInterestCalculationDate)
-                            || DateUtils.isEqual(transaction.getTransactionDate(), startInterestCalculationDate))) {
                 total = total.plus(transaction.getAmount());
             }
         }

@@ -1,0 +1,142 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.helper;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+public class SavingsAccountTransactionHelper {
+
+    private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
+
+    /**
+     * O(1) — Set running balance for a transaction appended at the end of the timeline.
+     */
+    public void setRunningBalanceForAppendPath(SavingsAccountTransaction transaction, Money lastRunningBalance, MonetaryCurrency currency) {
+        Money transactionAmount = transaction.getAmount(currency);
+        Money newBalance;
+        if (transaction.isCredit()) {
+            newBalance = lastRunningBalance.plus(transactionAmount);
+        } else {
+            newBalance = lastRunningBalance.minus(transactionAmount);
+        }
+        transaction.setRunningBalance(newBalance);
+    }
+
+    /**
+     * O(1) — Incremental summary update for a single new transaction. Delegates to the existing
+     * SavingsAccountSummary.updateSummaryWithPivotConfig switch logic.
+     */
+    public void updateSummaryIncremental(SavingsAccount account, SavingsAccountTransaction transaction, MonetaryCurrency currency) {
+        account.getSummary().updateSummaryWithPivotConfig(currency, summaryWrapper, transaction,
+                account.getSavingsAccountTransactionsWithPivotConfig());
+    }
+
+    /**
+     * O(1) — Validate withdrawal doesn't exceed available balance for append path.
+     */
+    public void validateBalanceForAppendPath(SavingsAccount account, BigDecimal withdrawalAmount, MonetaryCurrency currency) {
+        Money accountBalance = Money.of(currency, account.getSummary().getAccountBalance());
+        Money withdrawal = Money.of(currency, withdrawalAmount);
+        Money minRequired = account.minRequiredBalanceDerived(currency);
+        Money holdAmount = Money.of(currency, account.getSavingsHoldAmount());
+
+        Money availableBalance = accountBalance.minus(minRequired).minus(holdAmount);
+
+        if (availableBalance.minus(withdrawal).isLessThanZero()) {
+            throw new InsufficientAccountBalanceException("transactionAmount", account.getSummary().getAccountBalance(), null,
+                    withdrawalAmount);
+        }
+    }
+
+    /**
+     * O(k) — Recalculate running balances for a list of transactions from a given opening balance. Transactions must be
+     * pre-sorted by date.
+     */
+    public void recalculateDailyBalancesFromDate(List<SavingsAccountTransaction> sortedTransactions, Money openingBalance,
+            MonetaryCurrency currency) {
+        Money runningBalance = openingBalance;
+        for (SavingsAccountTransaction transaction : sortedTransactions) {
+            if (transaction.isReversed() || transaction.isReversalTransaction()) {
+                transaction.zeroBalanceFields();
+                continue;
+            }
+            if (transaction.isCredit() || transaction.isAmountRelease()) {
+                runningBalance = runningBalance.plus(transaction.getAmount(currency));
+            } else if (transaction.isDebit() || transaction.isAmountOnHold()) {
+                runningBalance = runningBalance.minus(transaction.getAmount(currency));
+            }
+            transaction.setRunningBalance(runningBalance);
+        }
+    }
+
+    /**
+     * O(k) — Validate balance never goes negative from a set of pre-recalculated transactions.
+     */
+    public void validateBalanceDoesNotBecomeNegative(SavingsAccount account, List<SavingsAccountTransaction> sortedTransactions,
+            Money openingBalance, MonetaryCurrency currency) {
+        Money runningBalance = openingBalance;
+        Money minRequired = account.minRequiredBalanceDerived(currency);
+
+        for (SavingsAccountTransaction transaction : sortedTransactions) {
+            if (transaction.isReversed() || transaction.isReversalTransaction()) {
+                continue;
+            }
+            if (transaction.isCredit()) {
+                runningBalance = runningBalance.plus(transaction.getAmount(currency));
+            } else if (transaction.isDebit()) {
+                runningBalance = runningBalance.minus(transaction.getAmount(currency));
+            } else {
+                continue;
+            }
+
+            if (!account.isOverdraft() && transaction.canProcessBalanceCheck()) {
+                if (runningBalance.minus(minRequired).isLessThanZero()) {
+                    throw new InsufficientAccountBalanceException("transactionAmount", account.getSummary().getAccountBalance(), null,
+                            transaction.getAmount());
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if the transaction date falls before the last interest posting period. Uses a pre-loaded list of interest
+     * and overdraft transactions.
+     */
+    public boolean isBeforeLastPostingPeriod(LocalDate transactionDate, List<SavingsAccountTransaction> interestAndOverdraftTransactions) {
+        for (SavingsAccountTransaction transaction : interestAndOverdraftTransactions) {
+            if ((transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
+                    && transaction.isAfter(transactionDate) && !transaction.isReversalTransaction()) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

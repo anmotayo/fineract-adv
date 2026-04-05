@@ -3445,7 +3445,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.accountNumber;
     }
 
-    private Money minRequiredBalanceDerived(final MonetaryCurrency currency) {
+    public Money minRequiredBalanceDerived(final MonetaryCurrency currency) {
         Money minReqBalance = Money.zero(currency);
         if (this.enforceMinRequiredBalance) {
             minReqBalance = minReqBalance.plus(this.minRequiredBalance);
@@ -3846,7 +3846,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         this.accountType = accountType;
     }
 
-    private boolean isOverdraft() {
+    public boolean isOverdraft() {
         return allowOverdraft;
     }
 

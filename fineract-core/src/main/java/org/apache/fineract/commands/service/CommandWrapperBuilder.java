@@ -1579,6 +1579,15 @@ public class CommandWrapperBuilder {
         return this;
     }
 
+    public CommandWrapperBuilder savingsAccountBulkTransaction(final Long accountId) {
+        this.actionName = "BULKTRANSACTION";
+        this.entityName = "SAVINGSACCOUNT";
+        this.savingsId = accountId;
+        this.entityId = null;
+        this.href = "/savingsaccounts/" + accountId + "/bulk-transactions";
+        return this;
+    }
+
     public CommandWrapperBuilder undoSavingsAccountTransaction(final Long accountId, final Long transactionId) {
         this.actionName = "UNDOTRANSACTION";
         this.entityName = "SAVINGSACCOUNT";

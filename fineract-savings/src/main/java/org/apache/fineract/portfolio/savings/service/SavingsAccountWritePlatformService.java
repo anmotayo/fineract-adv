@@ -118,4 +118,8 @@ public interface SavingsAccountWritePlatformService {
     CommandProcessingResult gsimDeposit(Long gsimId, JsonCommand command);
 
     CommandProcessingResult bulkGSIMClose(Long gsimId, JsonCommand command);
+
+    default CommandProcessingResult bulkTransaction(Long savingsId, JsonCommand command) {
+        throw new UnsupportedOperationException("Bulk transaction not supported in this implementation");
+    }
 }

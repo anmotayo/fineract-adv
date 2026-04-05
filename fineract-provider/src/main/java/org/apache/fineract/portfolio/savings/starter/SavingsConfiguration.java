@@ -86,6 +86,10 @@ import org.apache.fineract.portfolio.savings.domain.RecurringDepositAccountRepos
 import org.apache.fineract.portfolio.savings.domain.RecurringDepositProductRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionDataSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
@@ -420,6 +424,42 @@ public class SavingsConfiguration {
             FineractEntityAccessUtil fineractEntityAccessUtil) {
         return new SavingsProductWritePlatformServiceJpaRepositoryImpl(context, savingProductRepository, fromApiJsonDataValidator,
                 savingsProductAssembler, accountMappingWritePlatformService, fineractEntityAccessUtil);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SavingsAccountDomainService.class)
+    public SavingsAccountDomainService savingsAccountDomainService(PlatformSecurityContext context,
+            SavingsAccountRepositoryWrapper savingsAccountRepository,
+            SavingsAccountTransactionRepository savingsAccountTransactionRepository,
+            SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            JournalEntryWritePlatformService journalEntryWritePlatformService,
+            ConfigurationDomainService configurationDomainService,
+            DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
+            BusinessEventNotifierService businessEventNotifierService,
+            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
+            SavingsHelper savingsHelper) {
+        return new SavingsAccountDomainServiceJpa(context, savingsAccountRepository, savingsAccountTransactionRepository,
+                savingsAccountTransactionDataValidator, journalEntryWritePlatformService, configurationDomainService,
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService,
+                savingsAccountTransactionSummaryWrapper, savingsHelper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SavingsAccountAssembler.class)
+    public SavingsAccountAssembler savingsAccountAssembler(
+            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
+            SavingsAccountTransactionDataSummaryWrapper savingsAccountTransactionDataSummaryWrapper,
+            ClientRepositoryWrapper clientRepository, GroupRepositoryWrapper groupRepository,
+            StaffRepositoryWrapper staffRepository, SavingsProductRepository savingProductRepository,
+            SavingsAccountRepositoryWrapper savingsAccountRepository,
+            SavingsAccountChargeAssembler savingsAccountChargeAssembler, FromJsonHelper fromApiJsonHelper,
+            AccountTransfersReadPlatformService accountTransfersReadPlatformService, JdbcTemplate jdbcTemplate,
+            ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory) {
+        return new SavingsAccountAssembler(savingsAccountTransactionSummaryWrapper,
+                savingsAccountTransactionDataSummaryWrapper, clientRepository, groupRepository,
+                staffRepository, savingProductRepository, savingsAccountRepository,
+                savingsAccountChargeAssembler, fromApiJsonHelper, accountTransfersReadPlatformService,
+                jdbcTemplate, configurationDomainService, externalIdFactory);
     }
 
     @Bean

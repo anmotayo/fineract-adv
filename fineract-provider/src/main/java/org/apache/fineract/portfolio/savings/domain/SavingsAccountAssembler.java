@@ -87,7 +87,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-@Service
 public class SavingsAccountAssembler {
 
     private static final Logger LOG = LoggerFactory.getLogger(SavingsAccountAssembler.class);

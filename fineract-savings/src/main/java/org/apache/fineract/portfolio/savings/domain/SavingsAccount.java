@@ -803,11 +803,11 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.nominalAnnualInterestRate.divide(BigDecimal.valueOf(100L), mc);
     }
 
-    private boolean hasInterestCalculation() {
+    public boolean hasInterestCalculation() {
         return !MathUtil.isEmpty(nominalAnnualInterestRate);
     }
 
-    private boolean hasOverdraftInterestCalculation() {
+    public boolean hasOverdraftInterestCalculation() {
         return isAllowOverdraft() && !MathUtil.isEmpty(getOverdraftLimit()) && !MathUtil.isEmpty(nominalAnnualInterestRateOverdraft);
     }
 

@@ -18,9 +18,12 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import com.advancly.fineract.portfolio.savings.data.BulkTransactionDataValidator;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -33,14 +36,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
+import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.note.domain.Note;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
+import org.apache.fineract.portfolio.paymentdetail.PaymentDetailConstants;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
+import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
@@ -70,6 +78,10 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final NoteRepository noteRepository;
     private final GSIMRepositoy gsimRepository;
     private final SavingsAccountWritePlatformServiceDelegate delegate;
+    private final BulkTransactionDataValidator bulkTransactionDataValidator;
+    private final FromJsonHelper fromApiJsonHelper;
+    private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
+    private final PaymentDetailRepository paymentDetailRepository;
 
     @Transactional
     @Override
@@ -147,6 +159,98 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         return new CommandProcessingResultBuilder().withEntityId(withdrawal.getId()).withOfficeId(account.officeId())
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult bulkTransaction(final Long savingsId, final JsonCommand command) {
+        context.authenticatedUser();
+        bulkTransactionDataValidator.validate(command.json());
+
+        final JsonArray transactions = fromApiJsonHelper.extractJsonArrayNamed("transactions", command.parsedJson());
+
+        // Find earliest transaction date to determine path
+        final String dateFormat = fromApiJsonHelper.extractStringNamed("dateFormat", command.parsedJson());
+        final String locale = fromApiJsonHelper.extractStringNamed("locale", command.parsedJson());
+        LocalDate earliestDate = null;
+        for (int i = 0; i < transactions.size(); i++) {
+            final JsonObject txn = transactions.get(i).getAsJsonObject();
+            final LocalDate txnDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat,
+                    java.util.Locale.forLanguageTag(locale.replace("_", "-")));
+            if (earliestDate == null || txnDate.isBefore(earliestDate)) {
+                earliestDate = txnDate;
+            }
+        }
+
+        Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
+        boolean isAppendPath = lastTxnDate.isEmpty() || !earliestDate.isBefore(lastTxnDate.get());
+
+        AssembledSavingsAccount assembled;
+        if (isAppendPath) {
+            assembled = assembler.assembleForAppendPath(savingsId);
+        } else {
+            boolean hasInterest = checkHasInterest(savingsId);
+            assembled = assembler.assembleForInsertPath(savingsId, earliestDate, hasInterest);
+        }
+
+        final SavingsAccount account = assembled.getAccount();
+        account.validateForAccountBlock();
+
+        Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
+        final Map<String, Object> changes = new LinkedHashMap<>();
+        final Map<String, Long> transactionIds = new LinkedHashMap<>();
+
+        for (int i = 0; i < transactions.size(); i++) {
+            final JsonObject txn = transactions.get(i).getAsJsonObject();
+            final String type = fromApiJsonHelper.extractStringNamed("type", txn);
+            final LocalDate transactionDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat,
+                    java.util.Locale.forLanguageTag(locale.replace("_", "-")));
+            final BigDecimal transactionAmount = fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", txn);
+            final String receiptNumber = fromApiJsonHelper.extractStringNamed("receiptNumber", txn);
+
+            final PaymentDetail paymentDetail = createPaymentDetailFromJsonObject(txn);
+
+            SavingsAccountTransaction savedTxn;
+            if ("deposit".equals(type)) {
+                account.validateForCreditBlock();
+                savedTxn = domainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
+                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+            } else {
+                account.validateForDebitBlock();
+                savedTxn = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail, true,
+                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+            }
+
+            transactionIds.put(receiptNumber, savedTxn.getId());
+            lastRunningBalance = savedTxn.getRunningBalance(account.getCurrency());
+
+            final String noteText = fromApiJsonHelper.extractStringNamed("note", txn);
+            if (noteText != null && !noteText.isBlank()) {
+                final Note note = Note.savingsTransactionNote(account, savedTxn, noteText);
+                noteRepository.save(note);
+            }
+        }
+
+        changes.put("transactionIds", transactionIds);
+
+        return new CommandProcessingResultBuilder().withOfficeId(account.officeId()).withClientId(account.clientId())
+                .withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
+    }
+
+    private PaymentDetail createPaymentDetailFromJsonObject(JsonObject txn) {
+        final Long paymentTypeId = fromApiJsonHelper.extractLongNamed("paymentTypeId", txn);
+        if (paymentTypeId == null) {
+            return null;
+        }
+        final PaymentType paymentType = paymentTypeRepositoryWrapper.findOneWithNotFoundDetection(paymentTypeId);
+        final String accountNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.accountNumberParamName, txn);
+        final String checkNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.checkNumberParamName, txn);
+        final String routingCode = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.routingCodeParamName, txn);
+        final String receiptNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.receiptNumberParamName, txn);
+        final String bankNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.bankNumberParamName, txn);
+        final PaymentDetail paymentDetail = PaymentDetail.instance(paymentType, accountNumber, checkNumber, routingCode, receiptNumber,
+                bankNumber);
+        return paymentDetailRepository.saveAndFlush(paymentDetail);
     }
 
     // === Helper methods ===

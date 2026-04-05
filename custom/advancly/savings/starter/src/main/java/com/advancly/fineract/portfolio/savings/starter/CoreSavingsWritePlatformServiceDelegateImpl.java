@@ -249,4 +249,9 @@ class CoreSavingsWritePlatformServiceDelegateImpl implements SavingsAccountWrite
     public CommandProcessingResult bulkGSIMClose(Long gsimId, JsonCommand command) {
         return delegate.bulkGSIMClose(gsimId, command);
     }
+
+    @Override
+    public CommandProcessingResult bulkTransaction(Long savingsId, JsonCommand command) {
+        return delegate.bulkTransaction(savingsId, command);
+    }
 }

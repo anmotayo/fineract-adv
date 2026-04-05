@@ -24,6 +24,7 @@ dependencies {
     implementation('org.eclipse.persistence:org.eclipse.persistence.jpa') {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'
     }
+    implementation('com.google.code.gson:gson')
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     compileOnly('org.springframework.boot:spring-boot-autoconfigure')

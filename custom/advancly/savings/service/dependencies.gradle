@@ -25,10 +25,13 @@ dependencies {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'
     }
     implementation('com.google.code.gson:gson')
+    implementation('jakarta.ws.rs:jakarta.ws.rs-api')
+    implementation('io.swagger.core.v3:swagger-annotations-jakarta')
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     compileOnly('org.springframework.boot:spring-boot-autoconfigure')
     compileOnly('org.springframework.boot:spring-boot-starter-data-jpa')
+    compileOnly('org.springframework.boot:spring-boot-starter-security')
 
     testImplementation('org.springframework.boot:spring-boot-starter-test')
     testImplementation('org.springframework.boot:spring-boot-starter-data-jpa')

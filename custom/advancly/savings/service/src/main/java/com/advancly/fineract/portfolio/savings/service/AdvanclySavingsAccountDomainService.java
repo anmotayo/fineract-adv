@@ -179,8 +179,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             List<SavingsAccountTransaction> sortedTxns = account.getSavingsAccountTransactionsWithPivotConfig();
             transactionHelper.recalculateDailyBalancesFromDate(sortedTxns, openingBalance, currency);
             transactionHelper.validateBalanceDoesNotBecomeNegative(account, sortedTxns, openingBalance, currency);
-            // For insert path, use full summary recalculation since multiple running balances changed
-            account.getSummary().updateSummary(currency, savingsAccountTransactionSummaryWrapper, sortedTxns);
+            // For insert path, use single-pass summary calculation instead of 12 separate iterations
+            transactionHelper.calculateAndUpdateSummaryInSinglePass(account, sortedTxns, currency);
         }
     }
 

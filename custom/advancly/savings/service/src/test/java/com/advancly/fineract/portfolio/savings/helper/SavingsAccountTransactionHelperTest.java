@@ -204,4 +204,53 @@ class SavingsAccountTransactionHelperTest {
 
         assertThat(result).isFalse();
     }
+
+    @Test
+    void testCalculateAndUpdateSummaryInSinglePass_depositsAndWithdrawals() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).build();
+
+        List<SavingsAccountTransaction> transactions = new ArrayList<>();
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(1L).withType(SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2025, 7, 1)).withAmount(BigDecimal.valueOf(1000)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(2L).withType(SavingsAccountTransactionType.WITHDRAWAL)
+                .withDate(LocalDate.of(2025, 7, 2)).withAmount(BigDecimal.valueOf(300)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(3L).withType(SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2025, 7, 3)).withAmount(BigDecimal.valueOf(500)).build());
+
+        helper.calculateAndUpdateSummaryInSinglePass(account, transactions, currency);
+
+        assertThat(account.getSummary().getTotalDeposits()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+        assertThat(account.getSummary().getTotalWithdrawals()).isEqualByComparingTo(BigDecimal.valueOf(300));
+        assertThat(account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.valueOf(1200));
+    }
+
+    @Test
+    void testCalculateAndUpdateSummaryInSinglePass_skipsReversedTransactions() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).build();
+
+        List<SavingsAccountTransaction> transactions = new ArrayList<>();
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(1L).withType(SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2025, 7, 1)).withAmount(BigDecimal.valueOf(1000)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(2L).withType(SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2025, 7, 2)).withAmount(BigDecimal.valueOf(500)).reversed().build());
+
+        helper.calculateAndUpdateSummaryInSinglePass(account, transactions, currency);
+
+        assertThat(account.getSummary().getTotalDeposits()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+        assertThat(account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+    }
+
+    @Test
+    void testCalculateAndUpdateSummaryInSinglePass_emptyTransactions() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).build();
+
+        helper.calculateAndUpdateSummaryInSinglePass(account, new ArrayList<>(), currency);
+
+        assertThat(account.getSummary().getTotalDeposits()).isNull();
+        assertThat(account.getSummary().getTotalWithdrawals()).isNull();
+        assertThat(account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
 }

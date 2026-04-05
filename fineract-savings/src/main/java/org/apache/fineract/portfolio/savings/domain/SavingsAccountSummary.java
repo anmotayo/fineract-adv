@@ -338,4 +338,40 @@ public final class SavingsAccountSummary {
     public BigDecimal getTotalWithholdTax() {
         return this.totalWithholdTax;
     }
+
+    public void setTotalDeposits(BigDecimal totalDeposits) {
+        this.totalDeposits = totalDeposits;
+    }
+
+    public void setTotalWithdrawals(BigDecimal totalWithdrawals) {
+        this.totalWithdrawals = totalWithdrawals;
+    }
+
+    public void setTotalInterestPosted(BigDecimal totalInterestPosted) {
+        this.totalInterestPosted = totalInterestPosted;
+    }
+
+    public void setTotalWithdrawalFees(BigDecimal totalWithdrawalFees) {
+        this.totalWithdrawalFees = totalWithdrawalFees;
+    }
+
+    public void setTotalAnnualFees(BigDecimal totalAnnualFees) {
+        this.totalAnnualFees = totalAnnualFees;
+    }
+
+    public void setTotalFeeCharge(BigDecimal totalFeeCharge) {
+        this.totalFeeCharge = totalFeeCharge;
+    }
+
+    public void setTotalPenaltyCharge(BigDecimal totalPenaltyCharge) {
+        this.totalPenaltyCharge = totalPenaltyCharge;
+    }
+
+    public void setTotalOverdraftInterestDerived(BigDecimal totalOverdraftInterestDerived) {
+        this.totalOverdraftInterestDerived = totalOverdraftInterestDerived;
+    }
+
+    public void setTotalWithholdTax(BigDecimal totalWithholdTax) {
+        this.totalWithholdTax = totalWithholdTax;
+    }
 }

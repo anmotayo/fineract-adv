@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
@@ -124,6 +125,87 @@ public class SavingsAccountTransactionHelper {
                 }
             }
         }
+    }
+
+    /**
+     * O(n) single-pass — Calculate all 11 summary totals, running balance, and last interest posting date in one
+     * iteration. Replaces the 12-pass updateSummary() + updateRunningBalanceAndPivotDate() for the insert path.
+     */
+    public void calculateAndUpdateSummaryInSinglePass(SavingsAccount account, List<SavingsAccountTransaction> transactions,
+            MonetaryCurrency currency) {
+        Money totalDeposits = Money.zero(currency);
+        Money totalWithdrawals = Money.zero(currency);
+        Money totalInterestPosted = Money.zero(currency);
+        Money totalWithdrawalFees = Money.zero(currency);
+        Money totalAnnualFees = Money.zero(currency);
+        Money totalFeeCharge = Money.zero(currency);
+        Money totalFeeChargesWaived = Money.zero(currency);
+        Money totalPenaltyCharge = Money.zero(currency);
+        Money totalPenaltyChargesWaived = Money.zero(currency);
+        Money totalOverdraftInterest = Money.zero(currency);
+        Money totalWithholdTax = Money.zero(currency);
+        LocalDate lastInterestPostingDate = null;
+
+        for (SavingsAccountTransaction txn : transactions) {
+            if (txn.isReversalTransaction()) {
+                continue;
+            }
+            Money amount = txn.getAmount(currency);
+
+            if ((txn.isDepositAndNotReversed() || txn.isDividendPayoutAndNotReversed())) {
+                totalDeposits = totalDeposits.plus(amount);
+            }
+            if (txn.isWithdrawal() && txn.isNotReversed()) {
+                totalWithdrawals = totalWithdrawals.plus(amount);
+            }
+            if (txn.isInterestPostingAndNotReversed() && txn.isNotReversed()) {
+                totalInterestPosted = totalInterestPosted.plus(amount);
+                lastInterestPostingDate = txn.getTransactionDate();
+            }
+            if (txn.isWithdrawalFeeAndNotReversed() && txn.isNotReversed()) {
+                totalWithdrawalFees = totalWithdrawalFees.plus(amount);
+            }
+            if (txn.isAnnualFeeAndNotReversed() && txn.isNotReversed()) {
+                totalAnnualFees = totalAnnualFees.plus(amount);
+            }
+            if (txn.isFeeChargeAndNotReversed()) {
+                totalFeeCharge = totalFeeCharge.plus(amount);
+            }
+            if (txn.isWaiveFeeChargeAndNotReversed()) {
+                totalFeeChargesWaived = totalFeeChargesWaived.plus(amount);
+            }
+            if (txn.isPenaltyChargeAndNotReversed()) {
+                totalPenaltyCharge = totalPenaltyCharge.plus(amount);
+            }
+            if (txn.isWaivePenaltyChargeAndNotReversed()) {
+                totalPenaltyChargesWaived = totalPenaltyChargesWaived.plus(amount);
+            }
+            if (txn.isOverdraftInterestAndNotReversed()) {
+                totalOverdraftInterest = totalOverdraftInterest.plus(amount);
+            }
+            if (txn.isWithHoldTaxAndNotReversed()) {
+                totalWithholdTax = totalWithholdTax.plus(amount);
+            }
+        }
+
+        SavingsAccountSummary summary = account.getSummary();
+        summary.setTotalDeposits(totalDeposits.getAmountDefaultedToNullIfZero());
+        summary.setTotalWithdrawals(totalWithdrawals.getAmountDefaultedToNullIfZero());
+        summary.setTotalInterestPosted(totalInterestPosted.getAmountDefaultedToNullIfZero());
+        summary.setTotalWithdrawalFees(totalWithdrawalFees.getAmountDefaultedToNullIfZero());
+        summary.setTotalAnnualFees(totalAnnualFees.getAmountDefaultedToNullIfZero());
+        summary.setTotalFeeCharge(totalFeeCharge.getAmountDefaultedToNullIfZero());
+        summary.setTotalPenaltyCharge(totalPenaltyCharge.getAmountDefaultedToNullIfZero());
+        summary.setTotalOverdraftInterestDerived(totalOverdraftInterest.getAmountDefaultedToNullIfZero());
+        summary.setTotalWithholdTax(totalWithholdTax.getAmountDefaultedToNullIfZero());
+        if (lastInterestPostingDate != null) {
+            summary.setInterestPostedTillDate(lastInterestPostingDate);
+        }
+
+        BigDecimal accountBalance = totalDeposits.plus(totalInterestPosted).minus(totalWithdrawals).minus(totalWithdrawalFees)
+                .minus(totalAnnualFees).minus(totalFeeCharge).minus(totalPenaltyCharge).minus(totalOverdraftInterest)
+                .minus(totalWithholdTax).getAmount();
+        summary.setAccountBalance(accountBalance);
     }
 
     /**

@@ -31,6 +31,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSum
 import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
 import org.springframework.stereotype.Component;
 
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Component
 @RequiredArgsConstructor
 public class SavingsAccountTransactionHelper {
@@ -49,6 +50,18 @@ public class SavingsAccountTransactionHelper {
             newBalance = lastRunningBalance.minus(transactionAmount);
         }
         transaction.setRunningBalance(newBalance);
+    }
+
+    /**
+     * O(1) — Update the previous last transaction's balance end date and cumulative balance fields when appending a new
+     * transaction. The previous transaction's balance period is closed at (newTransactionDate - 1).
+     */
+    public void updatePreviousTransactionBalanceEndDate(SavingsAccountTransaction previousTransaction, LocalDate newTransactionDate,
+            MonetaryCurrency currency) {
+        if (previousTransaction != null) {
+            LocalDate endDate = newTransactionDate.minusDays(1);
+            previousTransaction.updateCumulativeBalanceAndDates(currency, endDate);
+        }
     }
 
     /**

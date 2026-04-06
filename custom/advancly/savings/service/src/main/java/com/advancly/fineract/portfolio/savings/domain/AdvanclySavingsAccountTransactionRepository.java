@@ -32,15 +32,15 @@ import org.springframework.data.repository.query.Param;
 
 public interface AdvanclySavingsAccountTransactionRepository extends JpaRepository<SavingsAccountTransaction, Long> {
 
-    // O(1) append path: get last non-reversed transaction for running balance
+    // O(1) append path: get last non-reversed transaction for running balance (excludes accrual type 10)
     @Query("select sat from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "
-            + "and sat.reversed = false and sat.reversalTransaction = false "
+            + "and sat.reversed = false and sat.reversalTransaction = false " + "and sat.typeOf <> 10 "
             + "order by sat.dateOf desc, sat.createdDate desc, sat.id desc")
     List<SavingsAccountTransaction> findLastNonReversedTransaction(@Param("savingsId") Long savingsId, Pageable pageable);
 
-    // O(1) append path: get just the last transaction date for path decision
+    // O(1) append path: get just the last transaction date for path decision (excludes accrual type 10)
     @Query("select max(sat.dateOf) from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "
-            + "and sat.reversed = false and sat.reversalTransaction = false")
+            + "and sat.reversed = false and sat.reversalTransaction = false " + "and sat.typeOf <> 10")
     Optional<LocalDate> findLastTransactionDate(@Param("savingsId") Long savingsId);
 
     // O(k) insert path: load transactions from a specific date onward

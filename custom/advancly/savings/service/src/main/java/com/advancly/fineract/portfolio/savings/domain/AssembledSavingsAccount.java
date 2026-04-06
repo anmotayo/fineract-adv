@@ -36,9 +36,17 @@ public class AssembledSavingsAccount {
 
     private final SavingsAccount account;
     private final List<SavingsAccountTransaction> interestAndOverdraftTransactions;
+    private final SavingsAccountTransaction lastNonReversedTransaction;
 
     public static AssembledSavingsAccount of(SavingsAccount account, List<SavingsAccountTransaction> interestAndOverdraftTransactions) {
         return new AssembledSavingsAccount(account,
-                interestAndOverdraftTransactions != null ? interestAndOverdraftTransactions : new ArrayList<>());
+                interestAndOverdraftTransactions != null ? interestAndOverdraftTransactions : new ArrayList<>(), null);
+    }
+
+    public static AssembledSavingsAccount of(SavingsAccount account, List<SavingsAccountTransaction> interestAndOverdraftTransactions,
+            SavingsAccountTransaction lastNonReversedTransaction) {
+        return new AssembledSavingsAccount(account,
+                interestAndOverdraftTransactions != null ? interestAndOverdraftTransactions : new ArrayList<>(),
+                lastNonReversedTransaction);
     }
 }

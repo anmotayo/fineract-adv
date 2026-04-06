@@ -118,8 +118,9 @@ public class AuditsApiResource {
         final String adjustedMakerDateTimeTo = DateUtils.addOneDayToDate(makerDateTimeTo);
         final String adjustedCheckerDateTimeTo = DateUtils.addOneDayToDate(checkerDateTimeTo);
 
-        final SQLBuilder extraCriteria = getExtraCriteria(actionName, entityName, resourceId, makerId, makerDateTimeFrom, adjustedMakerDateTimeTo,
-                checkerId, checkerDateTimeFrom, adjustedCheckerDateTimeTo, processingResult, officeId, groupId, clientId, loanId, savingsAccountId);
+        final SQLBuilder extraCriteria = getExtraCriteria(actionName, entityName, resourceId, makerId, makerDateTimeFrom,
+                adjustedMakerDateTimeTo, checkerId, checkerDateTimeFrom, adjustedCheckerDateTimeTo, processingResult, officeId, groupId,
+                clientId, loanId, savingsAccountId);
 
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
 

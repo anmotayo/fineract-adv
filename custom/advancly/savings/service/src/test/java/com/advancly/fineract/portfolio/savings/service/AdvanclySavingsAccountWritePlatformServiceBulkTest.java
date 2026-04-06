@@ -104,7 +104,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     void testBulkTransaction_twoDeposits_returnsReceiptToIdMap() {
         Long savingsId = 1L;
         SavingsAccount account = new SavingsAccountTestBuilder().withId(savingsId).build();
-        AssembledSavingsAccount assembled = new AssembledSavingsAccount(account, new ArrayList<>());
+        AssembledSavingsAccount assembled = new AssembledSavingsAccount(account, new ArrayList<>(), null);
 
         when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.empty());
         when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
@@ -120,9 +120,9 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
                 .withRunningBalance(BigDecimal.valueOf(7000)).build();
 
         when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(5000)), any(), any(),
-                any(Money.class), any())).thenReturn(txn1);
+                any(Money.class), any(), any())).thenReturn(txn1);
         when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(2000)), any(), any(),
-                any(Money.class), any())).thenReturn(txn2);
+                any(Money.class), any(), any())).thenReturn(txn2);
 
         String json = buildBulkPayload("deposit", "REC-001", 5000, "deposit", "REC-002", 2000);
         JsonCommand command = JsonCommand.fromExistingCommand(null, json, JsonParser.parseString(json), fromJsonHelper, null, null, null,

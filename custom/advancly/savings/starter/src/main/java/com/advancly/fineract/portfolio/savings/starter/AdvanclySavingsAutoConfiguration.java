@@ -41,8 +41,11 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransact
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
@@ -59,6 +62,25 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EnableJpaRepositories(basePackages = "com.advancly.fineract.portfolio.savings")
 @ConditionalOnProperty("advancly.savings.optimization.enabled")
 public class AdvanclySavingsAutoConfiguration {
+
+    /**
+     * Creates an instance of the core SavingsAccountDomainServiceJpa so the custom AdvanclySavingsAccountDomainService
+     * can delegate non-optimized methods (handleDeposit, handleWithdrawal, etc.) to the core implementation.
+     */
+    @Bean
+    public SavingsAccountDomainServiceJpa coreSavingsAccountDomainService(PlatformSecurityContext context,
+            SavingsAccountRepositoryWrapper savingsAccountRepository,
+            SavingsAccountTransactionRepository savingsAccountTransactionRepository,
+            SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            JournalEntryWritePlatformService journalEntryWritePlatformService, ConfigurationDomainService configurationDomainService,
+            DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
+            BusinessEventNotifierService businessEventNotifierService,
+            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, SavingsHelper savingsHelper) {
+        return new SavingsAccountDomainServiceJpa(context, savingsAccountRepository, savingsAccountTransactionRepository,
+                savingsAccountTransactionDataValidator, journalEntryWritePlatformService, configurationDomainService,
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService, savingsAccountTransactionSummaryWrapper,
+                savingsHelper);
+    }
 
     /**
      * Creates an instance of the core SavingsAccountWritePlatformServiceJpaRepositoryImpl as a

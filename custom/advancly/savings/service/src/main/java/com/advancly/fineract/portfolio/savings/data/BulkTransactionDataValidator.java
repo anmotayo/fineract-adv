@@ -66,29 +66,26 @@ public class BulkTransactionDataValidator {
 
         for (int i = 0; i < transactions.size(); i++) {
             final JsonObject txn = transactions.get(i).getAsJsonObject();
-            final String prefix = "transactions[" + i + "].";
 
             final String type = fromApiJsonHelper.extractStringNamed("type", txn);
-            baseDataValidator.reset().parameter(prefix + "type").value(type).notBlank();
+            baseDataValidator.reset().parameter("type").value(type).notBlank();
             if (type != null && !VALID_TYPES.contains(type)) {
-                baseDataValidator.reset().parameter(prefix + "type").value(type).isOneOfTheseStringValues("deposit", "withdrawal");
+                baseDataValidator.reset().parameter("type").value(type).isOneOfTheseStringValues("deposit", "withdrawal");
             }
 
             final String transactionDate = fromApiJsonHelper.extractStringNamed("transactionDate", txn);
-            baseDataValidator.reset().parameter(prefix + "transactionDate").value(transactionDate).notBlank();
+            baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notBlank();
 
             final BigDecimal transactionAmount = fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", txn);
-            baseDataValidator.reset().parameter(prefix + "transactionAmount").value(transactionAmount).notNull().positiveAmount();
+            baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
 
             final Long paymentTypeId = fromApiJsonHelper.extractLongNamed("paymentTypeId", txn);
-            baseDataValidator.reset().parameter(prefix + "paymentTypeId").value(paymentTypeId).notNull().longGreaterThanZero();
+            baseDataValidator.reset().parameter("paymentTypeId").value(paymentTypeId).notNull().longGreaterThanZero();
 
             final String receiptNumber = fromApiJsonHelper.extractStringNamed("receiptNumber", txn);
-            baseDataValidator.reset().parameter(prefix + "receiptNumber").value(receiptNumber).notBlank();
             if (receiptNumber != null && !receiptNumber.isBlank()) {
                 if (!seenReceiptNumbers.add(receiptNumber)) {
-                    baseDataValidator.reset().parameter(prefix + "receiptNumber").value(receiptNumber)
-                            .failWithCode("duplicate.receipt.number");
+                    baseDataValidator.reset().parameter("receiptNumber").value(receiptNumber).failWithCode("duplicate.receipt.number");
                 }
             }
         }

@@ -80,6 +80,7 @@ class AdvanclySavingsAccountAssemblerTest {
         assertThat(result.getAccount()).isSameAs(account);
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(5000));
         assertThat(result.getInterestAndOverdraftTransactions()).isEmpty();
+        assertThat(result.getLastNonReversedTransaction()).isSameAs(lastTxn);
     }
 
     @Test
@@ -93,6 +94,7 @@ class AdvanclySavingsAccountAssemblerTest {
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getLastNonReversedTransaction()).isNull();
     }
 
     @Test

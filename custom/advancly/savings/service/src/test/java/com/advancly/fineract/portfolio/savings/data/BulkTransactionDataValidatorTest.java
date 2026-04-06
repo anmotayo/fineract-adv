@@ -95,7 +95,7 @@ class BulkTransactionDataValidatorTest {
     }
 
     @Test
-    void testMissingReceiptNumber() {
+    void testMissingReceiptNumber_isOptional() {
         JsonObject payload = new JsonObject();
         payload.addProperty("dateFormat", "dd MMMM yyyy");
         payload.addProperty("locale", "en");
@@ -108,7 +108,8 @@ class BulkTransactionDataValidatorTest {
         txns.add(txn);
         payload.add("transactions", txns);
 
-        assertThatThrownBy(() -> validator.validate(payload.toString())).isInstanceOf(PlatformApiDataValidationException.class);
+        // receiptNumber is optional — validation should pass without it
+        assertThatCode(() -> validator.validate(payload.toString())).doesNotThrowAnyException();
     }
 
     @Test

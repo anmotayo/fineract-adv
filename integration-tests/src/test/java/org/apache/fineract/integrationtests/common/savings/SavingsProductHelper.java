@@ -21,6 +21,7 @@ package org.apache.fineract.integrationtests.common.savings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.google.gson.Gson;
+import edu.umd.cs.findbugs.annotations.SuppressWarnings;
 import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
 import java.math.BigDecimal;
@@ -40,7 +41,6 @@ public class SavingsProductHelper {
     private static final Gson GSON = new JSON().getGson();
     private static final String SAVINGS_PRODUCT_URL = "/fineract-provider/api/v1/savingsproducts";
     private static final String CREATE_SAVINGS_PRODUCT_URL = SAVINGS_PRODUCT_URL + "?" + Utils.TENANT_IDENTIFIER;
-    private static final Gson GSON = new JSON().getGson();
 
     private static final String LOCALE = "en_GB";
     private static final String DIGITS_AFTER_DECIMAL = "4";
@@ -236,12 +236,6 @@ public class SavingsProductHelper {
         return this;
     }
 
-    public SavingsProductHelper withAccountingRuleAsAccrualBased(final Account[] account_list) {
-        this.accountingRule = ACCRUAL_BASED;
-        this.accountList = account_list;
-        return this;
-    }
-
     public SavingsProductHelper withMinRequiredBalance(final String minRequiredBalance) {
         this.minRequiredBalance = minRequiredBalance;
         return this;
@@ -386,14 +380,6 @@ public class SavingsProductHelper {
         this.daysToDormancy = "60";
         this.daysToEscheat = "90";
         return this;
-    }
-
-    public static GetSavingsProductsProductIdResponse getSavingsProductById(final RequestSpecification requestSpec,
-            final ResponseSpecification responseSpec, final Integer productId) {
-        LOG.info("-------------------- RETRIEVING SAVINGS DEPOSIT PRODUCT BY ID --------------------------");
-        final String GET_PRODUCT_BY_ID_URL = SAVINGS_PRODUCT_URL + "/" + productId + "?" + Utils.TENANT_IDENTIFIER;
-        final String response = Utils.performServerGet(requestSpec, responseSpec, GET_PRODUCT_BY_ID_URL);
-        return GSON.fromJson(response, GetSavingsProductsProductIdResponse.class);
     }
 
 }

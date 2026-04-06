@@ -616,6 +616,7 @@ public class AccountTransfersWritePlatformServiceImpl implements AccountTransfer
         return builder.build();
     }
 
+    @Override
     public void setIsFromJob(boolean isFromJob) {
         this.isFromJob = isFromJob;
     }

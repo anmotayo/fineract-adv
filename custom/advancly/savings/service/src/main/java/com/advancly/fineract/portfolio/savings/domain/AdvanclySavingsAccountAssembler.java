@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 /**
  * Optimized assembler that loads only the transactions needed for the current operation instead of the full history.
  */
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -58,8 +59,10 @@ public class AdvanclySavingsAccountAssembler {
 
         List<SavingsAccountTransaction> lastTxnList = advanclyTransactionRepository.findLastNonReversedTransaction(savingsId, LAST_ONE);
 
+        SavingsAccountTransaction lastTransaction = null;
         if (!lastTxnList.isEmpty()) {
-            BigDecimal lastBalance = lastTxnList.get(0).getRunningBalance(account.getCurrency()).getAmount();
+            lastTransaction = lastTxnList.get(0);
+            BigDecimal lastBalance = lastTransaction.getRunningBalance(account.getCurrency()).getAmount();
             account.getSummary().setRunningBalanceOnPivotDate(lastBalance);
         } else {
             account.getSummary().setRunningBalanceOnPivotDate(BigDecimal.ZERO);
@@ -69,7 +72,7 @@ public class AdvanclySavingsAccountAssembler {
                 .findNonReversedInterestAndOverdraftTransactions(savingsId);
 
         account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, interestTxns);
+        return AssembledSavingsAccount.of(account, interestTxns, lastTransaction);
     }
 
     /**

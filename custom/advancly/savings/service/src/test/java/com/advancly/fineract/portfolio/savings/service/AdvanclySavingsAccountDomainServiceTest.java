@@ -21,7 +21,10 @@ package com.advancly.fineract.portfolio.savings.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,6 +35,7 @@ import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Optional;
@@ -81,6 +85,8 @@ class AdvanclySavingsAccountDomainServiceTest {
     private SavingsAccountTransactionHelper transactionHelper;
     @Mock
     private AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
+    @Mock
+    private org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa coreDomainService;
 
     private AdvanclySavingsAccountDomainService domainService;
     private MonetaryCurrency currency;
@@ -91,7 +97,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         currency = new MonetaryCurrency("USD", 2, null);
         domainService = new AdvanclySavingsAccountDomainService(context, savingsAccountRepository, savingsAccountTransactionRepository,
                 journalEntryWritePlatformService, configurationDomainService, depositAccountOnHoldTransactionRepository,
-                businessEventNotifierService, summaryWrapper, savingsHelper, transactionHelper, advanclyTransactionRepository);
+                businessEventNotifierService, summaryWrapper, savingsHelper, transactionHelper, advanclyTransactionRepository,
+                coreDomainService);
     }
 
     @Test
@@ -105,9 +112,10 @@ class AdvanclySavingsAccountDomainServiceTest {
         when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(today.minusDays(1)));
 
         SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, today, BigDecimal.valueOf(500), null,
-                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(1000)), currency);
+                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(1000)), currency, null);
 
         assertThat(deposit).isNotNull();
+        verify(transactionHelper).updatePreviousTransactionBalanceEndDate(any(), eq(today), eq(currency));
         verify(transactionHelper).updateSummaryIncremental(eq(account), any(), eq(currency));
         verify(transactionHelper).setRunningBalanceForAppendPath(any(), any(), eq(currency));
     }
@@ -125,7 +133,7 @@ class AdvanclySavingsAccountDomainServiceTest {
                 .when(transactionHelper).validateBalanceForAppendPath(eq(account), eq(BigDecimal.valueOf(500)), eq(currency));
 
         assertThatThrownBy(() -> domainService.handleWithdrawalOptimized(account, today, BigDecimal.valueOf(500), null, true,
-                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(100)), currency))
+                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(100)), currency, null))
                 .isInstanceOf(InsufficientAccountBalanceException.class);
     }
 
@@ -141,10 +149,52 @@ class AdvanclySavingsAccountDomainServiceTest {
         when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(false);
 
         SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, backdatedDate, BigDecimal.valueOf(200), null,
-                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(800)), currency);
+                new ArrayList<>(), Money.of(currency, BigDecimal.valueOf(800)), currency, null);
 
         assertThat(deposit).isNotNull();
         // Should recalculate running balances from date
         verify(transactionHelper).recalculateDailyBalancesFromDate(any(), any(), eq(currency));
+    }
+
+    @Test
+    void testHandleDeposit_insertPath_beforeInterestPosting_callsPostInterest() {
+        LocalDate backdatedDate = LocalDate.of(2025, 3, 15);
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
+                .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary)
+                .withInterestRate(BigDecimal.valueOf(5)).build();
+
+        when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
+        when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(configurationDomainService.retrieveFinancialYearBeginningMonth()).thenReturn(1);
+        when(configurationDomainService.isReversalTransactionAllowed()).thenReturn(false);
+
+        domainService.handleDepositOptimized(account, backdatedDate, BigDecimal.valueOf(200), null, new ArrayList<>(),
+                Money.of(currency, BigDecimal.valueOf(800)), currency, null);
+
+        verify(coreDomainService).postInterest(eq(account), any(MathContext.class), any(LocalDate.class), eq(false), eq(false), eq(1),
+                isNull(), eq(true), eq(false));
+    }
+
+    @Test
+    void testHandleWithdrawal_insertPath_beforeInterestPosting_callsPostInterest() {
+        LocalDate backdatedDate = LocalDate.of(2025, 3, 15);
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
+                .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary)
+                .withInterestRate(BigDecimal.valueOf(5)).build();
+
+        when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
+        when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(configurationDomainService.retrieveFinancialYearBeginningMonth()).thenReturn(1);
+        when(configurationDomainService.isReversalTransactionAllowed()).thenReturn(false);
+
+        domainService.handleWithdrawalOptimized(account, backdatedDate, BigDecimal.valueOf(200), null, false, new ArrayList<>(),
+                Money.of(currency, BigDecimal.valueOf(800)), currency, null);
+
+        verify(coreDomainService).postInterest(eq(account), any(MathContext.class), any(LocalDate.class), eq(false), eq(false), eq(1),
+                isNull(), eq(true), eq(false));
     }
 }

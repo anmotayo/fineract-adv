@@ -64,6 +64,7 @@ import org.springframework.util.StringUtils;
  * Optimized WritePlatformService that overrides deposit() and withdrawal() with O(1)/O(k) path selection. All other
  * methods delegate to the core SavingsAccountWritePlatformServiceJpaRepositoryImpl via the delegate.
  */
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -113,7 +114,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+                paymentDetail, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
+                assembled.getLastNonReversedTransaction());
 
         handleGsimDeposit(account, transactionAmount, deposit);
         handleNote(account, deposit, command);
@@ -152,7 +154,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, true, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+                paymentDetail, true, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
+                assembled.getLastNonReversedTransaction());
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -197,6 +200,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         account.validateForAccountBlock();
 
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
+        SavingsAccountTransaction lastNonReversedTxn = assembled.getLastNonReversedTransaction();
         final Map<String, Object> changes = new LinkedHashMap<>();
         final Map<String, Long> transactionIds = new LinkedHashMap<>();
 
@@ -214,15 +218,17 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             if ("deposit".equals(type)) {
                 account.validateForCreditBlock();
                 savedTxn = domainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
             } else {
                 account.validateForDebitBlock();
                 savedTxn = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail, true,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency());
+                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
             }
 
-            transactionIds.put(receiptNumber, savedTxn.getId());
+            String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
+            transactionIds.put(txnKey, savedTxn.getId());
             lastRunningBalance = savedTxn.getRunningBalance(account.getCurrency());
+            lastNonReversedTxn = savedTxn;
 
             final String noteText = fromApiJsonHelper.extractStringNamed("note", txn);
             if (noteText != null && !noteText.isBlank()) {

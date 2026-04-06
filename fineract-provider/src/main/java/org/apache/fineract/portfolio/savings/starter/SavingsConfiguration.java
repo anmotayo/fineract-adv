@@ -27,6 +27,7 @@ import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDoma
 import org.apache.fineract.infrastructure.core.data.PaginationParametersDataValidator;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.PaginationHelper;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
 import org.apache.fineract.infrastructure.dataqueries.data.DataTableValidator;
@@ -86,13 +87,12 @@ import org.apache.fineract.portfolio.savings.domain.RecurringDepositAccountRepos
 import org.apache.fineract.portfolio.savings.domain.RecurringDepositProductRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeAssembler;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
-import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionDataSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionDataSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductRepository;
@@ -432,34 +432,29 @@ public class SavingsConfiguration {
             SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
-            JournalEntryWritePlatformService journalEntryWritePlatformService,
-            ConfigurationDomainService configurationDomainService,
+            JournalEntryWritePlatformService journalEntryWritePlatformService, ConfigurationDomainService configurationDomainService,
             DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
             BusinessEventNotifierService businessEventNotifierService,
-            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
-            SavingsHelper savingsHelper) {
+            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, SavingsHelper savingsHelper) {
         return new SavingsAccountDomainServiceJpa(context, savingsAccountRepository, savingsAccountTransactionRepository,
                 savingsAccountTransactionDataValidator, journalEntryWritePlatformService, configurationDomainService,
-                depositAccountOnHoldTransactionRepository, businessEventNotifierService,
-                savingsAccountTransactionSummaryWrapper, savingsHelper);
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService, savingsAccountTransactionSummaryWrapper,
+                savingsHelper);
     }
 
     @Bean
     @ConditionalOnMissingBean(SavingsAccountAssembler.class)
-    public SavingsAccountAssembler savingsAccountAssembler(
-            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
+    public SavingsAccountAssembler savingsAccountAssembler(SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
             SavingsAccountTransactionDataSummaryWrapper savingsAccountTransactionDataSummaryWrapper,
-            ClientRepositoryWrapper clientRepository, GroupRepositoryWrapper groupRepository,
-            StaffRepositoryWrapper staffRepository, SavingsProductRepository savingProductRepository,
-            SavingsAccountRepositoryWrapper savingsAccountRepository,
+            ClientRepositoryWrapper clientRepository, GroupRepositoryWrapper groupRepository, StaffRepositoryWrapper staffRepository,
+            SavingsProductRepository savingProductRepository, SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountChargeAssembler savingsAccountChargeAssembler, FromJsonHelper fromApiJsonHelper,
             AccountTransfersReadPlatformService accountTransfersReadPlatformService, JdbcTemplate jdbcTemplate,
             ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory) {
-        return new SavingsAccountAssembler(savingsAccountTransactionSummaryWrapper,
-                savingsAccountTransactionDataSummaryWrapper, clientRepository, groupRepository,
-                staffRepository, savingProductRepository, savingsAccountRepository,
-                savingsAccountChargeAssembler, fromApiJsonHelper, accountTransfersReadPlatformService,
-                jdbcTemplate, configurationDomainService, externalIdFactory);
+        return new SavingsAccountAssembler(savingsAccountTransactionSummaryWrapper, savingsAccountTransactionDataSummaryWrapper,
+                clientRepository, groupRepository, staffRepository, savingProductRepository, savingsAccountRepository,
+                savingsAccountChargeAssembler, fromApiJsonHelper, accountTransfersReadPlatformService, jdbcTemplate,
+                configurationDomainService, externalIdFactory);
     }
 
     @Bean

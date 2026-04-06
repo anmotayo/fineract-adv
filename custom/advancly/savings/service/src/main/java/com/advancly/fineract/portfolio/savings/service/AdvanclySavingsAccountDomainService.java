@@ -23,6 +23,7 @@ import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionH
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,7 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
@@ -73,6 +75,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsHelper savingsHelper;
     private final SavingsAccountTransactionHelper transactionHelper;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
+    private final SavingsAccountDomainServiceJpa coreDomainService;
 
     /**
      * Optimized deposit handler with O(1) append or O(k) insert path selection.
@@ -80,7 +83,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     public SavingsAccountTransaction handleDepositOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail,
             final List<SavingsAccountTransaction> interestAndOverdraftTransactions, final Money lastRunningBalance,
-            final MonetaryCurrency currency) {
+            final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction) {
 
         final String refNo = ExternalId.generate().getValue();
         final SavingsAccountTransaction deposit = SavingsAccountTransaction.deposit(account, account.office(), paymentDetail,
@@ -93,6 +96,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         if (isAppendPath) {
             // O(1) path
+            transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
             transactionHelper.setRunningBalanceForAppendPath(deposit, lastRunningBalance, currency);
             transactionHelper.updateSummaryIncremental(account, deposit, currency);
         } else {
@@ -118,7 +122,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     public SavingsAccountTransaction handleWithdrawalOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final boolean applyWithdrawFee,
             final List<SavingsAccountTransaction> interestAndOverdraftTransactions, final Money lastRunningBalance,
-            final MonetaryCurrency currency) {
+            final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction) {
 
         final String refNo = ExternalId.generate().getValue();
         final SavingsAccountTransaction withdrawal = SavingsAccountTransaction.withdrawal(account, account.office(), paymentDetail,
@@ -131,6 +135,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             // O(1) balance validation + append
             transactionHelper.validateBalanceForAppendPath(account, transactionAmount, currency);
             account.addTransaction(withdrawal);
+            transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
             transactionHelper.setRunningBalanceForAppendPath(withdrawal, lastRunningBalance, currency);
             transactionHelper.updateSummaryIncremental(account, withdrawal, currency);
         } else {
@@ -191,28 +196,28 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
         boolean postReversals = configurationDomainService.isReversalTransactionAllowed();
 
-        account.calculateInterestUsing(mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, null,
-                true, postReversals);
+        coreDomainService.postInterest(account, mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                null, true, postReversals);
     }
 
     // === Interface method implementations — these are called by the WritePlatformService ===
 
     @Transactional
     @Override
-    public SavingsAccountTransaction handleDeposit(SavingsAccount account, java.time.format.DateTimeFormatter fmt,
-            LocalDate transactionDate, BigDecimal transactionAmount, PaymentDetail paymentDetail, boolean isAccountTransfer,
-            boolean isRegularTransaction, boolean backdatedTxnsAllowedTill) {
-        // The optimized path is called directly via handleDepositOptimized
-        // This method is kept for interface compliance and non-optimized callers
-        throw new UnsupportedOperationException("Use handleDepositOptimized() via AdvanclySavingsAccountWritePlatformService");
+    public SavingsAccountTransaction handleDeposit(SavingsAccount account, DateTimeFormatter fmt, LocalDate transactionDate,
+            BigDecimal transactionAmount, PaymentDetail paymentDetail, boolean isAccountTransfer, boolean isRegularTransaction,
+            boolean backdatedTxnsAllowedTill) {
+        return coreDomainService.handleDeposit(account, fmt, transactionDate, transactionAmount, paymentDetail, isAccountTransfer,
+                isRegularTransaction, backdatedTxnsAllowedTill);
     }
 
     @Transactional
     @Override
-    public SavingsAccountTransaction handleWithdrawal(SavingsAccount account, java.time.format.DateTimeFormatter fmt,
-            LocalDate transactionDate, BigDecimal transactionAmount, PaymentDetail paymentDetail,
-            SavingsTransactionBooleanValues transactionBooleanValues, boolean backdatedTxnsAllowedTill, boolean isFromJob) {
-        throw new UnsupportedOperationException("Use handleWithdrawalOptimized() via AdvanclySavingsAccountWritePlatformService");
+    public SavingsAccountTransaction handleWithdrawal(SavingsAccount account, DateTimeFormatter fmt, LocalDate transactionDate,
+            BigDecimal transactionAmount, PaymentDetail paymentDetail, SavingsTransactionBooleanValues transactionBooleanValues,
+            boolean backdatedTxnsAllowedTill, boolean isFromJob) {
+        return coreDomainService.handleWithdrawal(account, fmt, transactionDate, transactionAmount, paymentDetail, transactionBooleanValues,
+                backdatedTxnsAllowedTill, isFromJob);
     }
 
     @Transactional
@@ -227,45 +232,41 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     @Override
     public SavingsAccountTransaction handleDividendPayout(SavingsAccount account, LocalDate transactionDate, BigDecimal transactionAmount,
             boolean backdatedTxnsAllowedTill) {
-        // Dividend payouts are treated as deposits — delegate to full path
-        throw new UnsupportedOperationException("Dividend payout not optimized — use core path");
+        return coreDomainService.handleDividendPayout(account, transactionDate, transactionAmount, backdatedTxnsAllowedTill);
     }
 
     @Override
     public SavingsAccountTransaction handleReversal(SavingsAccount account, List<SavingsAccountTransaction> savingsAccountTransactions,
             boolean backdatedTxnsAllowedTill) {
-        throw new UnsupportedOperationException("Reversal not optimized — use core path");
+        return coreDomainService.handleReversal(account, savingsAccountTransactions, backdatedTxnsAllowedTill);
     }
 
     @Override
     public SavingsAccountTransaction handleHold(SavingsAccount account, BigDecimal amount, LocalDate transactionDate, Boolean lienAllowed) {
-        return SavingsAccountTransaction.holdAmount(account, account.office(), null, transactionDate,
-                Money.of(account.getCurrency(), amount), lienAllowed);
+        return coreDomainService.handleHold(account, amount, transactionDate, lienAllowed);
     }
 
     @Override
     public void postInterest(SavingsAccount account, MathContext mc, LocalDate interestPostingUpToDate, boolean isInterestTransfer,
             boolean isSavingsInterestPostingAtCurrentPeriodEnd, Integer financialYearBeginningMonth, LocalDate postInterestOnDate,
             boolean backdatedTxnsAllowedTill, boolean postReversals) {
-        // Interest posting is delegated via WritePlatformService to the core path.
-        // This method is kept for interface compliance.
-        throw new UnsupportedOperationException("Interest posting not optimized — use core path via delegate");
+        coreDomainService.postInterest(account, mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+                financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
     }
 
     @Override
     public void reverseTransfer(SavingsAccountTransaction savingsTransaction, boolean backdatedTxnsAllowedTill) {
-        savingsTransaction.reverse();
+        coreDomainService.reverseTransfer(savingsTransaction, backdatedTxnsAllowedTill);
     }
 
     @Override
     public void undoTransaction(SavingsAccount account, SavingsAccountTransaction savingsAccountTransaction) {
-        savingsAccountTransaction.reverse();
+        coreDomainService.undoTransaction(account, savingsAccountTransaction);
     }
 
     @Override
     public void checkClientOrGroupActive(SavingsAccount account) {
-        // Validation delegated to the account entity methods
-        account.validateForAccountBlock();
+        coreDomainService.checkClientOrGroupActive(account);
     }
 
     private void saveTransactionToGenerateTransactionId(SavingsAccountTransaction transaction) {

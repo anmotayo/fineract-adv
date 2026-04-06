@@ -59,7 +59,17 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
-import org.apache.fineract.portfolio.savings.*;
+import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
+import org.apache.fineract.portfolio.savings.DepositAccountUtils;
+import org.apache.fineract.portfolio.savings.DepositsApiConstants;
+import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
+import org.apache.fineract.portfolio.savings.SavingsApiConstants;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -765,6 +775,7 @@ public class RecurringDepositAccount extends SavingsAccount {
                 financialYearBeginningMonth, postAsInterestOn, backdatedTxnsAllowedTill, postReversals);
     }
 
+    @Override
     public LocalDate interestPostingUpToDate(final LocalDate interestPostingDate) {
         LocalDate interestPostingUpToDate = interestPostingDate;
         final LocalDate uptoMaturityDate = interestCalculatedUpto();
@@ -823,6 +834,7 @@ public class RecurringDepositAccount extends SavingsAccount {
         return actualChanges;
     }
 
+    @Override
     public Map<String, Object> undoActivate() {
         return super.undoActivate();
     }
@@ -1163,6 +1175,7 @@ public class RecurringDepositAccount extends SavingsAccount {
         this.activatedOnDate = now;
     }
 
+    @Override
     public void setClosedOnDate(final LocalDate closedOnDate) {
         this.closedOnDate = closedOnDate;
     }

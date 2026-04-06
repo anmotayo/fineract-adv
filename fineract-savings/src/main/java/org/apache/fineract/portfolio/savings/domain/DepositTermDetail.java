@@ -18,7 +18,12 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;

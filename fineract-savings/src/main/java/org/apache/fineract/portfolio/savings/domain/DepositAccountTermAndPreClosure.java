@@ -18,7 +18,16 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.dateFormatParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodFrequencyIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.expectedFirstDepositOnDateParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.localeParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maturityInstructionIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferInterestToSavingsParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferToSavingsIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;

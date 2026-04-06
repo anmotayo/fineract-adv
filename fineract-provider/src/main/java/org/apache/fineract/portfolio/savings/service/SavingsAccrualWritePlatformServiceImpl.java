@@ -85,8 +85,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 if (fromDate == null) {
                     if (savingsAccount.getStartInterestCalculationDate() != null) {
                         fromDate = savingsAccount.getStartInterestCalculationDate();
-                    }
-                    else {
+                    } else {
                         fromDate = savingsAccount.getActivationDate();
                     }
                 }
@@ -115,7 +114,6 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final MathContext mc = MoneyHelper.getMathContext();
 
-        List<Throwable> errors = new ArrayList<>();
         for (SavingsAccrualData savingsAccrual : savingsAccrualData) {
             try {
                 LocalDate fromDate = savingsAccrual.getAccruedTill();
@@ -127,7 +125,6 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                         isSavingsInterestPostingAtCurrentPeriodEnd, mc);
             } catch (Exception e) {
                 log.error("Failed to add accrual transaction for savings {} : {}", savingsAccrual.getAccountNo(), e.getMessage());
-                errors.add(e.getCause());
             }
         }
 
@@ -203,7 +200,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
             if (DateUtils.isDateInTheFuture(periodInterval.endDate())) {
                 continue;
             }
-            final boolean isUserPosting = (postedAsOnTransactionDates.contains(periodInterval.endDate()));
+            final boolean isUserPosting = postedAsOnTransactionDates.contains(periodInterval.endDate());
 
             final PostingPeriod postingPeriod = PostingPeriod.createFrom(periodInterval, periodStartingBalance,
                     savingsAccountTransactionDetailsForPostingPeriodList, currency, compoundingPeriodType, interestCalculationType,

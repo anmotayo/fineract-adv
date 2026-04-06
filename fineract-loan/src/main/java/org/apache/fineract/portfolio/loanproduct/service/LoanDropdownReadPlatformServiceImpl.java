@@ -49,7 +49,7 @@ import org.apache.fineract.portfolio.loanproduct.domain.AmortizationMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestCalculationPeriodMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestRecalculationCompoundingMethod;
-import org.apache.fineract.portfolio.loanproduct.domain.LoanPreClosureInterestCalculationStrategy;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanPreCloseInterestCalculationStrategy;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductValueConditionType;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanRescheduleStrategyMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.RecalculationFrequencyType;
@@ -159,7 +159,8 @@ public class LoanDropdownReadPlatformServiceImpl implements LoanDropdownReadPlat
 
         return Arrays.asList(rescheduleStrategyType(LoanRescheduleStrategyMethod.REDUCE_EMI_AMOUNT),
                 rescheduleStrategyType(LoanRescheduleStrategyMethod.REDUCE_NUMBER_OF_INSTALLMENTS),
-                rescheduleStrategyType(LoanRescheduleStrategyMethod.RESCHEDULE_NEXT_REPAYMENTS));
+                rescheduleStrategyType(LoanRescheduleStrategyMethod.RESCHEDULE_NEXT_REPAYMENTS),
+                rescheduleStrategyType(LoanRescheduleStrategyMethod.ADJUST_LAST_UNPAID_PERIOD));
     }
 
     @Override
@@ -174,8 +175,8 @@ public class LoanDropdownReadPlatformServiceImpl implements LoanDropdownReadPlat
     @Override
     public List<EnumOptionData> retrievePreCloseInterestCalculationStrategyOptions() {
 
-        return Arrays.asList(preCloseInterestCalculationStrategy(LoanPreClosureInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE),
-                preCloseInterestCalculationStrategy(LoanPreClosureInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE));
+        return Arrays.asList(preCloseInterestCalculationStrategy(LoanPreCloseInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE),
+                preCloseInterestCalculationStrategy(LoanPreCloseInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE));
     }
 
     @Override

@@ -25,6 +25,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.lang.NonNull;
 
 public interface LoanProductRepository extends JpaRepository<LoanProduct, Long>, JpaSpecificationExecutor<LoanProduct> {
 
@@ -36,4 +37,8 @@ public interface LoanProductRepository extends JpaRepository<LoanProduct, Long>,
     List<LoanProduct> findByDelinquencyBucketNotNull();
 
     LoanProduct findByExternalId(ExternalId externalId);
+
+    @Override
+    @Query("SELECT CASE WHEN COUNT(loanProduct)>0 THEN TRUE ELSE FALSE END FROM LoanProduct loanProduct WHERE loanProduct.id = :loanProductId")
+    boolean existsById(@NonNull @Param("loanProductId") Long loanProductId);
 }

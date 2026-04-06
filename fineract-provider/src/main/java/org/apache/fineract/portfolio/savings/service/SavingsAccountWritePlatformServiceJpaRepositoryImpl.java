@@ -1,3 +1,4 @@
+
 /**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements. See the NOTICE file
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -56,7 +58,6 @@ import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
-import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
@@ -164,7 +165,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
     private final BusinessEventNotifierService businessEventNotifierService;
     private final GSIMRepositoy gsimRepository;
     private final SavingsAccountInterestPostingService savingsAccountInterestPostingService;
-    private final SavingsAccrualWritePlatformService savingsAccrualWritePlatformService;
     private final ErrorHandler errorHandler;
 
     @Transactional
@@ -541,8 +541,8 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 postInterestOnDate = transactionDate;
             }
             boolean postReversals = false;
-            savingsAccountDomainService.postInterest(account, mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
+            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                    postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
 
             if (!backdatedTxnsAllowedTill) {
                 List<SavingsAccountTransaction> transactions = account.getTransactions();
@@ -596,6 +596,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 for (SavingsAccountTransactionData accountTransaction : transactions) {
                     if (accountTransaction.getId() == null) {
                         savingsAccountData.setNewSavingsAccountTransactionData(accountTransaction);
+                        selectAccountId(accountTransaction, savingsAccountData);
                     }
                 }
             }
@@ -603,6 +604,23 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             savingsAccountData.setExistingReversedTransactionIds(existingReversedTransactionIds);
         }
         return savingsAccountData;
+    }
+
+    public void selectAccountId(SavingsAccountTransactionData accountTransaction, SavingsAccountData savingsAccountData) {
+        SavingsAccountTransactionType transactionType = SavingsAccountTransactionType
+                .fromInt(accountTransaction.getTransactionType().getId().intValue());
+        if (transactionType.isOverDraftInterestPosting()) {
+            if (MathUtil.isGreaterThanZero(accountTransaction.getRunningBalance())) {
+                accountTransaction.setAccountDebit(savingsAccountData.getGlAccountIdForSavingsControl());
+                accountTransaction.setAccountCredit(savingsAccountData.getGlAccountIdForInterestReceivable());
+            } else {
+                accountTransaction.setAccountDebit(savingsAccountData.getGlAccountIdForOverdraftPorfolio());
+                accountTransaction.setAccountCredit(savingsAccountData.getGlAccountIdForInterestReceivable());
+            }
+        } else {
+            accountTransaction.setAccountDebit(savingsAccountData.getGlAccountIdForInterestPayable());
+            accountTransaction.setAccountCredit(savingsAccountData.getGlAccountIdForSavingsControl());
+        }
     }
 
     @Override
@@ -711,8 +729,8 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         checkClientOrGroupActive(account);
         if (savingsAccountTransaction.isPostInterestCalculationRequired()
                 && account.isBeforeLastPostingPeriod(savingsAccountTransaction.getTransactionDate(), false)) {
-            savingsAccountDomainService.postInterest(account, mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postInterestOnDate, false, postReversals);
+            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                    postInterestOnDate, false, postReversals);
         } else {
             account.calculateInterestUsing(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, postInterestOnDate, false, postReversals);
@@ -801,19 +819,19 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         Integer accountType = null;
         final SavingsAccountTransactionDTO transactionDTO = new SavingsAccountTransactionDTO(fmt, transactionDate, transactionAmount,
                 paymentDetail, null, accountType);
-        final String refNo = ExternalId.generate().getValue();
+        UUID refNo = UUID.randomUUID();
         if (savingsAccountTransaction.isDeposit()) {
-            transaction = account.deposit(transactionDTO, false, relaxingDaysConfigForPivotDate, refNo);
+            transaction = account.deposit(transactionDTO, false, relaxingDaysConfigForPivotDate, refNo.toString());
         } else {
-            transaction = account.withdraw(transactionDTO, true, false, relaxingDaysConfigForPivotDate, refNo);
+            transaction = account.withdraw(transactionDTO, true, false, relaxingDaysConfigForPivotDate, refNo.toString());
         }
         final Long newtransactionId = saveTransactionToGenerateTransactionId(transaction);
         final LocalDate postInterestOnDate = null;
         boolean postReversals = false;
         if (account.isBeforeLastPostingPeriod(transactionDate, false)
                 || account.isBeforeLastPostingPeriod(savingsAccountTransaction.getTransactionDate(), false)) {
-            savingsAccountDomainService.postInterest(account, mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postInterestOnDate, false, postReversals);
+            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                    postInterestOnDate, false, postReversals);
         } else {
             account.calculateInterestUsing(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, postInterestOnDate, false, postReversals);
@@ -1138,29 +1156,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         savingsAccount.addCharge(fmt, savingsAccountCharge, chargeDefinition);
         this.savingsAccountChargeRepository.save(savingsAccountCharge);
-
-        if (savingsAccount.isAccrualBasedAccountingEnabledOnSavingsProduct()) {
-            if (savingsAccrualWritePlatformService.isChargeToBeRecognizedAsAccrual(savingsAccount.savingsProduct().accrualChargeIds(),
-                    savingsAccountCharge)) {
-                final SavingsAccountTransaction savingsAccountAccrualTransaction = savingsAccrualWritePlatformService
-                        .addSavingsChargeAccrualTransaction(savingsAccount, savingsAccountCharge, savingsAccountCharge.getDueDate());
-                savingsAccountTransactionRepository.save(savingsAccountAccrualTransaction);
-            }
-        }
-
         this.savingAccountRepositoryWrapper.saveAndFlush(savingsAccount);
-
-        final boolean backdatedTxnsAllowedTill = this.savingAccountAssembler.getPivotConfigStatus();
-        final Set<Long> existingTransactionIds = new HashSet<>();
-        final Set<Long> existingReversedTransactionIds = new HashSet<>();
-        if (backdatedTxnsAllowedTill) {
-            updateSavingsTransactionsDetails(savingsAccount, existingTransactionIds, existingReversedTransactionIds);
-        } else {
-            updateExistingTransactionsDetails(savingsAccount, existingTransactionIds, existingReversedTransactionIds);
-        }
-
-        postJournalEntries(savingsAccount, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
-
         return new CommandProcessingResultBuilder() //
                 .withEntityId(savingsAccountCharge.getId()) //
                 .withOfficeId(savingsAccount.officeId()) //
@@ -1264,8 +1260,8 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         boolean postReversals = false;
         if (account.isBeforeLastPostingPeriod(savingsAccountCharge.getDueDate(), backdatedTxnsAllowedTill)) {
             final LocalDate today = DateUtils.getBusinessLocalDate();
-            savingsAccountDomainService.postInterest(account, mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
+            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                    postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
         } else {
             final LocalDate today = DateUtils.getBusinessLocalDate();
             account.calculateInterestUsing(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
@@ -1428,8 +1424,8 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         boolean postReversals = false;
         if (account.isBeforeLastPostingPeriod(transactionDate, backdatedTxnsAllowedTill)) {
             final LocalDate today = DateUtils.getBusinessLocalDate();
-            savingsAccountDomainService.postInterest(account, mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                    financialYearBeginningMonth, postInterestOnDate, isInterestTransfer, postReversals);
+            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                    postInterestOnDate, isInterestTransfer, postReversals);
         } else {
             final LocalDate today = DateUtils.getBusinessLocalDate();
             account.calculateInterestUsing(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
@@ -1448,15 +1444,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         saveTransactionToGenerateTransactionId(chargeTransaction);
 
         this.savingAccountRepositoryWrapper.saveAndFlush(account);
-
-        if (account.isAccrualBasedAccountingEnabledOnSavingsProduct()) {
-            if (savingsAccrualWritePlatformService.isChargeToBeRecognizedAsAccrual(account.savingsProduct().accrualChargeIds(),
-                    savingsAccountCharge)) {
-                final SavingsAccountTransaction savingsAccountAccrualTransaction = savingsAccrualWritePlatformService
-                        .addSavingsChargeAccrualTransaction(account, savingsAccountCharge, transactionDate);
-                savingsAccountTransactionRepository.save(savingsAccountAccrualTransaction);
-            }
-        }
 
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
 
@@ -1930,7 +1917,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                     && DateUtils.isEqual(transferDate, transaction.getSubmittedOnDate()))
                     || DateUtils.isBefore(transferDate, transaction.getTransactionDate())) {
                 throw new GeneralPlatformDomainRuleException(TransferApiConstants.transferClientSavingsException,
-                        TransferApiConstants.transferClientSavingsException, transaction.getCreatedDateTime(), transferDate);
+                        TransferApiConstants.transferClientSavingsException, transaction.getTransactionDate(), transferDate);
             }
         }
     }

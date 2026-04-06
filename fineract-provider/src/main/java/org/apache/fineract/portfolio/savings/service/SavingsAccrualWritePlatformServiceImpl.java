@@ -26,10 +26,10 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
-import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
@@ -44,8 +44,6 @@ import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccrualData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargePaidBy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
@@ -70,8 +68,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
     @Transactional
     @Override
     public void addAccrualEntries(LocalDate tillDate) throws JobExecutionException {
-        final Collection<SavingsAccrualData> savingsAccrualData = savingsAccountReadPlatformService.retrievePeriodicAccrualData(tillDate,
-                null);
+        final List<SavingsAccrualData> savingsAccrualData = savingsAccountReadPlatformService.retrievePeriodicAccrualData(tillDate, null);
         final Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
@@ -80,6 +77,11 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         List<Throwable> errors = new ArrayList<>();
         for (SavingsAccrualData savingsAccrual : savingsAccrualData) {
             try {
+                if (savingsAccrual.getDepositType().isSavingsDeposit() && savingsAccrual.getIsAllowOverdraft()) {
+                    if (!savingsAccrual.getIsTypeInterestReceivable()) {
+                        continue;
+                    }
+                }
                 SavingsAccount savingsAccount = savingsAccountAssembler.assembleFrom(savingsAccrual.getId(), false);
                 LocalDate fromDate = savingsAccrual.getAccruedTill();
                 if (fromDate == null) {
@@ -91,7 +93,7 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 }
                 log.debug("Processing savings account {} from date {} till date {}", savingsAccrual.getAccountNo(), fromDate, tillDate);
                 addAccrualTransactions(savingsAccount, fromDate, tillDate, financialYearBeginningMonth,
-                        isSavingsInterestPostingAtCurrentPeriodEnd, mc);
+                        isSavingsInterestPostingAtCurrentPeriodEnd, mc, null);
             } catch (Exception e) {
                 log.error("Failed to add accrual transaction for savings {} : {}", savingsAccrual.getAccountNo(), e.getMessage());
                 errors.add(e.getCause());
@@ -102,63 +104,12 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         }
     }
 
-    @Transactional
-    @Override
-    public CommandProcessingResult addAccrualEntries(Long savingsAccountId) {
-        SavingsAccount savingsAccount = savingsAccountAssembler.assembleFrom(savingsAccountId, false);
-        final LocalDate tillDate = DateUtils.getBusinessLocalDate();
-        final Collection<SavingsAccrualData> savingsAccrualData = savingsAccountReadPlatformService.retrievePeriodicAccrualData(tillDate,
-                savingsAccount);
-        final Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
-        final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
-                .isSavingsInterestPostingAtCurrentPeriodEnd();
-        final MathContext mc = MoneyHelper.getMathContext();
-
-        for (SavingsAccrualData savingsAccrual : savingsAccrualData) {
-            try {
-                LocalDate fromDate = savingsAccrual.getAccruedTill();
-                if (fromDate == null) {
-                    fromDate = savingsAccount.getActivationDate();
-                }
-                log.debug("Processing savings account {} from date {} till date {}", savingsAccrual.getAccountNo(), fromDate, tillDate);
-                addAccrualTransactions(savingsAccount, fromDate, tillDate, financialYearBeginningMonth,
-                        isSavingsInterestPostingAtCurrentPeriodEnd, mc);
-            } catch (Exception e) {
-                log.error("Failed to add accrual transaction for savings {} : {}", savingsAccrual.getAccountNo(), e.getMessage());
-            }
-        }
-
-        return CommandProcessingResult.empty();
-    }
-
-    @Override
-    public boolean isChargeToBeRecognizedAsAccrual(final Collection<Long> chargeIds, final SavingsAccountCharge savingsAccountCharge) {
-        if (chargeIds.isEmpty()) {
-            return false;
-        }
-        return chargeIds.contains(savingsAccountCharge.getCharge().getId());
-    }
-
-    @Transactional
-    @Override
-    public SavingsAccountTransaction addSavingsChargeAccrualTransaction(SavingsAccount savingsAccount,
-            SavingsAccountCharge savingsAccountCharge, LocalDate transactionDate) {
-        final MonetaryCurrency currency = savingsAccount.getCurrency();
-        final Money chargeAmount = savingsAccountCharge.getAmount(currency);
-        SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount, savingsAccount.office(),
-                transactionDate, chargeAmount, false);
-        final SavingsAccountChargePaidBy chargePaidBy = SavingsAccountChargePaidBy.instance(savingsAccountTransaction, savingsAccountCharge,
-                savingsAccountTransaction.getAmount(currency).getAmount());
-        savingsAccountTransaction.getSavingsAccountChargesPaid().add(chargePaidBy);
-
-        savingsAccount.addTransaction(savingsAccountTransaction);
-        return savingsAccountTransaction;
-    }
-
     private void addAccrualTransactions(SavingsAccount savingsAccount, final LocalDate fromDate, final LocalDate tillDate,
-            final Integer financialYearBeginningMonth, final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final MathContext mc) {
+            final Integer financialYearBeginningMonth, final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final MathContext mc,
+            final Function<LocalDate, String> refNoProvider) {
         final Set<Long> existingTransactionIds = new HashSet<>();
         final Set<Long> existingReversedTransactionIds = new HashSet<>();
+
         existingTransactionIds.addAll(savingsAccount.findExistingTransactionIds());
         existingReversedTransactionIds.addAll(savingsAccount.findExistingReversedTransactionIds());
 
@@ -208,6 +159,8 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                     minBalanceForInterestCalculation, isSavingsInterestPostingAtCurrentPeriodEnd, isUserPosting,
                     financialYearBeginningMonth);
 
+            postingPeriod.setOverdraftInterestRateAsFraction(
+                    savingsAccount.getNominalAnnualInterestRateOverdraft().divide(BigDecimal.valueOf(100), mc));
             periodStartingBalance = postingPeriod.closingBalance();
 
             allPostingPeriods.add(postingPeriod);
@@ -216,20 +169,28 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         BigDecimal unCompoundedInterest = BigDecimal.ZERO;
         final CompoundInterestValues compoundInterestValues = new CompoundInterestValues(compoundedInterest, unCompoundedInterest);
 
-        final List<LocalDate> accrualTransactionDates = savingsAccount.retreiveOrderedAccrualTransactions().stream()
+        final List<LocalDate> accrualTransactionDates = savingsAccount.retrieveOrderedAccrualTransactions().stream()
                 .map(transaction -> transaction.getTransactionDate()).toList();
+        final List<LocalDate> reversedAccrualTransactionDates = savingsAccount.retrieveOrderedAccrualTransactions().stream()
+                .filter(transaction -> transaction.isReversed()).map(transaction -> transaction.getTransactionDate()).toList();
 
         LocalDate accruedTillDate = fromDate;
-        for (PostingPeriod period : allPostingPeriods) {
-            if (MathUtil.isGreaterThanZero(period.closingBalance())) {
-                period.calculateInterest(compoundInterestValues);
-                log.debug("  period {} {} : {}", period.getPeriodInterval().startDate(), period.getPeriodInterval().endDate(),
-                        period.getInterestEarned());
 
-                final LocalDate valueDate = period.getPeriodInterval().endDate();
-                if (!accrualTransactionDates.contains(valueDate)) {
-                    SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
-                            savingsAccount.office(), valueDate, period.getInterestEarned(), false);
+        for (PostingPeriod period : allPostingPeriods) {
+            final LocalDate valueDate = period.getPeriodInterval().endDate();
+            List<LocalDate> matchingAccrualDates = accrualTransactionDates.stream().filter(accrualDate -> accrualDate.equals(valueDate))
+                    .toList();
+            List<LocalDate> matchingAccrualReverseDates = reversedAccrualTransactionDates.stream()
+                    .filter(accrualDate -> accrualDate.equals(valueDate)).toList();
+            period.calculateInterest(compoundInterestValues);
+            if (!accrualTransactionDates.contains(valueDate)
+                    || (!matchingAccrualReverseDates.isEmpty() && matchingAccrualDates.size() == matchingAccrualReverseDates.size())) {
+                String refNo = (refNoProvider != null) ? refNoProvider.apply(valueDate) : null;
+                SavingsAccountTransaction savingsAccountTransaction = SavingsAccountTransaction.accrual(savingsAccount,
+                        savingsAccount.office(), valueDate, period.getInterestEarned().abs(), false, refNo);
+                savingsAccountTransaction.setRunningBalance(period.getClosingBalance());
+                savingsAccountTransaction.setOverdraftAmount(period.getInterestEarned());
+                if (!MathUtil.isZero(savingsAccountTransaction.getAmount())) {
                     savingsAccount.addTransaction(savingsAccountTransaction);
                 }
             }
@@ -237,7 +198,6 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
 
         savingsAccount.setAccruedTillDate(accruedTillDate);
         savingsAccountRepository.saveAndFlush(savingsAccount);
-
         savingsAccountDomainService.postJournalEntries(savingsAccount, existingTransactionIds, existingReversedTransactionIds, false);
     }
 

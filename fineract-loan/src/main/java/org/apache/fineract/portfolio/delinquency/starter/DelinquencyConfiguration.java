@@ -37,11 +37,14 @@ import org.apache.fineract.portfolio.delinquency.service.DelinquencyWritePlatfor
 import org.apache.fineract.portfolio.delinquency.service.DelinquencyWritePlatformServiceImpl;
 import org.apache.fineract.portfolio.delinquency.service.LoanDelinquencyDomainService;
 import org.apache.fineract.portfolio.delinquency.service.LoanDelinquencyDomainServiceImpl;
+import org.apache.fineract.portfolio.delinquency.service.PossibleNextRepaymentCalculationServiceDiscovery;
 import org.apache.fineract.portfolio.delinquency.validator.DelinquencyActionParseAndValidator;
 import org.apache.fineract.portfolio.delinquency.validator.DelinquencyBucketParseAndValidator;
 import org.apache.fineract.portfolio.delinquency.validator.DelinquencyRangeParseAndValidator;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepository;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
+import org.apache.fineract.portfolio.loanaccount.service.LoanTransactionReadService;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -59,11 +62,13 @@ public class DelinquencyConfiguration {
             LoanDelinquencyDomainService loanDelinquencyDomainService,
             LoanInstallmentDelinquencyTagRepository repositoryLoanInstallmentDelinquencyTag,
             LoanDelinquencyActionRepository loanDelinquencyActionRepository,
-            DelinquencyEffectivePauseHelper delinquencyEffectivePauseHelper, ConfigurationDomainService configurationDomainService) {
+            DelinquencyEffectivePauseHelper delinquencyEffectivePauseHelper, ConfigurationDomainService configurationDomainService,
+            LoanTransactionRepository loanTransactionRepository,
+            PossibleNextRepaymentCalculationServiceDiscovery possibleNextRepaymentCalculationService) {
         return new DelinquencyReadPlatformServiceImpl(repositoryRange, repositoryBucket, repositoryLoanDelinquencyTagHistory, mapperRange,
                 mapperBucket, mapperLoanDelinquencyTagHistory, loanRepository, loanDelinquencyDomainService,
                 repositoryLoanInstallmentDelinquencyTag, loanDelinquencyActionRepository, delinquencyEffectivePauseHelper,
-                configurationDomainService);
+                configurationDomainService, loanTransactionRepository, possibleNextRepaymentCalculationService);
     }
 
     @Bean
@@ -88,7 +93,8 @@ public class DelinquencyConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(LoanDelinquencyDomainService.class)
-    public LoanDelinquencyDomainService loanDelinquencyDomainService(DelinquencyEffectivePauseHelper delinquencyEffectivePauseHelper) {
-        return new LoanDelinquencyDomainServiceImpl(delinquencyEffectivePauseHelper);
+    public LoanDelinquencyDomainService loanDelinquencyDomainService(DelinquencyEffectivePauseHelper delinquencyEffectivePauseHelper,
+            LoanTransactionReadService loanTransactionReadService) {
+        return new LoanDelinquencyDomainServiceImpl(delinquencyEffectivePauseHelper, loanTransactionReadService);
     }
 }

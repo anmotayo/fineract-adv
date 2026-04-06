@@ -24,8 +24,8 @@ public enum ChargeCalculationType {
     FLAT(1, "chargeCalculationType.flat"), //
     PERCENT_OF_AMOUNT(2, "chargeCalculationType.percent.of.amount"), //
     PERCENT_OF_AMOUNT_AND_INTEREST(3, "chargeCalculationType.percent.of.amount.and.interest"), //
-    PERCENT_OF_INTEREST(4, "chargeCalculationType.percent.of.interest"), PERCENT_OF_DISBURSEMENT_AMOUNT(5,
-            "chargeCalculationType.percent.of.disbursement.amount");
+    PERCENT_OF_INTEREST(4, "chargeCalculationType.percent.of.interest"), //
+    PERCENT_OF_DISBURSEMENT_AMOUNT(5, "chargeCalculationType.percent.of.disbursement.amount"); //
 
     private final Integer value;
     private final String code;
@@ -70,25 +70,14 @@ public enum ChargeCalculationType {
     }
 
     public static ChargeCalculationType fromInt(final Integer chargeCalculation) {
-        ChargeCalculationType chargeCalculationType = ChargeCalculationType.INVALID;
-        switch (chargeCalculation) {
-            case 1:
-                chargeCalculationType = FLAT;
-            break;
-            case 2:
-                chargeCalculationType = PERCENT_OF_AMOUNT;
-            break;
-            case 3:
-                chargeCalculationType = PERCENT_OF_AMOUNT_AND_INTEREST;
-            break;
-            case 4:
-                chargeCalculationType = PERCENT_OF_INTEREST;
-            break;
-            case 5:
-                chargeCalculationType = PERCENT_OF_DISBURSEMENT_AMOUNT;
-            break;
-        }
-        return chargeCalculationType;
+        return switch (chargeCalculation) {
+            case 1 -> FLAT;
+            case 2 -> PERCENT_OF_AMOUNT;
+            case 3 -> PERCENT_OF_AMOUNT_AND_INTEREST;
+            case 4 -> PERCENT_OF_INTEREST;
+            case 5 -> PERCENT_OF_DISBURSEMENT_AMOUNT;
+            default -> INVALID;
+        };
     }
 
     public boolean isPercentageOfAmount() {
@@ -118,6 +107,10 @@ public enum ChargeCalculationType {
     public boolean isPercentageBased() {
         return isPercentageOfAmount() || isPercentageOfAmountAndInterest() || isPercentageOfInterest()
                 || isPercentageOfDisbursementAmount();
+    }
+
+    public boolean hasInterest() {
+        return isPercentageOfInterest() || isPercentageOfAmountAndInterest();
     }
 
     public boolean isPercentageOfDisbursementAmount() {

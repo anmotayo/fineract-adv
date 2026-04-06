@@ -18,19 +18,21 @@
  */
 package org.apache.fineract.test.helper;
 
-import java.io.IOException;
-import java.time.Clock;
-import java.time.LocalDate;
+import static org.apache.fineract.client.feign.util.FeignCalls.ok;
+
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import org.apache.fineract.client.models.BusinessDateRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.client.feign.FineractFeignClient;
 import org.apache.fineract.client.models.BusinessDateResponse;
-import org.apache.fineract.client.services.BusinessDateManagementApi;
+import org.apache.fineract.client.models.BusinessDateUpdateRequest;
+import org.apache.fineract.client.models.BusinessDateUpdateResponse;
 import org.apache.fineract.test.support.TestContext;
 import org.apache.fineract.test.support.TestContextKey;
 import org.springframework.stereotype.Component;
-import retrofit2.Response;
 
+@Slf4j
 @RequiredArgsConstructor
 @Component
 public class BusinessDateHelper {
@@ -38,26 +40,38 @@ public class BusinessDateHelper {
     public static final String DATE_FORMAT = "dd MMMM yyyy";
     public static final String DEFAULT_LOCALE = "en";
     public static final String BUSINESS_DATE = "BUSINESS_DATE";
-    public static final String BUSINESS_DATE_REQUEST_TYPE = "BUSINESS_DATE";
+    public static final String COB = "COB_DATE";
 
-    private final BusinessDateManagementApi businessDateManagementApi;
+    private final FineractFeignClient fineractClient;
 
-    public void setBusinessDate(String businessDate) throws IOException {
-        BusinessDateRequest businessDateRequest = defaultBusinessDateRequest().date(businessDate);
+    public void setBusinessDate(String businessDate) {
+        BusinessDateUpdateRequest businessDateRequest = defaultBusinessDateRequest().date(businessDate);
+        try {
+            BusinessDateUpdateResponse response = ok(
+                    () -> fineractClient.businessDateManagement().updateBusinessDate(null, businessDateRequest, Map.of()));
+            TestContext.INSTANCE.set(TestContextKey.BUSINESS_DATE_RESPONSE, response);
+            ok(() -> fineractClient.businessDateManagement().getBusinessDate(BUSINESS_DATE, Map.of()));
 
-        Response<BusinessDateResponse> businessDateRequestResponse = businessDateManagementApi.updateBusinessDate(businessDateRequest)
-                .execute();
-        ErrorHelper.checkSuccessfulApiCall(businessDateRequestResponse);
-        TestContext.INSTANCE.set(TestContextKey.BUSINESS_DATE_RESPONSE, businessDateRequestResponse);
+        } catch (Exception e) {
+            log.error("Error: {}", e.getMessage());
+            throw e;
+        }
     }
 
-    public void setBusinessDateToday() throws IOException {
+    public void setBusinessDateToday() {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DATE_FORMAT);
-        String today = formatter.format(LocalDate.now(Clock.systemUTC()));
+        String today = formatter.format(Utils.now());
         setBusinessDate(today);
     }
 
-    public BusinessDateRequest defaultBusinessDateRequest() {
-        return new BusinessDateRequest().type(BUSINESS_DATE_REQUEST_TYPE).dateFormat(DATE_FORMAT).locale(DEFAULT_LOCALE);
+    public BusinessDateUpdateRequest defaultBusinessDateRequest() {
+        return new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE).dateFormat(DATE_FORMAT)
+                .locale(DEFAULT_LOCALE);
+    }
+
+    public String getBusinessDate() {
+        log.debug("Getting business date (using Feign)");
+        BusinessDateResponse response = ok(() -> fineractClient.businessDateManagement().getBusinessDate(BUSINESS_DATE, Map.of()));
+        return response.toString();
     }
 }

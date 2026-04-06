@@ -79,11 +79,11 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
     private final PaginationHelper paginationHelper;
     private final DatabaseSpecificSQLGenerator sqlGenerator;
 
-    private static final class GLJournalEntryMapper implements RowMapper<JournalEntryData> {
+    protected static class GLJournalEntryMapper implements RowMapper<JournalEntryData> {
 
         private final JournalEntryAssociationParametersData associationParametersData;
 
-        GLJournalEntryMapper(final JournalEntryAssociationParametersData associationParametersData) {
+        protected GLJournalEntryMapper(final JournalEntryAssociationParametersData associationParametersData) {
             this.associationParametersData = Objects.requireNonNullElseGet(associationParametersData,
                     JournalEntryAssociationParametersData::new);
         }
@@ -99,7 +99,8 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
                     .append(" creatingUser.username as createdByUserName, journalEntry.description as comments, ")
                     .append(" journalEntry.submitted_on_date as submittedOnDate, journalEntry.reversed as reversed, ")
                     .append(" journalEntry.currency_code as currencyCode, curr.name as currencyName, curr.internationalized_name_code as currencyNameCode, ")
-                    .append(" curr.display_symbol as currencyDisplaySymbol, curr.decimal_places as currencyDigits, curr.currency_multiplesof as inMultiplesOf ");
+                    .append(" curr.display_symbol as currencyDisplaySymbol, curr.decimal_places as currencyDigits, curr.currency_multiplesof as inMultiplesOf, ")
+                    .append(" eao.external_id as externalAssetOwner ");
             if (associationParametersData.isRunningBalanceRequired()) {
                 sb.append(" ,journalEntry.is_running_balance_calculated as runningBalanceComputed, ")
                         .append(" journalEntry.office_running_balance as officeRunningBalance, ")
@@ -117,7 +118,9 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
                     .append(" left join acc_gl_account as glAccount on glAccount.id = journalEntry.account_id")
                     .append(" left join m_office as office on office.id = journalEntry.office_id")
                     .append(" left join m_appuser as creatingUser on creatingUser.id = journalEntry.created_by ")
-                    .append(" join m_currency curr on curr.code = journalEntry.currency_code ");
+                    .append(" join m_currency curr on curr.code = journalEntry.currency_code ")
+                    .append(" left join m_external_asset_owner_journal_entry_mapping eajem on eajem.journal_entry_id = journalEntry.id ")
+                    .append(" left join m_external_asset_owner eao on eao.id = eajem.owner_id ");
             if (associationParametersData.isTransactionDetailsRequired()) {
                 sb.append(" left join m_loan_transaction as lt on journalEntry.loan_transaction_id = lt.id ")
                         .append(" left join m_savings_account_transaction as st on journalEntry.savings_transaction_id = st.id ")
@@ -150,7 +153,6 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
             EnumOptionData entityType = null;
             if (entityTypeId != null) {
                 entityType = AccountingEnumerations.portfolioProductType(entityTypeId);
-
             }
 
             final Long entityId = JdbcSupport.getLong(rs, "entityId");
@@ -198,7 +200,7 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
                 final Long noteId = JdbcSupport.getLong(rs, "noteId");
                 if (noteId != null) {
                     final String note = rs.getString("transactionNote");
-                    noteData = new NoteData(noteId, null, null, null, null, null, null, null, note, null, null, null, null, null, null);
+                    noteData = NoteData.builder().id(noteId).note(note).build();
                 }
                 Long transaction = null;
                 if (entityType != null && transactionId != null) {
@@ -224,10 +226,12 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
 
                 transactionDetailData = new TransactionDetailData(transaction, paymentDetailData, noteData, transactionTypeEnumData);
             }
+            final String externalAssetOwner = rs.getString("externalAssetOwner");
+
             return new JournalEntryData(id, officeId, officeName, glAccountName, glAccountId, glCode, accountType, transactionDate,
                     entryType, amount, transactionId, manualEntry, entityType, entityId, createdByUserId, submittedOnDate,
                     createdByUserName, comments, reversed, referenceNumber, officeRunningBalance, organizationRunningBalance,
-                    runningBalanceComputed, transactionDetailData, currency);
+                    runningBalanceComputed, transactionDetailData, currency, externalAssetOwner);
         }
     }
 
@@ -236,8 +240,7 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
             final Boolean onlyManualEntries, final LocalDate fromDate, final LocalDate toDate, final LocalDate submittedOnDateFrom,
             final LocalDate submittedOnDateTo, final String transactionId, final Integer entityType,
             final JournalEntryAssociationParametersData associationParametersData) {
-
-        GLJournalEntryMapper rm = new GLJournalEntryMapper(associationParametersData);
+        GLJournalEntryMapper rm = getGlJournalEntryMapper(associationParametersData);
         final StringBuilder sqlBuilder = new StringBuilder(200);
         sqlBuilder.append("select ").append(sqlGenerator.calcFoundRows()).append(" ");
         sqlBuilder.append(rm.schema());
@@ -379,12 +382,16 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
         return this.paginationHelper.fetchPage(this.jdbcTemplate, sqlBuilder.toString(), finalObjectArray, rm);
     }
 
+    protected GLJournalEntryMapper getGlJournalEntryMapper(JournalEntryAssociationParametersData associationParametersData) {
+        return new GLJournalEntryMapper(associationParametersData);
+    }
+
     @Override
     public JournalEntryData retrieveGLJournalEntryById(final long glJournalEntryId,
             JournalEntryAssociationParametersData associationParametersData) {
         try {
 
-            final GLJournalEntryMapper rm = new GLJournalEntryMapper(associationParametersData);
+            final GLJournalEntryMapper rm = getGlJournalEntryMapper(associationParametersData);
             // Programmatic query, disable sonar issue
             final String sql = "select " + rm.schema() + " where journalEntry.id = ?";
 
@@ -522,7 +529,7 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
     public Page<JournalEntryData> retrieveJournalEntriesByEntityId(String transactionId, Long entityId, Integer entityType) {
         JournalEntryAssociationParametersData associationParametersData = new JournalEntryAssociationParametersData(true, true);
         try {
-            final GLJournalEntryMapper rm = new GLJournalEntryMapper(associationParametersData);
+            final GLJournalEntryMapper rm = getGlJournalEntryMapper(associationParametersData);
             final String sql = "select " + rm.schema()
                     + " where journalEntry.transaction_id = ? and journalEntry.entity_id = ? and journalEntry.entity_type_enum = ?";
             Object[] data = { transactionId, entityId, entityType };

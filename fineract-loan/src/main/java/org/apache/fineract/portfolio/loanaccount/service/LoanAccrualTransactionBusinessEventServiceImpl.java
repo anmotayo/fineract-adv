@@ -18,24 +18,40 @@
  */
 package org.apache.fineract.portfolio.loanaccount.service;
 
+import static org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType.ACCRUAL;
+import static org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType.ACCRUAL_ADJUSTMENT;
+
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.LoanAccrualAdjustmentTransactionBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.LoanAccrualTransactionCreatedBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.LoanTransactionBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 
 @RequiredArgsConstructor
 public class LoanAccrualTransactionBusinessEventServiceImpl implements LoanAccrualTransactionBusinessEventService {
 
     private final BusinessEventNotifierService businessEventNotifierService;
+    private final LoanTransactionRepository loanTransactionRepository;
 
     @Override
-    public void raiseBusinessEventForAccrualTransactions(Loan loan, List<Long> existingTransactionIds) {
-        for (final LoanTransaction transaction : loan.getLoanTransactions()) {
-            if (transaction.isNotReversed() && transaction.isAccrual() && !existingTransactionIds.contains(transaction.getId())) {
-                businessEventNotifierService.notifyPostBusinessEvent(new LoanAccrualTransactionCreatedBusinessEvent(transaction));
-            }
-        }
+    public void raiseBusinessEventForAccrualTransactions(final Loan loan, final List<Long> existingTransactionIds) {
+        final Set<LoanTransactionType> accrualTypes = Set.of(ACCRUAL, ACCRUAL_ADJUSTMENT);
+        final List<LoanTransaction> accrualTransactions = existingTransactionIds.isEmpty()
+                ? loanTransactionRepository.findNonReversedByLoanAndTypes(loan, accrualTypes)
+                : loanTransactionRepository.findNonReversedByLoanAndTypesAndNotInIds(loan, accrualTypes, existingTransactionIds);
+
+        accrualTransactions.forEach(transaction -> {
+            final LoanTransactionBusinessEvent businessEvent = transaction.isAccrual()
+                    ? new LoanAccrualTransactionCreatedBusinessEvent(transaction)
+                    : new LoanAccrualAdjustmentTransactionBusinessEvent(transaction);
+            businessEventNotifierService.notifyPostBusinessEvent(businessEvent);
+        });
     }
+
 }

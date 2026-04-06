@@ -25,8 +25,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.test.messaging.config.EventProperties;
 import org.apache.fineract.test.messaging.event.Event;
 import org.apache.fineract.test.messaging.event.EventFactory;
@@ -38,6 +40,7 @@ import org.springframework.stereotype.Component;
 
 @RequiredArgsConstructor
 @Component
+@Slf4j
 public class EventAssertion {
 
     private final EventStore eventStore;
@@ -58,7 +61,7 @@ public class EventAssertion {
         }
         T event = eventFactory.create(eventClazz);
         try {
-            await().atMost(Duration.ofSeconds(eventProperties.getEventWaitTimeoutInSec())).until(() -> {
+            await().atMost(Duration.ofMillis(eventProperties.getWaitTimeoutInMillis())).until(() -> {
                 if (removeEventIfFound) {
                     return eventStore.removeEventById(event, id).isPresent();
                 } else {
@@ -66,8 +69,8 @@ public class EventAssertion {
                 }
             });
         } catch (ConditionTimeoutException e) {
-            Assertions
-                    .fail(event.getEventName() + " hasn't been received within " + eventProperties.getEventWaitTimeoutInSec() + " seconds");
+            Assertions.fail(
+                    event.getEventName() + " hasn't been received within " + eventProperties.getWaitTimeoutInMillis() / 1000 + " seconds");
         }
     }
 
@@ -77,17 +80,17 @@ public class EventAssertion {
         }
         T event = eventFactory.create(eventClazz);
         try {
-            await().atMost(Duration.ofSeconds(eventProperties.getEventWaitTimeoutInSec())).until(() -> {
-                return eventStore.existsEventById(event, id);
+            await().atMost(Duration.ofMillis(eventProperties.getWaitTimeoutInMillis())).until(() -> {
+                if (id == null) {
+                    return !eventStore.findByType(event).isEmpty();
+                }
+                return eventStore.findByType(event).stream().anyMatch(em -> event.getIdExtractor().apply(em.getData()).equals(id));
             });
 
             String receivedEventsLogParam = eventStore.getReceivedEvents().stream().map(LoggedEvent::new).map(LoggedEvent::toString)
                     .reduce("", (s, e) -> format("%s%s%n", s, e));
-            Assertions.fail("""
-                    %s has been received, but it was unexpected.
-                    Events received but not verified:
-                    %s
-                    """.formatted(event.getEventName(), receivedEventsLogParam));
+            Assertions.fail("%s has been received, but it was unexpected. Events received but not verified: %s", event.getEventName(),
+                    receivedEventsLogParam);
         } catch (ConditionTimeoutException e) {
             // This is the expected outcome here!
         }
@@ -102,7 +105,26 @@ public class EventAssertion {
         } else {
             eventMessage = (EventMessage<R>) new EmptyEventMessage();
         }
+        log.debug("Assert event: {}", eventMessage.getIdempotencyKey());
         return new EventAssertionBuilder<>(eventMessage);
+    }
+
+    public <R, T extends Event<R>> void assertEventNotRaised(Class<T> eventClazz, Predicate<? super EventMessage<R>> filter) {
+        if (eventProperties.isEventVerificationDisabled()) {
+            return;
+        }
+        T event = eventFactory.create(eventClazz);
+        try {
+            await().atMost(Duration.ofMillis(eventProperties.getWaitTimeoutInMillis()))
+                    .until(() -> eventStore.findByType(event).stream().anyMatch(filter));
+
+            String receivedEventsLogParam = eventStore.getReceivedEvents().stream().map(LoggedEvent::new).map(LoggedEvent::toString)
+                    .reduce("", (s, e) -> format("%s%s%n", s, e));
+            Assertions.fail("%s has been received, but it was unexpected. Events received but not verified: %s", event.getEventName(),
+                    receivedEventsLogParam);
+        } catch (ConditionTimeoutException e) {
+            // This is the expected outcome here!
+        }
     }
 
     @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
@@ -167,7 +189,11 @@ public class EventAssertion {
 
         public EventAssertionBuilder<R> isEqualTo(BigDecimal value) {
             if (eventProperties.isEventVerificationEnabled()) {
-                Assertions.assertThat(extractedValue).isEqualByComparingTo(value);
+                if (extractedValue == null) {
+                    Assertions.assertThat(extractedValue).isEqualTo(value);
+                } else {
+                    Assertions.assertThat(extractedValue).isEqualByComparingTo(value);
+                }
             }
             return new EventAssertionBuilder<>(eventMessage);
         }

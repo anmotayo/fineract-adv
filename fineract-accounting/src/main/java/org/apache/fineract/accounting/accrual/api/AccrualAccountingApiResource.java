@@ -30,15 +30,14 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import lombok.RequiredArgsConstructor;
+import org.apache.fineract.accounting.accrual.request.AccrualAccountRequest;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
-import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
 import org.springframework.stereotype.Component;
 
 @Path("/v1/runaccruals")
@@ -56,17 +55,10 @@ public class AccrualAccountingApiResource {
     @Operation(summary = "Executes Periodic Accrual Accounting", method = "POST", description = "Mandatory Fields\n" + "\n" + "tillDate\n")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = AccrualAccountingApiResourceSwagger.PostRunaccrualsRequest.class)))
     @ApiResponses({ @ApiResponse(responseCode = "200", description = "OK") })
-    public String executePeriodicAccrualAccounting(@QueryParam("product") @Parameter(description = "product") final String productParam,
-            @Parameter(hidden = true) final String jsonRequestBody) {
-
-        CommandWrapper commandRequest = null;
-        if (productParam == null || CommandParameterUtil.is(productParam, "loans")) {
-            commandRequest = new CommandWrapperBuilder().excuteAccrualAccounting().withJson(jsonRequestBody).build();
-        } else if (CommandParameterUtil.is(productParam, "savings")) {
-            commandRequest = new CommandWrapperBuilder().excuteAccrualAccountingForSavings().withJson(jsonRequestBody).build();
-        }
-        final CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
-        return this.apiJsonSerializerService.serialize(result);
+    public CommandProcessingResult executePeriodicAccrualAccounting(@Parameter(hidden = true) AccrualAccountRequest accrualAccountRequest) {
+        final CommandWrapper commandRequest = new CommandWrapperBuilder().excuteAccrualAccounting()
+                .withJson(apiJsonSerializerService.serialize(accrualAccountRequest)).build();
+        return commandsSourceWritePlatformService.logCommandSource(commandRequest);
     }
 
 }

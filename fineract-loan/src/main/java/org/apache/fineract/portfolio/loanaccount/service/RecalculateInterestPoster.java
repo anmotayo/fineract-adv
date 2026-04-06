@@ -22,29 +22,31 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
-import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.infrastructure.core.domain.FineractContext;
+import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
 
-@NoArgsConstructor
+@RequiredArgsConstructor
 @Slf4j
 public class RecalculateInterestPoster implements Callable<Void> {
 
+    @Setter
     private Collection<Long> loanIds;
-    private LoanWritePlatformService loanWritePlatformService;
-
-    public void setLoanIds(final Collection<Long> loanIds) {
-        this.loanIds = loanIds;
-    }
-
-    public void setLoanWritePlatformService(final LoanWritePlatformService loanWritePlatformService) {
-        this.loanWritePlatformService = loanWritePlatformService;
-    }
+    @Setter
+    private FineractContext fineractContext;
+    private final LoanWritePlatformService loanWritePlatformService;
 
     @Override
     public Void call() throws JobExecutionException {
-        if (!loanIds.isEmpty()) {
-            List<Throwable> errors = new ArrayList<>();
+        if (loanIds.isEmpty()) {
+            return null;
+        }
+        try {
+            ThreadLocalContextUtil.init(fineractContext);
+            final List<Throwable> errors = new ArrayList<>();
             for (Long loanId : loanIds) {
                 log.debug("Loan ID {}", loanId);
                 try {
@@ -56,6 +58,8 @@ public class RecalculateInterestPoster implements Callable<Void> {
             if (!errors.isEmpty()) {
                 throw new JobExecutionException(errors);
             }
+        } finally {
+            ThreadLocalContextUtil.reset();
         }
         return null;
     }

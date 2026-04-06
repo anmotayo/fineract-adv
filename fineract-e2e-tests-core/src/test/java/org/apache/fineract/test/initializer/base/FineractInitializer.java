@@ -41,6 +41,11 @@ public class FineractInitializer implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
+        log.debug("=== FineractInitializer.afterPropertiesSet() called ===");
+        log.debug("Global initializers count: {}", globalInitializerSteps.size());
+        log.debug("Suite initializers count: {}", suiteInitializerSteps.size());
+        log.debug("Scenario initializers count: {}", scenarioInitializerSteps.size());
+
         if (log.isDebugEnabled()) {
             String globalInitializers = globalInitializerSteps.stream().map(Object::getClass).map(Class::getName)
                     .collect(Collectors.joining(", "));
@@ -54,6 +59,11 @@ public class FineractInitializer implements InitializingBean {
                     Suite initializers: [{}]
                     Scenario initializers: [{}]
                     """, globalInitializers, suiteInitializers, scenarioInitializers);
+        } else {
+            // Always log the suite initializers at INFO since this is critical
+            String suiteInitializers = suiteInitializerSteps.stream().map(Object::getClass).map(Class::getName)
+                    .collect(Collectors.joining(", "));
+            log.debug("Suite initializers: [{}]", suiteInitializers);
         }
     }
 
@@ -61,15 +71,15 @@ public class FineractInitializer implements InitializingBean {
         for (FineractGlobalInitializerStep initializerStep : globalInitializerSteps) {
             initializerStep.initialize();
         }
-
         businessDateHelper.setBusinessDateToday();
     }
 
     public void setupDefaultsForSuite() throws Exception {
+        log.debug("=== setupDefaultsForSuite() called - {} suite initializers to execute ===", suiteInitializerSteps.size());
         for (FineractSuiteInitializerStep initializerStep : suiteInitializerSteps) {
+            log.debug("Executing suite initializer: {}", initializerStep.getClass().getName());
             initializerStep.initializeForSuite();
         }
-
         businessDateHelper.setBusinessDateToday();
     }
 
@@ -77,7 +87,6 @@ public class FineractInitializer implements InitializingBean {
         for (FineractScenarioInitializerStep scenarioInitializerStep : scenarioInitializerSteps) {
             scenarioInitializerStep.initializeForScenario();
         }
-
         businessDateHelper.setBusinessDateToday();
     }
 
@@ -85,7 +94,6 @@ public class FineractInitializer implements InitializingBean {
         for (FineractSuiteInitializerStep initializerStep : suiteInitializerSteps) {
             initializerStep.resetAfterSuite();
         }
-
         businessDateHelper.setBusinessDateToday();
     }
 }

@@ -55,6 +55,7 @@ import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
@@ -150,7 +151,7 @@ public class FixedDepositAccount extends SavingsAccount {
     }
 
     @Override
-    public BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate interestPostingUpToDate) {
+    protected BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate interestPostingUpToDate) {
         boolean isPreMatureClosure = false;
         return getEffectiveInterestRateAsFraction(mc, interestPostingUpToDate, isPreMatureClosure);
     }
@@ -640,14 +641,14 @@ public class FixedDepositAccount extends SavingsAccount {
         return interestOnMaturity;
     }
 
-    /*
-     * public void postInterest(final MathContext mc, final LocalDate postingDate, boolean isInterestTransfer, final
-     * boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth, final LocalDate
-     * postInterestOnDate, final boolean backdatedTxnsAllowedTill) { final LocalDate interestPostingUpToDate =
-     * interestPostingUpToDate(postingDate); boolean postReversals = false; super.postInterest(mc,
-     * interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-     * financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals); }
-     */
+    public void postInterest(final MathContext mc, final LocalDate postingDate, boolean isInterestTransfer,
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill) {
+        final LocalDate interestPostingUpToDate = interestPostingUpToDate(postingDate);
+        boolean postReversals = false;
+        super.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+                financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
+    }
 
     @Override
     public List<PostingPeriod> calculateInterestUsing(final MathContext mc, final LocalDate postingDate, boolean isInterestTransfer,
@@ -703,11 +704,6 @@ public class FixedDepositAccount extends SavingsAccount {
         // PlatformApiDataValidationException(dataValidationErrors); }
         // }
         return actualChanges;
-    }
-
-    @Override
-    public Map<String, Object> undoActivate(final AppUser currentUser, final JsonCommand command, final LocalDate tenantsTodayDate) {
-        return super.undoActivate(currentUser, command, tenantsTodayDate);
     }
 
     private LocalDate depositStartDate() {
@@ -814,7 +810,7 @@ public class FixedDepositAccount extends SavingsAccount {
         return this.accountTermAndPreClosure.getTransferToSavingsAccountId();
     }
 
-    public FixedDepositAccount reInvest(BigDecimal depositAmount) {
+    public FixedDepositAccount reInvest(BigDecimal depositAmount, ExternalId externalId) {
 
         final DepositAccountTermAndPreClosure newAccountTermAndPreClosure = this.accountTermAndPreClosure.copy(depositAmount);
         final SavingsProduct product = this.product;
@@ -866,7 +862,7 @@ public class FixedDepositAccount extends SavingsAccount {
 
     @Override
     public boolean allowModify() {
-        return true;
+        return false;
     }
 
     @Override
@@ -902,7 +898,22 @@ public class FixedDepositAccount extends SavingsAccount {
         return SavingsAccountStatusType.MATURED.getValue().equals(this.status);
     }
 
+    public void setClosedOnDate(final LocalDate closedOnDate) {
+        this.closedOnDate = closedOnDate;
+    }
+
+    @Override
+    public DepositAccountType depositAccountType() {
+        return DepositAccountType.fromInt(200);
+    }
+
     public WithHoldTaxPostingType getWithHoldTaxPostingType() {
+        final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
+        return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
+    }
+
+    @Override
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
         return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }

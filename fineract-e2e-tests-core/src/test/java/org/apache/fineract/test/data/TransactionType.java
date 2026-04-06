@@ -20,9 +20,30 @@ package org.apache.fineract.test.data;
 
 public enum TransactionType {
 
-    DISBURSEMENT("disbursement"), REPAYMENT("repayment"), DOWN_PAYMENT("downPayment"), GOODWILL_CREDIT("goodwillCredit"), PAYOUT_REFUND(
-            "payoutRefund"), REFUND_BY_CASH("refundByCash"), MERCHANT_ISSUED_REFUND("merchantIssuedRefund"), CREDIT_BALANCE_REFUND(
-                    "creditBalanceRefund"), CHARGEBACK("chargeback"), ACCRUAL("accrual"), CHARGE_OFF("chargeOff");
+    DISBURSEMENT("disbursement"), //
+    REPAYMENT("repayment"), //
+    DOWN_PAYMENT("downPayment"), //
+    GOODWILL_CREDIT("goodwillCredit"), //
+    PAYOUT_REFUND("payoutRefund"), //
+    REFUND_BY_CASH("refundByCash"), //
+    MERCHANT_ISSUED_REFUND("merchantIssuedRefund"), //
+    CREDIT_BALANCE_REFUND("creditBalanceRefund"), //
+    CHARGEBACK("chargeback"), //
+    ACCRUAL("accrual"), //
+    CHARGE_OFF("chargeOff"), //
+    CHARGE_ADJUSTMENT("chargeAdjustment"), //
+    INTEREST_PAYMENT_WAIVER("interestPaymentWaiver"), //
+    REPAYMENT_AT_DISBURSEMENT("repaymentAtDisbursement"), //
+    CAPITALIZED_INCOME("capitalizedIncome"), //
+    CAPITALIZED_INCOME_AMORTIZATION("capitalizedIncomeAmortization"), //
+    CAPITALIZED_INCOME_ADJUSTMENT("capitalizedIncomeAdjustment"), //
+    CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT("capitalizedIncomeAmortizationAdjustment"), //
+    BUY_DOWN_FEE("buyDownFee"), //
+    BUY_DOWN_FEE_ADJUSTMENT("buyDownFeeAdjustment"), //
+    BUY_DOWN_FEE_AMORTIZATION("buyDownFeeAmortization"), //
+    INTEREST_REFUND("interestRefund"), //
+    WRITE_OFF("writeOff"), //
+    ;
 
     public final String value;
 

@@ -25,6 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.event.business.domain.loan.LoanStatusChangedBusinessEvent;
@@ -32,6 +33,7 @@ import org.apache.fineract.infrastructure.event.business.service.BusinessEventNo
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
+import org.apache.fineract.portfolio.loanaccount.service.LoanBalanceService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +49,9 @@ class DefaultLoanLifecycleStateMachineTest {
     @Mock
     private BusinessEventNotifierService businessEventNotifierService;
 
+    @Mock
+    private LoanBalanceService loanBalanceService;
+
     private DefaultLoanLifecycleStateMachine underTest;
 
     private MockedStatic<MoneyHelper> moneyHelperStatic;
@@ -55,8 +60,9 @@ class DefaultLoanLifecycleStateMachineTest {
     public void setUp() {
 
         moneyHelperStatic = Mockito.mockStatic(MoneyHelper.class);
-        moneyHelperStatic.when(() -> MoneyHelper.getRoundingMode()).thenReturn(RoundingMode.UP);
-        underTest = new DefaultLoanLifecycleStateMachine(businessEventNotifierService);
+        moneyHelperStatic.when(MoneyHelper::getMathContext).thenReturn(new MathContext(12, RoundingMode.UP));
+        moneyHelperStatic.when(MoneyHelper::getRoundingMode).thenReturn(RoundingMode.UP);
+        underTest = new DefaultLoanLifecycleStateMachine(businessEventNotifierService, loanBalanceService);
     }
 
     @AfterEach
@@ -140,15 +146,14 @@ class DefaultLoanLifecycleStateMachineTest {
         Loan loan = Mockito.mock(Loan.class);
         LoanSummary loanSummary = Mockito.mock(LoanSummary.class);
         Mockito.when(loan.getCurrency()).thenReturn(currency);
-        Mockito.when(loan.getPlainStatus()).thenReturn(LoanStatus.OVERPAID.getValue());
         Mockito.when(loan.getStatus()).thenReturn(LoanStatus.OVERPAID);
         Mockito.when(loan.getTotalOverpaidAsMoney()).thenReturn(zero);
-        Mockito.when(loan.getLoanSummary()).thenReturn(loanSummary);
+        Mockito.when(loan.getSummary()).thenReturn(loanSummary);
         Mockito.when(loanSummary.getTotalOutstanding(eq(currency))).thenReturn(one);
         // when
         underTest.transition(LoanEvent.LOAN_DISBURSED, loan);
         // then
-        verify(loan, Mockito.times(1)).setLoanStatus(LoanStatus.ACTIVE.getValue());
+        verify(loan, Mockito.times(1)).setLoanStatus(LoanStatus.ACTIVE);
         verify(businessEventNotifierService).notifyPostBusinessEvent(any(LoanStatusChangedBusinessEvent.class));
     }
 
@@ -160,15 +165,14 @@ class DefaultLoanLifecycleStateMachineTest {
         Loan loan = Mockito.mock(Loan.class);
         LoanSummary loanSummary = Mockito.mock(LoanSummary.class);
         Mockito.when(loan.getCurrency()).thenReturn(currency);
-        Mockito.when(loan.getPlainStatus()).thenReturn(LoanStatus.OVERPAID.getValue());
         Mockito.when(loan.getStatus()).thenReturn(LoanStatus.OVERPAID);
         Mockito.when(loan.getTotalOverpaidAsMoney()).thenReturn(zero);
-        Mockito.when(loan.getLoanSummary()).thenReturn(loanSummary);
+        Mockito.when(loan.getSummary()).thenReturn(loanSummary);
         Mockito.when(loanSummary.getTotalOutstanding(currency)).thenReturn(zero);
         // when
         underTest.transition(LoanEvent.LOAN_DISBURSED, loan);
         // then
-        verify(loan, Mockito.times(1)).setLoanStatus(LoanStatus.CLOSED_OBLIGATIONS_MET.getValue());
+        verify(loan, Mockito.times(1)).setLoanStatus(LoanStatus.CLOSED_OBLIGATIONS_MET);
         verify(businessEventNotifierService).notifyPostBusinessEvent(any(LoanStatusChangedBusinessEvent.class));
     }
 
@@ -177,13 +181,12 @@ class DefaultLoanLifecycleStateMachineTest {
         // given
         Money overpayment = Money.of(new MonetaryCurrency("USD", 2, null), BigDecimal.TEN);
         Loan loan = Mockito.mock(Loan.class);
-        Mockito.when(loan.getPlainStatus()).thenReturn(LoanStatus.OVERPAID.getValue());
         Mockito.when(loan.getStatus()).thenReturn(LoanStatus.OVERPAID);
         Mockito.when(loan.getTotalOverpaidAsMoney()).thenReturn(overpayment);
         // when
         underTest.transition(LoanEvent.LOAN_DISBURSED, loan);
         // then
-        verify(loan, Mockito.never()).setLoanStatus(LoanStatus.ACTIVE.getValue());
+        verify(loan, Mockito.never()).setLoanStatus(LoanStatus.ACTIVE);
         verify(businessEventNotifierService, Mockito.never()).notifyPostBusinessEvent(any(LoanStatusChangedBusinessEvent.class));
     }
 
@@ -420,9 +423,7 @@ class DefaultLoanLifecycleStateMachineTest {
 
     private Loan createLoanWithStatus(LoanStatus status) {
         Loan result = new Loan();
-        if (status != null) {
-            result.setLoanStatus(status.getValue());
-        }
+        result.setLoanStatus(status);
         return result;
     }
 }

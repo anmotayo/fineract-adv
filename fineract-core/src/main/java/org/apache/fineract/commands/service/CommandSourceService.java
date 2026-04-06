@@ -20,6 +20,9 @@ package org.apache.fineract.commands.service;
 
 import static org.apache.fineract.commands.domain.CommandProcessingResultType.UNDER_PROCESSING;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.batch.exception.ErrorInfo;
 import org.apache.fineract.commands.domain.CommandSource;
@@ -28,12 +31,15 @@ import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.exception.CommandNotFoundException;
 import org.apache.fineract.commands.exception.RollbackTransactionNotApprovedException;
 import org.apache.fineract.commands.handler.NewCommandSourceHandler;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.exception.IdempotentCommandProcessUnderProcessingException;
+import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.useradministration.domain.AppUser;
-import org.jetbrains.annotations.NotNull;
+import org.springframework.lang.NonNull;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Isolation;
@@ -49,22 +55,27 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CommandSourceService {
 
+    public static final String COMMAND_MASK_VALUE = "***";
+    public static final String COMMAND_SANITIZE_ALL = "SANITIZE_ALL";
+
+    private final ConfigurationDomainService configurationDomainService;
     private final CommandSourceRepository commandSourceRepository;
     private final ErrorHandler errorHandler;
+    private final FromJsonHelper fromApiJsonHelper;
 
-    @NotNull
+    @NonNull
     @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
     public CommandSource saveInitialNewTransaction(CommandWrapper wrapper, JsonCommand jsonCommand, AppUser maker, String idempotencyKey) {
         return saveInitial(wrapper, jsonCommand, maker, idempotencyKey);
     }
 
-    @NotNull
+    @NonNull
     @Transactional(propagation = Propagation.REQUIRED)
     public CommandSource saveInitialSameTransaction(CommandWrapper wrapper, JsonCommand jsonCommand, AppUser maker, String idempotencyKey) {
         return saveInitial(wrapper, jsonCommand, maker, idempotencyKey);
     }
 
-    @NotNull
+    @NonNull
     private CommandSource saveInitial(CommandWrapper wrapper, JsonCommand jsonCommand, AppUser maker, String idempotencyKey) {
         try {
             CommandSource initialCommandSource = getInitialCommandSource(wrapper, jsonCommand, maker, idempotencyKey);
@@ -79,17 +90,17 @@ public class CommandSourceService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ)
-    public CommandSource saveResultNewTransaction(@NotNull CommandSource commandSource) {
+    public CommandSource saveResultNewTransaction(@NonNull CommandSource commandSource) {
         return saveResult(commandSource);
     }
 
     @Transactional(propagation = Propagation.REQUIRED)
-    public CommandSource saveResultSameTransaction(@NotNull CommandSource commandSource) {
+    public CommandSource saveResultSameTransaction(@NonNull CommandSource commandSource) {
         return saveResult(commandSource);
     }
 
-    @NotNull
-    private CommandSource saveResult(@NotNull CommandSource commandSource) {
+    @NonNull
+    private CommandSource saveResult(@NonNull CommandSource commandSource) {
         return commandSourceRepository.saveAndFlush(commandSource);
     }
 
@@ -110,22 +121,61 @@ public class CommandSourceService {
 
     public CommandSource getInitialCommandSource(CommandWrapper wrapper, JsonCommand jsonCommand, AppUser maker, String idempotencyKey) {
         CommandSource commandSourceResult = CommandSource.fullEntryFrom(wrapper, jsonCommand, maker, idempotencyKey,
-                UNDER_PROCESSING.getValue());
-        if (commandSourceResult.getCommandJson() == null) {
-            commandSourceResult.setCommandJson("{}");
+                UNDER_PROCESSING.getValue(), false);
+        sanitizeJson(commandSourceResult, wrapper.getSanitizeJsonKeys());
+        if (commandSourceResult.getCommandAsJson() == null) {
+            commandSourceResult.setCommandAsJson("{}");
         }
         return commandSourceResult;
     }
 
     @Transactional
     public CommandProcessingResult processCommand(NewCommandSourceHandler handler, JsonCommand command, CommandSource commandSource,
-            AppUser user, boolean isApprovedByChecker, boolean isMakerChecker) {
+            AppUser user, boolean isApprovedByChecker) {
         final CommandProcessingResult result = handler.processCommand(command);
-        boolean isRollback = !isApprovedByChecker && !user.isCheckerSuperUser() && (isMakerChecker || result.isRollbackTransaction());
-        if (isRollback) {
-            commandSource.markAsAwaitingApproval();
-            throw new RollbackTransactionNotApprovedException(commandSource.getId(), commandSource.getResourceId());
+
+        String permission = commandSource.getPermissionCode();
+        boolean isMakerChecker = configurationDomainService.isMakerCheckerEnabledForTask(permission);
+        if (isMakerChecker || result.isRollbackTransaction()) {
+            if (isApprovedByChecker || user.isCheckerSuperUser()) {
+                commandSource.markAsChecked(user);
+            } else {
+                if (commandSource.isSanitized()) {
+                    throw new GeneralPlatformDomainRuleException("error.msg.invalid.sanitization",
+                            "Maker-checker command can not be sanitized, please change the permission configuration", permission);
+                }
+                commandSource.markAsAwaitingApproval();
+                throw new RollbackTransactionNotApprovedException(commandSource.getId(), commandSource.getResourceId());
+            }
         }
         return result;
+    }
+
+    private void sanitizeJson(@NonNull CommandSource commandSource, Set<String> sanitizeKeys) {
+        if (sanitizeKeys == null || sanitizeKeys.isEmpty()) {
+            return;
+        }
+        String commandAsJson = commandSource.getCommandAsJson();
+        if (commandAsJson == null || commandAsJson.isEmpty()) {
+            return;
+        }
+        final JsonElement parsedCommand = this.fromApiJsonHelper.parse(commandAsJson);
+        if (!parsedCommand.isJsonObject()) {
+            return;
+        }
+        String sanitizedJson;
+        if (sanitizeKeys.contains(COMMAND_SANITIZE_ALL)) {
+            sanitizedJson = "";
+        } else {
+            JsonObject jsonObject = parsedCommand.getAsJsonObject();
+            for (String key : sanitizeKeys) {
+                if (jsonObject.has(key)) {
+                    jsonObject.addProperty(key, COMMAND_MASK_VALUE);
+                }
+            }
+            sanitizedJson = jsonObject.toString();
+        }
+        commandSource.setCommandAsJson(sanitizedJson);
+        commandSource.setSanitized(true);
     }
 }

@@ -32,11 +32,8 @@ integration-tests/out/
 module/dummy/starter/out/
 
 .windsurf/
+.claude/
 CLAUDE.md
 /GEMINI.md
-/.claude/rules.md
 /mifos documentation/
-/CLAUDE.md
-/GEMINI.md
-/.claude/rules.md
-/mifos documentation/
+docs/

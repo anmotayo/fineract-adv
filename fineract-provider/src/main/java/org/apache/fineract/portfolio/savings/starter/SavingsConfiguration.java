@@ -454,11 +454,11 @@ public class SavingsConfiguration {
             ClientRepositoryWrapper clientRepository, GroupRepositoryWrapper groupRepository, StaffRepositoryWrapper staffRepository,
             SavingsProductRepository savingProductRepository, SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountChargeAssembler savingsAccountChargeAssembler, FromJsonHelper fromApiJsonHelper,
-            AccountTransfersReadPlatformService accountTransfersReadPlatformService, JdbcTemplate jdbcTemplate,
+            SavingsHelper savingsHelper, JdbcTemplate jdbcTemplate,
             ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory) {
         return new SavingsAccountAssembler(savingsAccountTransactionSummaryWrapper, savingsAccountTransactionDataSummaryWrapper,
                 clientRepository, groupRepository, staffRepository, savingProductRepository, savingsAccountRepository,
-                savingsAccountChargeAssembler, fromApiJsonHelper, accountTransfersReadPlatformService, jdbcTemplate,
+                savingsAccountChargeAssembler, fromApiJsonHelper, savingsHelper, jdbcTemplate,
                 configurationDomainService, externalIdFactory);
     }
 

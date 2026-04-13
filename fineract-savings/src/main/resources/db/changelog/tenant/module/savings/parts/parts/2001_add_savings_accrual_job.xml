@@ -24,6 +24,11 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
     <changeSet author="fineract" id="1">
         <validCheckSum>9:c953679cc7c64cd9902c5bbca932a369</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM job WHERE name = 'Add Accrual Transactions For Savings'
+            </sqlCheck>
+        </preConditions>
         <insert tableName="job">
             <column name="name" value="Add Accrual Transactions For Savings"/>
             <column name="display_name" value="Add Accrual Transactions For Savings"/>

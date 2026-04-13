@@ -193,4 +193,27 @@
             <where>name='Accrual Activity Posting'</where>
         </update>
     </changeSet>
+    <!-- Advancly: remove duplicate savings accrual job rows (one from custom-changelog, one from savings module) -->
+    <changeSet author="advancly" id="4">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT CASE WHEN COUNT(*) > 1 THEN 1 ELSE 0 END FROM job WHERE name = 'Add Accrual Transactions For Savings'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            DELETE FROM job WHERE name = 'Add Accrual Transactions For Savings' AND short_name IS NULL LIMIT 1
+        </sql>
+    </changeSet>
+    <!-- Advancly: set short_name for custom savings accrual job if still NULL -->
+    <changeSet author="advancly" id="5">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM job WHERE name = 'Add Accrual Transactions For Savings' AND short_name IS NULL
+            </sqlCheck>
+        </preConditions>
+        <update tableName="job">
+            <column name="short_name" value="ADD_ATFS"/>
+            <where>name='Add Accrual Transactions For Savings'</where>
+        </update>
+    </changeSet>
 </databaseChangeLog>

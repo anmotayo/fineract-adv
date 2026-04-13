@@ -24,7 +24,12 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
     <!-- Add withhold_tax_posting_type_enum to m_deposit_product_term_and_preclosure -->
-    <changeSet author="fineract" id="1">
+    <changeSet author="advancly" id="1">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="m_deposit_product_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            </not>
+        </preConditions>
         <addColumn tableName="m_deposit_product_term_and_preclosure">
             <column name="withhold_tax_posting_type_enum" type="INT">
                 <constraints nullable="true"/>
@@ -33,7 +38,12 @@
     </changeSet>
 
     <!-- Add withhold_tax_posting_type_enum to m_deposit_account_term_and_preclosure -->
-    <changeSet author="fineract" id="2">
+    <changeSet author="advancly" id="2">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="m_deposit_account_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            </not>
+        </preConditions>
         <addColumn tableName="m_deposit_account_term_and_preclosure">
             <column name="withhold_tax_posting_type_enum" type="INT">
                 <constraints nullable="true"/>
@@ -42,7 +52,16 @@
     </changeSet>
 
     <!-- Update existing product records to default value (1 = MATURITY) where withhold tax is enabled -->
-    <changeSet author="fineract" id="3">
+    <changeSet author="advancly" id="3">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_deposit_product_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM m_deposit_product_term_and_preclosure dpt
+                JOIN m_savings_product sp ON dpt.savings_product_id = sp.id
+                WHERE sp.withhold_tax = true
+                AND dpt.withhold_tax_posting_type_enum IS NOT NULL
+            </sqlCheck>
+        </preConditions>
         <sql>
             UPDATE m_deposit_product_term_and_preclosure dpt
             JOIN m_savings_product sp ON dpt.savings_product_id = sp.id
@@ -53,7 +72,16 @@
     </changeSet>
 
     <!-- Update existing account records to default value (1 = MATURITY) where withhold tax is enabled -->
-    <changeSet author="fineract" id="4">
+    <changeSet author="advancly" id="4">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_deposit_account_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM m_deposit_account_term_and_preclosure dat
+                JOIN m_savings_account sa ON dat.savings_account_id = sa.id
+                WHERE sa.withhold_tax = true
+                AND dat.withhold_tax_posting_type_enum IS NOT NULL
+            </sqlCheck>
+        </preConditions>
         <sql>
             UPDATE m_deposit_account_term_and_preclosure dat
             JOIN m_savings_account sa ON dat.savings_account_id = sa.id

@@ -16,18 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package com.advancly.fineract.portfolio.savings.service;
+package org.apache.fineract.portfolio.savings.service;
 
-import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
-/**
- * Marker interface extending SavingsAccountWritePlatformService. Used to inject the core implementation
- * (SavingsAccountWritePlatformServiceJpaRepositoryImpl) as a separate bean that does not conflict with the custom
- * module's override of SavingsAccountWritePlatformService.
- *
- * The core implementation is registered as this type in the custom module's auto-configuration, allowing the custom
- * WritePlatformService to delegate non-optimized methods to it.
- */
-public interface SavingsAccountWritePlatformServiceDelegate extends SavingsAccountWritePlatformService {
+public interface SavingsInterestReadPlatformService {
 
+    BigDecimal sumInterestPostingsOnOrBeforeDate(Long savingsId, LocalDate beforeDate);
 }

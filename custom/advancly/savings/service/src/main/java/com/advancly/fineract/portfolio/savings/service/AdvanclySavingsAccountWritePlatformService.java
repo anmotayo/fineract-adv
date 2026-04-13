@@ -31,8 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -56,6 +56,7 @@ import org.apache.fineract.portfolio.savings.domain.GroupSavingsIndividualMonito
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -67,7 +68,6 @@ import org.springframework.util.StringUtils;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AdvanclySavingsAccountWritePlatformService implements SavingsAccountWritePlatformService {
 
     private final PlatformSecurityContext context;
@@ -78,11 +78,40 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final PaymentDetailWritePlatformService paymentDetailWritePlatformService;
     private final NoteRepository noteRepository;
     private final GSIMRepositoy gsimRepository;
-    private final SavingsAccountWritePlatformServiceDelegate delegate;
+    private final SavingsAccountWritePlatformServiceJpaRepositoryImpl delegate;
     private final BulkTransactionDataValidator bulkTransactionDataValidator;
     private final FromJsonHelper fromApiJsonHelper;
     private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     private final PaymentDetailRepository paymentDetailRepository;
+
+    @Autowired
+    public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
+            final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            final AdvanclySavingsAccountAssembler assembler,
+            final AdvanclySavingsAccountDomainService domainService,
+            final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository,
+            final PaymentDetailWritePlatformService paymentDetailWritePlatformService,
+            final NoteRepository noteRepository,
+            final GSIMRepositoy gsimRepository,
+            final SavingsAccountWritePlatformServiceJpaRepositoryImpl delegate,
+            final BulkTransactionDataValidator bulkTransactionDataValidator,
+            final FromJsonHelper fromApiJsonHelper,
+            final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper,
+            final PaymentDetailRepository paymentDetailRepository) {
+        this.context = context;
+        this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
+        this.assembler = assembler;
+        this.domainService = domainService;
+        this.advanclyTransactionRepository = advanclyTransactionRepository;
+        this.paymentDetailWritePlatformService = paymentDetailWritePlatformService;
+        this.noteRepository = noteRepository;
+        this.gsimRepository = gsimRepository;
+        this.delegate = delegate;
+        this.bulkTransactionDataValidator = bulkTransactionDataValidator;
+        this.fromApiJsonHelper = fromApiJsonHelper;
+        this.paymentTypeRepositoryWrapper = paymentTypeRepositoryWrapper;
+        this.paymentDetailRepository = paymentDetailRepository;
+    }
 
     @Transactional
     @Override

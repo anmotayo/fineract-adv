@@ -177,8 +177,17 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         String externalIdValue = resourceExternalId != null ? resourceExternalId.getValue() : null;
         String commandJson = "{\"ResourceId\":" + resourceId
                 + (externalIdValue != null ? ",\"ResourceExternalId\":\"" + externalIdValue + "\"" : "") + "}";
-        CommandSource commandSource = new CommandSource("READ", entityName, resourceUrl, resourceId, null, commandJson, maker,
-                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        CommandSource commandSource = CommandSource.builder()
+                .actionName("READ")
+                .entityName(entityName)
+                .resourceGetUrl(resourceUrl)
+                .resourceId(resourceId)
+                .commandAsJson(commandJson)
+                .maker(maker)
+                .idempotencyKey(UUID.randomUUID().toString())
+                .status(CommandProcessingResultType.PROCESSED.getValue())
+                .madeOnDate(DateUtils.getAuditOffsetDateTime())
+                .build();
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
         commandSource.resultStatusCode = 200;
@@ -195,8 +204,17 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
     public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
         String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
         String resourceUrl = "/authentication";
-        CommandSource commandSource = new CommandSource("AUTHENTICATE", "USER", resourceUrl, maker.getId(), null, maskedJson, maker,
-                UUID.randomUUID().toString(), CommandProcessingResultType.PROCESSED.getValue());
+        CommandSource commandSource = CommandSource.builder()
+                .actionName("AUTHENTICATE")
+                .entityName("USER")
+                .resourceGetUrl(resourceUrl)
+                .resourceId(maker.getId())
+                .commandAsJson(maskedJson)
+                .maker(maker)
+                .idempotencyKey(UUID.randomUUID().toString())
+                .status(CommandProcessingResultType.PROCESSED.getValue())
+                .madeOnDate(DateUtils.getAuditOffsetDateTime())
+                .build();
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resultStatusCode = 200;
         return commandSource;

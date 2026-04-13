@@ -18,7 +18,6 @@
  */
 package com.advancly.fineract.portfolio.savings.starter;
 
-import com.advancly.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceDelegate;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
@@ -44,12 +43,10 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeReposito
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
-import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
+import org.apache.fineract.organisation.monetary.domain.ApplicationCurrencyRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
-import org.apache.fineract.portfolio.savings.service.SavingsAccrualWritePlatformService;
 import org.apache.fineract.useradministration.domain.AppUserRepositoryWrapper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -68,27 +65,26 @@ public class AdvanclySavingsAutoConfiguration {
      * can delegate non-optimized methods (handleDeposit, handleWithdrawal, etc.) to the core implementation.
      */
     @Bean
-    public SavingsAccountDomainServiceJpa coreSavingsAccountDomainService(PlatformSecurityContext context,
+    public SavingsAccountDomainServiceJpa coreSavingsAccountDomainService(
             SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            ApplicationCurrencyRepositoryWrapper applicationCurrencyRepositoryWrapper,
             JournalEntryWritePlatformService journalEntryWritePlatformService, ConfigurationDomainService configurationDomainService,
+            PlatformSecurityContext context,
             DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
-            BusinessEventNotifierService businessEventNotifierService,
-            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, SavingsHelper savingsHelper) {
-        return new SavingsAccountDomainServiceJpa(context, savingsAccountRepository, savingsAccountTransactionRepository,
-                savingsAccountTransactionDataValidator, journalEntryWritePlatformService, configurationDomainService,
-                depositAccountOnHoldTransactionRepository, businessEventNotifierService, savingsAccountTransactionSummaryWrapper,
-                savingsHelper);
+            BusinessEventNotifierService businessEventNotifierService) {
+        return new SavingsAccountDomainServiceJpa(savingsAccountRepository, savingsAccountTransactionRepository,
+                applicationCurrencyRepositoryWrapper, journalEntryWritePlatformService, configurationDomainService, context,
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService);
     }
 
     /**
-     * Creates an instance of the core SavingsAccountWritePlatformServiceJpaRepositoryImpl as a
-     * SavingsAccountWritePlatformServiceDelegate bean. This allows the custom WritePlatformService to delegate
-     * non-optimized methods (activate, close, charges, etc.) to the core implementation without circular dependency.
+     * Creates an instance of the core SavingsAccountWritePlatformServiceJpaRepositoryImpl so the custom
+     * AdvanclySavingsAccountWritePlatformService can delegate non-optimized methods (activate, close, charges, etc.)
+     * to it directly.
      */
     @Bean
-    public SavingsAccountWritePlatformServiceDelegate savingsAccountWritePlatformServiceDelegate(PlatformSecurityContext context,
+    public SavingsAccountWritePlatformServiceJpaRepositoryImpl coreSavingsAccountWritePlatformService(PlatformSecurityContext context,
             SavingsAccountDataValidator fromApiJsonDeserializer, SavingsAccountRepositoryWrapper savingAccountRepositoryWrapper,
             StaffRepositoryWrapper staffRepository, SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             SavingsAccountAssembler savingAccountAssembler, SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
@@ -103,10 +99,9 @@ public class AdvanclySavingsAutoConfiguration {
             EntityDatatableChecksWritePlatformService entityDatatableChecksWritePlatformService, AppUserRepositoryWrapper appuserRepository,
             StandingInstructionRepository standingInstructionRepository, BusinessEventNotifierService businessEventNotifierService,
             GSIMRepositoy gsimRepository, SavingsAccountInterestPostingService savingsAccountInterestPostingService,
-            SavingsAccrualWritePlatformService savingsAccrualWritePlatformService, ErrorHandler errorHandler) {
+            ErrorHandler errorHandler) {
 
-        // Create a delegate wrapper around the core implementation
-        SavingsAccountWritePlatformServiceJpaRepositoryImpl coreImpl = new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context,
+        return new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context,
                 fromApiJsonDeserializer, savingAccountRepositoryWrapper, staffRepository, savingsAccountTransactionRepository,
                 savingAccountAssembler, savingsAccountTransactionDataValidator, savingsAccountChargeDataValidator,
                 paymentDetailWritePlatformService, journalEntryWritePlatformService, savingsAccountDomainService, noteRepository,
@@ -114,8 +109,6 @@ public class AdvanclySavingsAutoConfiguration {
                 savingsAccountChargeRepository, holidayRepository, workingDaysRepository, configurationDomainService,
                 depositAccountOnHoldTransactionRepository, entityDatatableChecksWritePlatformService, appuserRepository,
                 standingInstructionRepository, businessEventNotifierService, gsimRepository, savingsAccountInterestPostingService,
-                savingsAccrualWritePlatformService, errorHandler);
-
-        return new CoreSavingsWritePlatformServiceDelegateImpl(coreImpl);
+                errorHandler);
     }
 }

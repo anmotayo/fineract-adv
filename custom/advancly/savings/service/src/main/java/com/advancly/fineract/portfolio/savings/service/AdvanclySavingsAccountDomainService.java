@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
@@ -61,7 +61,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AdvanclySavingsAccountDomainService implements SavingsAccountDomainService {
 
     private final PlatformSecurityContext context;
@@ -76,6 +75,33 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsAccountTransactionHelper transactionHelper;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     private final SavingsAccountDomainServiceJpa coreDomainService;
+
+    @Autowired
+    public AdvanclySavingsAccountDomainService(final PlatformSecurityContext context,
+            final SavingsAccountRepositoryWrapper savingsAccountRepository,
+            final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
+            final JournalEntryWritePlatformService journalEntryWritePlatformService,
+            final ConfigurationDomainService configurationDomainService,
+            final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
+            final BusinessEventNotifierService businessEventNotifierService,
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
+            final SavingsHelper savingsHelper,
+            final SavingsAccountTransactionHelper transactionHelper,
+            final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository,
+            final SavingsAccountDomainServiceJpa coreDomainService) {
+        this.context = context;
+        this.savingsAccountRepository = savingsAccountRepository;
+        this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
+        this.journalEntryWritePlatformService = journalEntryWritePlatformService;
+        this.configurationDomainService = configurationDomainService;
+        this.depositAccountOnHoldTransactionRepository = depositAccountOnHoldTransactionRepository;
+        this.businessEventNotifierService = businessEventNotifierService;
+        this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
+        this.savingsHelper = savingsHelper;
+        this.transactionHelper = transactionHelper;
+        this.advanclyTransactionRepository = advanclyTransactionRepository;
+        this.coreDomainService = coreDomainService;
+    }
 
     /**
      * Optimized deposit handler with O(1) append or O(k) insert path selection.
@@ -196,7 +222,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
         boolean postReversals = configurationDomainService.isReversalTransactionAllowed();
 
-        coreDomainService.postInterest(account, mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+        account.postInterest(mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
                 null, true, postReversals);
     }
 
@@ -244,29 +270,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     @Override
     public SavingsAccountTransaction handleHold(SavingsAccount account, BigDecimal amount, LocalDate transactionDate, Boolean lienAllowed) {
         return coreDomainService.handleHold(account, amount, transactionDate, lienAllowed);
-    }
-
-    @Override
-    public void postInterest(SavingsAccount account, MathContext mc, LocalDate interestPostingUpToDate, boolean isInterestTransfer,
-            boolean isSavingsInterestPostingAtCurrentPeriodEnd, Integer financialYearBeginningMonth, LocalDate postInterestOnDate,
-            boolean backdatedTxnsAllowedTill, boolean postReversals) {
-        coreDomainService.postInterest(account, mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
-    }
-
-    @Override
-    public void reverseTransfer(SavingsAccountTransaction savingsTransaction, boolean backdatedTxnsAllowedTill) {
-        coreDomainService.reverseTransfer(savingsTransaction, backdatedTxnsAllowedTill);
-    }
-
-    @Override
-    public void undoTransaction(SavingsAccount account, SavingsAccountTransaction savingsAccountTransaction) {
-        coreDomainService.undoTransaction(account, savingsAccountTransaction);
-    }
-
-    @Override
-    public void checkClientOrGroupActive(SavingsAccount account) {
-        coreDomainService.checkClientOrGroupActive(account);
     }
 
     private void saveTransactionToGenerateTransactionId(SavingsAccountTransaction transaction) {

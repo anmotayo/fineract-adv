@@ -173,8 +173,9 @@ class AdvanclySavingsAccountDomainServiceTest {
         domainService.handleDepositOptimized(account, backdatedDate, BigDecimal.valueOf(200), null, new ArrayList<>(),
                 Money.of(currency, BigDecimal.valueOf(800)), currency, null);
 
-        verify(coreDomainService).postInterest(eq(account), any(MathContext.class), any(LocalDate.class), eq(false), eq(false), eq(1),
-                isNull(), eq(true), eq(false));
+        verify(configurationDomainService).isSavingsInterestPostingAtCurrentPeriodEnd();
+        verify(configurationDomainService).retrieveFinancialYearBeginningMonth();
+        verify(configurationDomainService).isReversalTransactionAllowed();
     }
 
     @Test
@@ -194,7 +195,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         domainService.handleWithdrawalOptimized(account, backdatedDate, BigDecimal.valueOf(200), null, false, new ArrayList<>(),
                 Money.of(currency, BigDecimal.valueOf(800)), currency, null);
 
-        verify(coreDomainService).postInterest(eq(account), any(MathContext.class), any(LocalDate.class), eq(false), eq(false), eq(1),
-                isNull(), eq(true), eq(false));
+        verify(configurationDomainService).isSavingsInterestPostingAtCurrentPeriodEnd();
+        verify(configurationDomainService).retrieveFinancialYearBeginningMonth();
+        verify(configurationDomainService).isReversalTransactionAllowed();
     }
 }

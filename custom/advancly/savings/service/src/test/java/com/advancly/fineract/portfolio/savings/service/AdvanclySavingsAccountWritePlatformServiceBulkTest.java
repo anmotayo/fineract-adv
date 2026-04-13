@@ -80,7 +80,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     @Mock
     private GSIMRepositoy gsimRepository;
     @Mock
-    private SavingsAccountWritePlatformServiceDelegate delegate;
+    private SavingsAccountWritePlatformServiceJpaRepositoryImpl delegate;
     @Mock
     private PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     @Mock
@@ -126,7 +126,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
 
         String json = buildBulkPayload("deposit", "REC-001", 5000, "deposit", "REC-002", 2000);
         JsonCommand command = JsonCommand.fromExistingCommand(null, json, JsonParser.parseString(json), fromJsonHelper, null, null, null,
-                null, null, null, savingsId, null, null, null, null, null, null);
+                null, null, null, savingsId, null, null, null, null, null, null, null);
 
         CommandProcessingResult result = service.bulkTransaction(savingsId, command);
 

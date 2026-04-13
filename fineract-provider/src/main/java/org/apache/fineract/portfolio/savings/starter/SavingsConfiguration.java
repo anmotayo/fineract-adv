@@ -438,15 +438,13 @@ public class SavingsConfiguration {
     public SavingsAccountDomainService savingsAccountDomainService(PlatformSecurityContext context,
             SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            ApplicationCurrencyRepositoryWrapper applicationCurrencyRepositoryWrapper,
             JournalEntryWritePlatformService journalEntryWritePlatformService, ConfigurationDomainService configurationDomainService,
             DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
-            BusinessEventNotifierService businessEventNotifierService,
-            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, SavingsHelper savingsHelper) {
-        return new SavingsAccountDomainServiceJpa(context, savingsAccountRepository, savingsAccountTransactionRepository,
-                savingsAccountTransactionDataValidator, journalEntryWritePlatformService, configurationDomainService,
-                depositAccountOnHoldTransactionRepository, businessEventNotifierService, savingsAccountTransactionSummaryWrapper,
-                savingsHelper);
+            BusinessEventNotifierService businessEventNotifierService) {
+        return new SavingsAccountDomainServiceJpa(savingsAccountRepository, savingsAccountTransactionRepository,
+                applicationCurrencyRepositoryWrapper, journalEntryWritePlatformService, configurationDomainService, context,
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService);
     }
 
     @Bean

@@ -370,6 +370,10 @@ public final class SavingsAccountData implements Serializable {
         return startInterestCalculationLocalDate;
     }
 
+    public boolean hasStartInterestCalculationDate() {
+        return this.startInterestCalculationDate != null && !getStartInterestCalculationDate().equals(getActivationLocalDate());
+    }
+
     public LocalDate getActivationLocalDate() {
         LocalDate activationLocalDate = null;
         if (this.timeline != null && this.timeline.getActivatedOnDate() != null) {

@@ -58,6 +58,11 @@ public class SavingsAccountSummaryData implements Serializable {
     private LocalDate interestPostedTillDate;
     private LocalDate prevInterestPostedTillDate;
     private transient BigDecimal runningBalanceOnInterestPostingTillDate = BigDecimal.ZERO;
+    private transient BigDecimal preStartDateInterestEarned = BigDecimal.ZERO;
+
+    public void setPreStartDateInterestEarned(BigDecimal preStartDateInterestEarned) {
+        this.preStartDateInterestEarned = preStartDateInterestEarned != null ? preStartDateInterestEarned : BigDecimal.ZERO;
+    }
 
     public SavingsAccountSummaryData(final CurrencyData currency, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
             final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
@@ -187,8 +192,12 @@ public class SavingsAccountSummaryData implements Serializable {
     }
 
     public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods) {
+        updateFromInterestPeriodSummaries(currency, allPostingPeriods, false);
+    }
 
-        Money totalEarned = Money.zero(currency);
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final boolean hasStartInterestCalculationDate) {
+        Money totalEarned = hasStartInterestCalculationDate ? Money.of(currency, this.preStartDateInterestEarned) : Money.zero(currency);
         LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
         for (final PostingPeriod period : allPostingPeriods) {
             Money interestEarned = period.interest();

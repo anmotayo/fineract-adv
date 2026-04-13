@@ -287,9 +287,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         final List<PostingPeriod> allPostingPeriods = new ArrayList<>();
 
         Money periodStartingBalance;
-        boolean hasStartInterestCalculationDate = false;
-        if (savingsAccountData.getStartInterestCalculationDate() != null
-                && !savingsAccountData.getStartInterestCalculationDate().equals(savingsAccountData.getActivationLocalDate())) {
+        if (savingsAccountData.hasStartInterestCalculationDate()) {
             final SavingsAccountTransactionData transaction = retrieveLastTransaction(savingsAccountData);
 
             if (transaction == null) {
@@ -298,8 +296,6 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                 periodStartingBalance = Money.of(savingsAccountData.getCurrency(),
                         savingsAccountData.getSummary().getRunningBalanceOnPivotDate());
             }
-
-            hasStartInterestCalculationDate = true;
         } else {
             periodStartingBalance = Money.zero(savingsAccountData.getCurrency());
         }
@@ -360,13 +356,14 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
         this.savingsHelper.calculateInterestForAllPostingPeriods(monetaryCurrency, allPostingPeriods,
                 getLockedInUntilLocalDate(savingsAccountData), false);
 
-        if (hasStartInterestCalculationDate && !backdatedTxnsAllowedTill) {
-            savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods,
-                    savingsAccountData.getSavingsAccountTransactionSummaryWrapper(), savingsAccountData.getSavingsAccountTransactionData(),
+        if (savingsAccountData.hasStartInterestCalculationDate()) {
+            BigDecimal preStartInterest = this.savingsHelper.sumInterestPostingsOnOrBeforeDate(savingsAccountData.getId(),
                     savingsAccountData.getStartInterestCalculationDate());
-        } else {
-            savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods);
+            savingsAccountData.getSummary().setPreStartDateInterestEarned(preStartInterest);
         }
+
+        savingsAccountData.getSummary().updateFromInterestPeriodSummaries(monetaryCurrency, allPostingPeriods,
+                savingsAccountData.hasStartInterestCalculationDate());
 
         if (backdatedTxnsAllowedTill) {
             savingsAccountData.getSummary().updateSummaryWithPivotConfig(savingsAccountData.getCurrency(),

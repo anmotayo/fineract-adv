@@ -50,11 +50,18 @@ public interface SavingsAccountTransactionRepository
 
     List<SavingsAccountTransaction> findByRefNo(@Param("refNo") String refNo);
 
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf <= :transactionDate and sat.reversed=false")
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf <= :transactionDate and sat.reversed=false and sat.reversalTransaction = false")
     List<SavingsAccountTransaction> findBySavingsAccountIdAndLessThanDateOfAndReversedIsFalse(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
 
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.typeOf <>10")
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf <>10")
     List<SavingsAccountTransaction> findNonAccrualTransactionBeforeRunningDate(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf not in (3, 10, 17, 18)")
+    List<SavingsAccountTransaction> findNonInterestTransactionBeforePivotDate(@Param("savingsId") Long savingsId,
+            @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
+
+    @Query("select coalesce(sum(sat.amount), 0) from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.typeOf = 3 and sat.dateOf <= :beforeDate and sat.reversed = false and sat.reversalTransaction = false")
+    BigDecimal sumInterestPostingsOnOrBeforeDate(@Param("savingsId") Long savingsId, @Param("beforeDate") LocalDate beforeDate);
 }

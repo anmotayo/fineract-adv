@@ -230,7 +230,7 @@ class LoanAdjustmentServiceImplTest {
         List<LoanTransaction> loanTransactions = Arrays.asList(transactionForAdjustment, relatedTransaction);
         when(loan.getLoanTransactions()).thenReturn(loanTransactions);
 
-        doNothing().when(loanTransactionValidator).validateActivityNotBeforeClientOrGroupTransferDate(any(), any(), any());
+
         when(loan.isClosedWrittenOff()).thenReturn(false);
         when(newTransactionDetail.isRepaymentLikeType()).thenReturn(true);
 
@@ -269,7 +269,7 @@ class LoanAdjustmentServiceImplTest {
         LoanTransaction unrelatedTransaction = mock(LoanTransaction.class);
 
         // Mock methods called inside adjustExistingTransaction
-        doNothing().when(loanTransactionValidator).validateActivityNotBeforeClientOrGroupTransferDate(any(), any(), any());
+
         when(loan.isClosedWrittenOff()).thenReturn(false);
         when(newTransactionDetail.isRepaymentLikeType()).thenReturn(true);
 

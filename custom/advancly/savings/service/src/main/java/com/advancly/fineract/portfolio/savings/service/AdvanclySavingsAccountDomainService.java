@@ -26,11 +26,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
@@ -68,7 +66,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final SavingsAccountTransactionRepository savingsAccountTransactionRepository;
-    private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final ConfigurationDomainService configurationDomainService;
     private final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
     private final BusinessEventNotifierService businessEventNotifierService;
@@ -82,7 +79,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     public AdvanclySavingsAccountDomainService(final PlatformSecurityContext context,
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            final JournalEntryWritePlatformService journalEntryWritePlatformService,
             final ConfigurationDomainService configurationDomainService,
             final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
             final BusinessEventNotifierService businessEventNotifierService,
@@ -93,7 +89,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         this.context = context;
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
-        this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.configurationDomainService = configurationDomainService;
         this.depositAccountOnHoldTransactionRepository = depositAccountOnHoldTransactionRepository;
         this.businessEventNotifierService = businessEventNotifierService;
@@ -251,9 +246,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     @Override
     public void postJournalEntries(SavingsAccount savingsAccount, Set<Long> existingTransactionIds,
             Set<Long> existingReversedTransactionIds, boolean backdatedTxnsAllowedTill) {
-        final Map<String, Object> accountingBridgeData = savingsAccount.deriveAccountingBridgeData(savingsAccount.getCurrency().getCode(),
-                existingTransactionIds, existingReversedTransactionIds, false, true);
-        journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
+        coreDomainService.postJournalEntries(savingsAccount, existingTransactionIds, existingReversedTransactionIds,
+                backdatedTxnsAllowedTill);
     }
 
     @Override

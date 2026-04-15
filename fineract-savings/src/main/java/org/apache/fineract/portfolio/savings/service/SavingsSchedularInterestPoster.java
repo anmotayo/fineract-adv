@@ -165,8 +165,10 @@ public class SavingsSchedularInterestPoster {
                         addedEntry = true;
                     }
 
-                    Long glAccountToDebit = Optional.ofNullable(taxComponentData.getDebitAccount().getId())
-                            .orElse(savingsAccountData.getGlAccountIdForSavingsControl());
+                    Long glAccountToDebit = savingsAccountData.getGlAccountIdForSavingsControl();
+                    if (taxComponentData.getDebitAccount().getId() != 0) {
+                        glAccountToDebit = taxComponentData.getDebitAccount().getId();
+                    }
                     if (addedEntry) {
                         if (!savingsAccountTransactionData.isReversed()) {
                             createDebitJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,

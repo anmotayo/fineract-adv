@@ -35,7 +35,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Optional;
-import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
@@ -66,8 +65,6 @@ class AdvanclySavingsAccountDomainServiceTest {
     @Mock
     private SavingsAccountTransactionRepository savingsAccountTransactionRepository;
     @Mock
-    private JournalEntryWritePlatformService journalEntryWritePlatformService;
-    @Mock
     private ConfigurationDomainService configurationDomainService;
     @Mock
     private DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
@@ -92,9 +89,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         MoneyHelperInitializer.initialize();
         currency = new MonetaryCurrency("USD", 2, null);
         domainService = new AdvanclySavingsAccountDomainService(context, savingsAccountRepository, savingsAccountTransactionRepository,
-                journalEntryWritePlatformService, configurationDomainService, depositAccountOnHoldTransactionRepository,
-                businessEventNotifierService, summaryWrapper, savingsHelper, transactionHelper, advanclyTransactionRepository,
-                coreDomainService);
+                configurationDomainService, depositAccountOnHoldTransactionRepository, businessEventNotifierService, summaryWrapper,
+                savingsHelper, transactionHelper, advanclyTransactionRepository, coreDomainService);
     }
 
     @Test
@@ -159,6 +155,7 @@ class AdvanclySavingsAccountDomainServiceTest {
                 .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary).withInterestRate(BigDecimal.valueOf(5))
                 .build();
+        account.setHelpers(summaryWrapper, savingsHelper);
 
         when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
         when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);
@@ -181,6 +178,7 @@ class AdvanclySavingsAccountDomainServiceTest {
                 .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary).withInterestRate(BigDecimal.valueOf(5))
                 .build();
+        account.setHelpers(summaryWrapper, savingsHelper);
 
         when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
         when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);

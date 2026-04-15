@@ -18,29 +18,32 @@
  */
 package com.advancly.fineract.portfolio.savings.testutil;
 
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
-import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.ActionContext;
+import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
-import org.mockito.Mockito;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * Initializes MoneyHelper's static ConfigurationDomainService and ThreadLocalContextUtil business dates for unit tests.
+ * Initializes MoneyHelper's tenant rounding mode and ThreadLocalContextUtil business dates for unit tests.
  */
 public final class MoneyHelperInitializer {
+
+    private static final String TEST_TENANT = "default";
 
     private MoneyHelperInitializer() {}
 
     public static void initialize() {
-        // Initialize MoneyHelper
-        ConfigurationDomainService mockConfig = Mockito.mock(ConfigurationDomainService.class);
-        Mockito.lenient().when(mockConfig.getRoundingMode()).thenReturn(6); // RoundingMode.HALF_EVEN.ordinal()
-        ReflectionTestUtils.setField(MoneyHelper.class, "staticConfigurationDomainService", mockConfig);
-        ReflectionTestUtils.setField(MoneyHelper.class, "roundingMode", null);
+        // Set up tenant context
+        FineractPlatformTenant tenant = FineractPlatformTenant.builder().id(1L).tenantIdentifier(TEST_TENANT).name("Default")
+                .timezoneId("UTC").build();
+        ThreadLocalContextUtil.setTenant(tenant);
+
+        // Initialize MoneyHelper rounding mode for the test tenant
+        MoneyHelper.initializeTenantRoundingMode(TEST_TENANT, RoundingMode.HALF_EVEN.ordinal());
 
         // Initialize ThreadLocalContextUtil business dates
         ThreadLocalContextUtil.setActionContext(ActionContext.DEFAULT);

@@ -52,6 +52,13 @@ public class BulkTransactionDataValidator {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource(RESOURCE_NAME);
 
+        final JsonObject rootJson = element.getAsJsonObject();
+        final String dateFormat = fromApiJsonHelper.extractDateFormatParameter(rootJson);
+        baseDataValidator.reset().parameter("dateFormat").value(dateFormat).notBlank();
+
+        final String localeStr = fromApiJsonHelper.extractStringNamed("locale", element);
+        baseDataValidator.reset().parameter("locale").value(localeStr).notBlank();
+
         final JsonArray transactions = fromApiJsonHelper.extractJsonArrayNamed("transactions", element);
         baseDataValidator.reset().parameter("transactions").value(transactions).notNull();
 
@@ -62,6 +69,7 @@ public class BulkTransactionDataValidator {
             return;
         }
 
+        final java.util.Locale locale = fromApiJsonHelper.extractLocaleParameter(rootJson);
         final Set<String> seenReceiptNumbers = new HashSet<>();
 
         for (int i = 0; i < transactions.size(); i++) {
@@ -76,7 +84,8 @@ public class BulkTransactionDataValidator {
             final String transactionDate = fromApiJsonHelper.extractStringNamed("transactionDate", txn);
             baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notBlank();
 
-            final BigDecimal transactionAmount = fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", txn);
+            final BigDecimal transactionAmount = locale != null ? fromApiJsonHelper.extractBigDecimalNamed("transactionAmount", txn, locale)
+                    : fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", txn);
             baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
 
             final Long paymentTypeId = fromApiJsonHelper.extractLongNamed("paymentTypeId", txn);

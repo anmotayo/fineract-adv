@@ -30,8 +30,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -152,38 +153,46 @@ public class SavingsSchedularInterestPoster {
             boolean addedEntry = false;
             for (TaxGroupMappingsData taxGroupMappingsData : taxGroup.getTaxAssociations()) {
                 final TaxComponentData taxComponentData = taxGroupMappingsData.getTaxComponent();
-                if (taxComponentData != null && taxComponentData.getCreditAccount() != null) {
-                    if (!savingsAccountTransactionData.isReversed()) {
-                        createCreditJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
-                                currencyCode, userId, taxComponentData.getCreditAccount().getId());
-                    } else {
-                        createDebitJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
-                                currencyCode, userId, taxComponentData.getCreditAccount().getId());
+                if (taxComponentData != null) {
+                    if (taxComponentData.getCreditAccount() != null) {
+                        if (!savingsAccountTransactionData.isReversed()) {
+                            createCreditJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
+                                    paramsForGLInsertion, currencyCode, userId, taxComponentData.getCreditAccount().getId());
+                        } else {
+                            createDebitJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
+                                    paramsForGLInsertion, currencyCode, userId, taxComponentData.getCreditAccount().getId());
+                        }
+                        addedEntry = true;
                     }
-                    addedEntry = true;
+
+                    Long glAccountToDebit = Optional.ofNullable(taxComponentData.getDebitAccount().getId())
+                            .orElse(savingsAccountData.getGlAccountIdForSavingsControl());
+                    if (addedEntry) {
+                        if (!savingsAccountTransactionData.isReversed()) {
+                            createDebitJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
+                                    paramsForGLInsertion, currencyCode, userId, glAccountToDebit);
+                        } else {
+                            createCreditJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
+                                    paramsForGLInsertion, currencyCode, userId, glAccountToDebit);
+                        }
+                    }
+
+                    addedEntry = false;
                 }
             }
-            if (addedEntry) {
-                if (!savingsAccountTransactionData.isReversed()) {
-                    createDebitJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
-                            currencyCode, userId, savingsAccountData.getGlAccountIdForSavingsControl());
-                } else {
-                    createCreditJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
-                            currencyCode, userId, savingsAccountData.getGlAccountIdForSavingsControl());
-                }
-            }
+
         }
     }
 
-    private static void createJournalEntries(SavingsAccountData savingsAccountData,
-            SavingsAccountTransactionData savingsAccountTransactionData, List<Object[]> paramsForGLInsertion, String currencyCode,
-            Long userId) {
+    private void createJournalEntries(SavingsAccountData savingsAccountData, SavingsAccountTransactionData savingsAccountTransactionData,
+            List<Object[]> paramsForGLInsertion, String currencyCode, Long userId) {
         OffsetDateTime auditDatetime = DateUtils.getAuditOffsetDateTime();
-        long glAccountToDebit = savingsAccountData.getGlAccountIdForInterestOnSavings();
-        long glAccountToCredit = savingsAccountData.getGlAccountIdForSavingsControl();
+        savingsAccountWritePlatformService.selectAccountId(savingsAccountTransactionData, savingsAccountData);
+        long glAccountToDebit = savingsAccountTransactionData.getAccountDebit();
+        long glAccountToCredit = savingsAccountTransactionData.getAccountCredit();
         if (savingsAccountTransactionData.isReversed()) {
-            glAccountToDebit = savingsAccountData.getGlAccountIdForSavingsControl();
-            glAccountToCredit = savingsAccountData.getGlAccountIdForInterestOnSavings();
+            glAccountToDebit = savingsAccountTransactionData.getAccountCredit();
+            glAccountToCredit = savingsAccountTransactionData.getAccountDebit();
         }
 
         paramsForGLInsertion.add(new Object[] { glAccountToCredit, savingsAccountData.getOfficeId(), null, currencyCode,

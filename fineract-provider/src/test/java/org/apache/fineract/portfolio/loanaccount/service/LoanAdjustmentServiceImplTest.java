@@ -20,7 +20,6 @@ package org.apache.fineract.portfolio.loanaccount.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -229,7 +228,6 @@ class LoanAdjustmentServiceImplTest {
 
         List<LoanTransaction> loanTransactions = Arrays.asList(transactionForAdjustment, relatedTransaction);
         when(loan.getLoanTransactions()).thenReturn(loanTransactions);
-
 
         when(loan.isClosedWrittenOff()).thenReturn(false);
         when(newTransactionDetail.isRepaymentLikeType()).thenReturn(true);

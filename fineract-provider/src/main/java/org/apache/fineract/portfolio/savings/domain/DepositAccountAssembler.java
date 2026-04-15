@@ -129,10 +129,8 @@ public class DepositAccountAssembler {
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler, final FromJsonHelper fromApiJsonHelper,
             final DepositProductAssembler depositProductAssembler,
-            final RecurringDepositProductRepository recurringDepositProductRepository,
-            final PlatformSecurityContext context,
-            final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory,
-            final SavingsHelper savingsHelper) {
+            final RecurringDepositProductRepository recurringDepositProductRepository, final PlatformSecurityContext context,
+            final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory, final SavingsHelper savingsHelper) {
 
         this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
         this.clientRepository = clientRepository;

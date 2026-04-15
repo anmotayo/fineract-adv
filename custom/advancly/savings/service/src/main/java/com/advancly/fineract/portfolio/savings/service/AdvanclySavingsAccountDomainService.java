@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
@@ -45,13 +44,15 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +62,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
+@Primary
 public class AdvanclySavingsAccountDomainService implements SavingsAccountDomainService {
 
     private final PlatformSecurityContext context;
@@ -74,7 +76,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsHelper savingsHelper;
     private final SavingsAccountTransactionHelper transactionHelper;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
-    private final SavingsAccountDomainServiceJpa coreDomainService;
+    private final SavingsAccountDomainService coreDomainService;
 
     @Autowired
     public AdvanclySavingsAccountDomainService(final PlatformSecurityContext context,
@@ -84,11 +86,10 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             final ConfigurationDomainService configurationDomainService,
             final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
             final BusinessEventNotifierService businessEventNotifierService,
-            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
-            final SavingsHelper savingsHelper,
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final SavingsAccountTransactionHelper transactionHelper,
             final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository,
-            final SavingsAccountDomainServiceJpa coreDomainService) {
+            @Qualifier("coreSavingsAccountDomainService") final SavingsAccountDomainService coreDomainService) {
         this.context = context;
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -222,8 +223,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
         boolean postReversals = configurationDomainService.isReversalTransactionAllowed();
 
-        account.postInterest(mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
-                null, true, postReversals);
+        account.postInterest(mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, null, true,
+                postReversals);
     }
 
     // === Interface method implementations — these are called by the WritePlatformService ===

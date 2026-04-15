@@ -23,7 +23,6 @@ import java.util.List;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccrualData;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -143,13 +142,9 @@ public class SavingsAccountRepositoryWrapper {
     }
 
     public List<SavingsAccountTransaction> findTransactionsBeforePivotDate(@Param("savingsId") Long savingsId,
-            @Param("date") LocalDate date, Pageable pageable, final boolean backdatedTxnsAllowedTill) {
-        if (!backdatedTxnsAllowedTill)
-            return this.savingsAccountTransactionRepository.findNonInterestTransactionBeforePivotDate(savingsId, date, pageable);
-
+            @Param("date") LocalDate date, Pageable pageable) {
         return this.savingsAccountTransactionRepository.findNonAccrualTransactionBeforeRunningDate(savingsId, date, pageable);
     }
-
 
     @Transactional
     public List<SavingsAccountTransaction> findAllTransactions(@Param("savingsAccount") SavingsAccount savingsAccount) {

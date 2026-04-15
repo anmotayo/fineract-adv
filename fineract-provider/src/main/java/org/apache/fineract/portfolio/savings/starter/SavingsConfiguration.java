@@ -453,13 +453,12 @@ public class SavingsConfiguration {
             SavingsAccountTransactionDataSummaryWrapper savingsAccountTransactionDataSummaryWrapper,
             ClientRepositoryWrapper clientRepository, GroupRepositoryWrapper groupRepository, StaffRepositoryWrapper staffRepository,
             SavingsProductRepository savingProductRepository, SavingsAccountRepositoryWrapper savingsAccountRepository,
-            SavingsAccountChargeAssembler savingsAccountChargeAssembler, FromJsonHelper fromApiJsonHelper,
-            SavingsHelper savingsHelper, JdbcTemplate jdbcTemplate,
-            ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory) {
+            SavingsAccountChargeAssembler savingsAccountChargeAssembler, FromJsonHelper fromApiJsonHelper, SavingsHelper savingsHelper,
+            JdbcTemplate jdbcTemplate, ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory) {
         return new SavingsAccountAssembler(savingsAccountTransactionSummaryWrapper, savingsAccountTransactionDataSummaryWrapper,
                 clientRepository, groupRepository, staffRepository, savingProductRepository, savingsAccountRepository,
-                savingsAccountChargeAssembler, fromApiJsonHelper, savingsHelper, jdbcTemplate,
-                configurationDomainService, externalIdFactory);
+                savingsAccountChargeAssembler, fromApiJsonHelper, savingsHelper, jdbcTemplate, configurationDomainService,
+                externalIdFactory);
     }
 
     @Bean

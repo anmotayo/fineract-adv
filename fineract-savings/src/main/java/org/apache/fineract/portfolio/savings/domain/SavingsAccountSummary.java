@@ -269,7 +269,8 @@ public final class SavingsAccountSummary {
         this.preStartDateInterestEarned = preStartDateInterestEarned != null ? preStartDateInterestEarned : BigDecimal.ZERO;
     }
 
-    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods, final boolean hasStartInterestCalculationDate) {
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final boolean hasStartInterestCalculationDate) {
         Money totalEarned = hasStartInterestCalculationDate ? Money.of(currency, this.preStartDateInterestEarned) : Money.zero(currency);
         for (final PostingPeriod period : allPostingPeriods) {
             Money interestEarned = period.interest();

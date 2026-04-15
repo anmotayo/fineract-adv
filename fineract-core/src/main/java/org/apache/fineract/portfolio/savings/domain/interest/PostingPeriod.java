@@ -118,7 +118,7 @@ public final class PostingPeriod {
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
                 shouldNotAffectInterestPosting = true;
-            } else if (transaction.isDividendPayoutAndNotReversed()) {
+            } else if (transaction.isWithHoldTaxAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
             // }
@@ -140,6 +140,20 @@ public final class PostingPeriod {
                 openingDayBalance = closeOfDayBalance;
             }
 
+        }
+
+        // Fill gap between period start and the first EndOfDayBalance entry.
+        // This occurs when the pivot transaction (opening balance) is not in the
+        // loaded transaction list and the first loaded transaction starts after the period.
+        if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
+            final LocalDate gapStart = periodInterval.startDate();
+            final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
+            final LocalDateInterval gapInterval = LocalDateInterval.create(gapStart, gapEnd);
+            final int gapDays = gapInterval.daysInPeriodInclusiveOfEndDate();
+            if (gapDays > 0) {
+                final EndOfDayBalance gapBalance = EndOfDayBalance.from(gapStart, periodStartingBalance, periodStartingBalance, gapDays);
+                accountEndOfDayBalances.add(0, gapBalance);
+            }
         }
 
         if (accountEndOfDayBalances.isEmpty()) {
@@ -186,23 +200,6 @@ public final class PostingPeriod {
         Money closeOfDayBalance = openingDayBalance;
 
         for (final SavingsAccountTransactionData transaction : orderedListOfTransactions) {
-            boolean skipTransaction = false;
-            // this check is to make sure to add interest if withdrawal is
-            // happened for already
-//            if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
-            if (transaction.getId() == null) {
-                interestTransfered = isInterestTransfer;
-                skipTransaction = isInterestTransfer;
-            } else if (interestPostTransactions.contains(transaction.getId())) {
-                interestTransfered = true;
-                skipTransaction = true;
-            }
-
-            if (skipTransaction) {
-                // skip interest transfer transactions from contributing to interest calculation
-                continue;
-            }
-
             boolean shouldNotAffectInterestPosting = false;
             // this check is to make sure to add interest if withdrawal is
             // happened for already
@@ -235,6 +232,18 @@ public final class PostingPeriod {
                 openingDayBalance = closeOfDayBalance;
             }
 
+        }
+
+        // Fill gap between period start and the first EndOfDayBalance entry.
+        if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
+            final LocalDate gapStart = periodInterval.startDate();
+            final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
+            final LocalDateInterval gapInterval = LocalDateInterval.create(gapStart, gapEnd);
+            final int gapDays = gapInterval.daysInPeriodInclusiveOfEndDate();
+            if (gapDays > 0) {
+                final EndOfDayBalance gapBalance = EndOfDayBalance.from(gapStart, periodStartingBalance, periodStartingBalance, gapDays);
+                accountEndOfDayBalances.addFirst(gapBalance);
+            }
         }
 
         if (accountEndOfDayBalances.isEmpty()) {

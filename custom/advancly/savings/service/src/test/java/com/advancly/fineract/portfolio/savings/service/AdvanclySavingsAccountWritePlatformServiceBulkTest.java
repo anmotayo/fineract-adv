@@ -53,6 +53,7 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataV
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -124,7 +125,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(2000)), any(), any(),
                 any(Money.class), any(), any())).thenReturn(txn2);
 
-        String json = buildBulkPayload("deposit", "REC-001", 5000, "deposit", "REC-002", 2000);
+        String json = buildBulkPayload("deposit", "REC-001", 5000, "Deposit for rent", "deposit", "REC-002", 2000, "Deposit for bills");
         JsonCommand command = JsonCommand.fromExistingCommand(null, json, JsonParser.parseString(json), fromJsonHelper, null, null, null,
                 null, null, null, savingsId, null, null, null, null, null, null, null);
 
@@ -135,29 +136,28 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         assertThat(txnIds).containsEntry("REC-001", 101L).containsEntry("REC-002", 102L);
     }
 
-    private String buildBulkPayload(String type1, String receipt1, int amount1, String type2, String receipt2, int amount2) {
+    private String buildBulkPayload(String type1, String receipt1, int amount1, String note1, String type2, String receipt2, int amount2,
+            String note2) {
         JsonObject payload = new JsonObject();
         payload.addProperty("dateFormat", "dd MMMM yyyy");
         payload.addProperty("locale", "en");
+
         JsonArray txns = new JsonArray();
-
-        JsonObject txn1 = new JsonObject();
-        txn1.addProperty("type", type1);
-        txn1.addProperty("transactionDate", "05 April 2026");
-        txn1.addProperty("transactionAmount", amount1);
-        txn1.addProperty("paymentTypeId", 1);
-        txn1.addProperty("receiptNumber", receipt1);
-        txns.add(txn1);
-
-        JsonObject txn2 = new JsonObject();
-        txn2.addProperty("type", type2);
-        txn2.addProperty("transactionDate", "05 April 2026");
-        txn2.addProperty("transactionAmount", amount2);
-        txn2.addProperty("paymentTypeId", 1);
-        txn2.addProperty("receiptNumber", receipt2);
-        txns.add(txn2);
+        txns.add(buildTransactionObject(type1, receipt1, amount1, note1));
+        txns.add(buildTransactionObject(type2, receipt2, amount2, note2));
 
         payload.add("transactions", txns);
         return payload.toString();
+    }
+
+    private JsonObject buildTransactionObject(String type, String receipt, int amount, String note) {
+        JsonObject txn = new JsonObject();
+        txn.addProperty("type", type);
+        txn.addProperty("transactionDate", "05 April 2026");
+        txn.addProperty("transactionAmount", amount);
+        txn.addProperty("paymentTypeId", 1);
+        txn.addProperty("receiptNumber", receipt);
+        txn.addProperty("note", note);
+        return txn;
     }
 }

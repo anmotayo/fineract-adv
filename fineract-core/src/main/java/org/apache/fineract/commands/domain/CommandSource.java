@@ -25,12 +25,12 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.util.UUID;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.AbstractPersistableCustom;
@@ -177,17 +177,9 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
         String externalIdValue = resourceExternalId != null ? resourceExternalId.getValue() : null;
         String commandJson = "{\"ResourceId\":" + resourceId
                 + (externalIdValue != null ? ",\"ResourceExternalId\":\"" + externalIdValue + "\"" : "") + "}";
-        CommandSource commandSource = CommandSource.builder()
-                .actionName("READ")
-                .entityName(entityName)
-                .resourceGetUrl(resourceUrl)
-                .resourceId(resourceId)
-                .commandAsJson(commandJson)
-                .maker(maker)
-                .idempotencyKey(UUID.randomUUID().toString())
-                .status(CommandProcessingResultType.PROCESSED.getValue())
-                .madeOnDate(DateUtils.getAuditOffsetDateTime())
-                .build();
+        CommandSource commandSource = CommandSource.builder().actionName("READ").entityName(entityName).resourceGetUrl(resourceUrl)
+                .resourceId(resourceId).commandAsJson(commandJson).maker(maker).idempotencyKey(UUID.randomUUID().toString())
+                .status(CommandProcessingResultType.PROCESSED.getValue()).madeOnDate(DateUtils.getAuditOffsetDateTime()).build();
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resourceExternalId = resourceExternalId;
         commandSource.resultStatusCode = 200;
@@ -204,17 +196,9 @@ public class CommandSource extends AbstractPersistableCustom<Long> {
     public static CommandSource authenticationAuditEntry(final String username, final AppUser maker) {
         String maskedJson = "{\"username\":\"" + username + "\",\"password\":\"************\"}";
         String resourceUrl = "/authentication";
-        CommandSource commandSource = CommandSource.builder()
-                .actionName("AUTHENTICATE")
-                .entityName("USER")
-                .resourceGetUrl(resourceUrl)
-                .resourceId(maker.getId())
-                .commandAsJson(maskedJson)
-                .maker(maker)
-                .idempotencyKey(UUID.randomUUID().toString())
-                .status(CommandProcessingResultType.PROCESSED.getValue())
-                .madeOnDate(DateUtils.getAuditOffsetDateTime())
-                .build();
+        CommandSource commandSource = CommandSource.builder().actionName("AUTHENTICATE").entityName("USER").resourceGetUrl(resourceUrl)
+                .resourceId(maker.getId()).commandAsJson(maskedJson).maker(maker).idempotencyKey(UUID.randomUUID().toString())
+                .status(CommandProcessingResultType.PROCESSED.getValue()).madeOnDate(DateUtils.getAuditOffsetDateTime()).build();
         commandSource.officeId = maker.getOffice() != null ? maker.getOffice().getId() : null;
         commandSource.resultStatusCode = 200;
         return commandSource;

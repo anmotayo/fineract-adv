@@ -551,25 +551,31 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                     postingTransaction = findInterestPostingTransactionFor(interestPostingTransactionDate);
                 }
                 if (postingTransaction == null) {
-                    SavingsAccountTransaction newPostingTransaction;
+                    SavingsAccountTransaction newPostingTransaction = null;
                     if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(currency))) {
-
-                        newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(), interestPostingTransactionDate,
-                                interestEarnedToBePostedForPeriod, interestPostingPeriod.isUserPosting());
+                        if (interestEarnedToBePostedForPeriod.isGreaterThan(Money.zero(currency))) {
+                            newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
+                                    interestPostingPeriod.isUserPosting());
+                        }
                     } else {
                         newPostingTransaction = SavingsAccountTransaction.overdraftInterest(this, office(), interestPostingTransactionDate,
                                 interestEarnedToBePostedForPeriod.negated(), interestPostingPeriod.isUserPosting());
                     }
-                    if (backdatedTxnsAllowedTill) {
-                        addTransactionToExisting(newPostingTransaction);
-                    } else {
-                        addTransaction(newPostingTransaction);
+                    if (newPostingTransaction != null) {
+                        if (backdatedTxnsAllowedTill) {
+                            addTransactionToExisting(newPostingTransaction);
+                        } else {
+                            addTransaction(newPostingTransaction);
+                        }
+
+                        if (applyWithHoldTax) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
+                        }
+                        recalucateDailyBalanceDetails = true;
                     }
-                    if (applyWithHoldTax) {
-                        createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
-                                backdatedTxnsAllowedTill);
-                    }
-                    recalucateDailyBalanceDetails = true;
+
                 } else {
                     boolean correctionRequired = false;
                     if (postingTransaction.isInterestPostingAndNotReversed()) {
@@ -928,8 +934,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
 
         if (hasStartInterestCalculationDate()) {
-            BigDecimal preStartInterest = this.savingsHelper.sumInterestPostingsOnOrBeforeDate(getId(),
-                    getStartInterestCalculationDate());
+            BigDecimal preStartInterest = this.savingsHelper.sumInterestPostingsOnOrBeforeDate(getId(), getStartInterestCalculationDate());
             this.summary.setPreStartDateInterestEarned(preStartInterest);
         }
 

@@ -140,8 +140,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
-                assembled.getLastNonReversedTransaction());
+                paymentDetail, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction());
 
         handleGsimDeposit(account, transactionAmount, deposit);
         handleNote(account, deposit, command);
@@ -178,8 +177,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, true, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
-                assembled.getLastNonReversedTransaction());
+                paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction());
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -233,11 +231,11 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             if ("deposit".equals(type)) {
                 account.validateForCreditBlock();
                 savedTxn = domainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
+                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
             } else {
                 account.validateForDebitBlock();
                 savedTxn = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail, true,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
+                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
             }
 
             String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);

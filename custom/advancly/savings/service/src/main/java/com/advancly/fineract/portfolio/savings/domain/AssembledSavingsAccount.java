@@ -18,35 +18,23 @@
  */
 package com.advancly.fineract.portfolio.savings.domain;
 
-import java.util.ArrayList;
-import java.util.List;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 
 /**
- * Lightweight wrapper that carries the assembled SavingsAccount along with interest/overdraft transactions that were
- * loaded separately (not attached to the entity's transaction list). This avoids modifying the JPA entity for
- * custom-module-only concerns.
+ * Lightweight wrapper that carries the assembled SavingsAccount along with the last non-reversed transaction for the
+ * O(1) append path.
  */
 @Getter
 @RequiredArgsConstructor
 public class AssembledSavingsAccount {
 
     private final SavingsAccount account;
-    private final List<SavingsAccountTransaction> interestAndOverdraftTransactions;
     private final SavingsAccountTransaction lastNonReversedTransaction;
 
-    public static AssembledSavingsAccount of(SavingsAccount account, List<SavingsAccountTransaction> interestAndOverdraftTransactions) {
-        return new AssembledSavingsAccount(account,
-                interestAndOverdraftTransactions != null ? interestAndOverdraftTransactions : new ArrayList<>(), null);
-    }
-
-    public static AssembledSavingsAccount of(SavingsAccount account, List<SavingsAccountTransaction> interestAndOverdraftTransactions,
-            SavingsAccountTransaction lastNonReversedTransaction) {
-        return new AssembledSavingsAccount(account,
-                interestAndOverdraftTransactions != null ? interestAndOverdraftTransactions : new ArrayList<>(),
-                lastNonReversedTransaction);
+    public static AssembledSavingsAccount of(SavingsAccount account, SavingsAccountTransaction lastNonReversedTransaction) {
+        return new AssembledSavingsAccount(account, lastNonReversedTransaction);
     }
 }

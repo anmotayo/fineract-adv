@@ -40,9 +40,4 @@ public interface AdvanclySavingsAccountTransactionRepository extends JpaReposito
             + "and sat.reversed = false and sat.reversalTransaction = false " + "and sat.typeOf <> 10")
     Optional<LocalDate> findLastTransactionDate(@Param("savingsId") Long savingsId);
 
-    // Interest and overdraft transactions for isBeforeLastPostingPeriod check
-    @Query("select sat from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "
-            + "and (sat.typeOf = 3 or sat.typeOf = 17) " + "and sat.reversed = false and sat.reversalTransaction = false")
-    List<SavingsAccountTransaction> findNonReversedInterestAndOverdraftTransactions(@Param("savingsId") Long savingsId);
-
 }

@@ -32,7 +32,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 /**
- * Optimized assembler that loads only the transactions needed for the current operation instead of the full history.
+ * Optimized assembler that loads only the data needed for the O(1) append path instead of the full transaction history.
  */
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
@@ -48,8 +48,7 @@ public class AdvanclySavingsAccountAssembler {
     private static final Pageable LAST_ONE = PageRequest.of(0, 1);
 
     /**
-     * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance and
-     * interest/overdraft transactions for posting period checks.
+     * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance.
      */
     public AssembledSavingsAccount assembleForAppendPath(final Long savingsId) {
         SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, true);
@@ -65,10 +64,7 @@ public class AdvanclySavingsAccountAssembler {
             account.getSummary().setRunningBalanceOnPivotDate(BigDecimal.ZERO);
         }
 
-        List<SavingsAccountTransaction> interestTxns = advanclyTransactionRepository
-                .findNonReversedInterestAndOverdraftTransactions(savingsId);
-
         account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, interestTxns, lastTransaction);
+        return AssembledSavingsAccount.of(account, lastTransaction);
     }
 }

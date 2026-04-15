@@ -69,13 +69,11 @@ class AdvanclySavingsAccountAssemblerTest {
 
         SavingsAccountTransaction lastTxn = new SavingsAccountTransactionTestBuilder().withRunningBalance(BigDecimal.valueOf(5000)).build();
         when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(List.of(lastTxn));
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount()).isSameAs(account);
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(5000));
-        assertThat(result.getInterestAndOverdraftTransactions()).isEmpty();
         assertThat(result.getLastNonReversedTransaction()).isSameAs(lastTxn);
     }
 
@@ -85,7 +83,6 @@ class AdvanclySavingsAccountAssemblerTest {
         when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
 
         when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(new ArrayList<>());
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 

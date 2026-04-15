@@ -35,7 +35,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
@@ -105,7 +104,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     void testBulkTransaction_twoDeposits_returnsReceiptToIdMap() {
         Long savingsId = 1L;
         SavingsAccount account = new SavingsAccountTestBuilder().withId(savingsId).build();
-        AssembledSavingsAccount assembled = new AssembledSavingsAccount(account, new ArrayList<>(), null);
+        AssembledSavingsAccount assembled = new AssembledSavingsAccount(account, null);
 
         when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.empty());
         when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
@@ -120,9 +119,9 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         SavingsAccountTransaction txn2 = new SavingsAccountTransactionTestBuilder().withId(102L)
                 .withRunningBalance(BigDecimal.valueOf(7000)).build();
 
-        when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(5000)), any(), any(),
+        when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(5000)), any(),
                 any(Money.class), any(), any())).thenReturn(txn1);
-        when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(2000)), any(), any(),
+        when(domainService.handleDepositOptimized(eq(account), eq(LocalDate.of(2026, 4, 5)), eq(BigDecimal.valueOf(2000)), any(),
                 any(Money.class), any(), any())).thenReturn(txn2);
 
         String json = buildBulkPayload("deposit", "REC-001", 5000, "Deposit for rent", "deposit", "REC-002", 2000, "Deposit for bills");

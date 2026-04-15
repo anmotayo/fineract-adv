@@ -18,35 +18,26 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
-import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
-import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsDepositBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsWithdrawalBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
-import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
-import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
-import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -55,56 +46,37 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Optimized domain service for savings deposits and withdrawals. Uses O(1) append path for current-date transactions
- * and O(k) insert path for backdated ones.
+ * Optimized domain service for savings deposits and withdrawals. Uses O(1) append path for current-date transactions.
+ * Backdated transactions are delegated to the core domain service.
  */
 @Slf4j
 @Service
 @Primary
 public class AdvanclySavingsAccountDomainService implements SavingsAccountDomainService {
 
-    private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final SavingsAccountTransactionRepository savingsAccountTransactionRepository;
-    private final ConfigurationDomainService configurationDomainService;
-    private final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
     private final BusinessEventNotifierService businessEventNotifierService;
-    private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
-    private final SavingsHelper savingsHelper;
     private final SavingsAccountTransactionHelper transactionHelper;
-    private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     private final SavingsAccountDomainService coreDomainService;
 
     @Autowired
-    public AdvanclySavingsAccountDomainService(final PlatformSecurityContext context,
-            final SavingsAccountRepositoryWrapper savingsAccountRepository,
+    public AdvanclySavingsAccountDomainService(final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            final ConfigurationDomainService configurationDomainService,
-            final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
-            final BusinessEventNotifierService businessEventNotifierService,
-            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
-            final SavingsAccountTransactionHelper transactionHelper,
-            final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository,
+            final BusinessEventNotifierService businessEventNotifierService, final SavingsAccountTransactionHelper transactionHelper,
             @Qualifier("coreSavingsAccountDomainService") final SavingsAccountDomainService coreDomainService) {
-        this.context = context;
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
-        this.configurationDomainService = configurationDomainService;
-        this.depositAccountOnHoldTransactionRepository = depositAccountOnHoldTransactionRepository;
         this.businessEventNotifierService = businessEventNotifierService;
-        this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
-        this.savingsHelper = savingsHelper;
         this.transactionHelper = transactionHelper;
-        this.advanclyTransactionRepository = advanclyTransactionRepository;
         this.coreDomainService = coreDomainService;
     }
 
     /**
-     * Optimized deposit handler with O(1) append or O(k) insert path selection.
+     * O(1) append-only deposit handler. The caller (WritePlatformService) must ensure the transaction is not backdated.
      */
     public SavingsAccountTransaction handleDepositOptimized(final SavingsAccount account, final LocalDate transactionDate,
-            final BigDecimal transactionAmount, final PaymentDetail paymentDetail,
-            final List<SavingsAccountTransaction> interestAndOverdraftTransactions, final Money lastRunningBalance,
+            final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final Money lastRunningBalance,
             final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction) {
 
         final String refNo = ExternalId.generate().getValue();
@@ -113,18 +85,9 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         account.addTransaction(deposit);
 
-        Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(account.getId());
-        boolean isAppendPath = lastTxnDate.isEmpty() || !transactionDate.isBefore(lastTxnDate.get());
-
-        if (isAppendPath) {
-            // O(1) path
-            transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
-            transactionHelper.setRunningBalanceForAppendPath(deposit, lastRunningBalance, currency);
-            transactionHelper.updateSummaryIncremental(account, deposit, currency);
-        } else {
-            // Insert path
-            handleInsertPathForDeposit(account, transactionDate, deposit, interestAndOverdraftTransactions, currency);
-        }
+        transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
+        transactionHelper.setRunningBalanceForAppendPath(deposit, lastRunningBalance, currency);
+        transactionHelper.updateSummaryIncremental(account, deposit, currency);
 
         final Set<Long> existingTransactionIds = new HashSet<>(account.findCurrentTransactionIdsWithPivotDateConfig());
         final Set<Long> existingReversedTransactionIds = new HashSet<>(account.findCurrentReversedTransactionIdsWithPivotDateConfig());
@@ -139,31 +102,23 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     }
 
     /**
-     * Optimized withdrawal handler with O(1) append or O(k) insert path selection.
+     * O(1) append-only withdrawal handler. The caller (WritePlatformService) must ensure the transaction is not
+     * backdated.
      */
     public SavingsAccountTransaction handleWithdrawalOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final boolean applyWithdrawFee,
-            final List<SavingsAccountTransaction> interestAndOverdraftTransactions, final Money lastRunningBalance,
-            final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction) {
+            final Money lastRunningBalance, final MonetaryCurrency currency,
+            final SavingsAccountTransaction lastNonReversedTransaction) {
 
         final String refNo = ExternalId.generate().getValue();
         final SavingsAccountTransaction withdrawal = SavingsAccountTransaction.withdrawal(account, account.office(), paymentDetail,
                 transactionDate, Money.of(currency, transactionAmount), refNo);
 
-        Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(account.getId());
-        boolean isAppendPath = lastTxnDate.isEmpty() || !transactionDate.isBefore(lastTxnDate.get());
-
-        if (isAppendPath) {
-            // O(1) balance validation + append
-            transactionHelper.validateBalanceForAppendPath(account, transactionAmount, currency);
-            account.addTransaction(withdrawal);
-            transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
-            transactionHelper.setRunningBalanceForAppendPath(withdrawal, lastRunningBalance, currency);
-            transactionHelper.updateSummaryIncremental(account, withdrawal, currency);
-        } else {
-            account.addTransaction(withdrawal);
-            handleInsertPathForWithdrawal(account, transactionDate, transactionAmount, interestAndOverdraftTransactions, currency);
-        }
+        transactionHelper.validateBalanceForAppendPath(account, transactionAmount, currency);
+        account.addTransaction(withdrawal);
+        transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
+        transactionHelper.setRunningBalanceForAppendPath(withdrawal, lastRunningBalance, currency);
+        transactionHelper.updateSummaryIncremental(account, withdrawal, currency);
 
         final Set<Long> existingTransactionIds = new HashSet<>(account.findCurrentTransactionIdsWithPivotDateConfig());
         final Set<Long> existingReversedTransactionIds = new HashSet<>(account.findCurrentReversedTransactionIdsWithPivotDateConfig());
@@ -177,52 +132,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         return withdrawal;
     }
 
-    private void handleInsertPathForDeposit(SavingsAccount account, LocalDate transactionDate, SavingsAccountTransaction deposit,
-            List<SavingsAccountTransaction> interestAndOverdraftTransactions, MonetaryCurrency currency) {
-        boolean hasInterest = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
-        boolean beforeLastPosting = transactionHelper.isBeforeLastPostingPeriod(transactionDate, interestAndOverdraftTransactions);
-
-        if (beforeLastPosting && hasInterest) {
-            // Case B/C: needs interest re-posting — fall back to full path
-            fullRecalculation(account);
-        } else {
-            // Case A: after interest posting — just recalculate running balances
-            Money openingBalance = Money.of(currency, account.getSummary().getRunningBalanceOnPivotDate());
-            List<SavingsAccountTransaction> sortedTxns = account.getSavingsAccountTransactionsWithPivotConfig();
-            transactionHelper.recalculateDailyBalancesFromDate(sortedTxns, openingBalance, currency);
-            transactionHelper.updateSummaryIncremental(account, deposit, currency);
-        }
-    }
-
-    private void handleInsertPathForWithdrawal(SavingsAccount account, LocalDate transactionDate, BigDecimal transactionAmount,
-            List<SavingsAccountTransaction> interestAndOverdraftTransactions, MonetaryCurrency currency) {
-        boolean hasInterest = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
-        boolean beforeLastPosting = transactionHelper.isBeforeLastPostingPeriod(transactionDate, interestAndOverdraftTransactions);
-
-        if (beforeLastPosting && hasInterest) {
-            fullRecalculation(account);
-        } else {
-            Money openingBalance = Money.of(currency, account.getSummary().getRunningBalanceOnPivotDate());
-            List<SavingsAccountTransaction> sortedTxns = account.getSavingsAccountTransactionsWithPivotConfig();
-            transactionHelper.recalculateDailyBalancesFromDate(sortedTxns, openingBalance, currency);
-            transactionHelper.validateBalanceDoesNotBecomeNegative(account, sortedTxns, openingBalance, currency);
-            // For insert path, use single-pass summary calculation instead of 12 separate iterations
-            transactionHelper.calculateAndUpdateSummaryInSinglePass(account, sortedTxns, currency);
-        }
-    }
-
-    private void fullRecalculation(SavingsAccount account) {
-        MathContext mc = MathContext.DECIMAL64;
-        LocalDate today = DateUtils.getBusinessLocalDate();
-        boolean isSavingsInterestPostingAtCurrentPeriodEnd = configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd();
-        Integer financialYearBeginningMonth = configurationDomainService.retrieveFinancialYearBeginningMonth();
-        boolean postReversals = configurationDomainService.isReversalTransactionAllowed();
-
-        account.postInterest(mc, today, false, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, null, true,
-                postReversals);
-    }
-
-    // === Interface method implementations — these are called by the WritePlatformService ===
+    // === Interface method implementations — delegate to core ===
 
     @Transactional
     @Override

@@ -136,6 +136,13 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
         return EndOfDayBalance.from(balanceStartDate, openingBalance, endOfDayBalance, numberOfDaysOfBalance);
     }
 
+    public SavingsAccountTransactionDetailsForPostingPeriod withEndOfBalanceDate(final LocalDate newEndOfBalanceDate) {
+        final int numberOfDays = LocalDateInterval.create(this.transactionDate, newEndOfBalanceDate).daysInPeriodInclusiveOfEndDate();
+        return new SavingsAccountTransactionDetailsForPostingPeriod(this.id, this.transactionDate, newEndOfBalanceDate, this.runningBalance,
+                this.amount, this.currency, numberOfDays, this.isDeposit, this.isWithdrawal, this.isAllowOverdraft,
+                this.isChargeTransactionAndNotReversed, this.isDividendPayoutAndNotReversed, this.isWithHoldTaxAndNotReversed);
+    }
+
     private Money getAmount(MonetaryCurrency currency) {
         return Money.of(currency, getAmount());
     }

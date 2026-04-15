@@ -145,8 +145,16 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(savingsAccount.getId());
         boolean isInterestTransfer = false;
         final Money minBalanceForInterestCalculation = Money.of(currency, savingsAccount.getMinBalanceForInterestCalculation());
-        List<SavingsAccountTransactionDetailsForPostingPeriod> savingsAccountTransactionDetailsForPostingPeriodList = savingsAccount
-                .toSavingsAccountTransactionDetailsForPostingPeriodList();
+        List<SavingsAccountTransactionDetailsForPostingPeriod> savingsAccountTransactionDetailsForPostingPeriodList = new ArrayList<>(
+                savingsAccount.toSavingsAccountTransactionDetailsForPostingPeriodList());
+        if (!savingsAccountTransactionDetailsForPostingPeriodList.isEmpty()) {
+            final int lastIndex = savingsAccountTransactionDetailsForPostingPeriodList.size() - 1;
+            final SavingsAccountTransactionDetailsForPostingPeriod lastTransaction = savingsAccountTransactionDetailsForPostingPeriodList
+                    .get(lastIndex);
+            if (lastTransaction.getEndOfBalanceDate() == null) {
+                savingsAccountTransactionDetailsForPostingPeriodList.set(lastIndex, lastTransaction.withEndOfBalanceDate(tillDate));
+            }
+        }
         for (final LocalDateInterval periodInterval : postingPeriodIntervals) {
             if (DateUtils.isDateInTheFuture(periodInterval.endDate())) {
                 continue;
@@ -170,9 +178,9 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
         final CompoundInterestValues compoundInterestValues = new CompoundInterestValues(compoundedInterest, unCompoundedInterest);
 
         final List<LocalDate> accrualTransactionDates = savingsAccount.retrieveOrderedAccrualTransactions().stream()
-                .map(transaction -> transaction.getTransactionDate()).toList();
+                .filter(transaction -> !transaction.isReversed()).map(SavingsAccountTransaction::getTransactionDate).toList();
         final List<LocalDate> reversedAccrualTransactionDates = savingsAccount.retrieveOrderedAccrualTransactions().stream()
-                .filter(transaction -> transaction.isReversed()).map(transaction -> transaction.getTransactionDate()).toList();
+                .filter(SavingsAccountTransaction::isReversed).map(SavingsAccountTransaction::getTransactionDate).toList();
 
         LocalDate accruedTillDate = fromDate;
 

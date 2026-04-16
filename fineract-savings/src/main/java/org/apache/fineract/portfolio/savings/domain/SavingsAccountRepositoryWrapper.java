@@ -143,7 +143,7 @@ public class SavingsAccountRepositoryWrapper {
 
     public List<SavingsAccountTransaction> findTransactionsBeforePivotDate(@Param("savingsId") Long savingsId,
             @Param("date") LocalDate date, Pageable pageable) {
-        return this.savingsAccountTransactionRepository.findNonAccrualTransactionBeforeRunningDate(savingsId, date, pageable);
+        return this.savingsAccountTransactionRepository.findNonInterestContributingTransactionsBeforeDate(savingsId, date, pageable);
     }
 
     @Transactional

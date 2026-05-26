@@ -97,7 +97,8 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                         .retriveLoanDuesData(data.toAccount().getId());
                 if (data.instructionType().isDuesAmoutTransfer()) {
                     final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFrom(data.fromAccount().getId(), false);
-                    BigDecimal availableBalance = fromSavingsAccount.getSummary().getAccountBalance();
+                    BigDecimal availableBalance = fromSavingsAccount.getSummary().getAccountBalance()
+                            .subtract(fromSavingsAccount.getSavingsHoldAmount()).subtract(fromSavingsAccount.getOnHoldFunds());
                     if (fromSavingsAccount.isAllowOverdraft()) {
                         availableBalance = availableBalance.add(fromSavingsAccount.getOverdraftLimit());
                     }
@@ -117,6 +118,20 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
             }
 
             if (isDueForTransfer && transactionAmount != null && transactionAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (data.fromAccountType().isSavingsAccount()) {
+                    final SavingsAccount fromAccount = this.savingsAccountAssembler.assembleFrom(data.fromAccount().getId(), false);
+                    BigDecimal availableBalance = fromAccount.getSummary().getAccountBalance().subtract(fromAccount.getSavingsHoldAmount())
+                            .subtract(fromAccount.getOnHoldFunds());
+                    if (fromAccount.isAllowOverdraft()) {
+                        availableBalance = availableBalance.add(fromAccount.getOverdraftLimit());
+                    }
+                    if (availableBalance.compareTo(transactionAmount) < 0) {
+                        log.warn("Insufficient balance for standing instruction id {} from account {} to account {}. Skipping transfer.",
+                                data.getId(), data.fromAccount().getId(), data.toAccount().getId());
+                        recordStandingInstructionHistory(data.getId(), transactionAmount, "InsufficientAccountBalance Exception ");
+                        continue;
+                    }
+                }
                 final SavingsAccount fromSavingsAccount = null;
                 final boolean isRegularTransaction = true;
                 final boolean isExceptionForBalanceCheck = false;
@@ -153,8 +168,8 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                     + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
             errorLog.append("Validation exception while trasfering funds ").append(e.getDefaultUserMessage());
         } catch (final InsufficientAccountBalanceException e) {
-            log.warn("Insufficient balance for standing instruction id {} from account {} to account {}. Skipping transfer.",
-                    instructionId, accountTransferDTO.getFromAccountId(), accountTransferDTO.getToAccountId());
+            errors.add(new Exception("InsufficientAccountBalance Exception while transfering funds for standing Instruction id"
+                    + instructionId + " from " + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
             errorLog.append("InsufficientAccountBalance Exception ");
         } catch (final AbstractPlatformServiceUnavailableException e) {
             errors.add(new Exception("Platform exception while trasfering funds for standing Instruction id" + instructionId + " from "
@@ -178,6 +193,18 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
         updateQuery.append("'").append(errorLog).append("')");
         jdbcTemplate.update(updateQuery.toString());
         return transferCompleted;
+    }
+
+    private void recordStandingInstructionHistory(final Long instructionId, final BigDecimal amount, final String errorLog) {
+        StringBuilder updateQuery = new StringBuilder(
+                "INSERT INTO m_account_transfer_standing_instructions_history (standing_instruction_id, " + sqlGenerator.escape("status")
+                        + ", amount,execution_time, error_log) VALUES (");
+        updateQuery.append(instructionId).append(",");
+        updateQuery.append("'failed'").append(",");
+        updateQuery.append(amount.doubleValue());
+        updateQuery.append(", now(),");
+        updateQuery.append("'").append(errorLog).append("')");
+        jdbcTemplate.update(updateQuery.toString());
     }
 
     public boolean isDueForTransfer(StandingInstructionDuesData standingInstructionDuesData) {

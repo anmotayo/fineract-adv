@@ -153,8 +153,8 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                     + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
             errorLog.append("Validation exception while trasfering funds ").append(e.getDefaultUserMessage());
         } catch (final InsufficientAccountBalanceException e) {
-            errors.add(new Exception("InsufficientAccountBalance Exception while trasfering funds for standing Instruction id"
-                    + instructionId + " from " + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
+            log.warn("Insufficient balance for standing instruction id {} from account {} to account {}. Skipping transfer.",
+                    instructionId, accountTransferDTO.getFromAccountId(), accountTransferDTO.getToAccountId());
             errorLog.append("InsufficientAccountBalance Exception ");
         } catch (final AbstractPlatformServiceUnavailableException e) {
             errors.add(new Exception("Platform exception while trasfering funds for standing Instruction id" + instructionId + " from "

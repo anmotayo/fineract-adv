@@ -21,6 +21,7 @@ dependencies {
     implementation(project(':custom:advancly:savings:service'))
     implementation(project(':fineract-core'))
     implementation(project(':fineract-savings'))
+    implementation(project(':fineract-loan'))
     implementation(project(':fineract-provider'))
     implementation(project(':fineract-charge'))
     implementation(project(':fineract-accounting'))

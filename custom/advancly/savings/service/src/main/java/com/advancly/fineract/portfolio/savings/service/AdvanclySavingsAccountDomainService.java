@@ -38,19 +38,15 @@ import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsDepositBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.savings.transaction.SavingsWithdrawalBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
-import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
-import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
-import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,20 +55,17 @@ import org.springframework.transaction.annotation.Transactional;
  * Optimized domain service for savings deposits and withdrawals. Uses O(1) append path for current-date transactions
  * and O(k) insert path for backdated ones.
  */
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdvanclySavingsAccountDomainService implements SavingsAccountDomainService {
 
-    private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final SavingsAccountTransactionRepository savingsAccountTransactionRepository;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final ConfigurationDomainService configurationDomainService;
-    private final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
     private final BusinessEventNotifierService businessEventNotifierService;
-    private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
-    private final SavingsHelper savingsHelper;
     private final SavingsAccountTransactionHelper transactionHelper;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     private final SavingsAccountDomainServiceJpa coreDomainService;

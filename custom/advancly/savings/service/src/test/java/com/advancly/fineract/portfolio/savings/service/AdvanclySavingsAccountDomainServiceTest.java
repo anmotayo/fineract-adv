@@ -21,8 +21,6 @@ package com.advancly.fineract.portfolio.savings.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
@@ -161,8 +159,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         LocalDate backdatedDate = LocalDate.of(2025, 3, 15);
         SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
                 .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
-        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary)
-                .withInterestRate(BigDecimal.valueOf(5)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary).withInterestRate(BigDecimal.valueOf(5))
+                .build();
 
         when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
         when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);
@@ -182,8 +180,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         LocalDate backdatedDate = LocalDate.of(2025, 3, 15);
         SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
                 .withRunningBalanceOnPivotDate(BigDecimal.valueOf(800)).build();
-        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary)
-                .withInterestRate(BigDecimal.valueOf(5)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary).withInterestRate(BigDecimal.valueOf(5))
+                .build();
 
         when(advanclyTransactionRepository.findLastTransactionDate(1L)).thenReturn(Optional.of(LocalDate.now()));
         when(transactionHelper.isBeforeLastPostingPeriod(eq(backdatedDate), any())).thenReturn(true);

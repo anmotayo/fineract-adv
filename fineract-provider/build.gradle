@@ -110,9 +110,9 @@ apply from: 'dependencies.gradle'
 // https://github.com/andygoossens/gradle-modernizer-plugin
 modernizer {
     ignoreClassNamePatterns = [
-            '.*AbstractPersistableCustom',
-            '.*EntityTables',
-            '.*domain.*'
+        '.*AbstractPersistableCustom',
+        '.*EntityTables',
+        '.*domain.*'
     ]
 }
 
@@ -219,7 +219,7 @@ tasks.register('setBlankPassword') {
 
 bootRun {
     jvmArgs = [
-            "-Dspring.output.ansi.enabled=ALWAYS"
+        "-Dspring.output.ansi.enabled=ALWAYS"
     ]
 
     dependencies {
@@ -255,8 +255,8 @@ jib {
     to {
         image = 'fineract'
         tags = [
-                "${project.version}",
-                'latest'
+            "${project.version}",
+            'latest'
         ]
     }
 
@@ -265,10 +265,10 @@ jib {
         mainClass = 'org.apache.fineract.ServerApplication'
         extraClasspath = ['/app/plugins/*']
         args = [
-                '-Duser.home=/tmp',
-                '-Dfile.encoding=UTF-8',
-                '-Duser.timezone=UTC',
-                '-Djava.security.egd=file:/dev/./urandom'
+            '-Duser.home=/tmp',
+            '-Dfile.encoding=UTF-8',
+            '-Duser.timezone=UTC',
+            '-Djava.security.egd=file:/dev/./urandom'
         ]
         ports = ['8080/tcp', '8443/tcp']
         labels = [maintainer: 'Aleksandar Vidakovic <aleks@apache.org>']
@@ -308,10 +308,10 @@ cucumber {
     main = 'io.cucumber.core.cli.Main'
     shorten = 'argfile'
     plugin = [
-            'pretty',
-            'html:build/reports/cucumber/report.html',
-            'json:build/reports/cucumber/report.json',
-            'junit:build/reports/cucumber/report.xml'
+        'pretty',
+        'html:build/reports/cucumber/report.html',
+        'json:build/reports/cucumber/report.json',
+        'junit:build/reports/cucumber/report.xml'
     ]
 }
 
@@ -352,12 +352,19 @@ tasks.register('devRun', org.springframework.boot.gradle.tasks.run.BootRun) {
     gradle.taskGraph.whenReady { graph ->
         if (graph.hasTask(devRun)) {
             tasks.matching { task ->
-                task.name in ['checkstyle', 'checkstyleMain', 'checkstyleTest',
-                              'spotlessCheck', 'spotlessApply',
-                              'spotbugsMain', 'spotbugsTest',
-                              'javadoc', 'javadocJar',
-                              'modernizer',
-                              'testClasses']
+                task.name in [
+                    'checkstyle',
+                    'checkstyleMain',
+                    'checkstyleTest',
+                    'spotlessCheck',
+                    'spotlessApply',
+                    'spotbugsMain',
+                    'spotbugsTest',
+                    'javadoc',
+                    'javadocJar',
+                    'modernizer',
+                    'testClasses'
+                ]
             }.configureEach {
                 enabled = false
             }

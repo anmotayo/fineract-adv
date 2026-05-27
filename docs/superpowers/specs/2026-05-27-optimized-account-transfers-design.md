@@ -9,15 +9,15 @@ The Advancly savings custom module currently optimizes direct savings deposits, 
 
 That means account transfers do not use the O(1) append path, even when the savings posting is a simple forward-dated transfer posting.
 
-There is also a path-selection correction to make: the optimized append path must only be used when the new transaction date is strictly greater than the last non-accrual transaction date on the savings account. The current code uses same-day-or-after behavior (`>=`) through `!transactionDate.isBefore(lastTxnDate)`. Same-day postings must use the insert path because ordering within the date can affect running balances and validations.
+The optimized append path must be used when the new transaction date is the same day as, or later than, the last non-accrual transaction date on the savings account. Accrual transactions must not make a normal posting look backdated.
 
 ## Goals
 
 1. Add optimized savings posting support to native Fineract account transfers.
 2. Preserve native account transfer records, command handlers, audit behavior, and loan-side behavior.
-3. Use the optimized path only when `transactionDate > lastNonAccrualTransactionDate`.
+3. Use the optimized path when `transactionDate >= lastNonAccrualTransactionDate`.
 4. Exclude accrual transactions from the last-transaction-date decision.
-5. Apply the same strict path-selection rule to direct deposit, direct withdrawal, bulk savings transactions, and account transfers.
+5. Apply the same same-day-or-after path-selection rule to direct deposit, direct withdrawal, bulk savings transactions, and account transfers.
 6. Keep the optimization behind `advancly.savings.optimization.enabled`.
 
 ## Non-Goals
@@ -50,9 +50,9 @@ Responsibilities:
 The path-selection method should be explicit:
 
 ```java
-boolean isStrictAppendPath(Long savingsId, LocalDate transactionDate) {
+boolean isAppendPath(Long savingsId, LocalDate transactionDate) {
     Optional<LocalDate> lastTxnDate = transactionRepository.findLastNonAccrualTransactionDate(savingsId);
-    return lastTxnDate.isEmpty() || transactionDate.isAfter(lastTxnDate.get());
+    return lastTxnDate.isEmpty() || !transactionDate.isBefore(lastTxnDate.get());
 }
 ```
 
@@ -75,9 +75,9 @@ Optimized behavior by transfer type:
 
 The service must continue to create `AccountTransferDetails` through `AccountTransferAssembler` and save it through `AccountTransferDetailRepository`.
 
-### Direct Savings Path Correction
+### Direct Savings Path Alignment
 
-Update the existing direct optimized paths so they use the shared strict append decision:
+Update the existing direct optimized paths so they use the shared same-day-or-after append decision:
 
 - `AdvanclySavingsAccountWritePlatformService.deposit(...)`
 - `AdvanclySavingsAccountWritePlatformService.withdrawal(...)`
@@ -85,7 +85,7 @@ Update the existing direct optimized paths so they use the shared strict append 
 - `AdvanclySavingsAccountDomainService.handleDepositOptimized(...)`
 - `AdvanclySavingsAccountDomainService.handleWithdrawalOptimized(...)`
 
-The direct write service should choose append vs insert using the shared helper. The domain service should either trust the already-assembled account shape or use the same strict helper internally as a defensive check. The important invariant is that same-day postings do not take the O(1) append branch.
+The direct write service should choose append vs insert using the shared helper. The domain service should either trust the already-assembled account shape or use the same helper internally as a defensive check. The important invariant is that same-day postings continue to take the O(1) append branch.
 
 ## Transfer Flow Details
 
@@ -130,13 +130,15 @@ if lastDate is absent:
     use append path
 else if transactionDate is after lastDate:
     use append path
+else if transactionDate is equal to lastDate:
+    use append path
 else:
     use insert path
 ```
 
 Accrual transaction type `10` is excluded from `lastDate`. Interest and overdraft transactions remain included unless they are accruals, because they affect the transaction timeline.
 
-Same-day postings use insert path.
+Same-day postings use append path.
 
 ## Error Handling And Atomicity
 
@@ -157,15 +159,15 @@ Add tests for the shared savings posting component:
 
 - Empty last non-accrual date uses append path.
 - Transaction date after last non-accrual date uses append path.
-- Transaction date equal to last non-accrual date uses insert path.
+- Transaction date equal to last non-accrual date uses append path.
 - Transaction date before last non-accrual date uses insert path.
 - Accrual transactions are excluded by the repository method or repository wrapper contract.
 
 Add tests for direct savings behavior:
 
-- Direct deposit on same date as last non-accrual transaction assembles insert path.
-- Direct withdrawal on same date as last non-accrual transaction assembles insert path.
-- Bulk transaction where earliest item is same date as last non-accrual transaction assembles insert path.
+- Direct deposit on same date as last non-accrual transaction assembles append path.
+- Direct withdrawal on same date as last non-accrual transaction assembles append path.
+- Bulk transaction where earliest item is same date as last non-accrual transaction assembles append path.
 
 Add tests for account transfer behavior:
 

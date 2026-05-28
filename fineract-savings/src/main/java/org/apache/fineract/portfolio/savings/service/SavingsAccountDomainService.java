@@ -19,7 +19,6 @@
 package org.apache.fineract.portfolio.savings.service;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -33,7 +32,7 @@ public interface SavingsAccountDomainService {
 
     SavingsAccountTransaction handleWithdrawal(SavingsAccount account, DateTimeFormatter fmt, LocalDate transactionDate,
             BigDecimal transactionAmount, PaymentDetail paymentDetail, SavingsTransactionBooleanValues transactionBooleanValues,
-            boolean backdatedTxnsAllowedTill, boolean isFromJob);
+            boolean backdatedTxnsAllowedTill);
 
     SavingsAccountTransaction handleDeposit(SavingsAccount account, DateTimeFormatter fmt, LocalDate transactionDate,
             BigDecimal transactionAmount, PaymentDetail paymentDetail, boolean isAccountTransfer, boolean isRegularTransaction,
@@ -49,15 +48,4 @@ public interface SavingsAccountDomainService {
             boolean backdatedTxnsAllowedTill);
 
     SavingsAccountTransaction handleHold(SavingsAccount account, BigDecimal amount, LocalDate transactionDate, Boolean lienAllowed);
-
-    void postInterest(SavingsAccount account, MathContext mc, LocalDate interestPostingUpToDate, boolean isInterestTransfer,
-            boolean isSavingsInterestPostingAtCurrentPeriodEnd, Integer financialYearBeginningMonth, LocalDate postInterestOnDate,
-            boolean backdatedTxnsAllowedTill, boolean postReversals);
-
-    void reverseTransfer(SavingsAccountTransaction savingsTransaction, boolean backdatedTxnsAllowedTill);
-
-    void undoTransaction(SavingsAccount account, SavingsAccountTransaction savingsAccountTransaction);
-
-    void checkClientOrGroupActive(SavingsAccount account);
-
 }

@@ -27,10 +27,8 @@ import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -51,8 +49,6 @@ class AdvanclySavingsAccountAssemblerTest {
     @Mock
     private AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     @Mock
-    private ConfigurationDomainService configurationDomainService;
-    @Mock
     private SavingsAccountTransactionSummaryWrapper summaryWrapper;
     @Mock
     private SavingsHelper savingsHelper;
@@ -62,78 +58,35 @@ class AdvanclySavingsAccountAssemblerTest {
     @BeforeEach
     void setUp() {
         MoneyHelperInitializer.initialize();
-        assembler = new AdvanclySavingsAccountAssembler(savingsAccountRepository, advanclyTransactionRepository, configurationDomainService,
-                summaryWrapper, savingsHelper);
+        assembler = new AdvanclySavingsAccountAssembler(savingsAccountRepository, advanclyTransactionRepository, summaryWrapper,
+                savingsHelper);
     }
 
     @Test
     void testAssembleForAppendPath_loadsNoTransactions_setsLastRunningBalance() {
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
-        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, false)).thenReturn(account);
+        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
 
         SavingsAccountTransaction lastTxn = new SavingsAccountTransactionTestBuilder().withRunningBalance(BigDecimal.valueOf(5000)).build();
         when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(List.of(lastTxn));
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount()).isSameAs(account);
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(5000));
-        assertThat(result.getInterestAndOverdraftTransactions()).isEmpty();
         assertThat(result.getLastNonReversedTransaction()).isSameAs(lastTxn);
     }
 
     @Test
     void testAssembleForAppendPath_noExistingTransactions_zeroBalance() {
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
-        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, false)).thenReturn(account);
+        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
 
         when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(new ArrayList<>());
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(result.getLastNonReversedTransaction()).isNull();
-    }
-
-    @Test
-    void testAssembleForInsertPath_loadsFromTransactionDate() {
-        LocalDate txnDate = LocalDate.of(2025, 7, 15);
-        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
-        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, false)).thenReturn(account);
-
-        List<SavingsAccountTransaction> txns = List
-                .of(new SavingsAccountTransactionTestBuilder().withDate(txnDate).withAmount(BigDecimal.valueOf(100)).build());
-        when(advanclyTransactionRepository.findTransactionsOnOrAfterDate(account, txnDate)).thenReturn(txns);
-
-        SavingsAccountTransaction beforeTxn = new SavingsAccountTransactionTestBuilder().withRunningBalance(BigDecimal.valueOf(3000))
-                .build();
-        when(advanclyTransactionRepository.findNonInterestTransactionBeforeDate(eq(1L), eq(txnDate), any(Pageable.class)))
-                .thenReturn(List.of(beforeTxn));
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
-
-        AssembledSavingsAccount result = assembler.assembleForInsertPath(1L, txnDate, false);
-
-        assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(3000));
-    }
-
-    @Test
-    void testAssembleForInsertPath_withInterestRate_usesNonAccrualQuery() {
-        LocalDate txnDate = LocalDate.of(2025, 7, 15);
-        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
-        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, false)).thenReturn(account);
-
-        when(advanclyTransactionRepository.findTransactionsOnOrAfterDate(account, txnDate)).thenReturn(new ArrayList<>());
-
-        SavingsAccountTransaction beforeTxn = new SavingsAccountTransactionTestBuilder().withRunningBalance(BigDecimal.valueOf(2000))
-                .build();
-        when(advanclyTransactionRepository.findNonAccrualTransactionBeforeDate(eq(1L), eq(txnDate), any(Pageable.class)))
-                .thenReturn(List.of(beforeTxn));
-        when(advanclyTransactionRepository.findNonReversedInterestAndOverdraftTransactions(1L)).thenReturn(new ArrayList<>());
-
-        AssembledSavingsAccount result = assembler.assembleForInsertPath(1L, txnDate, true);
-
-        assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(2000));
     }
 }

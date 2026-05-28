@@ -18,6 +18,7 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import org.apache.fineract.portfolio.account.service.AccountTransfersReadPlatfor
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.domain.interest.CompoundInterestHelper;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
+import org.apache.fineract.portfolio.savings.service.SavingsInterestReadPlatformService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -39,10 +41,13 @@ import org.springframework.stereotype.Service;
 public final class SavingsHelper {
 
     private final AccountTransfersReadPlatformService accountTransfersReadPlatformService;
+    private final SavingsInterestReadPlatformService savingsInterestReadPlatformService;
 
     @Autowired
-    public SavingsHelper(AccountTransfersReadPlatformService accountTransfersReadPlatformService) {
+    public SavingsHelper(AccountTransfersReadPlatformService accountTransfersReadPlatformService,
+            SavingsInterestReadPlatformService savingsInterestReadPlatformService) {
         this.accountTransfersReadPlatformService = accountTransfersReadPlatformService;
+        this.savingsInterestReadPlatformService = savingsInterestReadPlatformService;
     }
 
     private static final CompoundInterestHelper COMPOUND_INTEREST_HELPER = new CompoundInterestHelper();
@@ -178,6 +183,10 @@ public final class SavingsHelper {
 
     public Collection<Long> fetchPostInterestTransactionIds(Long accountId, LocalDate pivotDate) {
         return this.accountTransfersReadPlatformService.fetchPostInterestTransactionIdsWithPivotDate(accountId, pivotDate);
+    }
+
+    public BigDecimal sumInterestPostingsOnOrBeforeDate(Long savingsId, LocalDate beforeDate) {
+        return this.savingsInterestReadPlatformService.sumInterestPostingsOnOrBeforeDate(savingsId, beforeDate);
     }
 
 }

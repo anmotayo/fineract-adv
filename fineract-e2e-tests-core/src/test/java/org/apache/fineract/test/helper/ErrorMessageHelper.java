@@ -23,12 +23,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.client.models.BatchResponse;
-import org.apache.fineract.client.models.GetJournalEntriesTransactionIdResponse;
-import org.apache.fineract.client.models.GetLoanAccountLockResponse;
 import org.apache.fineract.client.models.Header;
+import org.apache.fineract.client.models.LoanAccountLockResponseDTO;
 import retrofit2.Response;
 
 public final class ErrorMessageHelper {
@@ -57,13 +57,62 @@ public final class ErrorMessageHelper {
         return "Loan has a wrong http status";
     }
 
+    public static String setIncorrectBusinessDateFailure() {
+        return "Wrong local date fields.";
+    }
+
+    public static String setIncorrectBusinessDateMandatoryFailure() {
+        return "The parameter 'date' is mandatory.";
+    }
+
+    public static String setCurrencyEmptyValueFailure() {
+        return "The parameter 'currencies' cannot be empty.";
+    }
+
+    public static String setCurrencyIncorrectValueFailure(String value) {
+        return String.format("Currency with identifier %s does not exist", value);
+    }
+
+    public static String setCurrencyNullValueMandatoryFailure() {
+        return "The parameter 'currencies' is mandatory.";
+    }
+
     public static String disburseDateFailure(Integer loanId) {
         String loanIdStr = parseLoanIdToString(loanId);
         return String.format("The date on which a loan with identifier : %s is disbursed cannot be in the future.", loanIdStr);
     }
 
+    public static String addDisbursementExceedApprovedAmountFailure() {
+        return "Loan can't be disbursed, disburse amount is exceeding approved principal.";
+    }
+
+    public static String addManualInterestRefundIfAlreadyExistsFailure() {
+        return "Interest Refund already exists for this transaction";
+    }
+
+    public static String addManualInterestRefundIfReversedFailure() {
+        return "Target transaction must be Merchant Issued Refund or Payout Refund";
+    }
+
+    public static String addDisbursementExceedMaxAppliedAmountFailure(String totalDisbAmount, String maxDisbursalAmount) {
+        return String.format("Loan disbursal amount can't be greater than maximum applied loan amount calculation. "
+                + "Total disbursed amount: %s  Maximum disbursal amount: %s", totalDisbAmount, maxDisbursalAmount);
+    }
+
+    public static String disbursePastDateFailure(Integer loanId, String actualDisbursementDate) {
+        return String.format("The date on which a loan is disbursed cannot be before its approval date: %s", actualDisbursementDate);
+    }
+
     public static String disburseMaxAmountFailure() {
         return "Loan disbursal amount can't be greater than maximum applied loan amount calculation. Total disbursed amount: [0-9]*  Maximum disbursal amount: [0-9]*";
+    }
+
+    public static String disburseChargedOffLoanFailure() {
+        return "Loan: [0-9]* disbursement is not allowed on charged-off loan.";
+    }
+
+    public static String disburseIsNotAllowedFailure() {
+        return "Loan Disbursal is not allowed. Loan Account is not in approved and not disbursed state.";
     }
 
     public static String loanSubmitDateInFutureFailureMsg() {
@@ -81,10 +130,6 @@ public final class ErrorMessageHelper {
     public static String loanFraudFlagModificationMsg(String loanId) {
         return String.format("Loan Id: %s mark as fraud is not allowed as loan status is not active", loanId);
 
-    }
-
-    public static String transactionDateInFutureFailureMsg() {
-        return "The transaction date cannot be in the future.";
     }
 
     public static String repaymentUndoFailureDueToChargeOff(Long loanId) {
@@ -112,6 +157,12 @@ public final class ErrorMessageHelper {
                 loanIdStr);
     }
 
+    public static String chargeOffFailureDueToMonetaryActivityBefore(Long loanId) {
+        String loanIdStr = String.valueOf(loanId);
+        return String.format("Loan: %s charge-off cannot be executed. Loan has monetary activity after the charge-off transaction date!",
+                loanIdStr);
+    }
+
     public static String notChargedOffFailure(Long loanId) {
         String loanIdStr = String.valueOf(loanId);
         return String.format("Loan: %s is not charged-off", loanIdStr);
@@ -124,6 +175,26 @@ public final class ErrorMessageHelper {
     public static String addChargeForChargeOffLoanFailure(Long loanId) {
         String loanIdStr = String.valueOf(loanId);
         return String.format("Adding charge to Loan: %s is not allowed. Loan Account is Charged-off", loanIdStr);
+    }
+
+    public static String addCapitalizedIncomeExceedApprovedAmountFailure() {
+        return "Failed data validation due to: exceeds.approved.amount.";
+    }
+
+    public static String addCapitalizedIncomeFutureDateFailure() {
+        return "Failed data validation due to: cannot.be.in.the.future.";
+    }
+
+    public static String addCapitalizedIncomeUndoFailureTransactionTypeNonReversal() {
+        return "Only (non-reversed) transactions of type repayment, waiver, accrual, credit balance refund, capitalized income, capitalized income adjustment, buy down fee or buy down fee adjustment can be adjusted.";
+    }
+
+    public static String addCapitalizedIncomeUndoFailureAdjustmentExists() {
+        return "Capitalized income transaction cannot be reversed when non-reversed adjustment exists for it.";
+    }
+
+    public static String buyDownFeeUndoFailureAdjustmentExists() {
+        return "Buy down fee transaction cannot be reversed when non-reversed adjustment exists for it.";
     }
 
     public static String wrongAmountInRepaymentSchedule(int line, BigDecimal actual, BigDecimal expected) {
@@ -209,11 +280,6 @@ public final class ErrorMessageHelper {
                 expected);
     }
 
-    public static String wrongDataInTransactionsTransactionDate(String actual, String expected) {
-        return String.format("Wrong data in Transactions / Transaction date. Actual value is: %s - But expected value is: %s", actual,
-                expected);
-    }
-
     public static String transactionIsNotReversedError(Boolean actual, Boolean expected) {
         return String.format("The transaction should be reversed, but it is not. Actual value is: %s - But expected value is: %s", actual,
                 expected);
@@ -226,34 +292,6 @@ public final class ErrorMessageHelper {
                 expectedToStr);
     }
 
-    public static String wrongAmountInTransactionsPrincipal(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Transactions / Principal. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongAmountInTransactionsInterest(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Transactions / Interest. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongAmountInTransactionsFees(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Transactions / Fees. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongAmountInTransactionsPenalties(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Transactions / Penalties. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
     public static String wrongAmountInTransactionsOverpayment(Double actual, Double expected) {
         String actualToStr = actual.toString();
         String expectedToStr = expected.toString();
@@ -261,51 +299,8 @@ public final class ErrorMessageHelper {
                 expectedToStr);
     }
 
-    public static String wrongAmountInTransactionsBalance(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Transactions / Loan Balance. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongDataInChargesName(String actual, String expected) {
-        return String.format("Wrong data in Charges / Name. Actual value is: %s - But expected value is: %s", actual, expected);
-    }
-
-    public static String wrongDataInChargesIsPenalty(String actual, String expected) {
-        return String.format("Wrong data in Charges / isPenalty. Actual value is: %s - But expected value is: %s", actual, expected);
-    }
-
-    public static String wrongDataInChargesDueDate(String actual, String expected) {
-        return String.format("Wrong data in Charges / Due Date. Actual value is: %s - But expected value is: %s", actual, expected);
-    }
-
-    public static String wrongDataInChargesAmountDue(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Charges / Due amount. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongDataInChargesAmountPaid(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Charges / Paid amount. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongDataInChargesAmountWaived(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Charges / Waived amount. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
-    }
-
-    public static String wrongDataInChargesAmountOutstanding(Double actual, Double expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong amount in Charges / Outstanding amount. Actual amount is: %s - But expected amount is: %s", actualToStr,
-                expectedToStr);
+    public static String transactionHasNullResourceValue(String transactionType, String resourceName) {
+        return String.format("The transaction %s should has non-null value for %s, but it is null.", transactionType, resourceName);
     }
 
     public static String wrongAmountInTotalOutstanding(Double actual, Double expected) {
@@ -313,6 +308,21 @@ public final class ErrorMessageHelper {
         String expectedToStr = expected.toString();
         return String.format("Wrong amount in Loan total outstanding. Actual amount is: %s - But expected amount is: %s", actualToStr,
                 expectedToStr);
+    }
+
+    public static String wrongAmountInTotalUnpaidPayableDueInterest(Double actual, Double expected) {
+        String actualToStr = actual.toString();
+        String expectedToStr = expected.toString();
+        return String.format("Wrong amount in Loan total unpaid payable due interest. Actual amount is: %s - But expected amount is: %s",
+                actualToStr, expectedToStr);
+    }
+
+    public static String wrongAmountInTotalUnpaidPayableNotDueInterest(Double actual, Double expected) {
+        String actualToStr = actual.toString();
+        String expectedToStr = expected.toString();
+        return String.format(
+                "Wrong amount in Loan total unpaid payable not due interest. Actual amount is: %s - But expected amount is: %s",
+                actualToStr, expectedToStr);
     }
 
     public static String wrongAmountInTotalOverdue(Double actual, Double expected) {
@@ -343,9 +353,12 @@ public final class ErrorMessageHelper {
     }
 
     public static String wrongLoanStatus(Integer actual, Integer expected) {
-        String actualToStr = actual.toString();
-        String expectedToStr = expected.toString();
-        return String.format("Wrong Loan status ID. Actual ID is: %s - But expected ID is: %s", actualToStr, expectedToStr);
+        return wrongLoanStatus(null, actual, expected);
+    }
+
+    public static String wrongLoanStatus(String resourceId, Integer actual, Integer expected) {
+        return String.format("Wrong Loan status ID of resource %s. Actual ID is: %s - But expected ID is: %s", resourceId, actual,
+                expected);
     }
 
     public static String wrongFraudFlag(Boolean actualFraudStatus, Boolean expectedFraudStatus) {
@@ -363,20 +376,6 @@ public final class ErrorMessageHelper {
 
     public static String loanRepaymentOnClosedLoanFailureMsg() {
         return "Loan Repayment (or its types) or Waiver is not allowed. Loan Account is not active.";
-    }
-
-    public static String noTransactionMetCriteria(String transactionType, String date) {
-        return String.format(
-                "There are no transaction in Transactions met the following criteria: Transaction type = %s, Transaction date = %s",
-                transactionType, date);
-    }
-
-    public static String missingMatchInJournalEntries(Map<String, String> entryPairs,
-            List<GetJournalEntriesTransactionIdResponse> entryDataList) {
-        String entryPairsStr = entryPairs.toString();
-        String entryDataListStr = entryDataList.toString();
-        return String.format("One or more entry pairs missing from Journal entries. Expected entry pairs: %s. Actual Journal entries: %s",
-                entryPairsStr, entryDataListStr);
     }
 
     public static String wrongErrorCodeInFailedChargeAdjustment(Integer actual, Integer expected) {
@@ -442,100 +441,59 @@ public final class ErrorMessageHelper {
     }
 
     public static String wrongNumberOfLinesInRepaymentSchedule(int actual, int expected) {
-        String actualStr = String.valueOf(actual);
-        String expectedStr = String.valueOf(expected);
-        return String.format("Number of lines in Repayment schedule is not correct. Actual value is: %s - Expected value is: %s", actualStr,
-                expectedStr);
+        return wrongNumberOfLinesInRepaymentSchedule(null, actual, expected);
     }
 
-    public static String wrongValueInLineInRepaymentSchedule(int line, List<List<String>> actual, List<String> expected) {
-        String lineStr = String.valueOf(line);
-        String expectedStr = expected.toString();
-        StringBuilder sb = new StringBuilder();
-        for (List<String> innerList : actual) {
-            sb.append(innerList.toString());
-            sb.append(System.lineSeparator());
-        }
-
-        return String.format(
-                "%nWrong value in Repayment schedule tab line %s. %nActual values in line (with the same due date) are: %n%s %nExpected values in line: %n%s",
-                lineStr, sb.toString(), expectedStr);
+    public static String wrongNumberOfLinesInRepaymentSchedule(String resourceId, int actual, int expected) {
+        return String.format("Number of lines in Repayment schedule of resource %s is not correct. " //
+                + "Actual value is: %s - But expected value is: %s", resourceId, actual, expected);
     }
 
-    public static String wrongValueInLineInTransactionsTab(int line, List<List<String>> actual, List<String> expected) {
-        String lineStr = String.valueOf(line);
-        String expectedStr = expected.toString();
-        StringBuilder sb = new StringBuilder();
-        for (List<String> innerList : actual) {
-            sb.append(innerList.toString());
-            sb.append(System.lineSeparator());
-        }
-
-        return String.format(
-                "%nWrong value in Transactions tab line %s. %nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s",
-                lineStr, sb.toString(), expectedStr);
+    public static String wrongValueInLineInRepaymentSchedule(String resourceId, int line, List<List<String>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Repayment schedule of resource %s tab line %s." //
+                + "%nActual values in line (with the same due date) are: %n%s - %nBut expected values in line: %n%s", resourceId, line,
+                actual, expected);
     }
 
-    public static String nrOfLinesWrongInTransactionsTab(int actual, int expected) {
-        String actualStr = String.valueOf(actual);
-        String expectedStr = String.valueOf(expected);
-
-        return String.format(
-                "%nNumber of lines does not match in Transactions tab and expected datatable. %nNumber of transaction tab lines: %s %nNumber of expected datatable lines: %s%n",
-                actualStr, expectedStr);
+    public static String wrongValueInLineInTransactionsTab(String resourceId, int line, List<List<String>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Transactions tab of resource %s line %s." //
+                + "%nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s", resourceId, line, actual,
+                expected);
     }
 
-    public static String wrongValueInLineInChargesTab(int line, List<List<String>> actual, List<String> expected) {
-        String lineStr = String.valueOf(line);
-        String expectedStr = expected.toString();
-        StringBuilder sb = new StringBuilder();
-        for (List<String> innerList : actual) {
-            sb.append(innerList.toString());
-            sb.append(System.lineSeparator());
-        }
+    public static String nrOfLinesWrongInTransactionsTab(String resourceId, int actual, int expected) {
+        return String.format("%nNumber of lines does not match in Transactions tab and expected datatable of resource %s." //
+                + "%nNumber of transaction tab lines: %s %nNumber of expected datatable lines: %s%n", resourceId, actual, expected);
+    }
 
-        return String.format(
-                "%nWrong value in Charges tab line %s. %nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s",
-                lineStr, sb.toString(), expectedStr);
+    public static String wrongValueInLineInChargesTab(String resourceId, int line, List<List<String>> actualList, List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Charges tab of resource %s line %s." //
+                + "%nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s", resourceId, line, actual,
+                expected);
     }
 
     public static String wrongValueInLineInJournalEntries(int line, List<List<List<String>>> actual, List<String> expected) {
-        String lineStr = String.valueOf(line);
-        String expectedStr = expected.toString();
-        StringBuilder sb = new StringBuilder();
-        for (List<List<String>> innerList : actual) {
-            sb.append(innerList.toString());
-            sb.append(System.lineSeparator());
-        }
-
-        return String.format(
-                "%nWrong value in Journal entries line %s. %nActual values for the possible transactions in line (with the same date) are: %n%s %nExpected values in line: %n%s",
-                lineStr, sb.toString(), expectedStr);
+        return wrongValueInLineInJournalEntries(null, line, actual, expected);
     }
 
-    public static String wrongDataInJournalEntriesGlAccountType(int line, String actual, String expected) {
-        return String.format("Wrong data in Journal entries, line %s / GL account type. Actual value is: %s - But expected value is: %s",
-                line, actual, expected);
+    public static String wrongValueInLineInJournalEntries(String resourceId, int line, List<List<List<String>>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Journal entries of resource %s line %s." //
+                + "%nActual values for the possible transactions in line (with the same date) are: %n%s %nExpected values in line: %n%s",
+                resourceId, line, actual, expected);
     }
 
-    public static String wrongDataInJournalEntriesGlAccountCode(int line, String actual, String expected) {
-        return String.format("Wrong data in Journal entries, line %s / GL account code. Actual value is: %s - But expected value is: %s",
-                line, actual, expected);
-    }
-
-    public static String wrongDataInJournalEntriesGlAccountName(int line, String actual, String expected) {
-        return String.format("Wrong data in Journal entries, line %s / GL account name. Actual value is: %s - But expected value is: %s",
-                line, actual, expected);
-    }
-
-    public static String wrongDataInJournalEntriesDebit(int line, String actual, String expected) {
-        return String.format("Wrong data in Journal entries, line %s / Debit. Actual value is: %s - But expected value is: %s", line,
-                actual, expected);
-    }
-
-    public static String wrongDataInJournalEntriesCredit(int line, String actual, String expected) {
-        return String.format("Wrong data in Journal entries, line %s / Credit. Actual value is: %s - But expected value is: %s", line,
-                actual, expected);
+    public static String wrongValueInLineInJournalEntry(String resourceId, int line, List<List<String>> actualList, List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Journal entries of resource %s line %s." //
+                + "%nActual values for the possible transactions in line (with the same date) are: %n%s %nExpected values in line: %n%s",
+                resourceId, line, actual, expected);
     }
 
     public static String wrongDataInActualMaturityDate(String actual, String expected) {
@@ -620,8 +578,8 @@ public final class ErrorMessageHelper {
                 actual, expected);
     }
 
-    public static String wrongData(String actual, String expected) {
-        return String.format("Wrong data. Actual value is: %s - But expected value is: %s", actual, expected);
+    public static String wrongDataInExternalAssetOwnerLoanProductAttribute(String attributeKey, long loanProduct) {
+        return String.format("No attribute %s for loan product %s is found!", attributeKey, loanProduct);
     }
 
     public static String wrongValueInExternalAssetDetails(int line, List<List<String>> actual, List<String> expected) {
@@ -687,13 +645,13 @@ public final class ErrorMessageHelper {
                 expectedStr);
     }
 
-    public static String listOfLockedLoansNotEmpty(Response<GetLoanAccountLockResponse> response) {
-        String bodyStr = response.body().toString();
+    public static String listOfLockedLoansNotEmpty(LoanAccountLockResponseDTO response) {
+        String bodyStr = response.toString();
         return String.format("List of locked loan accounts is not empty. Actual response is: %n%s", bodyStr);
     }
 
-    public static String listOfLockedLoansContainsLoan(Long loanId, Response<GetLoanAccountLockResponse> response) {
-        String bodyStr = response.body().toString();
+    public static String listOfLockedLoansContainsLoan(Long loanId, LoanAccountLockResponseDTO response) {
+        String bodyStr = response.toString();
         return String.format("List of locked loan accounts contains the loan with loanId %s. List of locked loans: %n%s", loanId, bodyStr);
     }
 
@@ -703,7 +661,7 @@ public final class ErrorMessageHelper {
         String actualStr = actual.toString();
 
         return String.format(
-                "%nWrong value in Delinquency actions response line %s. %nActual values in line are: %s %nExpected values in line: \s\s%s",
+                "%nWrong value in Delinquency actions response line %s. %nActual values in line are: %s %nExpected values in line: %s",
                 lineStr, actualStr, expectedStr);
     }
 
@@ -739,7 +697,7 @@ public final class ErrorMessageHelper {
         String expectedStr = expected.toString();
 
         return String.format(
-                "%nWrong value in Installment level delinquency data, line %s. %nActual values in line: \s\s%s %nExpected values in line: %s",
+                "%nWrong value in Installment level delinquency data, line %s. %nActual values in line: %s %nExpected values in line: %s",
                 lineStr, actualStr, expectedStr);
     }
 
@@ -747,8 +705,8 @@ public final class ErrorMessageHelper {
         String actualStr = actual.toString();
         String expectedStr = expected.toString();
 
-        return String.format("%nWrong value in LOAN level delinquency data. %nActual values are:\s\s %s %nExpected values are: %s",
-                actualStr, expectedStr);
+        return String.format("%nWrong value in LOAN level delinquency data. %nActual values are: %s %nExpected values are: %s", actualStr,
+                expectedStr);
     }
 
     public static String nrOfLinesWrongInInstallmentLevelDelinquencyData(int actual, int expected) {
@@ -780,6 +738,26 @@ public final class ErrorMessageHelper {
         return String.format(
                 "%nWrong value in Delinquency pause periods line %s. %nActual values in line: %s %nExpected values in line: %s", lineStr,
                 sb.toString(), expectedStr);
+    }
+
+    public static String wrongValueInLineInLoanTermVariations(int line, List<List<String>> actual, List<String> expected) {
+        String lineStr = String.valueOf(line);
+        String expectedStr = expected.toString();
+        StringBuilder sb = new StringBuilder();
+        for (List<String> innerList : actual) {
+            sb.append(innerList.toString());
+            sb.append(System.lineSeparator());
+        }
+
+        return String.format("%nWrong value in Loan Term Variations line %s. %nActual values in line: %s %nExpected values in line: %s",
+                lineStr, sb.toString(), expectedStr);
+    }
+
+    public static String wrongNumberOfLinesInLoanTermVariations(int actual, int expected) {
+        String actualStr = String.valueOf(actual);
+        String expectedStr = String.valueOf(expected);
+        return String.format("Number of items (lines) in Loan Term Variations is not correct. Actual value is: %s - Expected value is: %s",
+                actualStr, expectedStr);
     }
 
     public static String nrOfLinesWrongInLoanDelinquencyPauseData(int actual, int expected) {
@@ -859,5 +837,133 @@ public final class ErrorMessageHelper {
         String expectedToStr = expected.toString();
         return String.format("Wrong value in LoanDeteils/fixedLength. %nActual value is: %s %nExpected Value is: %s", actualToStr,
                 expectedToStr);
+    }
+
+    public static String downpaymentDisabledOnProductErrorCodeMsg() {
+        return "The Loan can not override the downpayment properties because in the Loan Product the downpayment is disabled";
+    }
+
+    public static String wrongValueInLineInChargeOffReasonOptions(final int line, final List<List<String>> actual,
+            final List<String> expected) {
+        final String actualValues = actual.stream().map(List::toString).collect(Collectors.joining(System.lineSeparator()));
+
+        return String.format(
+                "%nWrong value in Loan Charge-Off Reason Options line %s. %nActual values in line: %s %nExpected values in line: %s", line,
+                actualValues, expected);
+    }
+
+    public static String wrongNumberOfLinesInChargeOffReasonOptions(final int actual, final int expected) {
+        return String.format(
+                "Number of lines in loan charge-off reason options is not correct. Actual value is: %d - Expected value is: %d", actual,
+                expected);
+    }
+
+    public static String wrongExternalID(String actual, String expected) {
+        return String.format("Wrong transaction External ID - %nActual value is: %s %nExpected value is: %s", actual, expected);
+    }
+
+    public static String wrongValueInTotalPages(Integer actual, Integer expected) {
+        return String.format("Wrong value for Total pages. %nActual value is: %s %nExpected value is: %s", actual, expected);
+    }
+
+    public static String wrongValueInLineInDisbursementDetailsTab(String resourceId, int line, Set<List<String>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Loan Tranche Details tab of resource %s line %s." //
+                + "%nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s", resourceId, line, actual,
+                expected);
+    }
+
+    public static String nrOfLinesWrongInLoanTrancheDetailsTab(String resourceId, int actual, int expected) {
+        return String.format("%nNumber of lines does not match in Loan Tranche Details tab and expected datatable of resource %s." //
+                + "%nNumber of disbursement details tab lines: %s %nNumber of expected datatable lines: %s%n", resourceId, actual,
+                expected);
+    }
+
+    public static String addInterestPauseForNotInterestBearingLoanFailure() {
+        return "Interest pause is only supported for interest bearing loans.";
+    }
+
+    public static String addInterestPauseForNotInactiveLoanFailure() {
+        return "Operations on interest pauses are restricted to active loans.";
+    }
+
+    public static String addInstallmentFeeInterestPercentageChargeFailure() {
+        return "Failed data validation due to: installment.loancharge.with.calculation.type.interest.not.allowed.";
+    }
+
+    public static String addInstallmentFeePrincipalPercentageChargeFailure() {
+        return "Failed data validation due to: installment.loancharge.with.calculation.type.principal.not.allowed.";
+    }
+
+    public static String updateApprovedLoanExceedPrincipalFailure() {
+        return "Failed data validation due to: can't.be.greater.than.maximum.applied.loan.amount.calculation.";
+    }
+
+    public static String updateApprovedLoanLessThanDisbursedPrincipalAndCapitalizedIncomeFailure() {
+        return "Failed data validation due to: less.than.disbursed.principal.and.capitalized.income.";
+    }
+
+    public static String updateApprovedLoanLessMinAllowedAmountFailure() {
+        return "The parameter `amount` must be greater than 0.";
+    }
+
+    public static String updateAvailableDisbursementLoanExceedPrincipalFailure() {
+        return "Failed data validation due to: can't.be.greater.than.maximum.available.disbursement.amount.calculation.";
+    }
+
+    public static String updateAvailableDisbursementLoanLessMinAllowedAmountFailure() {
+        return "The parameter `amount` must be greater than or equal to 0.";
+    }
+
+    public static String updateAvailableDisbursementLoanCannotBeZeroAsNothingWasDisbursed() {
+        return "Failed data validation due to: cannot.be.zero.as.nothing.was.disbursed.yet.";
+    }
+
+    public static String wrongValueInLineInBuyDownFeeTab(String resourceId, int line, List<List<String>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Buy Down Fee tab of resource %s line %s." //
+                + "%nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s", resourceId, line, actual,
+                expected);
+    }
+
+    public static String nrOfLinesWrongInBuyDownFeeTab(String resourceId, int actual, int expected) {
+        return String.format("%nNumber of lines does not match in Buy Down Fee tab and expected datatable of resource %s." //
+                + "%nNumber of transaction tab lines: %s %nNumber of expected datatable lines: %s%n", resourceId, actual, expected);
+    }
+
+    public static String wrongValueInLineInDeferredIncomeTab(String resourceId, int line, List<List<String>> actualList,
+            List<String> expected) {
+        String actual = actualList.stream().map(Object::toString).collect(Collectors.joining(System.lineSeparator()));
+        return String.format("%nWrong value in Deferred Income tab of resource %s line %s." //
+                + "%nActual values in line (with the same date) are: %n%s %nExpected values in line: %n%s", resourceId, line, actual,
+                expected);
+    }
+
+    public static String nrOfLinesWrongInDeferredIncomeTab(String resourceId, int actual, int expected) {
+        return String.format("%nNumber of lines does not match in Deferred Income tab and expected datatable of resource %s." //
+                + "%nNumber of transaction tab lines: %s %nNumber of expected datatable lines: %s%n", resourceId, actual, expected);
+    }
+
+    public static String wrongAvailableDisbursementAmountWithOverApplied(final double actual, final double expected) {
+        return String.format(
+                "Wrong value in LoanDetails/availableDisbursementAmountWithOverApplied. %nActual value is: %s %nExpected Value is: %s",
+                actual, expected);
+    }
+
+    public static String wrongAmountInDeferredCapitalizedIncome(BigDecimal actual, BigDecimal expected) {
+        String actualToStr = actual == null ? "null" : actual.toString();
+        String expectedToStr = expected == null ? "null" : expected.toString();
+        return String.format("Wrong amount in Deferred Capitalized Income. Actual amount is: %s - But expected amount is: %s", actualToStr,
+                expectedToStr);
+    }
+
+    public static String reAgeChargedOffLoanFailure() {
+        return "Loan re-aging is not allowed on charged-off loan.";
+    }
+
+    public static String reAgeContractTerminatedLoanFailure() {
+        return "Loan re-aging is not allowed on contract terminated loan.";
     }
 }

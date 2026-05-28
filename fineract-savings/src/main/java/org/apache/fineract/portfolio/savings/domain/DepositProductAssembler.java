@@ -307,10 +307,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             }
         }
 
-        DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest,
-                preClosurePenalInterestType);
-
-        return preClosureDetail;
+        return DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest, preClosurePenalInterestType);
     }
 
     public DepositPreClosureDetail assemblePreClosureDetail(final JsonCommand command, DepositPreClosureDetail produPreClosureDetail) {
@@ -342,10 +339,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         preClosurePenalInterestType = preClosurePenalInterestOnTypeId == null ? null
                 : PreClosurePenalInterestOnType.fromInt(preClosurePenalInterestOnTypeId);
 
-        DepositPreClosureDetail preClosureDetail1 = DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest,
-                preClosurePenalInterestType);
-
-        return preClosureDetail1;
+        return DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest, preClosurePenalInterestType);
     }
 
     public DepositTermDetail assembleDepositTermDetail(final JsonCommand command) {
@@ -363,10 +357,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final SavingsPeriodFrequencyType inMultiplesOfDepositTermType = (inMultiplesOfDepositTermTypeId == null) ? null
                 : SavingsPeriodFrequencyType.fromInt(inMultiplesOfDepositTermTypeId);
 
-        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType,
-                maxDepositTermType, inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
-
-        return depositTermDetail;
+        return DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
     }
 
     public DepositTermDetail assembleDepositTermDetail(final JsonCommand command, final DepositTermDetail prodDepositTermDetail) {
@@ -423,10 +415,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final SavingsPeriodFrequencyType inMultiplesOfDepositTermType = (inMultiplesOfDepositTermTypeId == null) ? null
                 : SavingsPeriodFrequencyType.fromInt(inMultiplesOfDepositTermTypeId);
 
-        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType,
-                maxDepositTermType, inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
-
-        return depositTermDetail;
+        return DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
     }
 
     public DepositRecurringDetail assembleRecurringDetail(final JsonCommand command) {
@@ -446,10 +436,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             adjustAdvanceTowardsFuturePayments = false;
         }
 
-        final DepositRecurringDetail depositRecurringDetail = DepositRecurringDetail.createFrom(isMandatoryDeposit, allowWithdrawal,
-                adjustAdvanceTowardsFuturePayments);
-
-        return depositRecurringDetail;
+        return DepositRecurringDetail.createFrom(isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments);
     }
 
     private Set<InterestRateChart> assembleListOfCharts(JsonCommand command, String currencyCode, DataValidatorBuilder baseDataValidator) {
@@ -484,10 +471,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             depositAmount = command.bigDecimalValueOfParameterNamed(depositAmountParamName);
         }
 
-        final DepositProductAmountDetails depositRecurringDetail = new DepositProductAmountDetails(minDepositAmount, depositAmount,
-                maxDepositAmount);
-
-        return depositRecurringDetail;
+        return new DepositProductAmountDetails(minDepositAmount, depositAmount, maxDepositAmount);
     }
 
 }

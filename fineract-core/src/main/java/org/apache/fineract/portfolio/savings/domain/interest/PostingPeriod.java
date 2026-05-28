@@ -26,7 +26,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.TreeSet;
-import lombok.extern.slf4j.Slf4j;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
@@ -35,7 +36,8 @@ import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodTyp
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 
-@Slf4j
+@Setter
+@Getter
 public final class PostingPeriod {
 
     private final LocalDateInterval periodInterval;
@@ -65,6 +67,12 @@ public final class PostingPeriod {
     private Money minOverdraftForInterestCalculation;
 
     private Integer financialYearBeginningMonth;
+
+    private boolean overdraftInterest = false;
+
+    public void setOverdraftInterestRateAsFraction(BigDecimal overdraftInterestRateAsFraction) {
+        this.overdraftInterestRateAsFraction = overdraftInterestRateAsFraction;
+    }
 
     public static PostingPeriod createFrom(final LocalDateInterval periodInterval, final Money periodStartingBalance,
             final List<SavingsAccountTransactionDetailsForPostingPeriod> orderedListOfTransactions, final MonetaryCurrency currency,
@@ -110,7 +118,7 @@ public final class PostingPeriod {
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
                 shouldNotAffectInterestPosting = true;
-            } else if (transaction.isDividendPayoutAndNotReversed()) {
+            } else if (transaction.isWithHoldTaxAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
             // }
@@ -132,6 +140,20 @@ public final class PostingPeriod {
                 openingDayBalance = closeOfDayBalance;
             }
 
+        }
+
+        // Fill gap between period start and the first EndOfDayBalance entry.
+        // This occurs when the pivot transaction (opening balance) is not in the
+        // loaded transaction list and the first loaded transaction starts after the period.
+        if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
+            final LocalDate gapStart = periodInterval.startDate();
+            final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
+            final LocalDateInterval gapInterval = LocalDateInterval.create(gapStart, gapEnd);
+            final int gapDays = gapInterval.daysInPeriodInclusiveOfEndDate();
+            if (gapDays > 0) {
+                final EndOfDayBalance gapBalance = EndOfDayBalance.from(gapStart, periodStartingBalance, periodStartingBalance, gapDays);
+                accountEndOfDayBalances.add(0, gapBalance);
+            }
         }
 
         if (accountEndOfDayBalances.isEmpty()) {
@@ -178,7 +200,6 @@ public final class PostingPeriod {
         Money closeOfDayBalance = openingDayBalance;
 
         for (final SavingsAccountTransactionData transaction : orderedListOfTransactions) {
-
             boolean shouldNotAffectInterestPosting = false;
             // this check is to make sure to add interest if withdrawal is
             // happened for already
@@ -211,6 +232,18 @@ public final class PostingPeriod {
                 openingDayBalance = closeOfDayBalance;
             }
 
+        }
+
+        // Fill gap between period start and the first EndOfDayBalance entry.
+        if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
+            final LocalDate gapStart = periodInterval.startDate();
+            final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
+            final LocalDateInterval gapInterval = LocalDateInterval.create(gapStart, gapEnd);
+            final int gapDays = gapInterval.daysInPeriodInclusiveOfEndDate();
+            if (gapDays > 0) {
+                final EndOfDayBalance gapBalance = EndOfDayBalance.from(gapStart, periodStartingBalance, periodStartingBalance, gapDays);
+                accountEndOfDayBalances.addFirst(gapBalance);
+            }
         }
 
         if (accountEndOfDayBalances.isEmpty()) {
@@ -310,7 +343,7 @@ public final class PostingPeriod {
             if (compoundingPeriodEndDate.equals(compoundingPeriod.getPeriodInterval().endDate())
                     && !SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST.equals(this.interestCompoundingType)) {
                 BigDecimal interestCompounded = compoundInterestValues.getcompoundedInterest().add(unCompoundedInterest);
-                compoundInterestValues.setcompoundedInterest(interestCompounded);
+                compoundInterestValues.setCompoundedInterest(interestCompounded);
                 compoundInterestValues.setZeroForInterestToBeUncompounded();
             }
             interestEarned = interestEarned.add(interestUnrounded);
@@ -561,8 +594,10 @@ public final class PostingPeriod {
         return this.financialYearBeginningMonth;
     }
 
-    public List<CompoundingPeriod> getCompoundingPeriods() {
-        return compoundingPeriods;
+    // public List<CompoundingPeriod> getCompoundingPeriods() {return compoundingPeriods;}
+
+    public Money getClosingBalance() {
+        return closingBalance;
     }
 
 }

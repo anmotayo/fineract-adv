@@ -49,7 +49,6 @@ public class TransferInterestToSavingsTasklet implements Tasklet {
         for (AccountTransferDTO accountTransferDTO : accountTransferData) {
             try {
                 log.info("  proc: {}", accountTransferDTO.getFromAccountId());
-                accountTransfersWritePlatformService.setIsFromJob(true);
                 accountTransfersWritePlatformService.transferFunds(accountTransferDTO);
             } catch (final PlatformApiDataValidationException e) {
                 log.error("Validation exception while trasfering Interest from {} to {}", accountTransferDTO.getFromAccountId(),

@@ -42,7 +42,6 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
-import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.serialization.ToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.service.Page;
@@ -81,8 +80,7 @@ public class EntityDatatableChecksApiResource {
         final Page<EntityDataTableChecksData> result = this.readEntityDatatableChecksService.retrieveAll(searchParameters, status, entity,
                 productId);
 
-        final boolean prettyPrint = ApiParameterHelper.prettyPrint(uriInfo.getQueryParameters());
-        return this.toApiJsonSerializer.serializePretty(prettyPrint, result);
+        return this.toApiJsonSerializer.serialize(result);
     }
 
     @GET
@@ -97,8 +95,7 @@ public class EntityDatatableChecksApiResource {
 
         final EntityDataTableChecksTemplateData result = this.readEntityDatatableChecksService.retrieveTemplate();
 
-        final boolean prettyPrint = ApiParameterHelper.prettyPrint(uriInfo.getQueryParameters());
-        return this.toApiJsonSerializer.serializePretty(prettyPrint, result);
+        return this.toApiJsonSerializer.serialize(result);
     }
 
     @POST
@@ -125,7 +122,7 @@ public class EntityDatatableChecksApiResource {
             @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = EntityDatatableChecksApiResourceSwagger.DeleteEntityDatatableChecksTemplateResponse.class))) })
     public String deleteDatatable(
             @PathParam("entityDatatableCheckId") @Parameter(description = "entityDatatableCheckId") final long entityDatatableCheckId,
-            final String apiRequestBodyAsJson) {
+            @Parameter(hidden = true) final String apiRequestBodyAsJson) {
 
         final CommandWrapper commandRequest = new CommandWrapperBuilder()
                 .deleteEntityDatatableChecks(entityDatatableCheckId, apiRequestBodyAsJson).build();

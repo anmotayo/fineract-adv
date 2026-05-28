@@ -31,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
@@ -50,12 +49,16 @@ import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePla
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.GroupSavingsIndividualMonitoring;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -67,7 +70,7 @@ import org.springframework.util.StringUtils;
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
-@RequiredArgsConstructor
+@Primary
 public class AdvanclySavingsAccountWritePlatformService implements SavingsAccountWritePlatformService {
 
     private final PlatformSecurityContext context;
@@ -78,11 +81,36 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final PaymentDetailWritePlatformService paymentDetailWritePlatformService;
     private final NoteRepository noteRepository;
     private final GSIMRepositoy gsimRepository;
-    private final SavingsAccountWritePlatformServiceDelegate delegate;
+    private final SavingsAccountWritePlatformService delegate;
     private final BulkTransactionDataValidator bulkTransactionDataValidator;
     private final FromJsonHelper fromApiJsonHelper;
     private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     private final PaymentDetailRepository paymentDetailRepository;
+
+    @Autowired
+    public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
+            final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            final AdvanclySavingsAccountAssembler assembler, final AdvanclySavingsAccountDomainService domainService,
+            final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository,
+            final PaymentDetailWritePlatformService paymentDetailWritePlatformService, final NoteRepository noteRepository,
+            final GSIMRepositoy gsimRepository,
+            @Qualifier("coreSavingsAccountWritePlatformService") final SavingsAccountWritePlatformService delegate,
+            final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
+            final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository) {
+        this.context = context;
+        this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
+        this.assembler = assembler;
+        this.domainService = domainService;
+        this.advanclyTransactionRepository = advanclyTransactionRepository;
+        this.paymentDetailWritePlatformService = paymentDetailWritePlatformService;
+        this.noteRepository = noteRepository;
+        this.gsimRepository = gsimRepository;
+        this.delegate = delegate;
+        this.bulkTransactionDataValidator = bulkTransactionDataValidator;
+        this.fromApiJsonHelper = fromApiJsonHelper;
+        this.paymentTypeRepositoryWrapper = paymentTypeRepositoryWrapper;
+        this.paymentDetailRepository = paymentDetailRepository;
+    }
 
     @Transactional
     @Override
@@ -94,19 +122,15 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final BigDecimal transactionAmount = command.bigDecimalValueOfParameterNamed("transactionAmount");
 
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
-        boolean isAppendPath = lastTxnDate.isEmpty() || !transactionDate.isBefore(lastTxnDate.get());
+        boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
 
-        AssembledSavingsAccount assembled;
-        if (isAppendPath) {
-            assembled = assembler.assembleForAppendPath(savingsId);
-        } else {
-            boolean hasInterest = checkHasInterest(savingsId);
-            assembled = assembler.assembleForInsertPath(savingsId, transactionDate, hasInterest);
+        if (isBackdated) {
+            return delegate.deposit(savingsId, command);
         }
 
+        final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
+
         final SavingsAccount account = assembled.getAccount();
-        account.validateForAccountBlock();
-        account.validateForCreditBlock();
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
@@ -114,8 +138,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
-                assembled.getLastNonReversedTransaction());
+                paymentDetail, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
 
         handleGsimDeposit(account, transactionAmount, deposit);
         handleNote(account, deposit, command);
@@ -134,19 +157,15 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final BigDecimal transactionAmount = command.bigDecimalValueOfParameterNamed("transactionAmount");
 
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
-        boolean isAppendPath = lastTxnDate.isEmpty() || !transactionDate.isBefore(lastTxnDate.get());
+        boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
 
-        AssembledSavingsAccount assembled;
-        if (isAppendPath) {
-            assembled = assembler.assembleForAppendPath(savingsId);
-        } else {
-            boolean hasInterest = checkHasInterest(savingsId);
-            assembled = assembler.assembleForInsertPath(savingsId, transactionDate, hasInterest);
+        if (isBackdated) {
+            return delegate.withdrawal(savingsId, command);
         }
 
+        final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
+
         final SavingsAccount account = assembled.getAccount();
-        account.validateForAccountBlock();
-        account.validateForDebitBlock();
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
@@ -154,8 +173,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, true, assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(),
-                assembled.getLastNonReversedTransaction());
+                paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -171,33 +189,24 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         bulkTransactionDataValidator.validate(command.json());
 
         final JsonArray transactions = fromApiJsonHelper.extractJsonArrayNamed("transactions", command.parsedJson());
+        final JsonObject rootJson = command.parsedJson().getAsJsonObject();
+        final String dateFormat = fromApiJsonHelper.extractDateFormatParameter(rootJson);
+        final java.util.Locale locale = fromApiJsonHelper.extractLocaleParameter(rootJson);
 
-        // Find earliest transaction date to determine path
-        final String dateFormat = fromApiJsonHelper.extractStringNamed("dateFormat", command.parsedJson());
-        final String locale = fromApiJsonHelper.extractStringNamed("locale", command.parsedJson());
-        LocalDate earliestDate = null;
-        for (int i = 0; i < transactions.size(); i++) {
-            final JsonObject txn = transactions.get(i).getAsJsonObject();
-            final LocalDate txnDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat,
-                    java.util.Locale.forLanguageTag(locale.replace("_", "-")));
-            if (earliestDate == null || txnDate.isBefore(earliestDate)) {
-                earliestDate = txnDate;
+        // Check if any transaction is backdated — if so, delegate each individually to core
+        Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
+        if (lastTxnDate.isPresent()) {
+            for (int i = 0; i < transactions.size(); i++) {
+                final JsonObject txn = transactions.get(i).getAsJsonObject();
+                final LocalDate txnDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat, locale);
+                if (txnDate.isBefore(lastTxnDate.get())) {
+                    return handleBackdatedBulkTransaction(savingsId, transactions, dateFormat, locale);
+                }
             }
         }
 
-        Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
-        boolean isAppendPath = lastTxnDate.isEmpty() || !earliestDate.isBefore(lastTxnDate.get());
-
-        AssembledSavingsAccount assembled;
-        if (isAppendPath) {
-            assembled = assembler.assembleForAppendPath(savingsId);
-        } else {
-            boolean hasInterest = checkHasInterest(savingsId);
-            assembled = assembler.assembleForInsertPath(savingsId, earliestDate, hasInterest);
-        }
-
+        final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
         final SavingsAccount account = assembled.getAccount();
-        account.validateForAccountBlock();
 
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
         SavingsAccountTransaction lastNonReversedTxn = assembled.getLastNonReversedTransaction();
@@ -207,22 +216,19 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         for (int i = 0; i < transactions.size(); i++) {
             final JsonObject txn = transactions.get(i).getAsJsonObject();
             final String type = fromApiJsonHelper.extractStringNamed("type", txn);
-            final LocalDate transactionDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat,
-                    java.util.Locale.forLanguageTag(locale.replace("_", "-")));
-            final BigDecimal transactionAmount = fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", txn);
+            final LocalDate transactionDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat, locale);
+            final BigDecimal transactionAmount = fromApiJsonHelper.extractBigDecimalNamed("transactionAmount", txn, locale);
             final String receiptNumber = fromApiJsonHelper.extractStringNamed("receiptNumber", txn);
 
             final PaymentDetail paymentDetail = createPaymentDetailFromJsonObject(txn);
 
             SavingsAccountTransaction savedTxn;
             if ("deposit".equals(type)) {
-                account.validateForCreditBlock();
                 savedTxn = domainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
+                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn, false);
             } else {
-                account.validateForDebitBlock();
                 savedTxn = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail, true,
-                        assembled.getInterestAndOverdraftTransactions(), lastRunningBalance, account.getCurrency(), lastNonReversedTxn);
+                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn, false);
             }
 
             String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
@@ -259,12 +265,41 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return paymentDetailRepository.saveAndFlush(paymentDetail);
     }
 
-    // === Helper methods ===
+    private CommandProcessingResult handleBackdatedBulkTransaction(final Long savingsId, final JsonArray transactions,
+            final String dateFormat, final java.util.Locale locale) {
+        final Map<String, Object> changes = new LinkedHashMap<>();
+        final Map<String, Long> transactionIds = new LinkedHashMap<>();
 
-    private boolean checkHasInterest(Long savingsId) {
-        SavingsAccount account = assembler.assembleForAppendPath(savingsId).getAccount();
-        return account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
+        for (int i = 0; i < transactions.size(); i++) {
+            final JsonObject txn = transactions.get(i).getAsJsonObject();
+            final String type = fromApiJsonHelper.extractStringNamed("type", txn);
+            final String receiptNumber = fromApiJsonHelper.extractStringNamed("receiptNumber", txn);
+
+            // Add root-level dateFormat and locale to the per-transaction JSON for the delegate
+            final JsonObject txnWithFormat = txn.deepCopy();
+            txnWithFormat.addProperty("dateFormat", dateFormat);
+            txnWithFormat.addProperty("locale", locale.toLanguageTag());
+
+            final JsonCommand txnCommand = JsonCommand.fromExistingCommand(null, txnWithFormat.toString(),
+                    fromApiJsonHelper.parse(txnWithFormat.toString()), fromApiJsonHelper, null, null, null, null, null, null, savingsId,
+                    null, null, null, null, null, null, null);
+
+            CommandProcessingResult result;
+            if ("deposit".equals(type)) {
+                result = delegate.deposit(savingsId, txnCommand);
+            } else {
+                result = delegate.withdrawal(savingsId, txnCommand);
+            }
+
+            String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
+            transactionIds.put(txnKey, result.getResourceId());
+        }
+
+        changes.put("transactionIds", transactionIds);
+        return new CommandProcessingResultBuilder().withSavingsId(savingsId).with(changes).build();
     }
+
+    // === Helper methods ===
 
     private void handleGsimDeposit(SavingsAccount account, BigDecimal transactionAmount, SavingsAccountTransaction deposit) {
         if (account.getGsim() != null && deposit.getId() != null) {
@@ -489,5 +524,10 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     @Override
     public CommandProcessingResult bulkGSIMClose(Long gsimId, JsonCommand command) {
         return delegate.bulkGSIMClose(gsimId, command);
+    }
+
+    @Override
+    public void selectAccountId(SavingsAccountTransactionData accountTransaction, SavingsAccountData savingsAccountData) {
+        delegate.selectAccountId(accountTransaction, savingsAccountData);
     }
 }

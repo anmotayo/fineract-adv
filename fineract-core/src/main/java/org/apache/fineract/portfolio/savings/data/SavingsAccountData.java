@@ -29,9 +29,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
+import org.apache.fineract.infrastructure.core.jersey.serializer.legacy.JsonLocalDateArrayFormat;
 import org.apache.fineract.infrastructure.dataqueries.data.DatatableData;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.organisation.staff.data.StaffData;
@@ -47,7 +49,9 @@ import org.apache.fineract.portfolio.tax.data.TaxGroupData;
 /**
  * Immutable data object representing a savings account.
  */
+@Setter
 @Getter
+@JsonLocalDateArrayFormat
 public final class SavingsAccountData implements Serializable {
 
     private final Long id;
@@ -110,6 +114,7 @@ public final class SavingsAccountData implements Serializable {
     private final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions;
     private final Collection<EnumOptionData> withdrawalFeeTypeOptions;
     private final Collection<ChargeData> chargeOptions;
+    private final Collection<EnumOptionData> withHoldTaxPostingTypeOptions;
 
     private final SavingsAccountChargeData withdrawalFee;
     private final SavingsAccountChargeData annualFee;
@@ -144,6 +149,13 @@ public final class SavingsAccountData implements Serializable {
     private transient Long glAccountIdForSavingsControl;
     private transient Long glAccountIdForInterestOnSavings;
     private transient LocalDate maturityDate;
+
+    private Long glAccountIdForInterestPayable;
+    private Long glAccountIdForOverdraftPorfolio;
+    private Long glAccountIdForInterestReceivable;
+
+    private BigDecimal interestPosting;
+    private BigDecimal overdraftPosting;
 
     public static SavingsAccountData importInstanceIndividual(Long clientId, Long productId, Long fieldOfficerId, LocalDate submittedOnDate,
             BigDecimal nominalAnnualInterestRate, EnumOptionData interestCompoundingPeriodTypeEnum,
@@ -230,6 +242,7 @@ public final class SavingsAccountData implements Serializable {
         this.submittedOnDate = submittedOnDate;
         this.savingsAmountOnHold = null;
         this.withHoldTaxPostingType = null;
+        this.withHoldTaxPostingTypeOptions = null;
     }
 
     public static final Comparator<SavingsAccountData> ClientNameComparator = (savings1, savings2) -> {
@@ -314,23 +327,23 @@ public final class SavingsAccountData implements Serializable {
     }
 
     public Integer getInterestPostingPeriodTypeId() {
-        return this.interestPostingPeriodType.getId().intValue();
+        return this.interestPostingPeriodType != null ? this.interestPostingPeriodType.getId().intValue() : null;
     }
 
     public Integer getDepositTypeId() {
-        return this.depositType.getId().intValue();
+        return this.depositType != null ? this.depositType.getId().intValue() : null;
     }
 
     public Integer getInterestCompoundingPeriodTypeId() {
-        return this.interestCompoundingPeriodType.getId().intValue();
+        return this.interestCompoundingPeriodType != null ? this.interestCompoundingPeriodType.getId().intValue() : null;
     }
 
     public Integer getInterestCalculationTypeId() {
-        return this.interestCalculationType.getId().intValue();
+        return this.interestCalculationType != null ? this.interestCalculationType.getId().intValue() : null;
     }
 
     public Integer getInterestCalculationDaysInYearTypeId() {
-        return this.interestCalculationDaysInYearType.getId().intValue();
+        return this.interestCalculationDaysInYearType != null ? this.interestCalculationDaysInYearType.getId().intValue() : null;
     }
 
     public SavingsAccountTransactionData findLastTransaction(final LocalDate date) {
@@ -357,16 +370,20 @@ public final class SavingsAccountData implements Serializable {
         return startInterestCalculationLocalDate;
     }
 
+    public boolean hasStartInterestCalculationDate() {
+        return this.startInterestCalculationDate != null && !getStartInterestCalculationDate().equals(getActivationLocalDate());
+    }
+
     public LocalDate getActivationLocalDate() {
         LocalDate activationLocalDate = null;
-        if (this.timeline.getActivatedOnDate() != null) {
+        if (this.timeline != null && this.timeline.getActivatedOnDate() != null) {
             activationLocalDate = this.timeline.getActivatedOnDate();
         }
         return activationLocalDate;
     }
 
     public Integer getLockinPeriodFrequencyTypeId() {
-        return this.lockinPeriodFrequencyType.getId().intValue();
+        return this.lockinPeriodFrequencyType != null ? this.lockinPeriodFrequencyType.getId().intValue() : null;
     }
 
     public Collection<Long> findCurrentTransactionIdsWithPivotDateConfig() {
@@ -402,15 +419,15 @@ public final class SavingsAccountData implements Serializable {
     }
 
     public List<SavingsAccountTransactionData> getSavingsAccountTransactionsWithPivotConfig() {
-        return this.transactions.stream().toList();
+        return this.transactions != null ? this.transactions.stream().toList() : null;
     }
 
     public Boolean isAccrualBasedAccountingEnabledOnSavingsProduct() {
-        return this.savingsProductData.isAccrualBasedAccountingEnabled();
+        return this.savingsProductData != null && this.savingsProductData.isAccrualBasedAccountingEnabled();
     }
 
     public Boolean isCashBasedAccountingEnabledOnSavingsProduct() {
-        return this.savingsProductData.isCashBasedAccountingEnabled();
+        return this.savingsProductData != null && this.savingsProductData.isCashBasedAccountingEnabled();
     }
 
     public static SavingsAccountData importInstanceGroup(Long groupId, Long productId, Long fieldOfficerId, LocalDate submittedOnDate,
@@ -499,6 +516,7 @@ public final class SavingsAccountData implements Serializable {
         this.submittedOnDate = submittedOnDate;
         this.savingsAmountOnHold = null;
         this.withHoldTaxPostingType = null;
+        this.withHoldTaxPostingTypeOptions = null;
     }
 
     public static SavingsAccountData instance(final Long id, final String accountNo, final EnumOptionData depositType,
@@ -530,6 +548,7 @@ public final class SavingsAccountData implements Serializable {
         final Collection<SavingsAccountTransactionData> transactions = null;
         final Collection<SavingsAccountChargeData> charges = null;
         final Collection<ChargeData> chargeOptions = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         return new SavingsAccountData(id, accountNo, depositType, externalId, groupId, groupName, clientId, clientName, productId,
                 productName, fieldOfficerId, fieldOfficerName, status, subStatus, reasonForBlock, timeline, currency, interestRate,
@@ -540,7 +559,8 @@ public final class SavingsAccountData implements Serializable {
                 withdrawalFeeTypeOptions, charges, chargeOptions, allowOverdraft, overdraftLimit, minRequiredBalance,
                 enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation, onHoldFunds,
                 nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup, lastActiveTransactionDate,
-                isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold, withHoldTaxPostingType);
+                isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold, withHoldTaxPostingType,
+                withHoldTaxPostingTypeOptions);
     }
 
     public static SavingsAccountData lookup(final Long accountId, final String accountNo, final EnumOptionData depositType) {
@@ -594,6 +614,7 @@ public final class SavingsAccountData implements Serializable {
         final Collection<EnumOptionData> interestCalculationDaysInYearTypeOptions = null;
         final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions = null;
         final Collection<EnumOptionData> withdrawalFeeTypeOptions = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         final Collection<SavingsAccountChargeData> charges = null;
         final Collection<ChargeData> chargeOptions = null;
@@ -618,7 +639,7 @@ public final class SavingsAccountData implements Serializable {
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 onHoldFunds, nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup,
                 lastActiveTransactionDate, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold,
-                withHoldTaxPostingType);
+                withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static SavingsAccountData lookupWithProductDetails(final Long accountId, final String accountNo,
@@ -665,6 +686,7 @@ public final class SavingsAccountData implements Serializable {
         final Collection<EnumOptionData> interestCalculationDaysInYearTypeOptions = null;
         final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions = null;
         final Collection<EnumOptionData> withdrawalFeeTypeOptions = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         final Collection<SavingsAccountChargeData> charges = null;
         final Collection<ChargeData> chargeOptions = null;
@@ -689,7 +711,7 @@ public final class SavingsAccountData implements Serializable {
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 onHoldFunds, nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup,
                 lastActiveTransactionDate, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold,
-                withHoldTaxPostingType);
+                withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static SavingsAccountData withTemplateOptions(final SavingsAccountData account, final SavingsAccountData template,
@@ -705,10 +727,12 @@ public final class SavingsAccountData implements Serializable {
             final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions = null;
             final Collection<EnumOptionData> withdrawalFeeTypeOptions = null;
             final Collection<ChargeData> chargeOptions = null;
+            final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
             return withTemplateOptions(account, productOptions, fieldOfficerOptions, interestCompoundingPeriodTypeOptions,
                     interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
-                    lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, transactions, charges, chargeOptions);
+                    lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, transactions, charges, chargeOptions,
+                    withHoldTaxPostingTypeOptions);
         }
 
         return new SavingsAccountData(account.id, account.accountNo, account.depositType, account.externalId, account.groupId,
@@ -725,7 +749,8 @@ public final class SavingsAccountData implements Serializable {
                 account.maxAllowedLienLimit, account.lienAllowed, account.minBalanceForInterestCalculation, account.onHoldFunds,
                 account.nominalAnnualInterestRateOverdraft, account.minOverdraftForInterestCalculation, account.withHoldTax,
                 account.taxGroup, account.lastActiveTransactionDate, account.isDormancyTrackingActive, account.daysToInactive,
-                account.daysToDormancy, account.daysToEscheat, account.savingsAmountOnHold, account.withHoldTaxPostingType);
+                account.daysToDormancy, account.daysToEscheat, account.savingsAmountOnHold, account.withHoldTaxPostingType,
+                template.withHoldTaxPostingTypeOptions);
     }
 
     public static SavingsAccountData withTemplateOptions(final SavingsAccountData account,
@@ -736,7 +761,7 @@ public final class SavingsAccountData implements Serializable {
             final Collection<EnumOptionData> interestCalculationDaysInYearTypeOptions,
             final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions, final Collection<EnumOptionData> withdrawalFeeTypeOptions,
             final Collection<SavingsAccountTransactionData> transactions, final Collection<SavingsAccountChargeData> charges,
-            final Collection<ChargeData> chargeOptions) {
+            final Collection<ChargeData> chargeOptions, final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
 
         return new SavingsAccountData(account.id, account.accountNo, account.depositType, account.externalId, account.groupId,
                 account.groupName, account.clientId, account.clientName, account.savingsProductId, account.savingsProductName,
@@ -752,7 +777,7 @@ public final class SavingsAccountData implements Serializable {
                 account.minBalanceForInterestCalculation, account.onHoldFunds, account.nominalAnnualInterestRateOverdraft,
                 account.minOverdraftForInterestCalculation, account.withHoldTax, account.taxGroup, account.lastActiveTransactionDate,
                 account.isDormancyTrackingActive, account.daysToInactive, account.daysToDormancy, account.daysToEscheat,
-                account.savingsAmountOnHold, account.withHoldTaxPostingType);
+                account.savingsAmountOnHold, account.withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     public static SavingsAccountData withClientTemplate(final Long clientId, final String clientName, final Long groupId,
@@ -802,6 +827,7 @@ public final class SavingsAccountData implements Serializable {
         final Collection<EnumOptionData> interestCalculationDaysInYearTypeOptions = null;
         final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions = null;
         final Collection<EnumOptionData> withdrawalFeeTypeOptions = null;
+        final Collection<EnumOptionData> withHoldTaxPostingTypeOptions = null;
 
         final Collection<SavingsAccountChargeData> charges = null;
         final Collection<ChargeData> chargeOptions = null;
@@ -825,7 +851,7 @@ public final class SavingsAccountData implements Serializable {
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 onHoldFunds, nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup,
                 lastActiveTransactionDate, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, savingsAmountOnHold,
-                withHoldTaxPostingType);
+                withHoldTaxPostingType, withHoldTaxPostingTypeOptions);
     }
 
     private SavingsAccountData(final Long id, final String accountNo, final EnumOptionData depositType, final String externalId,
@@ -850,7 +876,7 @@ public final class SavingsAccountData implements Serializable {
             final BigDecimal minOverdraftForInterestCalculation, final boolean withHoldTax, final TaxGroupData taxGroup,
             final LocalDate lastActiveTransactionDate, final boolean isDormancyTrackingActive, final Integer daysToInactive,
             final Integer daysToDormancy, final Integer daysToEscheat, final BigDecimal savingsAmountOnHold,
-            final EnumOptionData withHoldTaxPostingType) {
+            final EnumOptionData withHoldTaxPostingType, final Collection<EnumOptionData> withHoldTaxPostingTypeOptions) {
         this.id = id;
         this.accountNo = accountNo;
         this.depositType = depositType;
@@ -889,6 +915,7 @@ public final class SavingsAccountData implements Serializable {
         this.interestCalculationDaysInYearTypeOptions = interestCalculationDaysInYearTypeOptions;
         this.lockinPeriodFrequencyTypeOptions = lockinPeriodFrequencyTypeOptions;
         this.withdrawalFeeTypeOptions = withdrawalFeeTypeOptions;
+        this.withHoldTaxPostingTypeOptions = withHoldTaxPostingTypeOptions;
 
         this.charges = charges;// charges associated with Savings account
         // charges available for adding to Savings account
@@ -970,7 +997,7 @@ public final class SavingsAccountData implements Serializable {
     }
 
     public Collection<SavingsAccountChargeData> charges() {
-        return (this.charges == null) ? new HashSet<SavingsAccountChargeData>() : this.charges;
+        return this.charges == null ? new HashSet<>() : this.charges;
     }
 
     public void setDatatables(final List<DatatableData> datatables) {

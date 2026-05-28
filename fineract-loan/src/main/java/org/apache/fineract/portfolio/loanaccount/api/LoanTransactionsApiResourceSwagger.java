@@ -20,7 +20,10 @@ package org.apache.fineract.portfolio.loanaccount.api;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
+import org.apache.fineract.portfolio.loanproduct.api.LoanProductsApiResourceSwagger.GetLoanProductsChargeOffReasonOptions;
+import org.springframework.data.domain.Page;
 
 /**
  * Created by Chirag Gupta on 12/30/17.
@@ -28,6 +31,20 @@ import java.util.Set;
 final class LoanTransactionsApiResourceSwagger {
 
     private LoanTransactionsApiResourceSwagger() {}
+
+    static final class GetCodeValuesDataResponse {
+
+        private GetCodeValuesDataResponse() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "Passport")
+        public String name;
+        @Schema(example = "Passport information")
+        public String description;
+        @Schema(example = "0")
+        public Integer position;
+    }
 
     @Schema(description = "GetLoansLoanIdTransactionsTemplateResponse")
     public static final class GetLoansLoanIdTransactionsTemplateResponse {
@@ -72,10 +89,61 @@ final class LoanTransactionsApiResourceSwagger {
             public String displaySymbolValue;
         }
 
-        public GetLoansTransactionType transactionType;
+        static final class GetPaymentTypeOptions {
+
+            private GetPaymentTypeOptions() {}
+
+            @Schema(example = "10")
+            public Long id;
+            @Schema(example = "check")
+            public String name;
+            @Schema(example = "1")
+            public Integer position;
+        }
+
+        public GetLoansTransactionType type;
         @Schema(example = "[2009, 8, 1]")
         public LocalDate date;
         public GetLoansTotal total;
+
+        @Schema(example = "200.000000")
+        public Double amount;
+        @Schema(example = "100.000000")
+        public Double principalPortion;
+        @Schema(example = "80.000000")
+        public Double interestPortion;
+        @Schema(example = "20.000000")
+        public Double feeChargesPortion;
+        @Schema(example = "20.000000")
+        public Double penaltyChargesPortion;
+
+        public GetLoanCurrency currency;
+
+        public List<GetLoanProductsChargeOffReasonOptions> chargeOffReasonOptions;
+
+        public List<GetPaymentTypeOptions> paymentTypeOptions;
+        @Schema(example = "200.000000")
+        public Double netDisbursalAmount;
+
+        public List<GetCodeValuesDataResponse> classificationOptions;
+    }
+
+    public static final class GetLoanCurrency {
+
+        private GetLoanCurrency() {}
+
+        @Schema(example = "UGX")
+        public String code;
+        @Schema(example = "Uganda Shilling")
+        public String name;
+        @Schema(example = "2")
+        public Integer decimalPlaces;
+        @Schema(example = "USh")
+        public String displaySymbol;
+        @Schema(example = "currency.UGX")
+        public String nameCode;
+        @Schema(example = "Uganda Shilling (USh)")
+        public String displayLabel;
     }
 
     @Schema(description = "GetLoansLoanIdTransactionsTransactionIdResponse")
@@ -211,6 +279,7 @@ final class LoanTransactionsApiResourceSwagger {
         public Set<GetLoanTransactionRelation> transactionRelations;
         public Set<GetLoansLoanIdLoanChargePaidByData> loanChargePaidByList;
         public PaymentDetailData paymentDetailData;
+        public GetCodeValuesDataResponse classification;
 
         static final class PaymentDetailData {
 
@@ -242,6 +311,12 @@ final class LoanTransactionsApiResourceSwagger {
             @Schema(example = "true")
             public Boolean isSystemDefined;
         }
+    }
+
+    @Schema(description = "GetLoansLoanIdTransactionsResponse")
+    public abstract static class GetLoansLoanIdTransactionsResponse implements Page<GetLoansLoanIdTransactionsTransactionIdResponse> {
+
+        private GetLoansLoanIdTransactionsResponse() {}
     }
 
     @Schema(description = "PostLoansLoanIdTransactionsRequest")
@@ -293,7 +368,18 @@ final class LoanTransactionsApiResourceSwagger {
         public String startDate;
         @Schema(example = "numberOfInstallments")
         public Integer numberOfInstallments;
+        @Schema(example = "DEFAULT")
+        public String reAgeInterestHandling;
+        @Schema(example = "DEFAULT")
+        public String reAmortizationInterestHandling;
+        @Schema(example = "1")
+        public Long reasonCodeValueId;
+
         // command=reAge END
+        @Schema(description = "Optional. Controls whether Interest Refund transaction should be created for this refund. If not provided, loan product config is used.", example = "false")
+        public Boolean interestRefundCalculation;
+        @Schema(example = "1")
+        public Long classificationId;
     }
 
     @Schema(description = "PostLoansLoanIdTransactionsResponse")

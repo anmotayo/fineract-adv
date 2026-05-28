@@ -20,8 +20,11 @@ package org.apache.fineract.portfolio;
 
 public enum PortfolioProductType {
 
-    LOAN(1, "productType.loan"), SAVING(2, "productType.saving"), CLIENT(5, "productType.client"), PROVISIONING(3,
-            "productType.provisioning"), SHARES(4, "productType.shares");
+    LOAN(1, "productType.loan"), //
+    SAVING(2, "productType.saving"), //
+    CLIENT(5, "productType.client"), //
+    PROVISIONING(3, "productType.provisioning"), //
+    SHARES(4, "productType.shares"); //
 
     private final Integer value;
     private final String code;
@@ -33,7 +36,7 @@ public enum PortfolioProductType {
 
     @Override
     public String toString() {
-        return name().toString().replaceAll("_", " ");
+        return name().replace("_", " ");
     }
 
     public Integer getValue() {

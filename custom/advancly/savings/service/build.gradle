@@ -23,3 +23,10 @@ group = 'com.advancly.fineract.portfolio.savings'
 archivesBaseName = 'advancly-fineract-savings-service'
 
 apply from: 'dependencies.gradle'
+
+test {
+    jvmArgs '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.util=ALL-UNNAMED',
+            '-XX:+AllowRedefinitionToAddDeleteMethods'
+}

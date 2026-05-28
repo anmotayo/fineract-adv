@@ -86,6 +86,9 @@ public final class SavingsAccountSummary {
     @Transient
     private BigDecimal runningBalanceOnInterestPostingTillDate = BigDecimal.ZERO;
 
+    @Transient
+    private BigDecimal preStartDateInterestEarned = BigDecimal.ZERO;
+
     SavingsAccountSummary() {
         //
     }
@@ -262,6 +265,22 @@ public final class SavingsAccountSummary {
         this.totalInterestEarned = totalEarned.getAmount();
     }
 
+    public void setPreStartDateInterestEarned(BigDecimal preStartDateInterestEarned) {
+        this.preStartDateInterestEarned = preStartDateInterestEarned != null ? preStartDateInterestEarned : BigDecimal.ZERO;
+    }
+
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final boolean hasStartInterestCalculationDate) {
+        Money totalEarned = hasStartInterestCalculationDate ? Money.of(currency, this.preStartDateInterestEarned) : Money.zero(currency);
+        for (final PostingPeriod period : allPostingPeriods) {
+            Money interestEarned = period.interest();
+            interestEarned = interestEarned == null ? Money.zero(currency) : interestEarned;
+            totalEarned = totalEarned.plus(interestEarned);
+        }
+        this.lastInterestCalculationDate = DateUtils.getBusinessLocalDate();
+        this.totalInterestEarned = totalEarned.getAmount();
+    }
+
     public boolean isLessThanOrEqualToAccountBalance(final Money amount) {
         final Money accountBalance = getAccountBalance(amount.getCurrency());
         return accountBalance.isGreaterThanOrEqualTo(amount);
@@ -373,5 +392,9 @@ public final class SavingsAccountSummary {
 
     public void setTotalWithholdTax(BigDecimal totalWithholdTax) {
         this.totalWithholdTax = totalWithholdTax;
+    }
+
+    public void correctTotalInterestEarned(final MonetaryCurrency currency, Money totalCorrectionAmount) {
+        this.totalInterestEarned = Money.of(currency, this.totalInterestEarned).minus(totalCorrectionAmount).getAmount();
     }
 }

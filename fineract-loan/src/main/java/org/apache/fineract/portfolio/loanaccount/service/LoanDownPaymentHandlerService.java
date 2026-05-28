@@ -27,4 +27,7 @@ public interface LoanDownPaymentHandlerService {
 
     LoanTransaction handleDownPayment(ScheduleGeneratorDTO scheduleGeneratorDTO, JsonCommand command,
             LoanTransaction disbursementTransaction, Loan loan);
+
+    void handleRepaymentOrRecoveryOrWaiverTransaction(Loan loan, LoanTransaction newTransactionDetail,
+            LoanTransaction transactionForAdjustment, ScheduleGeneratorDTO scheduleGeneratorDTO);
 }

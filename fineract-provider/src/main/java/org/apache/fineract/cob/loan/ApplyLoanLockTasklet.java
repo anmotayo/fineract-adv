@@ -29,17 +29,18 @@ import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.cob.common.CustomJobParameterResolver;
-import org.apache.fineract.cob.data.LoanCOBParameter;
+import org.apache.fineract.cob.converter.COBParameterConverter;
+import org.apache.fineract.cob.data.COBParameter;
 import org.apache.fineract.cob.domain.LoanAccountLock;
 import org.apache.fineract.cob.domain.LockOwner;
 import org.apache.fineract.cob.exceptions.LoanLockCannotBeAppliedException;
 import org.apache.fineract.infrastructure.core.config.FineractProperties;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.lang.NonNull;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -57,15 +58,15 @@ public class ApplyLoanLockTasklet implements Tasklet {
 
     @Override
     @SuppressFBWarnings("SLF4J_SIGN_ONLY_FORMAT")
-    public RepeatStatus execute(@NotNull StepContribution contribution, @NotNull ChunkContext chunkContext)
+    public RepeatStatus execute(@NonNull StepContribution contribution, @NonNull ChunkContext chunkContext)
             throws LoanLockCannotBeAppliedException {
         ExecutionContext executionContext = contribution.getStepExecution().getExecutionContext();
         long numberOfExecutions = contribution.getStepExecution().getCommitCount();
-        LoanCOBParameter loanCOBParameter = (LoanCOBParameter) executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER);
+        COBParameter loanCOBParameter = COBParameterConverter.convert(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER));
         List<Long> loanIds;
         if (Objects.isNull(loanCOBParameter)
-                || (Objects.isNull(loanCOBParameter.getMinLoanId()) && Objects.isNull(loanCOBParameter.getMaxLoanId()))
-                || (loanCOBParameter.getMinLoanId().equals(0L) && loanCOBParameter.getMaxLoanId().equals(0L))) {
+                || (Objects.isNull(loanCOBParameter.getMinAccountId()) && Objects.isNull(loanCOBParameter.getMaxAccountId()))
+                || (loanCOBParameter.getMinAccountId().equals(0L) && loanCOBParameter.getMaxAccountId().equals(0L))) {
             loanIds = Collections.emptyList();
         } else {
             loanIds = new ArrayList<>(
@@ -102,7 +103,7 @@ public class ApplyLoanLockTasklet implements Tasklet {
         transactionTemplate.execute(new TransactionCallbackWithoutResult() {
 
             @Override
-            protected void doInTransactionWithoutResult(@NotNull TransactionStatus status) {
+            protected void doInTransactionWithoutResult(@NonNull TransactionStatus status) {
                 loanLockingService.applyLock(toBeProcessedLoanIds, LockOwner.LOAN_COB_CHUNK_PROCESSING);
             }
         });

@@ -19,11 +19,9 @@
 package com.advancly.fineract.portfolio.savings.domain;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -34,7 +32,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 /**
- * Optimized assembler that loads only the transactions needed for the current operation instead of the full history.
+ * Optimized assembler that loads only the data needed for the O(1) append path instead of the full transaction history.
  */
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
@@ -44,18 +42,16 @@ public class AdvanclySavingsAccountAssembler {
 
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
-    private final ConfigurationDomainService configurationDomainService;
     private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
     private final SavingsHelper savingsHelper;
 
     private static final Pageable LAST_ONE = PageRequest.of(0, 1);
 
     /**
-     * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance and
-     * interest/overdraft transactions for posting period checks.
+     * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance.
      */
     public AssembledSavingsAccount assembleForAppendPath(final Long savingsId) {
-        SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, false);
+        SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, true);
 
         List<SavingsAccountTransaction> lastTxnList = advanclyTransactionRepository.findLastNonReversedTransaction(savingsId, LAST_ONE);
 
@@ -68,104 +64,7 @@ public class AdvanclySavingsAccountAssembler {
             account.getSummary().setRunningBalanceOnPivotDate(BigDecimal.ZERO);
         }
 
-        List<SavingsAccountTransaction> interestTxns = advanclyTransactionRepository
-                .findNonReversedInterestAndOverdraftTransactions(savingsId);
-
         account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, interestTxns, lastTransaction);
-    }
-
-    /**
-     * O(k) insert path — loads transactions from transactionDate onward. Sets opening balance from the last transaction
-     * before that date.
-     */
-    public AssembledSavingsAccount assembleForInsertPath(final Long savingsId, final LocalDate transactionDate, boolean hasInterestRate) {
-        SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, false);
-
-        List<SavingsAccountTransaction> transactions = advanclyTransactionRepository.findTransactionsOnOrAfterDate(account,
-                transactionDate);
-
-        if (!transactions.isEmpty()) {
-            account.setSavingsAccountTransactions(transactions);
-        }
-
-        List<SavingsAccountTransaction> beforeDateTxns;
-        if (hasInterestRate) {
-            beforeDateTxns = advanclyTransactionRepository.findNonAccrualTransactionBeforeDate(savingsId, transactionDate, LAST_ONE);
-        } else {
-            beforeDateTxns = advanclyTransactionRepository.findNonInterestTransactionBeforeDate(savingsId, transactionDate, LAST_ONE);
-        }
-
-        if (!beforeDateTxns.isEmpty()) {
-            account.getSummary().setRunningBalanceOnPivotDate(beforeDateTxns.get(0).getRunningBalance(account.getCurrency()).getAmount());
-        } else {
-            account.getSummary().setRunningBalanceOnPivotDate(BigDecimal.ZERO);
-        }
-
-        List<SavingsAccountTransaction> interestTxns = advanclyTransactionRepository
-                .findNonReversedInterestAndOverdraftTransactions(savingsId);
-
-        account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, interestTxns);
-    }
-
-    /**
-     * Full assembly with pivot support — used by non-optimized paths (interest posting, etc.)
-     */
-    public AssembledSavingsAccount assembleFrom(final Long savingsId, final boolean backdatedTxnsAllowedTill) {
-        SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, backdatedTxnsAllowedTill);
-
-        if (backdatedTxnsAllowedTill) {
-            loadTransactionsWithPivot(account);
-        }
-
-        List<SavingsAccountTransaction> interestTxns = advanclyTransactionRepository
-                .findNonReversedInterestAndOverdraftTransactions(account.getId());
-
-        account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, interestTxns);
-    }
-
-    public boolean getPivotConfigStatus() {
-        return configurationDomainService.retrievePivotDateConfig();
-    }
-
-    public boolean isRelaxingDaysConfigEnabled() {
-        return configurationDomainService.isRelaxingDaysConfigForPivotDateEnabled();
-    }
-
-    public Long getRelaxingDays() {
-        return configurationDomainService.retrieveRelaxingDaysConfigForPivotDate();
-    }
-
-    private void loadTransactionsWithPivot(SavingsAccount account) {
-        boolean hasInterestRate = account.hasInterestCalculation() || account.hasOverdraftInterestCalculation();
-        LocalDate pivotDate = hasInterestRate ? account.getSummary().getInterestPostedTillDate()
-                : account.getSummary().getLastInterestCalculationDate();
-
-        if (pivotDate != null) {
-            LocalDate loadFromDate = pivotDate;
-            if (isRelaxingDaysConfigEnabled()) {
-                loadFromDate = pivotDate.minusDays(getRelaxingDays());
-            }
-
-            List<SavingsAccountTransaction> txns = advanclyTransactionRepository.findTransactionsOnOrAfterDate(account, loadFromDate);
-            if (!txns.isEmpty()) {
-                account.setSavingsAccountTransactions(txns);
-            }
-
-            List<SavingsAccountTransaction> beforePivot;
-            if (hasInterestRate) {
-                beforePivot = advanclyTransactionRepository.findNonAccrualTransactionBeforeDate(account.getId(), loadFromDate, LAST_ONE);
-            } else {
-                beforePivot = advanclyTransactionRepository.findNonInterestTransactionBeforeDate(account.getId(), loadFromDate, LAST_ONE);
-            }
-            if (!beforePivot.isEmpty()) {
-                account.getSummary().setRunningBalanceOnPivotDate(beforePivot.get(0).getRunningBalance(account.getCurrency()).getAmount());
-            }
-        } else {
-            List<SavingsAccountTransaction> allTxns = advanclyTransactionRepository.findBySavingsAccount(account);
-            account.setSavingsAccountTransactions(allTxns);
-        }
+        return AssembledSavingsAccount.of(account, lastTransaction);
     }
 }

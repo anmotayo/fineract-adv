@@ -21,15 +21,17 @@ package org.apache.fineract.portfolio.loanaccount.loanschedule.data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Set;
+import lombok.Getter;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanInterestRecalcualtionAdditionalDetails;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleModelPeriod;
 
+@Getter
 public final class LoanScheduleModelDownPaymentPeriod implements LoanScheduleModelPeriod {
 
     private final int periodNumber;
     private final LocalDate periodDate;
-    private Money principalDue;
+    private final Money principalDue;
     private final Money outstandingLoanBalance;
 
     public static LoanScheduleModelDownPaymentPeriod downPayment(final int periodNumber, final LocalDate periodDate,

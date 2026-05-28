@@ -42,7 +42,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
@@ -60,6 +59,7 @@ import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.DepositAccountUtils;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
@@ -76,7 +76,6 @@ import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTrans
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.apache.fineract.useradministration.domain.AppUser;
 
-@Slf4j
 @Entity
 @DiscriminatorValue("300")
 public class RecurringDepositAccount extends SavingsAccount {
@@ -202,7 +201,7 @@ public class RecurringDepositAccount extends SavingsAccount {
     }
 
     @Override
-    public BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate interestPostingUpToDate) {
+    protected BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate interestPostingUpToDate) {
         boolean isPreMatureClosure = false;
         return getEffectiveInterestRateAsFraction(mc, interestPostingUpToDate, isPreMatureClosure);
     }
@@ -539,11 +538,11 @@ public class RecurringDepositAccount extends SavingsAccount {
         return Money.of(this.currency, this.minRequiredOpeningBalance);
     }
 
-    protected void processAccountUponActivation(final DateTimeFormatter fmt, final boolean postReversals) {
+    protected void processAccountUponActivation(final DateTimeFormatter fmt, final boolean postReversals,
+            final Long relaxingDaysConfigForPivotDate) {
         final Money minRequiredOpeningBalance = Money.of(this.currency, this.minRequiredOpeningBalance);
         final boolean backdatedTxnsAllowedTill = false;
         String refNo = null;
-        final Long relaxingDaysConfigForPivotDate = this.configurationDomainService.retrieveRelaxingDaysConfigForPivotDate();
         if (minRequiredOpeningBalance.isGreaterThanZero()) {
             final SavingsAccountTransactionDTO transactionDTO = new SavingsAccountTransactionDTO(fmt, getActivationDate(),
                     minRequiredOpeningBalance.getAmount(), null, null, accountType);
@@ -757,14 +756,14 @@ public class RecurringDepositAccount extends SavingsAccount {
         return interestOnMaturity;
     }
 
-    /*
-     * @Override public void postInterest(final MathContext mc, final LocalDate postingDate, final boolean
-     * isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer
-     * financialYearBeginningMonth, final LocalDate postInterestAson, final boolean backdatedTxnsAllowedTill, final
-     * boolean postReversals) { final LocalDate interestPostingUpToDate = interestPostingUpToDate(postingDate);
-     * super.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-     * financialYearBeginningMonth, postInterestAson, backdatedTxnsAllowedTill, postReversals); }
-     */
+    @Override
+    public void postInterest(final MathContext mc, final LocalDate postingDate, final boolean isInterestTransfer,
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+            final LocalDate postInterestAson, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
+        final LocalDate interestPostingUpToDate = interestPostingUpToDate(postingDate);
+        super.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+                financialYearBeginningMonth, postInterestAson, backdatedTxnsAllowedTill, postReversals);
+    }
 
     @Override
     public List<PostingPeriod> calculateInterestUsing(final MathContext mc, final LocalDate postingDate, boolean isInterestTransfer,
@@ -832,11 +831,6 @@ public class RecurringDepositAccount extends SavingsAccount {
         }
 
         return actualChanges;
-    }
-
-    @Override
-    public Map<String, Object> undoActivate() {
-        return super.undoActivate();
     }
 
     protected List<SavingsAccountTransaction> sortTransactions(final List<SavingsAccountTransaction> transactions) {
@@ -1019,10 +1013,6 @@ public class RecurringDepositAccount extends SavingsAccount {
             final boolean isValidDepositPeriod = this.accountTermAndPreClosure.depositTermDetail()
                     .isDepositBetweenMinAndMax(depositStartDate(), calculateMaturityDate());
             if (!isValidDepositPeriod) {
-                final Integer depositPeriodInDays = this.accountTermAndPreClosure.depositTermDetail().getDepositPeriodInDays(depositPeriod,
-                        depositPeriodFrequencyType);
-                log.error("Recurring Deposit account with invalid deposit period {} {} : {} to {}", depositPeriodInDays,
-                        depositPeriodFrequencyType.getCode(), depositStartDate(), calculateMaturityDate());
                 baseDataValidator.reset().parameter(depositPeriodParamName).value(depositPeriod)
                         .failWithCodeNoParameterAddedToErrorCode("deposit.period.not.between.min.and.max.deposit.term");
             } else {
@@ -1175,7 +1165,6 @@ public class RecurringDepositAccount extends SavingsAccount {
         this.activatedOnDate = now;
     }
 
-    @Override
     public void setClosedOnDate(final LocalDate closedOnDate) {
         this.closedOnDate = closedOnDate;
     }
@@ -1285,6 +1274,17 @@ public class RecurringDepositAccount extends SavingsAccount {
     }
 
     public WithHoldTaxPostingType getWithHoldTaxPostingType() {
+        final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
+        return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
+    }
+
+    @Override
+    public DepositAccountType depositAccountType() {
+        return DepositAccountType.fromInt(300);
+    }
+
+    @Override
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
         return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }

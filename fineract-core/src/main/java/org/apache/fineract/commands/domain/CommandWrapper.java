@@ -18,7 +18,9 @@
  */
 package org.apache.fineract.commands.domain;
 
+import java.util.Set;
 import lombok.Getter;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.useradministration.api.PasswordPreferencesApiConstants;
 
 @Getter
@@ -43,6 +45,8 @@ public class CommandWrapper {
     private final Long creditBureauId;
     private final Long organisationCreditBureauId;
     private final String jobName;
+    private final ExternalId loanExternalId;
+    private final Set<String> sanitizeJsonKeys;
 
     private final String idempotencyKey;
 
@@ -61,9 +65,11 @@ public class CommandWrapper {
     public static CommandWrapper fromExistingCommand(final Long commandId, final String actionName, final String entityName,
             final Long resourceId, final Long subresourceId, final String resourceGetUrl, final Long productId, final Long officeId,
             final Long groupId, final Long clientId, final Long loanId, final Long savingsId, final String transactionId,
-            final Long creditBureauId, final Long organisationCreditBureauId, final String idempotencyKey) {
+            final Long creditBureauId, final Long organisationCreditBureauId, final String idempotencyKey,
+            final ExternalId loanExternalId) {
         return new CommandWrapper(commandId, actionName, entityName, resourceId, subresourceId, resourceGetUrl, productId, officeId,
-                groupId, clientId, loanId, savingsId, transactionId, creditBureauId, organisationCreditBureauId, idempotencyKey);
+                groupId, clientId, loanId, savingsId, transactionId, creditBureauId, organisationCreditBureauId, idempotencyKey,
+                loanExternalId, null);
     }
 
     private CommandWrapper(final Long commandId, final String actionName, final String entityName, final Long resourceId,
@@ -87,12 +93,15 @@ public class CommandWrapper {
         this.organisationCreditBureauId = null;
         this.jobName = null;
         this.idempotencyKey = null;
+        this.loanExternalId = null;
+        this.sanitizeJsonKeys = null;
     }
 
     public CommandWrapper(final Long officeId, final Long groupId, final Long clientId, final Long loanId, final Long savingsId,
             final String actionName, final String entityName, final Long entityId, final Long subentityId, final String href,
             final String json, final String transactionId, final Long productId, final Long templateId, final Long creditBureauId,
-            final Long organisationCreditBureauId, final String jobName, final String idempotencyKey) {
+            final Long organisationCreditBureauId, final String jobName, final String idempotencyKey, final ExternalId loanExternalId,
+            final Set<String> sanitizeJsonKeys) {
 
         this.commandId = null;
         this.officeId = officeId;
@@ -114,12 +123,15 @@ public class CommandWrapper {
         this.organisationCreditBureauId = organisationCreditBureauId;
         this.jobName = jobName;
         this.idempotencyKey = idempotencyKey;
+        this.loanExternalId = loanExternalId;
+        this.sanitizeJsonKeys = sanitizeJsonKeys;
     }
 
     private CommandWrapper(final Long commandId, final String actionName, final String entityName, final Long resourceId,
             final Long subresourceId, final String resourceGetUrl, final Long productId, final Long officeId, final Long groupId,
             final Long clientId, final Long loanId, final Long savingsId, final String transactionId, final Long creditBureauId,
-            final Long organisationCreditBureauId, final String idempotencyKey) {
+            final Long organisationCreditBureauId, final String idempotencyKey, final ExternalId loanExternalId,
+            final Set<String> sanitizeJsonKeys) {
 
         this.commandId = commandId;
         this.officeId = officeId;
@@ -140,6 +152,8 @@ public class CommandWrapper {
         this.organisationCreditBureauId = organisationCreditBureauId;
         this.jobName = null;
         this.idempotencyKey = idempotencyKey;
+        this.loanExternalId = loanExternalId;
+        this.sanitizeJsonKeys = sanitizeJsonKeys;
     }
 
     public boolean isCreate() {
@@ -193,19 +207,22 @@ public class CommandWrapper {
         return isnoteResource;
     }
 
-    public boolean isUpdateOfOwnUserDetails(final Long loggedInUserId) {
-        return isUserResource() && isUpdate() && loggedInUserId.equals(this.entityId);
+    public boolean isChangeOfOwnUserDetails(final Long loggedInUserId) {
+        return isUserResource() && loggedInUserId.equals(this.entityId) && (isUpdate() || isChangePasswordOperation());
     }
 
     public boolean isUpdate() {
-        // permissions resource has special update which involves no resource.
-        return (isPermissionResource() && isUpdateOperation()) || (isCurrencyResource() && isUpdateOperation())
-                || (isCacheResource() && isUpdateOperation()) || (isWorkingDaysResource() && isUpdateOperation())
-                || (isPasswordPreferencesResource() && isUpdateOperation()) || (isUpdateOperation() && (this.entityId != null));
+        // some resources have special update which involves no resource identifier.
+        return isUpdateOperation() && (this.entityId != null || isPermissionResource() || isCurrencyResource() || isCacheResource()
+                || isWorkingDaysResource() || isPasswordPreferencesResource());
     }
 
     public boolean isCacheResource() {
         return this.entityName.equalsIgnoreCase("CACHE");
+    }
+
+    public boolean isChangePasswordOperation() {
+        return this.actionName.equalsIgnoreCase("CHANGEPWD");
     }
 
     public boolean isUpdateOperation() {
@@ -238,6 +255,22 @@ public class CommandWrapper {
 
     public boolean isPasswordPreferencesResource() {
         return this.entityName.equalsIgnoreCase(PasswordPreferencesApiConstants.ENTITY_NAME);
+    }
+
+    public boolean isInterestPauseResource() {
+        return this.entityName.equalsIgnoreCase("INTEREST_PAUSE");
+    }
+
+    public boolean isInterestPauseCreateResource() {
+        return this.entityName.equalsIgnoreCase("INTEREST_PAUSE") && "CREATE".equalsIgnoreCase(this.actionName);
+    }
+
+    public boolean isInterestPauseUpdateResource() {
+        return this.entityName.equalsIgnoreCase("INTEREST_PAUSE") && "UPDATE".equalsIgnoreCase(this.actionName);
+    }
+
+    public boolean isInterestPauseDeleteResource() {
+        return this.entityName.equalsIgnoreCase("INTEREST_PAUSE") && "DELETE".equalsIgnoreCase(this.actionName);
     }
 
     public Long commandId() {

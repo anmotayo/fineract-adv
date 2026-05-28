@@ -147,8 +147,6 @@ public final class AnnualCompoundingPeriod implements CompoundingPeriod {
                             minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
                 break;
                 case NO_COMPOUNDING_SIMPLE_INTEREST:
-                    interestOnBalanceUnrounded = balance.calculateInterestOnBalance(interestToCompound, interestRateAsFraction, daysInYear,
-                            minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
                 break;
                 case INVALID:
                 break;

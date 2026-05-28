@@ -28,9 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,11 +45,10 @@ import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilde
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Collections;
+import java.util.Locale;
 import java.util.Optional;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
-import org.apache.fineract.infrastructure.core.config.FineractProperties;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
@@ -61,9 +60,9 @@ import org.apache.fineract.portfolio.account.data.AccountTransfersDataValidator;
 import org.apache.fineract.portfolio.account.domain.AccountTransferAssembler;
 import org.apache.fineract.portfolio.account.domain.AccountTransferDetailRepository;
 import org.apache.fineract.portfolio.account.domain.AccountTransferDetails;
-import org.apache.fineract.portfolio.account.domain.AccountTransferRepository;
 import org.apache.fineract.portfolio.account.domain.AccountTransferType;
 import org.apache.fineract.portfolio.account.exception.DifferentCurrenciesException;
+import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanAccountDomainService;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
@@ -72,12 +71,14 @@ import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
-import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -89,17 +90,15 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     @Mock
     private AccountTransferAssembler accountTransferAssembler;
     @Mock
-    private AccountTransferRepository accountTransferRepository;
-    @Mock
     private AdvanclySavingsAccountAssembler savingsAccountAssembler;
+    @Mock
+    private SavingsAccountAssembler coreSavingsAccountAssembler;
     @Mock
     private AdvanclySavingsAccountDomainService savingsAccountDomainService;
     @Mock
     private LoanAssembler loanAccountAssembler;
     @Mock
     private LoanAccountDomainService loanAccountDomainService;
-    @Mock
-    private SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     @Mock
     private AccountTransferDetailRepository accountTransferDetailRepository;
     @Mock
@@ -111,9 +110,11 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     @Mock
     private ExternalIdFactory externalIdFactory;
     @Mock
-    private FineractProperties fineractProperties;
-    @Mock
     private AdvanclySavingsAccountTransactionRepository transactionRepository;
+    @Mock
+    private SavingsAccountDomainService coreDomainService;
+    @Mock
+    private AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
 
     private AdvanclyAccountTransfersWritePlatformService service;
 
@@ -121,9 +122,10 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     void setUp() {
         MoneyHelperInitializer.initialize();
         service = new AdvanclyAccountTransfersWritePlatformService(accountTransfersDataValidator, accountTransferAssembler,
-                accountTransferRepository, savingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
-                loanAccountDomainService, savingsAccountWritePlatformService, accountTransferDetailRepository, loanReadPlatformService,
-                gsimRepository, configurationDomainService, externalIdFactory, fineractProperties, transactionRepository);
+                savingsAccountAssembler, coreSavingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
+                loanAccountDomainService, accountTransferDetailRepository, loanReadPlatformService, gsimRepository,
+                configurationDomainService, externalIdFactory, transactionRepository, coreDomainService,
+                coreAccountTransfersWritePlatformService);
     }
 
     @Test
@@ -138,8 +140,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
         SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
         SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
-        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, Collections.emptyList(), fromLastTxn);
-        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, Collections.emptyList(), toLastTxn);
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
         when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
@@ -149,11 +151,11 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
         when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                anyList(), any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn))).thenReturn(withdrawal);
-        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), anyList(),
-                any(Money.class), eq(toAccount.getCurrency()), eq(toLastTxn))).thenReturn(deposit);
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
 
-        AccountTransferDetails transferDetails = org.mockito.Mockito.mock(AccountTransferDetails.class);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
         when(transferDetails.getId()).thenReturn(99L);
         when(accountTransferAssembler.assembleSavingsToSavingsTransfer(command, fromAccount, toAccount, withdrawal, deposit))
                 .thenReturn(transferDetails);
@@ -163,8 +165,6 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         assertThat(result.getResourceId()).isEqualTo(99L);
         verify(savingsAccountAssembler).assembleForAppendPath(fromSavingsId);
         verify(savingsAccountAssembler).assembleForAppendPath(toSavingsId);
-        verify(savingsAccountAssembler, never()).assembleForInsertPath(eq(fromSavingsId), any(LocalDate.class), anyBoolean());
-        verify(savingsAccountAssembler, never()).assembleForInsertPath(eq(toSavingsId), any(LocalDate.class), anyBoolean());
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
@@ -179,16 +179,14 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         when(transactionRepository.findLastTransactionDate(10L)).thenReturn(Optional.empty());
         when(transactionRepository.findLastTransactionDate(20L)).thenReturn(Optional.empty());
-        when(savingsAccountAssembler.assembleForAppendPath(10L))
-                .thenReturn(AssembledSavingsAccount.of(fromAccount, Collections.emptyList(), null));
-        when(savingsAccountAssembler.assembleForAppendPath(20L))
-                .thenReturn(AssembledSavingsAccount.of(toAccount, Collections.emptyList(), null));
+        when(savingsAccountAssembler.assembleForAppendPath(10L)).thenReturn(AssembledSavingsAccount.of(fromAccount, null));
+        when(savingsAccountAssembler.assembleForAppendPath(20L)).thenReturn(AssembledSavingsAccount.of(toAccount, null));
 
         assertThatThrownBy(() -> service.create(command)).isInstanceOf(DifferentCurrenciesException.class);
 
-        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), anyList(), any(),
-                any(), any());
-        verify(savingsAccountDomainService, never()).handleDepositOptimized(any(), any(), any(), any(), anyList(), any(), any(), any());
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), any(), any(),
+                any(), anyBoolean());
+        verify(savingsAccountDomainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -206,8 +204,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
         SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
-        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, Collections.emptyList(), fromLastTxn);
-        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, Collections.emptyList(), toLastTxn);
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
         when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
@@ -218,11 +216,11 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
         when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                anyList(), any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn))).thenReturn(withdrawal);
-        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), anyList(),
-                any(Money.class), eq(toAccount.getCurrency()), eq(toLastTxn))).thenReturn(deposit);
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
 
-        AccountTransferDetails transferDetails = org.mockito.Mockito.mock(AccountTransferDetails.class);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
         when(transferDetails.getId()).thenReturn(100L);
         when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
                 .thenReturn(transferDetails);
@@ -230,8 +228,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         Long transferId = service.transferFunds(dto);
 
         assertThat(transferId).isEqualTo(100L);
-        verify(transactionRepository).findLastTransactionDate(fromSavingsId);
-        verify(transactionRepository).findLastTransactionDate(toSavingsId);
+        verify(transactionRepository, atLeastOnce()).findLastTransactionDate(fromSavingsId);
+        verify(transactionRepository, atLeastOnce()).findLastTransactionDate(toSavingsId);
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
@@ -246,24 +244,24 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
         SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
-        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, Collections.emptyList(), fromLastTxn);
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
 
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
         when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
 
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                anyList(), any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn))).thenReturn(withdrawal);
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
 
-        Loan toLoan = org.mockito.Mockito.mock(Loan.class);
-        LoanTransaction repayment = org.mockito.Mockito.mock(LoanTransaction.class);
+        Loan toLoan = Mockito.mock(Loan.class);
+        LoanTransaction repayment = Mockito.mock(LoanTransaction.class);
         when(repayment.getLoan()).thenReturn(toLoan);
         when(loanAccountAssembler.assembleFrom(toLoanId)).thenReturn(toLoan);
-        when(externalIdFactory.create()).thenReturn(org.apache.fineract.infrastructure.core.domain.ExternalId.generate());
+        when(externalIdFactory.create()).thenReturn(ExternalId.generate());
         when(loanAccountDomainService.makeRepayment(eq(LoanTransactionType.REPAYMENT), eq(toLoan), eq(transferDate), eq(amount), isNull(),
                 isNull(), any(), eq(false), isNull(), eq(true), isNull(), eq(false))).thenReturn(repayment);
 
-        AccountTransferDetails transferDetails = org.mockito.Mockito.mock(AccountTransferDetails.class);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
         when(transferDetails.getId()).thenReturn(88L);
         when(accountTransferAssembler.assembleSavingsToLoanTransfer(command, fromAccount, toLoan, withdrawal, repayment))
                 .thenReturn(transferDetails);
@@ -272,7 +270,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         assertThat(result.getResourceId()).isEqualTo(88L);
         verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                anyList(), any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn));
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
@@ -287,23 +285,23 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
         SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
-        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, Collections.emptyList(), toLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
         when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
         when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
 
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
-        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), anyList(),
-                any(Money.class), eq(toAccount.getCurrency()), eq(toLastTxn))).thenReturn(deposit);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
 
-        Loan fromLoan = org.mockito.Mockito.mock(Loan.class);
-        LoanTransaction refund = org.mockito.Mockito.mock(LoanTransaction.class);
+        Loan fromLoan = Mockito.mock(Loan.class);
+        LoanTransaction refund = Mockito.mock(LoanTransaction.class);
         when(loanAccountAssembler.assembleFrom(fromLoanId)).thenReturn(fromLoan);
-        when(externalIdFactory.create()).thenReturn(org.apache.fineract.infrastructure.core.domain.ExternalId.generate());
+        when(externalIdFactory.create()).thenReturn(ExternalId.generate());
         when(loanAccountDomainService.makeRefund(eq(fromLoanId), any(), eq(transferDate), eq(amount), isNull(), isNull(), any()))
                 .thenReturn(refund);
 
-        AccountTransferDetails transferDetails = org.mockito.Mockito.mock(AccountTransferDetails.class);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
         when(transferDetails.getId()).thenReturn(77L);
         when(accountTransferAssembler.assembleLoanToSavingsTransfer(command, fromLoan, toAccount, deposit, refund))
                 .thenReturn(transferDetails);
@@ -311,8 +309,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         CommandProcessingResult result = service.create(command);
 
         assertThat(result.getResourceId()).isEqualTo(77L);
-        verify(savingsAccountDomainService).handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), anyList(),
-                any(Money.class), eq(toAccount.getCurrency()), eq(toLastTxn));
+        verify(savingsAccountDomainService).handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true));
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
@@ -323,13 +321,15 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
     private JsonCommand transferCommand(LocalDate transferDate, BigDecimal amount, PortfolioAccountType fromAccountType,
             PortfolioAccountType toAccountType, Long fromAccountId, Long toAccountId) {
-        JsonCommand command = org.mockito.Mockito.mock(JsonCommand.class);
+        JsonCommand command = Mockito.mock(JsonCommand.class);
         when(command.localDateValueOfParameterNamed(transferDateParamName)).thenReturn(transferDate);
         when(command.bigDecimalValueOfParameterNamed(transferAmountParamName)).thenReturn(amount);
         when(command.integerValueSansLocaleOfParameterNamed(fromAccountTypeParamName)).thenReturn(fromAccountType.getValue());
         when(command.integerValueSansLocaleOfParameterNamed(toAccountTypeParamName)).thenReturn(toAccountType.getValue());
         when(command.longValueOfParameterNamed(fromAccountIdParamName)).thenReturn(fromAccountId);
         when(command.longValueOfParameterNamed(toAccountIdParamName)).thenReturn(toAccountId);
+        when(command.extractLocale()).thenReturn(Locale.ENGLISH);
+        when(command.dateFormat()).thenReturn("dd MMMM yyyy");
         return command;
     }
 

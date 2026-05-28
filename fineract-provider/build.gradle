@@ -217,10 +217,41 @@ tasks.register('setBlankPassword') {
     }
 }
 
+// Custom modules configuration for runtime classpath (bootRun, bootJar)
+configurations {
+    customModules
+}
+
+// Load Advancly custom modules
+file("${rootDir}/custom/advancly").eachDir { categoryDir ->
+    if ('build' != categoryDir.name) {
+        file("${rootDir}/custom/advancly/${categoryDir.name}").eachDir { moduleDir ->
+            if ('build' != moduleDir.name) {
+                dependencies {
+                    customModules project(":custom:advancly:${categoryDir.name}:${moduleDir.name}")
+                }
+            }
+        }
+    }
+}
+
+// Load ACME event modules (required: DB has AcmeLoanExternalEvent in m_external_event_configuration)
+//file("${rootDir}/custom/acme/event").eachDir { moduleDir ->
+//    if ('build' != moduleDir.name) {
+//        dependencies {
+//            customModules project(":custom:acme:event:${moduleDir.name}")
+//        }
+//    }
+//}
+
 bootRun {
     jvmArgs = [
         "-Dspring.output.ansi.enabled=ALWAYS"
     ]
+
+    classpath += configurations.customModules
+    // Exclude the plain JAR to avoid duplicate Liquibase changelogs on the classpath
+    classpath = classpath.filter { !it.name.endsWith('-plain.jar') }
 
     dependencies {
         implementation 'org.mariadb.jdbc:mariadb-java-client'
@@ -232,8 +263,13 @@ springBoot {
     mainClass = 'org.apache.fineract.ServerApplication'
 }
 
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 bootJar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    classpath += configurations.customModules
     manifest {
         attributes('Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher', 'Implementation-Title': 'Apache Fineract', 'Implementation-Version': project.version)
     }

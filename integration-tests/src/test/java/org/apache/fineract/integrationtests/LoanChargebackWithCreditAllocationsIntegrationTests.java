@@ -35,17 +35,15 @@ import org.apache.fineract.client.models.PostLoansLoanIdResponse;
 import org.apache.fineract.client.models.PostLoansRequest;
 import org.apache.fineract.client.models.PostLoansResponse;
 import org.apache.fineract.integrationtests.common.ClientHelper;
-import org.apache.fineract.integrationtests.common.loans.LoanTestLifecycleExtension;
+import org.apache.fineract.integrationtests.common.Utils;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleProcessingType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType;
 import org.apache.fineract.portfolio.loanproduct.domain.PaymentAllocationType;
-import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.lang.Nullable;
 
 @Slf4j
-@ExtendWith(LoanTestLifecycleExtension.class)
 public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoanIntegrationTest {
 
     @Test
@@ -600,7 +598,7 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
                     installment(312.0, 0, 0, 0, 0, true, "01 March 2023"), //
                     installment(312.0, 0, 0, 0, 0, true, "01 April 2023"), //
                     installment(314.0, 0, 0, 0, 0, true, "01 May 2023"), //
-                    installment(100.0, 0, 0, 0, outstanding(50.0, 0d, 0d, 50.0), false, "02 May 2023") //
+                    installment(100.0, 0, 0, 0, outstanding(50.0, 0.0, 0d, 0d, 50.0), false, "02 May 2023") //
             );
         });
     }
@@ -662,7 +660,7 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
             // DEFAULT payment allocation is ..., DUE_PENALTY, DUE_FEE, DUE_PRINCIPAL, ...
             verifyRepaymentSchedule(loanId, //
                     installment(1250.0, null, "01 January 2023"), //
-                    installment(342.0, 0, 100, 40, outstanding(30.0, 20.0, 0.0, 50.0), false, "01 February 2023"), //
+                    installment(342.0, 0, 100, 40, outstanding(30.0, 0.0, 20.0, 0.0, 50.0), false, "01 February 2023"), //
                     installment(312.0, 0, 0, 0, 0.0, true, "01 March 2023"), //
                     installment(312.0, 0, 0, 0, 0.0, true, "01 April 2023"), //
                     installment(314.0, 0, 0, 0, 0.0, true, "01 May 2023") //
@@ -729,7 +727,7 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
             // DEFAULT payment allocation is ..., DUE_PRINCIPAL, DUE_FEE, DUE_PENALTY ...
             verifyRepaymentSchedule(loanId, //
                     installment(1250.0, null, "01 January 2023"), //
-                    installment(342.0, 0, 100, 40, outstanding(0.0, 30.0, 20.0, 50.0), false, "01 February 2023"), //
+                    installment(342.0, 0, 100, 40, outstanding(0.0, 0.0, 30.0, 20.0, 50.0), false, "01 February 2023"), //
                     installment(312.0, 0, 0, 0, 0.0, true, "01 March 2023"), //
                     installment(312.0, 0, 0, 0, 0.0, true, "01 April 2023"), //
                     installment(314.0, 0, 0, 0, 0.0, true, "01 May 2023") //
@@ -1780,10 +1778,10 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
         GetLoansLoanIdResponse loanResponse = loanTransactionHelper.getLoan(requestSpec, responseSpec, loanId.intValue());
         GetLoansLoanIdSummary summary = loanResponse.getSummary();
         Assertions.assertNotNull(summary);
-        Assertions.assertEquals(creditedPrincipal, summary.getPrincipalAdjustments());
-        Assertions.assertEquals(creditedFee, summary.getFeeAdjustments());
-        Assertions.assertEquals(creditedPenalty, summary.getPenaltyAdjustments());
-        Assertions.assertEquals(totalOutstanding, summary.getTotalOutstanding());
+        Assertions.assertEquals(creditedPrincipal, Utils.getDoubleValue(summary.getPrincipalAdjustments()));
+        Assertions.assertEquals(creditedFee, Utils.getDoubleValue(summary.getFeeAdjustments()));
+        Assertions.assertEquals(creditedPenalty, Utils.getDoubleValue(summary.getPenaltyAdjustments()));
+        Assertions.assertEquals(totalOutstanding, Utils.getDoubleValue(summary.getTotalOutstanding()));
     }
 
     private Long applyAndApproveLoan(Long clientId, Long loanProductId, int numberOfRepayments) {
@@ -1825,21 +1823,6 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
                 .transactionProcessingStrategyCode("advanced-payment-allocation-strategy")
                 .paymentAllocation(List.of(defaultAllocation, createRepaymentPaymentAllocation()))
                 .creditAllocation(List.of(creditAllocationData));
-    }
-
-    private AdvancedPaymentData createDefaultPaymentAllocation() {
-        AdvancedPaymentData advancedPaymentData = new AdvancedPaymentData();
-        advancedPaymentData.setTransactionType("DEFAULT");
-        advancedPaymentData.setFutureInstallmentAllocationRule("NEXT_INSTALLMENT");
-
-        List<PaymentAllocationOrder> paymentAllocationOrders = getPaymentAllocationOrder(PaymentAllocationType.PAST_DUE_PENALTY,
-                PaymentAllocationType.PAST_DUE_FEE, PaymentAllocationType.PAST_DUE_PRINCIPAL, PaymentAllocationType.PAST_DUE_INTEREST,
-                PaymentAllocationType.DUE_PENALTY, PaymentAllocationType.DUE_FEE, PaymentAllocationType.DUE_PRINCIPAL,
-                PaymentAllocationType.DUE_INTEREST, PaymentAllocationType.IN_ADVANCE_PENALTY, PaymentAllocationType.IN_ADVANCE_FEE,
-                PaymentAllocationType.IN_ADVANCE_PRINCIPAL, PaymentAllocationType.IN_ADVANCE_INTEREST);
-
-        advancedPaymentData.setPaymentAllocationOrder(paymentAllocationOrders);
-        return advancedPaymentData;
     }
 
     private AdvancedPaymentData createDefaultPaymentAllocationPrincipalFirst() {
@@ -1886,16 +1869,6 @@ public class LoanChargebackWithCreditAllocationsIntegrationTests extends BaseLoa
             creditAllocationOrder.setCreditAllocationRule(allocation);
             creditAllocationOrder.setOrder(integer.getAndIncrement());
             return creditAllocationOrder;
-        }).toList();
-    }
-
-    private List<PaymentAllocationOrder> getPaymentAllocationOrder(PaymentAllocationType... paymentAllocationTypes) {
-        AtomicInteger integer = new AtomicInteger(1);
-        return Arrays.stream(paymentAllocationTypes).map(pat -> {
-            PaymentAllocationOrder paymentAllocationOrder = new PaymentAllocationOrder();
-            paymentAllocationOrder.setPaymentAllocationRule(pat.name());
-            paymentAllocationOrder.setOrder(integer.getAndIncrement());
-            return paymentAllocationOrder;
         }).toList();
     }
 

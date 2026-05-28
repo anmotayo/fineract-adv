@@ -74,7 +74,6 @@ import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
-import org.apache.fineract.portfolio.account.service.AccountTransfersReadPlatformService;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
@@ -130,9 +129,8 @@ public class DepositAccountAssembler {
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler, final FromJsonHelper fromApiJsonHelper,
             final DepositProductAssembler depositProductAssembler,
-            final RecurringDepositProductRepository recurringDepositProductRepository,
-            final AccountTransfersReadPlatformService accountTransfersReadPlatformService, final PlatformSecurityContext context,
-            final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory) {
+            final RecurringDepositProductRepository recurringDepositProductRepository, final PlatformSecurityContext context,
+            final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory, final SavingsHelper savingsHelper) {
 
         this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
         this.clientRepository = clientRepository;
@@ -144,7 +142,7 @@ public class DepositAccountAssembler {
         this.fromApiJsonHelper = fromApiJsonHelper;
         this.depositProductAssembler = depositProductAssembler;
         this.recurringDepositProductRepository = recurringDepositProductRepository;
-        this.savingsHelper = new SavingsHelper(accountTransfersReadPlatformService);
+        this.savingsHelper = savingsHelper;
         this.context = context;
         this.paymentDetailAssembler = paymentDetailAssembler;
         this.externalIdFactory = externalIdFactory;
@@ -452,9 +450,7 @@ public class DepositAccountAssembler {
 
         final DepositRecurringDetail depositRecurringDetail = DepositRecurringDetail.createFrom(isMandatoryDeposit, allowWithdrawal,
                 adjustAdvanceTowardsFuturePayments);
-        final DepositAccountRecurringDetail depositAccountRecurringDetail = DepositAccountRecurringDetail.createNew(recurringDepositAmount,
-                depositRecurringDetail, null, isCalendarInherited);
-        return depositAccountRecurringDetail;
+        return DepositAccountRecurringDetail.createNew(recurringDepositAmount, depositRecurringDetail, null, isCalendarInherited);
     }
 
     public Collection<SavingsAccountTransactionDTO> assembleBulkMandatorySavingsAccountTransactionDTOs(final JsonCommand command,

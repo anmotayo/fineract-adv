@@ -44,7 +44,10 @@ import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.DefaultSche
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.ScheduledDateGenerator;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSubStatusEnum;
 import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
+import org.apache.fineract.portfolio.savings.exception.SavingsAccountBlockedException;
+import org.apache.fineract.portfolio.savings.exception.SavingsAccountDebitsBlockedException;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -119,12 +122,34 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
             }
 
             if (isDueForTransfer && transactionAmount != null && transactionAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (data.getFromAccountType().isSavingsAccount()) {
+                    final SavingsAccount fromAccount = this.savingsAccountAssembler.assembleFrom(data.getFromAccount().getId(), false);
+                    final SavingsAccountSubStatusEnum fromSubStatus = SavingsAccountSubStatusEnum.fromInt(fromAccount.getSubStatus());
+                    if (fromSubStatus.isSubStatusAccountBlocked() || fromSubStatus.isSubStatusDebitBlocked() || fromSubStatus.isSubStatusDormant() || fromSubStatus.isSubStatusInactive()) {
+                        log.warn(
+                                "Debits are blocked on the from account for standing instruction id {} from account {} to account {}. Skipping transfer.",
+                                data.getId(), data.getFromAccount().getId(), data.getToAccount().getId());
+                        recordStandingInstructionHistory(data.getId(), transactionAmount, "SavingsAccountDebitsBlocked Exception ");
+                        continue;
+                    }
+                    BigDecimal availableBalance = fromAccount.getSummary().getAccountBalance().subtract(fromAccount.getSavingsHoldAmount())
+                            .subtract(fromAccount.getOnHoldFunds());
+                    if (fromAccount.isAllowOverdraft()) {
+                        availableBalance = availableBalance.add(fromAccount.getOverdraftLimit());
+                    }
+                    if (availableBalance.compareTo(transactionAmount) < 0) {
+                        log.warn("Insufficient balance for standing instruction id {} from account {} to account {}. Skipping transfer.",
+                                data.getId(), data.getFromAccount().getId(), data.getToAccount().getId());
+                        recordStandingInstructionHistory(data.getId(), transactionAmount, "InsufficientAccountBalance Exception ");
+                        continue;
+                    }
+                }
                 final SavingsAccount fromSavingsAccount = null;
                 final boolean isRegularTransaction = true;
                 final boolean isExceptionForBalanceCheck = false;
                 AccountTransferDTO accountTransferDTO = new AccountTransferDTO(transactionDate, transactionAmount,
                         data.getFromAccountType(), data.getToAccountType(), data.getFromAccount().getId(), data.getToAccount().getId(),
-                        data.getName() + " Standing instruction trasfer ", null, null, null, null, data.toTransferType(), null, null,
+                        data.getName() + " Standing instruction transfer ", null, null, null, null, data.toTransferType(), null, null,
                         data.getTransferType().getValue(), null, null, ExternalId.empty(), null, null, fromSavingsAccount,
                         isRegularTransaction, isExceptionForBalanceCheck);
                 final boolean transferCompleted = transferAmount(errors, accountTransferDTO, data.getId());
@@ -155,17 +180,21 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                     + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
             errorLog.append("Validation exception while trasfering funds ").append(e.getDefaultUserMessage());
         } catch (final InsufficientAccountBalanceException e) {
-            errors.add(new Exception("InsufficientAccountBalance Exception while trasfering funds for standing Instruction id"
-                    + instructionId + " from " + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
+            log.warn("Insufficient balance while transferring funds for standing Instruction id {} from {} to {}. Skipping transfer.",
+                    instructionId, accountTransferDTO.getFromAccountId(), accountTransferDTO.getToAccountId());
             errorLog.append("InsufficientAccountBalance Exception ");
+        } catch (final SavingsAccountBlockedException | SavingsAccountDebitsBlockedException e) {
+            log.warn("Account blocked while transferring funds for standing Instruction id {} from {} to {}. Skipping transfer.",
+                    instructionId, accountTransferDTO.getFromAccountId(), accountTransferDTO.getToAccountId());
+            errorLog.append("AccountBlocked Exception ").append(e.getDefaultUserMessage());
         } catch (final AbstractPlatformServiceUnavailableException e) {
-            errors.add(new Exception("Platform exception while trasfering funds for standing Instruction id" + instructionId + " from "
+            errors.add(new Exception("Platform exception while transferring funds for standing Instruction id" + instructionId + " from "
                     + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
-            errorLog.append("Platform exception while trasfering funds ").append(e.getDefaultUserMessage());
+            errorLog.append("Platform exception while transferring funds ").append(e.getDefaultUserMessage());
         } catch (Exception e) {
-            errors.add(new Exception("Unhandled System Exception while trasfering funds for standing Instruction id" + instructionId
+            errors.add(new Exception("Unhandled System Exception while transferring funds for standing Instruction id" + instructionId
                     + " from " + accountTransferDTO.getFromAccountId() + " to " + accountTransferDTO.getToAccountId(), e));
-            errorLog.append("Exception while trasfering funds ").append(e.getMessage());
+            errorLog.append("Exception while transferring funds ").append(e.getMessage());
 
         }
         updateQuery.append(instructionId).append(",");
@@ -180,6 +209,18 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
         updateQuery.append("'").append(errorLog).append("')");
         jdbcTemplate.update(updateQuery.toString());
         return transferCompleted;
+    }
+
+    private void recordStandingInstructionHistory(final Long instructionId, final BigDecimal amount, final String errorLog) {
+        StringBuilder updateQuery = new StringBuilder(
+                "INSERT INTO m_account_transfer_standing_instructions_history (standing_instruction_id, " + sqlGenerator.escape("status")
+                        + ", amount,execution_time, error_log) VALUES (");
+        updateQuery.append(instructionId).append(",");
+        updateQuery.append("'failed'").append(",");
+        updateQuery.append(amount.doubleValue());
+        updateQuery.append(", now(),");
+        updateQuery.append("'").append(errorLog).append("')");
+        jdbcTemplate.update(updateQuery.toString());
     }
 
     public boolean isDueForTransfer(StandingInstructionDuesData standingInstructionDuesData) {

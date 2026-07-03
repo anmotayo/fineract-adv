@@ -130,9 +130,8 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
 
         CommandProcessingResult result = service.bulkTransaction(savingsId, command);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Long> txnIds = (Map<String, Long>) result.getChanges().get("transactionIds");
-        assertThat(txnIds).containsEntry("REC-001", 101L).containsEntry("REC-002", 102L);
+        Map<String, Object> changes = result.getChanges();
+        assertThat(changes).containsEntry("REC-001", 101L).containsEntry("REC-002", 102L);
     }
 
     private String buildBulkPayload(String type1, String receipt1, int amount1, String note1, String type2, String receipt2, int amount2,

@@ -211,7 +211,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
         SavingsAccountTransaction lastNonReversedTxn = assembled.getLastNonReversedTransaction();
         final Map<String, Object> changes = new LinkedHashMap<>();
-        final Map<String, Long> transactionIds = new LinkedHashMap<>();
 
         for (int i = 0; i < transactions.size(); i++) {
             final JsonObject txn = transactions.get(i).getAsJsonObject();
@@ -232,7 +231,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             }
 
             String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
-            transactionIds.put(txnKey, savedTxn.getId());
+            changes.put(txnKey, savedTxn.getId());
             lastRunningBalance = savedTxn.getRunningBalance(account.getCurrency());
             lastNonReversedTxn = savedTxn;
 
@@ -242,8 +241,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 noteRepository.save(note);
             }
         }
-
-        changes.put("transactionIds", transactionIds);
 
         return new CommandProcessingResultBuilder().withOfficeId(account.officeId()).withClientId(account.clientId())
                 .withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
@@ -268,7 +265,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private CommandProcessingResult handleBackdatedBulkTransaction(final Long savingsId, final JsonArray transactions,
             final String dateFormat, final java.util.Locale locale) {
         final Map<String, Object> changes = new LinkedHashMap<>();
-        final Map<String, Long> transactionIds = new LinkedHashMap<>();
 
         for (int i = 0; i < transactions.size(); i++) {
             final JsonObject txn = transactions.get(i).getAsJsonObject();
@@ -292,10 +288,9 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             }
 
             String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
-            transactionIds.put(txnKey, result.getResourceId());
+            changes.put(txnKey, result.getResourceId());
         }
 
-        changes.put("transactionIds", transactionIds);
         return new CommandProcessingResultBuilder().withSavingsId(savingsId).with(changes).build();
     }
 

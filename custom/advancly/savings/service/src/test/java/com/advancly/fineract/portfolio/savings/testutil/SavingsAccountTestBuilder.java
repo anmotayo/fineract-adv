@@ -44,6 +44,8 @@ public class SavingsAccountTestBuilder {
     private SavingsAccountSummary summary;
     private MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
     private BigDecimal minRequiredBalance = BigDecimal.ZERO;
+    private BigDecimal onHoldFunds = BigDecimal.ZERO;
+    private BigDecimal savingsOnHoldAmount = BigDecimal.ZERO;
     private boolean enforceMinRequiredBalance = false;
     private List<SavingsAccountTransaction> transactions = new ArrayList<>();
 
@@ -90,6 +92,16 @@ public class SavingsAccountTestBuilder {
         return this;
     }
 
+    public SavingsAccountTestBuilder withOnHoldFunds(BigDecimal amount) {
+        this.onHoldFunds = amount;
+        return this;
+    }
+
+    public SavingsAccountTestBuilder withSavingsOnHoldAmount(BigDecimal amount) {
+        this.savingsOnHoldAmount = amount;
+        return this;
+    }
+
     public SavingsAccount build() {
         SavingsAccount account = createInstance(SavingsAccount.class);
         ReflectionTestUtils.setField(account, "id", id);
@@ -107,6 +119,8 @@ public class SavingsAccountTestBuilder {
         }
         ReflectionTestUtils.setField(account, "summary", summary);
         ReflectionTestUtils.setField(account, "savingsAccountTransactions", transactions);
+        ReflectionTestUtils.setField(account, "onHoldFunds", onHoldFunds);
+        ReflectionTestUtils.setField(account, "savingsOnHoldAmount", savingsOnHoldAmount);
 
         // Set client with office mock for office() method
         Office office = Mockito.mock(Office.class);

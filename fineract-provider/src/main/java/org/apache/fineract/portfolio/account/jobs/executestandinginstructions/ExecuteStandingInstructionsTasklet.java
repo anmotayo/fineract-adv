@@ -101,8 +101,7 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                 if (data.getInstructionType().isDuesAmoutTransfer()) {
                     final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFrom(data.getFromAccount().getId(),
                             false);
-                    BigDecimal availableBalance = fromSavingsAccount.getSummary().getAccountBalance()
-                            .subtract(fromSavingsAccount.getSavingsHoldAmount()).subtract(fromSavingsAccount.getOnHoldFunds());
+                    BigDecimal availableBalance = fromSavingsAccount.getWithdrawableBalance();
                     if (fromSavingsAccount.isAllowOverdraft()) {
                         availableBalance = availableBalance.add(fromSavingsAccount.getOverdraftLimit());
                     }

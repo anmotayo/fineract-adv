@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -101,6 +102,49 @@ class SavingsAccountTransactionHelperTest {
         // 1000 - 900 = 100 < 200 min required -> should throw
         assertThatThrownBy(() -> helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(900), currency))
                 .isInstanceOf(InsufficientAccountBalanceException.class);
+    }
+
+    @Test
+    void testValidateBalanceForAppendPath_withOnHoldFunds() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).withOnHoldFunds(BigDecimal.valueOf(200))
+                .build();
+
+        assertThatThrownBy(() -> helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(900), currency))
+                .isInstanceOf(InsufficientAccountBalanceException.class);
+    }
+
+    @Test
+    void testValidateBalanceForAppendPath_withSavingsOnHold() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).withSavingsOnHoldAmount(BigDecimal.valueOf(200))
+                .build();
+
+        assertThatThrownBy(() -> helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(900), currency))
+                .isInstanceOf(InsufficientAccountBalanceException.class);
+    }
+
+    @Test
+    void testValidateBalanceForAppendPath_withSavingsOnHoldAndOnHoldFunds() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary)
+                .withSavingsOnHoldAmount(BigDecimal.valueOf(200))
+                .withOnHoldFunds(BigDecimal.valueOf(200))
+                .build();
+
+        assertThatThrownBy(() -> helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(900), currency))
+                .isInstanceOf(InsufficientAccountBalanceException.class);
+    }
+
+    @Test
+    void testValidateBalanceForAppendPath_withSavingsOnHoldAndOnHoldFunds_ShouldSucceed() {
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build();
+        SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary)
+                .withSavingsOnHoldAmount(BigDecimal.valueOf(200))
+                .withOnHoldFunds(BigDecimal.valueOf(200))
+                .build();
+
+        assertThatCode(() -> helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(600), currency)).doesNotThrowAnyException();
     }
 
     @Test

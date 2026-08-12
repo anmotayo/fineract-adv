@@ -77,12 +77,8 @@ public class SavingsAccountTransactionHelper {
      * O(1) — Validate withdrawal doesn't exceed available balance for append path.
      */
     public void validateBalanceForAppendPath(SavingsAccount account, BigDecimal withdrawalAmount, MonetaryCurrency currency) {
-        Money accountBalance = Money.of(currency, account.getSummary().getAccountBalance());
         Money withdrawal = Money.of(currency, withdrawalAmount);
-        Money minRequired = account.minRequiredBalanceDerived(currency);
-        Money holdAmount = Money.of(currency, account.getSavingsHoldAmount());
-
-        Money availableBalance = accountBalance.minus(minRequired).minus(holdAmount);
+        Money availableBalance = Money.of(currency, account.getWithdrawableBalance());
 
         if (availableBalance.minus(withdrawal).isLessThanZero()) {
             throw new InsufficientAccountBalanceException("transactionAmount", account.getSummary().getAccountBalance(), null,

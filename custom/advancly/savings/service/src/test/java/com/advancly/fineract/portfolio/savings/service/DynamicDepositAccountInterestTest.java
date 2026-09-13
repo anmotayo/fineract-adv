@@ -117,6 +117,97 @@ class DynamicDepositAccountInterestTest {
         assertThat(interestPostings.get(0).getAmount()).isEqualByComparingTo(expectedInterest);
     }
 
+    @Test
+    void postingTwiceWithIdenticalArgumentsIsANoOpNotAReverseAndRecreate() {
+        this.account = buildAccount();
+
+        final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
+        final SavingsAccountTransaction topUp = transaction(2L, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(1000));
+
+        final List<DepositAccountDynamicRateHistory> rateHistory = List.of(
+                DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, LocalDate.of(2026, 1, 1),
+                        DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
+                        BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART),
+                DepositAccountDynamicRateHistory.createNew(this.account, topUp, LocalDate.of(2026, 1, 15),
+                        DynamicDepositRateHistoryEventType.DEPOSIT, BigDecimal.valueOf(2000), 12, 2, null, null, BigDecimal.valueOf(3),
+                        BigDecimal.valueOf(3), DynamicDepositRateSource.INTEREST_RATE_CHART));
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
+                .thenReturn(rateHistory);
+
+        final MathContext mc = MoneyHelper.getMathContext();
+
+        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        final List<SavingsAccountTransaction> afterFirstCall = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
+        assertThat(afterFirstCall).hasSize(1);
+        final BigDecimal amountAfterFirstCall = afterFirstCall.get(0).getAmount();
+
+        // Re-run with identical arguments - PostingPeriod.createFrom recomputes the same amount for the same
+        // (unchanged) transaction history, so postingTransaction.hasNotAmount(...) must be false and no
+        // reversal/recreation should happen.
+        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        final List<SavingsAccountTransaction> afterSecondCall = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
+
+        assertThat(afterSecondCall).hasSize(1);
+        assertThat(afterSecondCall.get(0).getAmount()).isEqualByComparingTo(amountAfterFirstCall);
+        // The no-op path must not reverse the original transaction - it should be the very same live transaction,
+        // not a reversal followed by a freshly-created replacement.
+        assertThat(afterSecondCall.get(0)).isSameAs(afterFirstCall.get(0));
+        assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isReversed).toList()).isEmpty();
+    }
+
+    @Test
+    void groupsRateVaryingSubPeriodsByCoreBoundaryAcrossTwoPostingPeriods() {
+        this.account = buildAccount();
+
+        final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
+        final SavingsAccountTransaction topUp = transaction(2L, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(1000));
+
+        final List<DepositAccountDynamicRateHistory> rateHistory = List.of(
+                DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, LocalDate.of(2026, 1, 1),
+                        DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
+                        BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART),
+                DepositAccountDynamicRateHistory.createNew(this.account, topUp, LocalDate.of(2026, 1, 15),
+                        DynamicDepositRateHistoryEventType.DEPOSIT, BigDecimal.valueOf(2000), 12, 2, null, null, BigDecimal.valueOf(3),
+                        BigDecimal.valueOf(3), DynamicDepositRateSource.INTEREST_RATE_CHART));
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
+                .thenReturn(rateHistory);
+
+        final MathContext mc = MoneyHelper.getMathContext();
+        // Post through March 1st so both the January and February core posting-period boundaries have their
+        // dateOfPostingTransaction (Feb 1 and Mar 1 respectively) within range - 2026 is not a leap year, so
+        // February has 28 days.
+        this.account.postInterest(mc, LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
+
+        final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
+        assertThat(interestPostings).hasSize(2);
+
+        final SavingsAccountTransaction januaryPosting = interestPostings.stream()
+                .filter(t -> t.getTransactionDate().equals(LocalDate.of(2026, 2, 1))).findFirst()
+                .orElseThrow(() -> new AssertionError("No interest posting transaction dated 2026-02-01 (January boundary)"));
+        final SavingsAccountTransaction februaryPosting = interestPostings.stream()
+                .filter(t -> t.getTransactionDate().equals(LocalDate.of(2026, 3, 1))).findFirst()
+                .orElseThrow(() -> new AssertionError("No interest posting transaction dated 2026-03-01 (February boundary)"));
+
+        final BigDecimal dailyFractionAt2Pct = BigDecimal.valueOf(2).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
+                mc);
+        final BigDecimal dailyFractionAt3Pct = BigDecimal.valueOf(3).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
+                mc);
+
+        // January boundary: 14 days at 1000 @ 2%, then 17 days at 2000 @ 3% - identical to the single-boundary test.
+        final BigDecimal expectedJanuary = BigDecimal.valueOf(1000).multiply(dailyFractionAt2Pct).multiply(BigDecimal.valueOf(14))
+                .add(BigDecimal.valueOf(2000).multiply(dailyFractionAt3Pct).multiply(BigDecimal.valueOf(17)))
+                .setScale(2, MoneyHelper.getRoundingMode());
+        // February boundary: whole month at 2000 @ 3% (28 days, no rate change and no transactions inside February).
+        final BigDecimal expectedFebruary = BigDecimal.valueOf(2000).multiply(dailyFractionAt3Pct).multiply(BigDecimal.valueOf(28))
+                .setScale(2, MoneyHelper.getRoundingMode());
+
+        assertThat(januaryPosting.getAmount()).isEqualByComparingTo(expectedJanuary);
+        assertThat(februaryPosting.getAmount()).isEqualByComparingTo(expectedFebruary);
+    }
+
     private SavingsAccountTransaction transaction(final Long id, final LocalDate date, final BigDecimal amount) {
         final SavingsAccountTransaction transaction = new SavingsAccountTransactionTestBuilder().withId(id).withSavingsAccount(this.account)
                 .withType(SavingsAccountTransactionType.DEPOSIT).withDate(date).withAmount(amount).build();

@@ -340,10 +340,12 @@ public class DynamicDepositAccount extends SavingsAccount {
      * rate-history sub-interval - not one per core posting-period boundary - calling the inherited {@code postInterest}
      * unmodified would write multiple, fragmented interest-posting transactions for a single posting period whenever a
      * rate change falls inside it (confirmed empirically during this task's first implementation attempt). This
-     * override recomputes the same core posting-period boundaries and rate-history split that
-     * {@link #calculateInterestUsing} used internally (both are pure functions of the same inputs, so recomputing them
-     * here is safe - it is not a race, and requires no change to {@code calculateInterestUsing}'s inherited return
-     * type), sums each boundary's rate-varying sub-periods back into a single amount, and replicates
+     * override recomputes the same core posting-period boundaries that {@link #calculateInterestUsing} used internally
+     * (a pure function of the same inputs, so recomputing it here is safe - it is not a race, and requires no change to
+     * {@code calculateInterestUsing}'s inherited return type), groups the returned rate-varying sub-periods back into
+     * those boundaries using {@code PostingPeriod.getPeriodInterval()} (public - each sub-period's interval start date
+     * falls inside exactly one boundary, so this containment check is immune to any boundary/sub-period count mismatch
+     * - no positional index is involved), sums each boundary's sub-periods into a single amount, and replicates
      * {@code SavingsAccount.postInterest}'s own transaction create-or-correct/withholding-tax branch and tail exactly,
      * substituting only the per-boundary summed amount and date for the per-{@code PostingPeriod} equivalents core
      * uses.
@@ -367,8 +369,6 @@ public class DynamicDepositAccount extends SavingsAccount {
         final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType.fromInt(this.interestPostingPeriodType);
         final List<LocalDateInterval> coreBoundaries = this.savingsHelper.determineInterestPostingPeriods(getStartInterestCalculationDate(),
                 interestPostingUpToDate, postingPeriodType, financialYearBeginningMonth, postedAsOnDates);
-        final List<DepositAccountDynamicRateHistory> rateHistoryAscending = DynamicDepositServiceLocator.rateHistoryRepository()
-                .findByAccountIdOrderByTransactionDateAscIdAsc(getId());
 
         Money interestPostedToDate = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getTotalInterestPosted())
                 : Money.zero(this.currency);
@@ -383,18 +383,23 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
 
         Money totalCorrectionAmount = Money.zero(this.currency);
-        int subPeriodIndex = 0;
         for (final LocalDateInterval coreBoundary : coreBoundaries) {
-            final int subPeriodCountForThisBoundary = DynamicDepositInterestIntervalSplitter
-                    .split(List.of(coreBoundary), rateHistoryAscending).size();
+            // Group the rate-varying sub-periods calculateInterestUsing(...) returned back into this core boundary
+            // using PostingPeriod.getPeriodInterval() (public) directly - no positional-index recomputation needed,
+            // and therefore no way for a boundary/sub-period count mismatch to silently misattribute interest.
             Money interestEarnedToBePostedForPeriod = Money.zero(this.currency);
-            for (int i = 0; i < subPeriodCountForThisBoundary; i++) {
-                interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod
-                        .plus(ratedSubPeriods.get(subPeriodIndex).getInterestEarned());
-                subPeriodIndex++;
+            for (final PostingPeriod subPeriod : ratedSubPeriods) {
+                if (coreBoundary.contains(subPeriod.getPeriodInterval().startDate())) {
+                    interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod.plus(subPeriod.getInterestEarned());
+                }
             }
-            final LocalDate interestPostingTransactionDate = coreBoundary.endDate().plusDays(1);
-            final boolean isUserPosting = postedAsOnDates.contains(interestPostingTransactionDate);
+            final boolean isUserPosting = postedAsOnDates.contains(coreBoundary.endDate().plusDays(1));
+            // Mirrors core's PostingPeriod construction: dateOfPostingTransaction is endDate() when
+            // isSavingsInterestPostingAtCurrentPeriodEnd is true, endDate().plusDays(1) otherwise. isUserPosting above
+            // stays keyed to endDate().plusDays(1) unconditionally - core computes it that way regardless of the flag
+            // too (SavingsAccount.java:911).
+            final LocalDate interestPostingTransactionDate = isSavingsInterestPostingAtCurrentPeriodEnd ? coreBoundary.endDate()
+                    : coreBoundary.endDate().plusDays(1);
 
             if (!DateUtils.isAfter(interestPostingTransactionDate, interestPostingUpToDate)) {
                 interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);

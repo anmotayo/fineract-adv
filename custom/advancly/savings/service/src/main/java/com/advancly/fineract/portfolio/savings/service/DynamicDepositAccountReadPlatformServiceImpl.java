@@ -118,10 +118,22 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         BigDecimal interestWithdrawn = BigDecimal.ZERO;
         for (final DepositAccountInterestWithdrawal withdrawal : this.interestWithdrawalRepository
                 .findByAccountIdOrderByTransactionDateAscIdAsc(accountId)) {
+            // Skip marker rows whose linked posting or withdrawal transaction has since been reversed (e.g. a
+            // backdated-transaction correction that reverses-and-replaces the interest posting transaction) - the
+            // marker's own row carries no reversal state of its own (see class Javadoc), so this must be checked on
+            // both linked transactions to avoid double-counting against a transaction that no longer stands.
+            if (withdrawal.interestPostingTransaction().isReversed() || withdrawal.withdrawalTransaction().isReversed()) {
+                continue;
+            }
             interestWithdrawn = interestWithdrawn.add(withdrawal.withdrawnInterestAmount());
         }
 
-        final BigDecimal netInterest = totalInterestForPeriod.subtract(withholdingTax).subtract(interestBasedCharges);
+        // Life-to-date scope, consistent with withholdingTax and interestBasedCharges (both life-to-date this
+        // phase) - not totalInterestForPeriod, which is the current unposted accrual. Phase 4's Transfer Interest To
+        // Savings Job computes its own period-scoped net interest directly from per-transaction data and does not
+        // read this DTO, so this field is a reporting convenience only; a correct per-period WHT figure isn't
+        // computable this phase anyway since WHT is only known once a period is actually posted.
+        final BigDecimal netInterest = interestPosted.subtract(withholdingTax).subtract(interestBasedCharges);
 
         final List<DepositAccountDynamicRateHistory> rateHistoryRows = this.rateHistoryRepository
                 .findByAccountIdOrderByTransactionDateAscIdAsc(accountId);

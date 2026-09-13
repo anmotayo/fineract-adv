@@ -29,6 +29,7 @@ public interface DepositAccountInterestWithdrawalRepository extends JpaRepositor
     List<DepositAccountInterestWithdrawal> findByAccountIdOrderByTransactionDateAscIdAsc(Long savingsAccountId);
 
     @Query("select coalesce(sum(w.withdrawnInterestAmount), 0) from DepositAccountInterestWithdrawal w "
-            + "where w.interestPostingTransaction.id = :interestPostingTransactionId")
+            + "where w.interestPostingTransaction.id = :interestPostingTransactionId "
+            + "and w.interestPostingTransaction.reversed = false and w.withdrawalTransaction.reversed = false")
     BigDecimal sumWithdrawnInterestForPostingTransaction(@Param("interestPostingTransactionId") Long interestPostingTransactionId);
 }

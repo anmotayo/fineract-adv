@@ -22,6 +22,7 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -98,6 +99,25 @@ public class DynamicDepositAccount extends SavingsAccount {
      */
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "account", orphanRemoval = true)
     private DepositAccountInterestRateChart chart;
+
+    /**
+     * Implementation plan Section 5. Read-side conveniences only: {@code interestBasedChargeDerived} is the current
+     * calculated/pending interest-based charge amount and {@code interestBasedChargePostedDerived} the total already
+     * applied through interest posting. The spec is explicit that these are "not used as the source of truth for
+     * posting, reversals, or accounting" - that remains {@code m_deposit_account_interest_charge} plus the linked
+     * transactions.
+     *
+     * Mapped here, on the subclass, rather than on {@code SavingsAccount}: the hierarchy is
+     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so these become two extra
+     * nullable columns on {@code m_savings_account} without touching the class every savings and deposit account type
+     * shares. Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves them NULL
+     * - which is why both accessors below normalise NULL to zero.
+     */
+    @Column(name = "interest_based_charge_derived", scale = 6, precision = 19)
+    private BigDecimal interestBasedChargeDerived;
+
+    @Column(name = "interest_based_charge_posted_derived", scale = 6, precision = 19)
+    private BigDecimal interestBasedChargePostedDerived;
 
     protected DynamicDepositAccount() {
         //
@@ -216,6 +236,22 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
+    }
+
+    public BigDecimal interestBasedChargeDerived() {
+        return this.interestBasedChargeDerived == null ? BigDecimal.ZERO : this.interestBasedChargeDerived;
+    }
+
+    public BigDecimal interestBasedChargePostedDerived() {
+        return this.interestBasedChargePostedDerived == null ? BigDecimal.ZERO : this.interestBasedChargePostedDerived;
+    }
+
+    public void updateInterestBasedChargeDerived(final BigDecimal amount) {
+        this.interestBasedChargeDerived = amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    public void updateInterestBasedChargePostedDerived(final BigDecimal amount) {
+        this.interestBasedChargePostedDerived = amount == null ? BigDecimal.ZERO : amount;
     }
 
     /**

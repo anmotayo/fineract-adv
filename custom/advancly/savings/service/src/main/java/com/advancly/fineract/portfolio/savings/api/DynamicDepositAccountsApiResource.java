@@ -145,11 +145,15 @@ public class DynamicDepositAccountsApiResource {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "withdraw").build();
         } else if (CommandParameterUtil.is(commandParam, "activate")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "activate").build();
+        } else if (CommandParameterUtil.is(commandParam, "calculateInterest")) {
+            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "calculateInterest").build();
+        } else if (CommandParameterUtil.is(commandParam, "postInterest")) {
+            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "postInterest").build();
         }
 
         if (commandRequest == null) {
             throw new UnrecognizedQueryParamException("command", commandParam,
-                    new Object[] { "approve", "undoapproval", "reject", "withdrawnByApplicant", "activate" });
+                    new Object[] { "approve", "undoapproval", "reject", "withdrawnByApplicant", "activate", "calculateInterest", "postInterest" });
         }
 
         final CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);

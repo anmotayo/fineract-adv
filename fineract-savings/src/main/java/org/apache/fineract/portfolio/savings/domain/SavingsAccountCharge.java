@@ -288,8 +288,14 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 this.amountWrittenOff = null;
             break;
             case PERCENT_OF_INTEREST:
-                this.percentage = null;
-                this.amount = null;
+                // The configured percentage MUST be preserved (it is this charge's only configuration), and both
+                // `amount` and `amount_outstanding_derived` are NOT NULL columns - so they are zero, not null.
+                // Leaving `amount` null also made the constructor's own determineIfFullyPaid() ->
+                // calculateOutstanding() dereference throw. There is no amount until an interest period is posted;
+                // the Dynamic Deposit early-withdrawal mechanism tracks the real figures in
+                // m_deposit_account_interest_charge and never consults these fields.
+                this.percentage = chargeAmount;
+                this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;
                 this.amountPaid = null;
                 this.amountOutstanding = BigDecimal.ZERO;
@@ -429,9 +435,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = amount;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -504,9 +510,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = newValue;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -562,6 +568,16 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         }
 
         return percentageOf;
+    }
+
+    /**
+     * The configured percentage for percentage-based calculation types (column {@code calculation_percentage}), or
+     * {@code null} for types that do not use one (e.g. {@code FLAT}). For a {@code PERCENT_OF_INTEREST} charge this is
+     * the account-level override when one was supplied at attachment time, and the charge definition's own amount
+     * otherwise - exactly the precedence implementation plan Section 11 requires.
+     */
+    public BigDecimal getPercentage() {
+        return this.percentage;
     }
 
     public BigDecimal amount() {

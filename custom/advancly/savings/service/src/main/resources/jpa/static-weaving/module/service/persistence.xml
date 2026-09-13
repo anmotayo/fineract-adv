@@ -37,6 +37,7 @@
         <class>com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory</class>
+        <class>com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal</class>
 
         <!-- Core Module Entities (superclasses / relationships referenced by the Dynamic Deposit entities above) -->
         <class>org.apache.fineract.useradministration.domain.Role</class>

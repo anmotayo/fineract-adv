@@ -71,6 +71,12 @@ public class SavingsProductBaseAssembler {
 
                         final ChargeCalculationType calculationType = ChargeCalculationType.fromInt(charge.getChargeCalculation());
 
+                        // Defense in depth: PERCENT_OF_AMOUNT_AND_INTEREST is out of scope for savings charges
+                        // entirely (it can become principal-based unless capped/carry-forward rules are added), so
+                        // Charge.isAllowedSavingsChargeCalculationType()/ChargeCalculationType.validValuesForSavings()
+                        // already prevent such a charge from ever being created with appliesTo = SAVINGS. This check
+                        // is currently unreachable as a result, but it stays here in case that invariant is ever
+                        // loosened in a different module without this attachment point being revisited.
                         if (calculationType.isPercentageOfAmountAndInterest()) {
                             final String errorMessage = "Charge with identifier " + charge.getId()
                                     + " uses a calculation type that is not supported for Savings products.";

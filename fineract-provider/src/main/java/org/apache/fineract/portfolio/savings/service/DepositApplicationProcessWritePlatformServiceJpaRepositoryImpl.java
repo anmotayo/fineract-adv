@@ -557,7 +557,7 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
 
         if (changes.containsKey("charges")) {
             final Set<SavingsAccountCharge> charges = this.savingsAccountChargeAssembler.fromParsedJson(command.parsedJson(),
-                    account.getCurrency().getCode());
+                    account.getCurrency().getCode(), account.depositAccountType());
             final boolean updated = account.update(charges);
             if (!updated) {
                 changes.remove("charges");

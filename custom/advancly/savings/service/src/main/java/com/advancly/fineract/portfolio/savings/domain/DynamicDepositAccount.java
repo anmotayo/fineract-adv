@@ -46,6 +46,7 @@ import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.group.domain.Group;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
@@ -160,6 +161,19 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     public DepositAccountInterestRateChart chart() {
         return this.chart;
+    }
+
+    /**
+     * Without this override, {@code depositAccountType()} would fall through to the {@code SavingsAccount} base
+     * implementation, which is hard-coded to {@code SAVINGS_DEPOSIT} - mirrors the equivalent overrides on
+     * {@code FixedDepositAccount}/{@code RecurringDepositAccount}. Core code (e.g. the interest-based-charge gate in
+     * {@code SavingsAccountChargeAssembler}/{@code SavingsAccountWritePlatformServiceJpaRepositoryImpl}) relies on this
+     * to tell a Dynamic Deposit account apart from a plain savings account without depending on this custom-module
+     * class directly.
+     */
+    @Override
+    public DepositAccountType depositAccountType() {
+        return DepositAccountType.fromInt(500);
     }
 
     public boolean isAllowWithdrawal() {

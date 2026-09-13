@@ -29,6 +29,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToOne;
 import java.math.BigDecimal;
 import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -763,6 +764,13 @@ public class DynamicDepositAccount extends SavingsAccount {
         // Write back what was actually applied, pro-rated across the rows when the cap bit, so the last row absorbs
         // any rounding remainder and the rows sum to exactly the transaction amount. Without this the posted-charge
         // sum would keep reporting Task 7's provisional figures instead of the money that moved.
+        //
+        // Non-last rows are truncated DOWN (RoundingMode.DOWN), never rounded to the nearest per the tenant's default
+        // mode: a default mode that rounds up can push the non-last rows' running sum above appliedTotal, which would
+        // make the last row's appliedTotal.subtract(distributed) go negative - persisting a pending charge row with a
+        // negative charge_amount even though the overall money movement and the row-sum invariant both stay correct.
+        // Truncating down guarantees the non-last rows' running sum never exceeds the exact partial total they
+        // approximate, so the last row's remainder is always in [0, appliedTotal].
         BigDecimal distributed = BigDecimal.ZERO;
         for (int i = 0; i < pendingRows.size(); i++) {
             final BigDecimal rowAmount;
@@ -772,7 +780,7 @@ public class DynamicDepositAccount extends SavingsAccount {
                 rowAmount = BigDecimal.ZERO;
             } else {
                 rowAmount = recomputedAmounts.get(i).multiply(appliedTotal).divide(recomputedTotal, percentageMathContext())
-                        .setScale(this.currency.getDigitsAfterDecimal(), MoneyHelper.getRoundingMode());
+                        .setScale(this.currency.getDigitsAfterDecimal(), RoundingMode.DOWN);
             }
             distributed = distributed.add(rowAmount);
             pendingRows.get(i).applyAtPosting(grossInterest, rowAmount, interestPostingTransaction, chargeTransaction);

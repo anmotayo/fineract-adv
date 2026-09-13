@@ -279,6 +279,34 @@ class DynamicDepositAccountInterestTest {
         assertThat(pendingRow.chargeAmount()).isEqualByComparingTo(chargeTransactions.get(0).getAmount());
     }
 
+    @Test
+    void proRataDistributionAcrossMultipleRowsNeverProducesANegativeRowEvenWhenNaiveRoundingWouldRoundUp() {
+        this.account = buildAccount();
+        stubSingleRateHistoryForJanuary();
+        // Five equal-percentage rows whose recomputed amounts, against the account's real gross interest for January
+        // (~3.56), do not divide evenly into the currency's 2 decimal places, forcing the pro-rata write-back to
+        // round. Rounding each non-last row to the NEAREST value (the tenant's default rounding mode, which can round
+        // up) pushes the non-last rows' running sum above the transaction's real applied total, driving the last
+        // row's remainder negative - e.g. 0.01, 0.01, 0.01, 0.01, -0.01 for a 0.03 transaction. Truncating each
+        // non-last row DOWN instead is the fix under test here.
+        final List<DepositAccountInterestCharge> pendingRows = stubPendingRows(5, new BigDecimal("0.17"));
+
+        this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+
+        final List<SavingsAccountTransaction> chargeTransactions = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isPayCharge).toList();
+        assertThat(chargeTransactions).hasSize(1);
+        final BigDecimal appliedTotal = chargeTransactions.get(0).getAmount();
+
+        // The invariant the bug violated: every row's applied amount must be non-negative - not merely that the rows
+        // sum to the right total, which a negative row can hide behind (0.01, 0.01, 0.01, 0.01, -0.01 still sums to
+        // 0.03).
+        assertThat(pendingRows).allSatisfy(row -> assertThat(row.chargeAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
+        final BigDecimal sumOfRows = pendingRows.stream().map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO,
+                BigDecimal::add);
+        assertThat(sumOfRows).isEqualByComparingTo(appliedTotal);
+    }
+
     private DepositAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {
         final DepositAccountInterestCharge pendingRow = DepositAccountInterestCharge.createNew(this.account,
                 mock(SavingsAccountTransaction.class), mock(SavingsAccountCharge.class), mock(Charge.class), LocalDate.of(2026, 1, 1),
@@ -289,6 +317,21 @@ class DynamicDepositAccountInterestTest {
         // Answer, not a fixed value: proves the row really was rewritten with the applied amount.
         lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(invocation -> pendingRow.chargeAmount());
         return pendingRow;
+    }
+
+    /** {@code count} pending rows, each with the same {@code percentageEach} and a zero provisional basis/amount. */
+    private List<DepositAccountInterestCharge> stubPendingRows(final int count, final BigDecimal percentageEach) {
+        final List<DepositAccountInterestCharge> rows = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            rows.add(DepositAccountInterestCharge.createNew(this.account, mock(SavingsAccountTransaction.class),
+                    mock(SavingsAccountCharge.class), mock(Charge.class), LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 20),
+                    BigDecimal.ZERO, percentageEach, BigDecimal.ZERO));
+        }
+        lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenReturn(new ArrayList<>(rows));
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(
+                invocation -> rows.stream().map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+        return rows;
     }
 
     /** The gross interest the posting transaction was actually written with. */

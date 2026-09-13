@@ -48,12 +48,17 @@ import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDa
 import com.google.gson.JsonElement;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
+import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
 import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
@@ -109,12 +114,14 @@ public class DynamicDepositAccountAssembler {
     private final SavingsHelper savingsHelper;
     private final ExternalIdFactory externalIdFactory;
     private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
+    private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
 
     public DynamicDepositAccountAssembler(final ClientRepositoryWrapper clientRepository, final GroupRepositoryWrapper groupRepository,
             final StaffRepositoryWrapper staffRepository, final DynamicDepositProductRepository dynamicDepositProductRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
-            final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator) {
+            final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
+            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
         this.clientRepository = clientRepository;
         this.groupRepository = groupRepository;
         this.staffRepository = staffRepository;
@@ -124,6 +131,7 @@ public class DynamicDepositAccountAssembler {
         this.savingsHelper = savingsHelper;
         this.externalIdFactory = externalIdFactory;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
+        this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
     }
 
     public DynamicDepositAccount assembleFrom(final JsonCommand command) {
@@ -200,8 +208,9 @@ public class DynamicDepositAccountAssembler {
         final boolean withdrawalFeeApplicableForTransfer = command
                 .booleanPrimitiveValueOfParameterNamed(withdrawalFeeForTransfersParamName);
 
-        final Set<SavingsAccountCharge> charges = this.savingsAccountChargeAssembler.fromParsedJson(element, product.currency().getCode(),
-                DepositAccountType.DYNAMIC_DEPOSIT);
+        final Set<SavingsAccountCharge> charges = withEarlyWithdrawalCharge(new HashSet<>(this.savingsAccountChargeAssembler
+                .fromParsedJson(element, product.currency().getCode(), DepositAccountType.DYNAMIC_DEPOSIT)),
+                resolveProductEarlyWithdrawalCharge(product));
 
         boolean withHoldTax = product.withHoldTax();
         if (command.parameterExists(withHoldTaxParamName)) {
@@ -273,6 +282,61 @@ public class DynamicDepositAccountAssembler {
         account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 
         return account;
+    }
+
+    /**
+     * The product's selected early-withdrawal penalty charge, or {@code null} when the product has the penalty disabled
+     * or has selected nothing. Reads the classifier table rather than the account request, since the selection is
+     * product configuration.
+     */
+    private Charge resolveProductEarlyWithdrawalCharge(final DynamicDepositProduct product) {
+        if (!product.isEarlyWithdrawalPenaltyEnabled()) {
+            return null;
+        }
+        final List<DepositProductEarlyWithdrawalCharge> selections = this.earlyWithdrawalChargeRepository
+                .findBySavingsProductId(product.getId());
+        if (selections.size() != 1) {
+            return null;
+        }
+        final Long selectedChargeId = selections.get(0).chargeId();
+        for (final Charge charge : product.charges()) {
+            if (selectedChargeId.equals(charge.getId())) {
+                return charge;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Merges the product's early-withdrawal penalty charge into the account's own charges, unless the request already
+     * supplied that charge - in which case the caller's account-level percentage override is kept untouched, which is
+     * the "use the account charge percentage when the client/account has an override" half of implementation plan
+     * Section 11's rule.
+     *
+     * Only this one charge is inherited. Dynamic Deposit deliberately does not use core's
+     * {@code SavingsAccountChargeAssembler#fromSavingsProduct}, which would pull in every product charge and change
+     * long-standing behaviour for this product type; the early-withdrawal charge has to be attached because
+     * {@code m_deposit_account_interest_charge.savings_account_charge_id} is NOT NULL.
+     *
+     * Static (and visible to tests) so the merge rule can be exercised without a Spring context.
+     */
+    static Set<SavingsAccountCharge> withEarlyWithdrawalCharge(final Set<SavingsAccountCharge> requestCharges,
+            final Charge earlyWithdrawalCharge) {
+        if (earlyWithdrawalCharge == null) {
+            return requestCharges;
+        }
+        for (final SavingsAccountCharge existing : requestCharges) {
+            if (existing.getCharge() != null && earlyWithdrawalCharge.getId().equals(existing.getCharge().getId())) {
+                return requestCharges;
+            }
+        }
+        final ChargeTimeType chargeTime = earlyWithdrawalCharge.getChargeTimeType() == null ? null
+                : ChargeTimeType.fromInt(earlyWithdrawalCharge.getChargeTimeType());
+        final ChargeCalculationType chargeCalculation = earlyWithdrawalCharge.getChargeCalculation() == null ? null
+                : ChargeCalculationType.fromInt(earlyWithdrawalCharge.getChargeCalculation());
+        requestCharges.add(SavingsAccountCharge.createNewWithoutSavingsAccount(earlyWithdrawalCharge, earlyWithdrawalCharge.getAmount(),
+                chargeTime, chargeCalculation, null, true, earlyWithdrawalCharge.getFeeOnMonthDay(), earlyWithdrawalCharge.feeInterval()));
+        return requestCharges;
     }
 
     /**

@@ -147,9 +147,9 @@ public class DynamicDepositAccountsApiResource {
         } else if (CommandParameterUtil.is(commandParam, "activate")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "activate").build();
         } else if (CommandParameterUtil.is(commandParam, "calculateInterest")) {
-            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "calculateInterest").build();
+            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "calculateInterest").withSavingsId(accountId).build();
         } else if (CommandParameterUtil.is(commandParam, "postInterest")) {
-            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "postInterest").build();
+            commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "postInterest").withSavingsId(accountId).build();
         }
 
         if (commandRequest == null) {

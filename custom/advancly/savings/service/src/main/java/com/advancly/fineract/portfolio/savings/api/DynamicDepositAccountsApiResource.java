@@ -152,8 +152,8 @@ public class DynamicDepositAccountsApiResource {
         }
 
         if (commandRequest == null) {
-            throw new UnrecognizedQueryParamException("command", commandParam,
-                    new Object[] { "approve", "undoapproval", "reject", "withdrawnByApplicant", "activate", "calculateInterest", "postInterest" });
+            throw new UnrecognizedQueryParamException("command", commandParam, new Object[] { "approve", "undoapproval", "reject",
+                    "withdrawnByApplicant", "activate", "calculateInterest", "postInterest" });
         }
 
         final CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);

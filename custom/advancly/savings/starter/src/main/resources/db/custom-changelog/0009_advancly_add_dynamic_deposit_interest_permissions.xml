@@ -37,9 +37,23 @@
         </insert>
         <insert tableName="m_permission">
             <column name="grouping" value="portfolio"/>
+            <column name="code" value="CALCULATEINTEREST_DYNAMICDEPOSITACCOUNT_CHECKER"/>
+            <column name="entity_name" value="DYNAMICDEPOSITACCOUNT"/>
+            <column name="action_name" value="CALCULATEINTEREST_CHECKER"/>
+            <column name="can_maker_checker" valueBoolean="false"/>
+        </insert>
+        <insert tableName="m_permission">
+            <column name="grouping" value="portfolio"/>
             <column name="code" value="POSTINTEREST_DYNAMICDEPOSITACCOUNT"/>
             <column name="entity_name" value="DYNAMICDEPOSITACCOUNT"/>
             <column name="action_name" value="POSTINTEREST"/>
+            <column name="can_maker_checker" valueBoolean="false"/>
+        </insert>
+        <insert tableName="m_permission">
+            <column name="grouping" value="portfolio"/>
+            <column name="code" value="POSTINTEREST_DYNAMICDEPOSITACCOUNT_CHECKER"/>
+            <column name="entity_name" value="DYNAMICDEPOSITACCOUNT"/>
+            <column name="action_name" value="POSTINTEREST_CHECKER"/>
             <column name="can_maker_checker" valueBoolean="false"/>
         </insert>
     </changeSet>

@@ -35,10 +35,12 @@ import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
+import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundException;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -97,16 +99,18 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     public DynamicDepositInterestSummaryData retrieveInterestSummary(final Long accountId) {
         this.context.authenticatedUser();
 
-        final SavingsAccount account = this.savingsAccountRepository.findOneWithNotFoundDetection(accountId);
+        final SavingsAccount account;
+        try {
+            account = this.savingsAccountRepository.findOneWithNotFoundDetection(accountId, DepositAccountType.DYNAMIC_DEPOSIT);
+        } catch (final SavingsAccountNotFoundException e) {
+            throw new DynamicDepositAccountNotFoundException(accountId);
+        }
         final SavingsAccountSummary summary = account.getSummary();
 
-        // Only three cumulative, life-to-date figures are available from the account's own summary this phase -
-        // this endpoint does no period-bucketing of its own (that is out of scope here; see the class javadoc).
-        // grossInterestEarnedAsAtToday and totalInterestForPeriod are therefore deliberately the same underlying
-        // figure: total interest earned by the account to date.
         final BigDecimal grossInterestEarnedAsAtToday = defaultToZero(summary.getTotalInterestEarned());
         final BigDecimal interestPosted = defaultToZero(summary.getTotalInterestPosted());
-        final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday;
+        // The current period's unposted accrual: total earned to date minus what has already been posted.
+        final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
         final BigDecimal interestBasedCharges = BigDecimal.ZERO;
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;

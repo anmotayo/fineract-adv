@@ -52,6 +52,8 @@ public class DynamicDepositProductData implements Serializable {
     private final Long taxGroupId;
     private final boolean allowWithdrawal;
     private final boolean dynamicRateEnabled;
+    private final boolean earlyWithdrawalPenaltyEnabled;
+    private final Long earlyWithdrawalChargeId;
     private final Collection<ChargeData> charges;
     private final Collection<InterestRateChartData> charts;
 
@@ -73,12 +75,13 @@ public class DynamicDepositProductData implements Serializable {
             final EnumOptionData interestCalculationDaysInYearType, final Integer lockinPeriodFrequency,
             final EnumOptionData lockinPeriodFrequencyType, final EnumOptionData accountingRule,
             final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final Long taxGroupId,
-            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final Collection<ChargeData> charges,
-            final Collection<InterestRateChartData> charts) {
+            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled,
+            final Long earlyWithdrawalChargeId, final Collection<ChargeData> charges, final Collection<InterestRateChartData> charts) {
         this(id, name, shortName, description, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,
                 lockinPeriodFrequencyType, accountingRule, minBalanceForInterestCalculation, withHoldTax, taxGroupId, allowWithdrawal,
-                dynamicRateEnabled, charges, charts, null, null, null, null, null, null, null, null, null, null);
+                dynamicRateEnabled, earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, charges, charts, null, null, null, null, null,
+                null, null, null, null, null);
     }
 
     private DynamicDepositProductData(final Long id, final String name, final String shortName, final String description,
@@ -87,9 +90,9 @@ public class DynamicDepositProductData implements Serializable {
             final EnumOptionData interestCalculationDaysInYearType, final Integer lockinPeriodFrequency,
             final EnumOptionData lockinPeriodFrequencyType, final EnumOptionData accountingRule,
             final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final Long taxGroupId,
-            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final Collection<ChargeData> charges,
-            final Collection<InterestRateChartData> charts, final Collection<CurrencyData> currencyOptions,
-            final Collection<EnumOptionData> interestCompoundingPeriodTypeOptions,
+            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled,
+            final Long earlyWithdrawalChargeId, final Collection<ChargeData> charges, final Collection<InterestRateChartData> charts,
+            final Collection<CurrencyData> currencyOptions, final Collection<EnumOptionData> interestCompoundingPeriodTypeOptions,
             final Collection<EnumOptionData> interestPostingPeriodTypeOptions,
             final Collection<EnumOptionData> interestCalculationTypeOptions,
             final Collection<EnumOptionData> interestCalculationDaysInYearTypeOptions,
@@ -114,6 +117,8 @@ public class DynamicDepositProductData implements Serializable {
         this.taxGroupId = taxGroupId;
         this.allowWithdrawal = allowWithdrawal;
         this.dynamicRateEnabled = dynamicRateEnabled;
+        this.earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabled;
+        this.earlyWithdrawalChargeId = earlyWithdrawalChargeId;
         this.charges = charges;
         this.charts = charts;
         this.currencyOptions = currencyOptions;
@@ -140,10 +145,10 @@ public class DynamicDepositProductData implements Serializable {
                 data.nominalAnnualInterestRate, data.interestCompoundingPeriodType, data.interestPostingPeriodType,
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.lockinPeriodFrequency,
                 data.lockinPeriodFrequencyType, data.accountingRule, data.minBalanceForInterestCalculation, data.withHoldTax,
-                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, data.charges, data.charts, currencyOptions,
-                interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
-                interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, accountingRuleOptions, chargeOptions,
-                taxGroupOptions, chartTemplate);
+                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled,
+                data.earlyWithdrawalChargeId, data.charges, data.charts, currencyOptions, interestCompoundingPeriodTypeOptions,
+                interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
+                lockinPeriodFrequencyTypeOptions, accountingRuleOptions, chargeOptions, taxGroupOptions, chartTemplate);
     }
 
     public static DynamicDepositProductData withCharts(final DynamicDepositProductData data,
@@ -152,7 +157,8 @@ public class DynamicDepositProductData implements Serializable {
                 data.nominalAnnualInterestRate, data.interestCompoundingPeriodType, data.interestPostingPeriodType,
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.lockinPeriodFrequency,
                 data.lockinPeriodFrequencyType, data.accountingRule, data.minBalanceForInterestCalculation, data.withHoldTax,
-                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, data.charges, charts);
+                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled,
+                data.earlyWithdrawalChargeId, data.charges, charts);
     }
 
     public static DynamicDepositProductData withCharges(final DynamicDepositProductData data, final Collection<ChargeData> charges) {
@@ -160,7 +166,8 @@ public class DynamicDepositProductData implements Serializable {
                 data.nominalAnnualInterestRate, data.interestCompoundingPeriodType, data.interestPostingPeriodType,
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.lockinPeriodFrequency,
                 data.lockinPeriodFrequencyType, data.accountingRule, data.minBalanceForInterestCalculation, data.withHoldTax,
-                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, charges, data.charts);
+                data.taxGroupId, data.allowWithdrawal, data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled,
+                data.earlyWithdrawalChargeId, charges, data.charts);
     }
 
     public Long id() {

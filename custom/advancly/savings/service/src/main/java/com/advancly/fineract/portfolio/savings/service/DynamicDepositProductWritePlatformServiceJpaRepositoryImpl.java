@@ -18,12 +18,18 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
+
+import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositProductNotFoundException;
+import com.advancly.fineract.portfolio.savings.validator.DynamicDepositEarlyWithdrawalChargeValidator;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositProductDataValidator;
 import jakarta.persistence.PersistenceException;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -55,15 +61,18 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final DynamicDepositProductRepository dynamicDepositProductRepository;
     private final DynamicDepositProductDataValidator fromApiJsonDataValidator;
     private final DynamicDepositProductAssembler dynamicDepositProductAssembler;
+    private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
 
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
             final DynamicDepositProductDataValidator fromApiJsonDataValidator,
-            final DynamicDepositProductAssembler dynamicDepositProductAssembler) {
+            final DynamicDepositProductAssembler dynamicDepositProductAssembler,
+            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
         this.context = context;
         this.dynamicDepositProductRepository = dynamicDepositProductRepository;
         this.fromApiJsonDataValidator = fromApiJsonDataValidator;
         this.dynamicDepositProductAssembler = dynamicDepositProductAssembler;
+        this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
     }
 
     @Transactional
@@ -76,6 +85,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             final DynamicDepositProduct product = this.dynamicDepositProductAssembler.assembleDynamicDepositProduct(command);
 
             this.dynamicDepositProductRepository.saveAndFlush(product);
+            reconcileEarlyWithdrawalChargeSelection(product, command);
 
             return new CommandProcessingResultBuilder() //
                     .withEntityId(product.getId()) //
@@ -118,6 +128,12 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
                 this.dynamicDepositProductRepository.saveAndFlush(product);
             }
 
+            // Reconciled unconditionally and AFTER the charges block above, so the selection is always validated
+            // against the product's current m_savings_product_charge set. An update that removes or deactivates the
+            // selected charge while the penalty is still enabled therefore fails loudly rather than leaving the
+            // product in a state where early withdrawal silently charges nothing.
+            reconcileEarlyWithdrawalChargeSelection(product, command);
+
             return new CommandProcessingResultBuilder() //
                     .withEntityId(product.getId()) //
                     .with(changes).build();
@@ -142,6 +158,32 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
         return new CommandProcessingResultBuilder() //
                 .withEntityId(product.getId()) //
                 .build();
+    }
+
+    /**
+     * Applies the request's early-withdrawal penalty charge selection (implementation plan Section 2) with
+     * replace-rather-than-append semantics, which is the primary enforcement of "only one active early-withdrawal
+     * charge per dynamic deposit product". When the request omits {@code earlyWithdrawalChargeId} entirely, the
+     * currently-stored selection is re-validated instead, so a partial product update never silently drops it.
+     */
+    private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
+        final List<DepositProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
+                .findBySavingsProductId(product.getId());
+        DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(existingRows);
+
+        final Long requestedChargeId = command.parameterExists(earlyWithdrawalChargeIdParamName)
+                ? command.longValueOfParameterNamed(earlyWithdrawalChargeIdParamName)
+                : (existingRows.isEmpty() ? null : existingRows.get(0).chargeId());
+
+        final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator
+                .validateAndResolve(product.isEarlyWithdrawalPenaltyEnabled(), requestedChargeId, product.charges());
+
+        this.earlyWithdrawalChargeRepository.deleteAll(existingRows);
+        this.earlyWithdrawalChargeRepository.flush();
+        if (resolvedCharge != null) {
+            this.earlyWithdrawalChargeRepository
+                    .saveAndFlush(DepositProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId()));
+        }
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dae) {

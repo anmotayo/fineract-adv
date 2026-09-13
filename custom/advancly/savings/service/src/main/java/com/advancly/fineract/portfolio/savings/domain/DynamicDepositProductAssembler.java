@@ -21,6 +21,7 @@ package com.advancly.fineract.portfolio.savings.domain;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -126,11 +127,16 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final boolean allowWithdrawal = allowWithdrawalValue == null || allowWithdrawalValue;
         final Boolean dynamicRateEnabledValue = command.booleanObjectValueOfParameterNamed(dynamicRateEnabledParamName);
         final boolean dynamicRateEnabled = dynamicRateEnabledValue != null && dynamicRateEnabledValue;
+        // Defaults to false: an existing product that never sends the flag keeps the pre-Phase-4 behaviour of never
+        // levying an early-withdrawal penalty.
+        final Boolean earlyWithdrawalPenaltyEnabledValue = command
+                .booleanObjectValueOfParameterNamed(earlyWithdrawalPenaltyEnabledParamName);
+        final boolean earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabledValue != null && earlyWithdrawalPenaltyEnabledValue;
 
         return DynamicDepositProduct.createNew(name, shortName, description, currency, interestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,
                 lockinPeriodFrequencyType, accountingRuleType, charges, charts, minBalanceForInterestCalculation, withHoldTax, taxGroup,
-                allowWithdrawal, dynamicRateEnabled);
+                allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
     }
 
     private Set<InterestRateChart> assembleListOfCharts(final JsonCommand command, final String currencyCode,

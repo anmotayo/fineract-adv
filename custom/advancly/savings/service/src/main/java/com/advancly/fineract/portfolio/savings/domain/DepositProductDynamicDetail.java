@@ -20,6 +20,7 @@ package com.advancly.fineract.portfolio.savings.domain;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -53,23 +54,33 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
     @Column(name = "dynamic_rate_enabled", nullable = false)
     private boolean dynamicRateEnabled;
 
+    /**
+     * Phase 4 (implementation plan Section 2): gate for the early-withdrawal penalty mechanism. When {@code false}, no
+     * pending {@code m_deposit_account_interest_charge} row is ever created for accounts of this product, whatever is
+     * selected in {@code m_deposit_product_early_withdrawal_charge}.
+     */
+    @Column(name = "early_withdrawal_penalty_enabled", nullable = false)
+    private boolean earlyWithdrawalPenaltyEnabled;
+
     protected DepositProductDynamicDetail() {
         //
     }
 
-    private DepositProductDynamicDetail(final SavingsProduct product, final boolean allowWithdrawal, final boolean dynamicRateEnabled) {
+    private DepositProductDynamicDetail(final SavingsProduct product, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
+            final boolean earlyWithdrawalPenaltyEnabled) {
         this.product = product;
         this.allowWithdrawal = allowWithdrawal;
         this.dynamicRateEnabled = dynamicRateEnabled;
+        this.earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabled;
     }
 
     public static DepositProductDynamicDetail createNew(final SavingsProduct product, final boolean allowWithdrawal,
-            final boolean dynamicRateEnabled) {
-        return new DepositProductDynamicDetail(product, allowWithdrawal, dynamicRateEnabled);
+            final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled) {
+        return new DepositProductDynamicDetail(product, allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
     }
 
     public Map<String, Object> update(final JsonCommand command) {
-        final Map<String, Object> actualChanges = new LinkedHashMap<>(2);
+        final Map<String, Object> actualChanges = new LinkedHashMap<>(3);
 
         if (command.isChangeInBooleanParameterNamed(allowWithdrawalParamName, this.allowWithdrawal)) {
             final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(allowWithdrawalParamName);
@@ -81,6 +92,12 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
             final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(dynamicRateEnabledParamName);
             actualChanges.put(dynamicRateEnabledParamName, newValue);
             this.dynamicRateEnabled = newValue;
+        }
+
+        if (command.isChangeInBooleanParameterNamed(earlyWithdrawalPenaltyEnabledParamName, this.earlyWithdrawalPenaltyEnabled)) {
+            final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(earlyWithdrawalPenaltyEnabledParamName);
+            actualChanges.put(earlyWithdrawalPenaltyEnabledParamName, newValue);
+            this.earlyWithdrawalPenaltyEnabled = newValue;
         }
 
         return actualChanges;
@@ -100,5 +117,9 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicRateEnabled;
+    }
+
+    public boolean isEarlyWithdrawalPenaltyEnabled() {
+        return this.earlyWithdrawalPenaltyEnabled;
     }
 }

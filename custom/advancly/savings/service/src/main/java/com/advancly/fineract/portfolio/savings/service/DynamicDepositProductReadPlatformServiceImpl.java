@@ -122,7 +122,7 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
         final InterestRateChartData chartTemplate = this.chartReadPlatformService.template();
 
         final DynamicDepositProductData data = new DynamicDepositProductData(null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, false, null, false, false, null, null);
+                null, null, null, null, false, null, false, false, false, null, null, null);
         return DynamicDepositProductData.withTemplateOptions(data, currencyOptions, compoundingInterestPeriodTypeOptions,
                 interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
                 lockinPeriodFrequencyTypeOptions, accountingRuleOptions, chargeOptions, taxGroupOptions, chartTemplate);
@@ -156,11 +156,14 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sp.min_balance_for_interest_calculation as minBalanceForInterestCalculation, ");
             sqlBuilder.append("sp.withhold_tax as withHoldTax, ");
             sqlBuilder.append("tg.id as taxGroupId, ");
-            sqlBuilder.append("ddd.allow_withdrawal as allowWithdrawal, ddd.dynamic_rate_enabled as dynamicRateEnabled ");
+            sqlBuilder.append("ddd.allow_withdrawal as allowWithdrawal, ddd.dynamic_rate_enabled as dynamicRateEnabled, ");
+            sqlBuilder.append("ddd.early_withdrawal_penalty_enabled as earlyWithdrawalPenaltyEnabled, ");
+            sqlBuilder.append("ewc.charge_id as earlyWithdrawalChargeId ");
             sqlBuilder.append("from m_savings_product sp ");
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id ");
             sqlBuilder.append("left join m_deposit_product_dynamic_detail ddd on ddd.savings_product_id = sp.id ");
+            sqlBuilder.append("left join m_deposit_product_early_withdrawal_charge ewc on ewc.savings_product_id = sp.id ");
             return sqlBuilder.toString();
         }
 
@@ -212,11 +215,13 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
 
             final boolean allowWithdrawal = rs.getBoolean("allowWithdrawal");
             final boolean dynamicRateEnabled = rs.getBoolean("dynamicRateEnabled");
+            final boolean earlyWithdrawalPenaltyEnabled = rs.getBoolean("earlyWithdrawalPenaltyEnabled");
+            final Long earlyWithdrawalChargeId = JdbcSupport.getLong(rs, "earlyWithdrawalChargeId");
 
             return new DynamicDepositProductData(id, name, shortName, description, currency, nominalAnnualInterestRate,
                     interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
                     lockinPeriodFrequency, lockinPeriodFrequencyType, accountingRuleType, minBalanceForInterestCalculation, withHoldTax,
-                    taxGroupId, allowWithdrawal, dynamicRateEnabled, null, null);
+                    taxGroupId, allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, null, null);
         }
     }
 }

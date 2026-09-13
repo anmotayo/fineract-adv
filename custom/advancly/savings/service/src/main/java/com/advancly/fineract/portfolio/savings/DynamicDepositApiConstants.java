@@ -41,18 +41,24 @@ public final class DynamicDepositApiConstants {
     public static final String allowWithdrawalParamName = "allowWithdrawal";
     public static final String dynamicRateEnabledParamName = "dynamicRateEnabled";
 
-    // product parameters
-    public static final Set<String> DYNAMIC_DEPOSIT_PRODUCT_REQUEST_DATA_PARAMETERS = new HashSet<>(Arrays.asList("locale", "name",
-            "shortName", "description", "currencyCode", "digitsAfterDecimal", "inMultiplesOf", "nominalAnnualInterestRate",
-            "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType", "interestCalculationDaysInYearType",
-            "lockinPeriodFrequency", "lockinPeriodFrequencyType", "accountingRule", "charges", "charts", "minBalanceForInterestCalculation",
-            "withHoldTax", "taxGroupId", allowWithdrawalParamName, dynamicRateEnabledParamName));
+    // product-only early-withdrawal penalty parameters (implementation plan Section 2 / Phase 4)
+    public static final String earlyWithdrawalPenaltyEnabledParamName = "earlyWithdrawalPenaltyEnabled";
+    public static final String earlyWithdrawalChargeIdParamName = "earlyWithdrawalChargeId";
 
-    public static final Set<String> DYNAMIC_DEPOSIT_PRODUCT_RESPONSE_DATA_PARAMETERS = new HashSet<>(Arrays.asList("id", "name",
-            "shortName", "description", "currency", "nominalAnnualInterestRate", "interestCompoundingPeriodType",
-            "interestPostingPeriodType", "interestCalculationType", "interestCalculationDaysInYearType", "lockinPeriodFrequency",
-            "lockinPeriodFrequencyType", "accountingRule", "charges", "charts", "minBalanceForInterestCalculation", "withHoldTax",
-            "taxGroupId", allowWithdrawalParamName, dynamicRateEnabledParamName));
+    // product parameters
+    public static final Set<String> DYNAMIC_DEPOSIT_PRODUCT_REQUEST_DATA_PARAMETERS = new HashSet<>(
+            Arrays.asList("locale", "name", "shortName", "description", "currencyCode", "digitsAfterDecimal", "inMultiplesOf",
+                    "nominalAnnualInterestRate", "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType",
+                    "interestCalculationDaysInYearType", "lockinPeriodFrequency", "lockinPeriodFrequencyType", "accountingRule", "charges",
+                    "charts", "minBalanceForInterestCalculation", "withHoldTax", "taxGroupId", allowWithdrawalParamName,
+                    dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName));
+
+    public static final Set<String> DYNAMIC_DEPOSIT_PRODUCT_RESPONSE_DATA_PARAMETERS = new HashSet<>(
+            Arrays.asList("id", "name", "shortName", "description", "currency", "nominalAnnualInterestRate",
+                    "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType",
+                    "interestCalculationDaysInYearType", "lockinPeriodFrequency", "lockinPeriodFrequencyType", "accountingRule", "charges",
+                    "charts", "minBalanceForInterestCalculation", "withHoldTax", "taxGroupId", allowWithdrawalParamName,
+                    dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName));
 
     // account parameters
     public static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS = new HashSet<>(Arrays.asList("locale", "dateFormat",

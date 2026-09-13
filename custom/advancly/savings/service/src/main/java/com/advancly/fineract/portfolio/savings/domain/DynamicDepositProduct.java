@@ -88,7 +88,8 @@ public class DynamicDepositProduct extends SavingsProduct {
             final SavingsInterestCalculationDaysInYearType interestCalculationDaysInYearType, final Integer lockinPeriodFrequency,
             final SavingsPeriodFrequencyType lockinPeriodFrequencyType, final AccountingRuleType accountingRuleType,
             final Set<Charge> charges, final Set<InterestRateChart> charts, final BigDecimal minBalanceForInterestCalculation,
-            final boolean withHoldTax, final TaxGroup taxGroup, final boolean allowWithdrawal, final boolean dynamicRateEnabled) {
+            final boolean withHoldTax, final TaxGroup taxGroup, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
+            final boolean earlyWithdrawalPenaltyEnabled) {
 
         final BigDecimal minRequiredOpeningBalance = null;
         final boolean withdrawalFeeApplicableForTransfer = false;
@@ -102,7 +103,7 @@ public class DynamicDepositProduct extends SavingsProduct {
                 taxGroup);
 
         final DepositProductDynamicDetail dynamicDetail = DepositProductDynamicDetail.createNew(product, allowWithdrawal,
-                dynamicRateEnabled);
+                dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
         product.dynamicDetail = dynamicDetail;
 
         return product;
@@ -168,6 +169,10 @@ public class DynamicDepositProduct extends SavingsProduct {
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
+    }
+
+    public boolean isEarlyWithdrawalPenaltyEnabled() {
+        return this.dynamicDetail != null && this.dynamicDetail.isEarlyWithdrawalPenaltyEnabled();
     }
 
     @Override

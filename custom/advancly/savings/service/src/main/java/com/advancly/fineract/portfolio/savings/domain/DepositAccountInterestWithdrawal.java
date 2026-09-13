@@ -18,6 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.domain;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
@@ -44,11 +45,17 @@ public class DepositAccountInterestWithdrawal extends AbstractAuditableWithUTCDa
     @JoinColumn(name = "savings_account_id", nullable = false)
     private SavingsAccount account;
 
-    @ManyToOne(optional = false)
+    // cascade = PERSIST: the interest-posting and withdrawal transactions that triggered this row may not yet be
+    // flushed/have a generated id at the point this row is created (Task 5's logic will construct this row around the
+    // same time the withdrawal transaction itself is created). Cascading persist here is safe and idempotent even when
+    // either transaction is also reachable via the account's own transaction collection, since it is the same managed
+    // Java instance within the current persistence context.
+    @ManyToOne(optional = false, cascade = CascadeType.PERSIST)
     @JoinColumn(name = "interest_posting_transaction_id", nullable = false)
     private SavingsAccountTransaction interestPostingTransaction;
 
-    @ManyToOne(optional = false)
+    // cascade = PERSIST: see comment on interestPostingTransaction field above.
+    @ManyToOne(optional = false, cascade = CascadeType.PERSIST)
     @JoinColumn(name = "withdrawal_transaction_id", nullable = false)
     private SavingsAccountTransaction withdrawalTransaction;
 

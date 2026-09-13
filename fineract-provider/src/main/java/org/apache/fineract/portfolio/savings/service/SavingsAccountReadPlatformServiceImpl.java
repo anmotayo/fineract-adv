@@ -242,7 +242,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             final Integer status, final Long maxSavingsId) {
         LocalDate yesterday = DateUtils.getBusinessLocalDate().minusDays(1);
         String sql = "select " + this.savingAccountMapperForInterestPosting.schema()
-                + "join (select a.id from m_savings_account a where a.id > ? and a.status_enum = ? limit ?) b on b.id = sa.id ";
+                + "join (select a.id from m_savings_account a where a.id > ? and a.status_enum = ? and (a.deposit_type_enum is null or a.deposit_type_enum != 500) limit ?) b on b.id = sa.id ";
         if (backdatedTxnsAllowedTill) {
             sql = sql
                     + "where (CASE WHEN sa.interest_posted_till_date is not null THEN tr.transaction_date >= sa.interest_posted_till_date ELSE tr.transaction_date >= sa.activatedon_date END) ";

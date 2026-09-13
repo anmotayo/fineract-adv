@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements. See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership. The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License. You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied. See the License for the
+    specific language governing permissions and limitations
+    under the License.
+
+-->
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <property name="current_datetime" value="NOW()"/>
+
+    <!--
+        Registers the "Post Interest For Dynamic Deposit" scheduled job (Task 7) - see
+        DynamicDepositPostInterestConfig/DynamicDepositPostInterestTasklet. Column list mirrors the real `job` table
+        schema (fineract-provider 0001_initial_schema.xml createTable + the later 0145/0146 `short_name` NOT NULL
+        migration), following the most recent core precedent for adding a job row post-short_name
+        (0201_add_journal_entry_aggregation_job.xml), not the older bootstrap-seed rows in 0002_initial_data.xml which
+        predate that column and used explicit static `id` values that don't apply once auto-increment is live. `id`
+        is deliberately omitted so the table's auto-increment assigns one.
+    -->
+    <changeSet author="advancly" id="1">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">select count(1) from job where short_name = 'DD_PINT'</sqlCheck>
+        </preConditions>
+        <insert tableName="job">
+            <column name="name" value="Post Interest For Dynamic Deposit"/>
+            <column name="display_name" value="Post Interest For Dynamic Deposit"/>
+            <column name="cron_expression" value="0 0 0 1/1 * ? *"/>
+            <column name="create_time" valueDate="${current_datetime}"/>
+            <column name="task_priority" valueNumeric="5"/>
+            <column name="group_name"/>
+            <column name="previous_run_start_time"/>
+            <column name="job_key" value="Post Interest For Dynamic DepositJobDetail1 _ DEFAULT"/>
+            <column name="initializing_errorlog"/>
+            <column name="is_active" valueBoolean="true"/>
+            <column name="currently_running" valueBoolean="false"/>
+            <column name="updates_allowed" valueBoolean="true"/>
+            <column name="scheduler_group" valueNumeric="0"/>
+            <column name="is_misfired" valueBoolean="false"/>
+            <column name="node_id" valueNumeric="1"/>
+            <column name="is_mismatched_job" valueBoolean="true"/>
+            <column name="short_name" value="DD_PINT"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

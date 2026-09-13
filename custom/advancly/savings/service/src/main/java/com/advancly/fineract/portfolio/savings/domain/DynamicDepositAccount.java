@@ -178,17 +178,36 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
-     * Mirrors {@code FixedDepositAccount}/{@code RecurringDepositAccount}#withHoldTaxPostingType(), reading the same
-     * {@code withhold_tax_posting_type_enum} config off the reused, generic {@link DepositAccountTermAndPreClosure}
-     * this class already composes. Without this override, {@code SavingsAccount}'s base implementation (hard-coded
-     * {@code null}) combined with the {@code depositAccountType()} override above would make
-     * {@code isWithHoldTaxApplicable(...)} unconditionally {@code false} for every Dynamic Deposit account, regardless
-     * of the {@code withHoldTax} flag - silently disabling withholding tax for this product type.
+     * Structural mirror of {@code FixedDepositAccount}/{@code RecurringDepositAccount}#withHoldTaxPostingType(),
+     * reading the same {@code withhold_tax_posting_type_enum} config off the reused, generic
+     * {@link DepositAccountTermAndPreClosure} this class already composes. In practice this always returns {@code null}
+     * today: neither {@code DynamicDepositAccountAssembler} nor {@code DynamicDepositApiConstants} ever populate or
+     * accept a {@code withHoldTaxPostingTypeId} for a Dynamic Deposit account or product (Phase 1 deliberately has no
+     * product-level {@code DepositProductTermAndPreClosure}-equivalent to default from either). Kept for structural
+     * parity with FD/RD and in case a future phase adds real posting-type support - see
+     * {@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)} below, which does NOT consult this method's return
+     * value, precisely because it can never be meaningfully populated yet.
      */
     @Override
     protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
         return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
+    }
+
+    /**
+     * {@code SavingsAccount}'s base implementation is {@code withHoldTax() && (depositAccountType().isSavingsDeposit()
+     * || (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()))} - the first disjunct is
+     * {@code false} for Dynamic Deposit (see the {@code depositAccountType()} override above), and the second can never
+     * be {@code true} either, since {@link #withHoldTaxPostingType()} always returns {@code null} in practice (see its
+     * javadoc). Left as-is, that combination would make withholding tax unconditionally unavailable for Dynamic Deposit
+     * accounts regardless of the {@code withHoldTax} flag - silently disabling this fork's original core feature for
+     * the new product type. Rather than adding new API surface to configure a real posting type (a deliberate product
+     * decision for a future phase), this override restores the simpler, previously-working behaviour: for Dynamic
+     * Deposit, WHT applicability is keyed on the {@code withHoldTax} flag alone.
+     */
+    @Override
+    public boolean isWithHoldTaxApplicable(final WithHoldTaxPostingType withHoldTaxPostingType) {
+        return withHoldTax();
     }
 
     public boolean isAllowWithdrawal() {

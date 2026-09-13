@@ -29,56 +29,68 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * Regression test for the withholding-tax regression introduced alongside the
- * {@code DynamicDepositAccount#depositAccountType()} fix (task 1 of the interest-based-charges plan): before that fix,
- * {@code depositAccountType()} wrongly returned {@code SAVINGS_DEPOSIT}, so
- * {@code SavingsAccount#isWithHoldTaxApplicable} short-circuited to {@code true} via its
- * {@code depositAccountType().isSavingsDeposit()} disjunct regardless of the account's actual WHT-posting-type config.
- * Once {@code depositAccountType()} correctly reports {@code DYNAMIC_DEPOSIT}, that disjunct becomes {@code false}, and
- * without an override reading the account's configured {@code withHoldTaxPostingType} (mirroring
- * {@code FixedDepositAccount}/{@code RecurringDepositAccount}), withholding tax would be silently disabled for every
- * Dynamic Deposit account.
+ * {@code DynamicDepositAccount#depositAccountType()} fix (task 1 of the interest-based-charges plan, commit ffbb00218):
+ * before that fix, {@code depositAccountType()} wrongly returned {@code SAVINGS_DEPOSIT}, so
+ * {@code SavingsAccount#isWithHoldTaxApplicable} short-circuited to {@code true} regardless of any posting-type config.
+ * Once {@code depositAccountType()} correctly reports {@code DYNAMIC_DEPOSIT}, that base-class logic falls back to a
+ * posting-type-gated check - but Dynamic Deposit has no real posting-type configuration surface at all (see
+ * {@code DynamicDepositAccount#withHoldTaxPostingType()}'s javadoc: neither the assembler nor the API constants ever
+ * populate/accept one), so {@code accountTermAndPreClosure.getWithHoldTaxPostingType()} is always {@code null} for
+ * every account actually created through the API. {@code DynamicDepositAccount} therefore overrides
+ * {@code isWithHoldTaxApplicable(...)} to key on the {@code withHoldTax} flag alone, restoring the previously-working
+ * (if accidental) behaviour without adding new API surface.
+ *
+ * <p>
+ * {@link #buildRealisticAccount(boolean)} below constructs {@code accountTermAndPreClosure} exactly the way
+ * {@code DynamicDepositAccountAssembler} does in production - {@code withHoldTaxPostingType} always {@code null} - so
+ * these tests exercise the actual, reachable state of a real Dynamic Deposit account, not a hypothetical one.
  */
 class DynamicDepositAccountWithHoldTaxTest {
 
     @Test
-    void withHoldTaxEnabledAndInterestPostingConfigured_isApplicable() {
-        final DynamicDepositAccount account = buildAccount(true, WithHoldTaxPostingType.INTEREST_POSTING);
+    void withHoldTaxEnabled_onARealisticallyConfiguredAccount_isApplicable() {
+        final DynamicDepositAccount account = buildRealisticAccount(true);
 
         assertThat(account.depositAccountType()).isEqualTo(DepositAccountType.DYNAMIC_DEPOSIT);
-        assertThat(account.withHoldTaxPostingType()).isEqualTo(WithHoldTaxPostingType.INTEREST_POSTING);
+        // Matches what DynamicDepositAccountAssembler actually produces - never anything else today.
+        assertThat(account.withHoldTaxPostingType()).isNull();
         assertThat(account.isWithHoldTaxApplicable(account.withHoldTaxPostingType())).isTrue();
     }
 
     @Test
-    void withHoldTaxDisabled_isNeverApplicableEvenWithPostingTypeConfigured() {
-        final DynamicDepositAccount account = buildAccount(false, WithHoldTaxPostingType.INTEREST_POSTING);
+    void withHoldTaxDisabled_onARealisticallyConfiguredAccount_isNotApplicable() {
+        final DynamicDepositAccount account = buildRealisticAccount(false);
 
         assertThat(account.isWithHoldTaxApplicable(account.withHoldTaxPostingType())).isFalse();
     }
 
+    /**
+     * Documents the current override's actual behaviour, should Dynamic Deposit ever gain real posting-type
+     * configuration in a future phase: {@code isWithHoldTaxApplicable(...)} deliberately ignores its argument for this
+     * class, so even a (today unreachable) non-null posting type has no effect - only the {@code withHoldTax} flag
+     * decides. If a future task wires up real posting-type support, this override (and this test) is the place to
+     * revisit.
+     */
     @Test
-    void withHoldTaxEnabledButNoPostingTypeConfigured_isNotApplicable() {
-        final DynamicDepositAccount account = buildAccount(true, null);
+    void withHoldTaxEnabled_evenIfAPostingTypeWereHypotheticallyConfigured_stillOnlyDependsOnTheFlag() {
+        final DynamicDepositAccount account = createInstance(DynamicDepositAccount.class);
+        account.setWithHoldTax(true);
+        final DepositAccountTermAndPreClosure accountTermAndPreClosure = DepositAccountTermAndPreClosure.createNew(null, null, null, null,
+                null, null, null, null, null, null, false, null, WithHoldTaxPostingType.MATURITY);
+        ReflectionTestUtils.setField(account, "accountTermAndPreClosure", accountTermAndPreClosure);
 
-        assertThat(account.withHoldTaxPostingType()).isNull();
-        assertThat(account.isWithHoldTaxApplicable(account.withHoldTaxPostingType())).isFalse();
+        assertThat(account.withHoldTaxPostingType()).isEqualTo(WithHoldTaxPostingType.MATURITY);
+        assertThat(account.isWithHoldTaxApplicable(account.withHoldTaxPostingType())).isTrue();
     }
 
-    @Test
-    void withHoldTaxEnabledAndMaturityPostingConfigured_isNotApplicable() {
-        // Only INTEREST_POSTING makes isWithHoldTaxApplicable true for a non-SAVINGS_DEPOSIT account - MATURITY
-        // withholding is handled through a different path (account closure), not interest posting.
-        final DynamicDepositAccount account = buildAccount(true, WithHoldTaxPostingType.MATURITY);
-
-        assertThat(account.isWithHoldTaxApplicable(account.withHoldTaxPostingType())).isFalse();
-    }
-
-    private DynamicDepositAccount buildAccount(final boolean withHoldTax, final WithHoldTaxPostingType withHoldTaxPostingType) {
+    private DynamicDepositAccount buildRealisticAccount(final boolean withHoldTax) {
         final DynamicDepositAccount account = createInstance(DynamicDepositAccount.class);
         account.setWithHoldTax(withHoldTax);
 
+        // Mirrors DynamicDepositAccountAssembler#assembleDynamicDepositAccount exactly: withHoldTaxPostingType is
+        // always passed as null - there is no product- or account-level parameter to populate it from.
         final DepositAccountTermAndPreClosure accountTermAndPreClosure = DepositAccountTermAndPreClosure.createNew(null, null, null, null,
-                null, null, null, null, null, null, false, null, withHoldTaxPostingType);
+                null, null, null, null, null, null, false, null, null);
         ReflectionTestUtils.setField(account, "accountTermAndPreClosure", accountTermAndPreClosure);
 
         return account;

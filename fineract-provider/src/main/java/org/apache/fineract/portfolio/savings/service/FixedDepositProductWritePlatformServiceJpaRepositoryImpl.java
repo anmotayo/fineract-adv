@@ -108,9 +108,9 @@ public class FixedDepositProductWritePlatformServiceJpaRepositoryImpl implements
 
             if (changes.containsKey(chargesParamName)) {
                 final Set<Charge> savingsProductCharges = this.depositProductAssembler.assembleListOfSavingsProductCharges(command,
-                        product.currency().getCode(), chargesParamName);
+                        product.currency().getCode(), chargesParamName, DepositAccountType.FIXED_DEPOSIT);
                 final Set<Charge> savingsProductAccrualCharges = this.depositProductAssembler.assembleListOfSavingsProductCharges(command,
-                        product.currency().getCode(), accrualChargesParamName);
+                        product.currency().getCode(), accrualChargesParamName, DepositAccountType.FIXED_DEPOSIT);
 
                 final boolean updated = product.update(savingsProductCharges, savingsProductAccrualCharges);
                 if (!updated) {

@@ -50,7 +50,8 @@ public enum ChargeCalculationType {
     }
 
     public static Object[] validValuesForSavings() {
-        return new Integer[] { ChargeCalculationType.FLAT.getValue(), ChargeCalculationType.PERCENT_OF_AMOUNT.getValue() };
+        return new Integer[] { ChargeCalculationType.FLAT.getValue(), ChargeCalculationType.PERCENT_OF_AMOUNT.getValue(),
+                ChargeCalculationType.PERCENT_OF_INTEREST.getValue() };
     }
 
     public static Object[] validValuesForShares() {
@@ -97,7 +98,7 @@ public enum ChargeCalculationType {
     }
 
     public boolean isAllowedSavingsChargeCalculationType() {
-        return isFlat() || isPercentageOfAmount();
+        return isFlat() || isPercentageOfAmount() || isPercentageOfInterest();
     }
 
     public boolean isAllowedClientChargeCalculationType() {

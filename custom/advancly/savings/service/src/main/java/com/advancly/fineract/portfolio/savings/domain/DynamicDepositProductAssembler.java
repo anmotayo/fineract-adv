@@ -39,6 +39,7 @@ import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
@@ -103,7 +104,8 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final AccountingRuleType accountingRuleType = AccountingRuleType
                 .fromInt(command.integerValueOfParameterNamed(DepositsApiConstants.accountingRuleParamName));
 
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, SavingsApiConstants.chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, SavingsApiConstants.chargesParamName,
+                DepositAccountType.DYNAMIC_DEPOSIT);
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)

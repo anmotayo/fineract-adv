@@ -33,6 +33,7 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuild
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,7 +103,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
 
             if (changes.containsKey(SavingsApiConstants.chargesParamName)) {
                 final Set<Charge> savingsProductCharges = this.dynamicDepositProductAssembler.assembleListOfSavingsProductCharges(command,
-                        product.currency().getCode(), SavingsApiConstants.chargesParamName);
+                        product.currency().getCode(), SavingsApiConstants.chargesParamName, DepositAccountType.DYNAMIC_DEPOSIT);
                 final boolean updated = product.update(savingsProductCharges, null);
                 if (!updated) {
                     changes.remove(SavingsApiConstants.chargesParamName);

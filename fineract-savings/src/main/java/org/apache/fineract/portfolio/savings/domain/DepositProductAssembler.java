@@ -72,6 +72,7 @@ import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
@@ -159,7 +160,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
                 depositTermDetail, depositProductAmountDetails, null, withHoldTaxPostingType);
 
         // Savings product charges
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName,
+                DepositAccountType.FIXED_DEPOSIT);
         // Interest rate charts
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
@@ -261,7 +263,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final DepositProductRecurringDetail productRecurringDetail = DepositProductRecurringDetail.createNew(recurringDetail, null);
 
         // Savings product charges
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName,
+                DepositAccountType.RECURRING_DEPOSIT);
         // Interest rate charts
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)

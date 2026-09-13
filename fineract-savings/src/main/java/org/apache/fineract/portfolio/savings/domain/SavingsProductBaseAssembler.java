@@ -29,8 +29,10 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.organisation.monetary.exception.InvalidCurrencyException;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.charge.exception.ChargeCannotBeAppliedToException;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 
@@ -41,7 +43,7 @@ public class SavingsProductBaseAssembler {
     protected final TaxGroupRepositoryWrapper taxGroupRepository;
 
     public Set<Charge> assembleListOfSavingsProductCharges(final JsonCommand command, final String savingsProductCurrencyCode,
-            final String chargesParameterName) {
+            final String chargesParameterName, final DepositAccountType depositAccountType) {
 
         final Set<Charge> charges = new HashSet<>();
 
@@ -65,6 +67,21 @@ public class SavingsProductBaseAssembler {
                         if (!savingsProductCurrencyCode.equals(charge.getCurrencyCode())) {
                             final String errorMessage = "Charge and Savings Product must have the same currency.";
                             throw new InvalidCurrencyException("charge", "attach.to.savings.product", errorMessage);
+                        }
+
+                        final ChargeCalculationType calculationType = ChargeCalculationType.fromInt(charge.getChargeCalculation());
+
+                        if (calculationType.isPercentageOfAmountAndInterest()) {
+                            final String errorMessage = "Charge with identifier " + charge.getId()
+                                    + " uses a calculation type that is not supported for Savings products.";
+                            throw new ChargeCannotBeAppliedToException("savings.product.calculation.type.unsupported", errorMessage,
+                                    charge.getId());
+                        }
+
+                        if (!depositAccountType.isDynamicDeposit() && calculationType.isPercentageOfInterest()) {
+                            final String errorMessage = "Charge with identifier " + charge.getId()
+                                    + " uses an interest-based calculation type and can only be applied to a Dynamic Deposit product.";
+                            throw new ChargeCannotBeAppliedToException("savings.product.not.dynamic.deposit", errorMessage, charge.getId());
                         }
                         charges.add(charge);
                     }

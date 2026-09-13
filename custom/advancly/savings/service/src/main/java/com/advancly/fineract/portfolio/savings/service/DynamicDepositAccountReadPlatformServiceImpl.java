@@ -19,17 +19,26 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositAccountNotFoundException;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,12 +58,21 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     private final PlatformSecurityContext context;
     private final JdbcTemplate jdbcTemplate;
     private final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService;
+    private final SavingsAccountRepositoryWrapper savingsAccountRepository;
+    private final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository;
+    private final DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
 
     public DynamicDepositAccountReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
-            final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService) {
+            final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService,
+            final SavingsAccountRepositoryWrapper savingsAccountRepository,
+            final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository,
+            final DepositAccountDynamicRateHistoryRepository rateHistoryRepository) {
         this.context = context;
         this.jdbcTemplate = jdbcTemplate;
         this.dynamicDepositProductReadPlatformService = dynamicDepositProductReadPlatformService;
+        this.savingsAccountRepository = savingsAccountRepository;
+        this.interestWithdrawalRepository = interestWithdrawalRepository;
+        this.rateHistoryRepository = rateHistoryRepository;
     }
 
     @Override
@@ -73,6 +91,47 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         } catch (final EmptyResultDataAccessException e) {
             throw new DynamicDepositAccountNotFoundException(accountId);
         }
+    }
+
+    @Override
+    public DynamicDepositInterestSummaryData retrieveInterestSummary(final Long accountId) {
+        this.context.authenticatedUser();
+
+        final SavingsAccount account = this.savingsAccountRepository.findOneWithNotFoundDetection(accountId);
+        final SavingsAccountSummary summary = account.getSummary();
+
+        // Only three cumulative, life-to-date figures are available from the account's own summary this phase -
+        // this endpoint does no period-bucketing of its own (that is out of scope here; see the class javadoc).
+        // grossInterestEarnedAsAtToday and totalInterestForPeriod are therefore deliberately the same underlying
+        // figure: total interest earned by the account to date.
+        final BigDecimal grossInterestEarnedAsAtToday = defaultToZero(summary.getTotalInterestEarned());
+        final BigDecimal interestPosted = defaultToZero(summary.getTotalInterestPosted());
+        final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday;
+        final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
+        final BigDecimal interestBasedCharges = BigDecimal.ZERO;
+        final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
+
+        BigDecimal interestWithdrawn = BigDecimal.ZERO;
+        for (final DepositAccountInterestWithdrawal withdrawal : this.interestWithdrawalRepository
+                .findByAccountIdOrderByTransactionDateAscIdAsc(accountId)) {
+            interestWithdrawn = interestWithdrawn.add(withdrawal.withdrawnInterestAmount());
+        }
+
+        final BigDecimal netInterest = totalInterestForPeriod.subtract(withholdingTax).subtract(interestBasedCharges);
+
+        final List<DepositAccountDynamicRateHistory> rateHistoryRows = this.rateHistoryRepository
+                .findByAccountIdOrderByTransactionDateAscIdAsc(accountId);
+        final List<DynamicDepositInterestSummaryData.RateIntervalData> effectiveRateIntervals = rateHistoryRows.stream()
+                .map(row -> new DynamicDepositInterestSummaryData.RateIntervalData(row.transactionDate(),
+                        row.investedAmountAfterTransaction(), row.resolvedAnnualInterestRate(), row.rateSource()))
+                .toList();
+
+        return new DynamicDepositInterestSummaryData(grossInterestEarnedAsAtToday, interestPosted, totalInterestForPeriod,
+                interestWithdrawn, withholdingTax, interestBasedCharges, netInterest, interestTransferredToSavings, effectiveRateIntervals);
+    }
+
+    private static BigDecimal defaultToZero(final BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     @Override

@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import java.util.Collection;
 
 public interface DynamicDepositAccountReadPlatformService {
@@ -28,4 +29,6 @@ public interface DynamicDepositAccountReadPlatformService {
     DynamicDepositAccountData retrieveOne(Long accountId);
 
     DynamicDepositAccountData retrieveTemplate();
+
+    DynamicDepositInterestSummaryData retrieveInterestSummary(Long accountId);
 }

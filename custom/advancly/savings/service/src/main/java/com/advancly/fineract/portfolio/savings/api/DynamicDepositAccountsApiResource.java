@@ -22,6 +22,7 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountReadPlatformService;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -185,6 +186,19 @@ public class DynamicDepositAccountsApiResource {
 
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
         return this.toApiJsonSerializer.serialize(settings, accountData, DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS);
+    }
+
+    @GET
+    @Path("{accountId}/interest-summary")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String retrieveInterestSummary(@PathParam("accountId") final Long accountId) {
+
+        this.context.authenticatedUser().validateHasReadPermission(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+
+        final DynamicDepositInterestSummaryData summary = this.dynamicDepositAccountReadPlatformService.retrieveInterestSummary(accountId);
+
+        return this.toApiJsonSerializer.serialize(summary);
     }
 
     @GET

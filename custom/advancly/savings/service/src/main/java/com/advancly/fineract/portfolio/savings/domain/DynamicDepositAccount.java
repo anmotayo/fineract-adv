@@ -230,6 +230,65 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
+     * Phase 4 prerequisite. Mirrors {@code FixedDepositAccount#calculateMaturityDate()}: the fixed tenor
+     * ({@code depositPeriod} in {@code depositPeriodFrequencyType} units, held on the reused, generic
+     * {@link DepositAccountTermAndPreClosure}) added to {@code accountSubmittedOrActivationDate()} - so the anchor is
+     * the submitted-on date while the application is still pending and the activation date once the account is live.
+     * Unlike FD this returns {@code null} rather than NPE-ing when the term is unusable (FD dereferences its own result
+     * unguarded); {@link #updateMaturityDate()} treats {@code null} as "nothing to persist".
+     */
+    public LocalDate calculateMaturityDate() {
+        if (this.accountTermAndPreClosure == null) {
+            return null;
+        }
+        final Integer depositPeriod = this.accountTermAndPreClosure.depositPeriod();
+        final Integer depositPeriodFrequency = this.accountTermAndPreClosure.depositPeriodFrequency();
+        final LocalDate startDate = accountSubmittedOrActivationDate();
+        if (depositPeriod == null || depositPeriodFrequency == null || startDate == null) {
+            return null;
+        }
+        return switch (SavingsPeriodFrequencyType.fromInt(depositPeriodFrequency)) {
+            case DAYS -> startDate.plusDays(depositPeriod);
+            case WEEKS -> startDate.plusWeeks(depositPeriod);
+            case MONTHS -> startDate.plusMonths(depositPeriod);
+            case YEARS -> startDate.plusYears(depositPeriod);
+            case INVALID -> null;
+        };
+    }
+
+    /**
+     * Persists {@link #calculateMaturityDate()} onto the account's {@link DepositAccountTermAndPreClosure}. Phase 4
+     * deliberately stores the DATE ONLY: {@code FixedDepositAccount} also projects a {@code maturityAmount} via a full
+     * interest projection, which for Dynamic Deposit would mean projecting across every dynamic rate-history interval -
+     * out of scope for this phase and needed by none of its requirements. The currently-stored {@code maturityAmount}
+     * (always {@code null} today, since nothing writes it) is therefore passed straight back through, so this method
+     * never invents an amount.
+     */
+    public void updateMaturityDate() {
+        final LocalDate maturityDate = calculateMaturityDate();
+        if (maturityDate == null) {
+            return;
+        }
+        this.accountTermAndPreClosure.updateMaturityDetails(this.accountTermAndPreClosure.maturityAmount(), maturityDate);
+    }
+
+    public LocalDate maturityDate() {
+        return this.accountTermAndPreClosure == null ? null : this.accountTermAndPreClosure.getMaturityDate();
+    }
+
+    /**
+     * The binding Phase 4 definition of "early withdrawal": any withdrawal transaction dated strictly before the
+     * account's maturity date. Premature closure is covered by the same predicate, because every close-with-withdrawal
+     * path converges on a withdrawal transaction dated before maturity (see the plan's Global Constraints). Returns
+     * {@code false} when no maturity date has been computed, so an unactivated or misconfigured account can never be
+     * penalised.
+     */
+    public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
+        final LocalDate maturityDate = maturityDate();
+        return maturityDate != null && transactionDate != null && DateUtils.isBefore(transactionDate, maturityDate);
+    }
+
+    /**
      * Lets {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService} keep the account's
      * own rate current between Phase 2 (this class) and the Phase 3 interest engine landing (see implementation plan,
      * Section 8) - {@code SavingsAccount.nominalAnnualInterestRate} is {@code protected}, so a same-hierarchy setter is

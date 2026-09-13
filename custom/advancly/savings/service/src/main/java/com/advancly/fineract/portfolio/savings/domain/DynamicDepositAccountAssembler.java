@@ -262,6 +262,13 @@ public class DynamicDepositAccountAssembler {
                 dynamicRateEnabled);
         account.setDynamicDetail(dynamicDetail);
 
+        // Phase 4 prerequisite: compute and store the maturity date at submission time, mirroring how
+        // DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl#submitFDApplication calls
+        // FixedDepositAccount#updateMaturityDateAndAmountBeforeAccountActivation right after assembly. Anchored on
+        // submittedOnDate here (the account is not activated yet) and recomputed against the activation date in
+        // DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl#activate, exactly as FD does.
+        account.updateMaturityDate();
+
         account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
         account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 

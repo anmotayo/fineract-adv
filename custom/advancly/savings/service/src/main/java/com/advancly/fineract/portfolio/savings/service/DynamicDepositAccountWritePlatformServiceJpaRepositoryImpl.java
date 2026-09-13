@@ -155,6 +155,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
                     com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 
             if (!changes.isEmpty()) {
+                // depositPeriod / depositPeriodFrequencyId / submittedOnDate may all have changed, so the stored
+                // maturity date has to be recomputed before the account is saved (mirrors modifyFDApplication).
+                account.updateMaturityDate();
                 this.dynamicDepositAccountRepository.saveAndFlush(account);
             }
 
@@ -270,6 +273,11 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
 
         final Map<String, Object> changes = account.activate(currentUser, command);
         if (!changes.isEmpty()) {
+            // Re-anchor the maturity date on the activation date now that it exists -
+            // accountSubmittedOrActivationDate()
+            // switches from submittedOnDate to activatedOnDate the moment the account is activated, mirroring
+            // DepositAccountWritePlatformServiceJpaRepositoryImpl#activateFDAccount.
+            account.updateMaturityDate();
             // Mirrors SavingsAccountWritePlatformServiceJpaRepositoryImpl#activate: without this call, activation
             // never creates the opening-balance deposit transaction, so a Dynamic Deposit account would have no
             // transaction to key its first m_deposit_account_dynamic_rate_history row to (implementation plan,

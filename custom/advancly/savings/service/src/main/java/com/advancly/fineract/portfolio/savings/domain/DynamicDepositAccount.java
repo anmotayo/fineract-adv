@@ -27,8 +27,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToOne;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,7 +38,9 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
+import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
+import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
@@ -57,6 +61,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
+import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
+import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
 import org.apache.fineract.useradministration.domain.AppUser;
 
 /**
@@ -225,6 +231,272 @@ public class DynamicDepositAccount extends SavingsAccount {
         super.undoTransaction(transactionId);
         if (transactionToUndo != null) {
             DynamicDepositServiceLocator.rateHistoryService().reverseInvestedAmountForUndo(this, transactionToUndo);
+        }
+    }
+
+    /**
+     * Phase 3 interest engine (implementation plan Section 8). {@code SavingsAccount.postInterest(...)} - inherited
+     * here unmodified - calls this method to get the list of {@code PostingPeriod}s it then turns into transactions,
+     * corrections, and withholding tax exactly as it does for every other account type. The only thing this override
+     * changes is which interest rate each {@code PostingPeriod} is built with: instead of one account-wide
+     * {@code nominalAnnualInterestRate} for every period (core's behaviour), each core posting-period interval is first
+     * split at every {@link DepositAccountDynamicRateHistory} transaction date that falls inside it
+     * ({@link DynamicDepositInterestIntervalSplitter}), and each resulting sub-interval gets its own captured
+     * {@code resolvedAnnualInterestRate}. Everything else - daily balance recalculation, the summary update, backdated
+     * transaction handling - is copied from {@code SavingsAccount.calculateInterestUsing} unchanged; this account type
+     * has no overdraft support (see the constructor, {@code allowOverdraft} is always {@code false}), so the
+     * overdraft-related parameters core threads through are omitted entirely.
+     */
+    @Override
+    public List<PostingPeriod> calculateInterestUsing(final MathContext mc, final LocalDate upToInterestCalculationDate,
+            final boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
+            final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
+            final boolean postReversals) {
+
+        final Money openingAccountBalance = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getRunningBalanceOnPivotDate())
+                : Money.zero(this.currency);
+        recalculateDailyBalances(openingAccountBalance, upToInterestCalculationDate, backdatedTxnsAllowedTill, postReversals);
+
+        final List<PostingPeriod> allPostingPeriods = new ArrayList<>();
+        if (hasInterestCalculation()) {
+            final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType
+                    .fromInt(this.interestPostingPeriodType);
+            final SavingsCompoundingInterestPeriodType compoundingPeriodType = SavingsCompoundingInterestPeriodType
+                    .fromInt(this.interestCompoundingPeriodType);
+            final SavingsInterestCalculationDaysInYearType daysInYearType = SavingsInterestCalculationDaysInYearType
+                    .fromInt(this.interestCalculationDaysInYearType);
+            final SavingsInterestCalculationType interestCalculationType = SavingsInterestCalculationType
+                    .fromInt(this.interestCalculationType);
+
+            final List<LocalDate> postedAsOnDates = backdatedTxnsAllowedTill ? getManualPostingDatesWithPivotConfig()
+                    : getManualPostingDates();
+            if (postInterestOnDate != null) {
+                postedAsOnDates.add(postInterestOnDate);
+            }
+
+            final List<LocalDateInterval> corePostingPeriodIntervals = this.savingsHelper.determineInterestPostingPeriods(
+                    getStartInterestCalculationDate(), upToInterestCalculationDate, postingPeriodType, financialYearBeginningMonth,
+                    postedAsOnDates);
+
+            final List<DepositAccountDynamicRateHistory> rateHistoryAscending = DynamicDepositServiceLocator.rateHistoryRepository()
+                    .findByAccountIdOrderByTransactionDateAscIdAsc(getId());
+            final List<DynamicDepositInterestIntervalSplitter.RatedInterval> ratedIntervals = DynamicDepositInterestIntervalSplitter
+                    .split(corePostingPeriodIntervals, rateHistoryAscending);
+
+            Money periodStartingBalance = openingStartingBalance(backdatedTxnsAllowedTill);
+            final Collection<Long> interestPostTransactions = this.savingsHelper.fetchPostInterestTransactionIds(getId());
+            final Money minBalanceForInterestCalculation = Money.of(getCurrency(), minBalanceForInterestCalculation());
+            final List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = backdatedTxnsAllowedTill
+                    ? retreiveOrderedNonInterestPostingSavingsTransactionsWithPivotConfig()
+                    : retreiveOrderedNonInterestPostingTransactions();
+            final List<SavingsAccountTransactionDetailsForPostingPeriod> transactionDetails = toSavingsAccountTransactionDetailsForPostingPeriodList(
+                    orderedNonInterestPostingTransactions);
+
+            for (final DynamicDepositInterestIntervalSplitter.RatedInterval ratedInterval : ratedIntervals) {
+                final boolean isUserPosting = postedAsOnDates.contains(ratedInterval.periodInterval().endDate().plusDays(1));
+                final BigDecimal interestRateAsFraction = ratedInterval.annualInterestRate().divide(BigDecimal.valueOf(100L), mc);
+
+                final PostingPeriod postingPeriod = PostingPeriod.createFrom(ratedInterval.periodInterval(), periodStartingBalance,
+                        transactionDetails, this.currency, compoundingPeriodType, interestCalculationType, interestRateAsFraction,
+                        daysInYearType.getValue(), upToInterestCalculationDate, interestPostTransactions, isInterestTransfer,
+                        minBalanceForInterestCalculation, isSavingsInterestPostingAtCurrentPeriodEnd, isUserPosting,
+                        financialYearBeginningMonth);
+
+                periodStartingBalance = postingPeriod.closingBalance();
+                allPostingPeriods.add(postingPeriod);
+            }
+
+            this.savingsHelper.calculateInterestForAllPostingPeriods(this.currency, allPostingPeriods, getLockedInUntilDate(),
+                    isTransferInterestToOtherAccount());
+        }
+
+        if (hasStartInterestCalculationDate()) {
+            final BigDecimal preStartInterest = this.savingsHelper.sumInterestPostingsOnOrBeforeDate(getId(),
+                    getStartInterestCalculationDate());
+            this.summary.setPreStartDateInterestEarned(preStartInterest);
+        }
+        this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods, hasStartInterestCalculationDate());
+        if (backdatedTxnsAllowedTill) {
+            this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
+                    this.savingsAccountTransactions);
+        } else {
+            this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+        }
+        return allPostingPeriods;
+    }
+
+    private Money openingStartingBalance(final boolean backdatedTxnsAllowedTill) {
+        if (!hasStartInterestCalculationDate()) {
+            return Money.zero(this.currency);
+        }
+        final BigDecimal runningBalanceOnPivotDate = getSummary().getRunningBalanceOnPivotDate();
+        return runningBalanceOnPivotDate == null ? Money.zero(this.currency) : Money.of(this.currency, runningBalanceOnPivotDate);
+    }
+
+    /**
+     * Design correction (see implementation plan, Task 3): {@code SavingsAccount.postInterest(...)} writes one
+     * transaction per <em>distinct</em> {@code PostingPeriod.dateOfPostingTransaction()} it sees in the list
+     * {@link #calculateInterestUsing} returns. Since that override now returns one {@code PostingPeriod} per
+     * rate-history sub-interval - not one per core posting-period boundary - calling the inherited {@code postInterest}
+     * unmodified would write multiple, fragmented interest-posting transactions for a single posting period whenever a
+     * rate change falls inside it (confirmed empirically during this task's first implementation attempt). This
+     * override recomputes the same core posting-period boundaries and rate-history split that
+     * {@link #calculateInterestUsing} used internally (both are pure functions of the same inputs, so recomputing them
+     * here is safe - it is not a race, and requires no change to {@code calculateInterestUsing}'s inherited return
+     * type), sums each boundary's rate-varying sub-periods back into a single amount, and replicates
+     * {@code SavingsAccount.postInterest}'s own transaction create-or-correct/withholding-tax branch and tail exactly,
+     * substituting only the per-boundary summed amount and date for the per-{@code PostingPeriod} equivalents core
+     * uses.
+     */
+    @Override
+    public void postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
+
+        final List<PostingPeriod> ratedSubPeriods = calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
+                isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
+                postReversals);
+        if (ratedSubPeriods.isEmpty()) {
+            return;
+        }
+
+        final List<LocalDate> postedAsOnDates = backdatedTxnsAllowedTill ? getManualPostingDatesWithPivotConfig() : getManualPostingDates();
+        if (postInterestOnDate != null) {
+            postedAsOnDates.add(postInterestOnDate);
+        }
+        final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType.fromInt(this.interestPostingPeriodType);
+        final List<LocalDateInterval> coreBoundaries = this.savingsHelper.determineInterestPostingPeriods(getStartInterestCalculationDate(),
+                interestPostingUpToDate, postingPeriodType, financialYearBeginningMonth, postedAsOnDates);
+        final List<DepositAccountDynamicRateHistory> rateHistoryAscending = DynamicDepositServiceLocator.rateHistoryRepository()
+                .findByAccountIdOrderByTransactionDateAscIdAsc(getId());
+
+        Money interestPostedToDate = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getTotalInterestPosted())
+                : Money.zero(this.currency);
+
+        boolean recalucateDailyBalanceDetails = false;
+        final boolean applyWithHoldTax = isWithHoldTaxApplicable(withHoldTaxPostingType());
+        final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
+        if (backdatedTxnsAllowedTill) {
+            withholdTransactions.addAll(findWithHoldSavingsTransactionsWithPivotConfig());
+        } else {
+            withholdTransactions.addAll(findWithHoldTransactions());
+        }
+
+        Money totalCorrectionAmount = Money.zero(this.currency);
+        int subPeriodIndex = 0;
+        for (final LocalDateInterval coreBoundary : coreBoundaries) {
+            final int subPeriodCountForThisBoundary = DynamicDepositInterestIntervalSplitter
+                    .split(List.of(coreBoundary), rateHistoryAscending).size();
+            Money interestEarnedToBePostedForPeriod = Money.zero(this.currency);
+            for (int i = 0; i < subPeriodCountForThisBoundary; i++) {
+                interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod
+                        .plus(ratedSubPeriods.get(subPeriodIndex).getInterestEarned());
+                subPeriodIndex++;
+            }
+            final LocalDate interestPostingTransactionDate = coreBoundary.endDate().plusDays(1);
+            final boolean isUserPosting = postedAsOnDates.contains(interestPostingTransactionDate);
+
+            if (!DateUtils.isAfter(interestPostingTransactionDate, interestPostingUpToDate)) {
+                interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);
+
+                SavingsAccountTransaction postingTransaction = null;
+                if (backdatedTxnsAllowedTill) {
+                    postingTransaction = findInterestPostingSavingsTransactionWithPivotConfig(interestPostingTransactionDate);
+                } else {
+                    postingTransaction = findInterestPostingTransactionFor(interestPostingTransactionDate);
+                }
+                if (postingTransaction == null) {
+                    SavingsAccountTransaction newPostingTransaction = null;
+                    if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(this.currency))) {
+                        if (interestEarnedToBePostedForPeriod.isGreaterThan(Money.zero(this.currency))) {
+                            newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod, isUserPosting);
+                        }
+                    } else {
+                        newPostingTransaction = SavingsAccountTransaction.overdraftInterest(this, office(), interestPostingTransactionDate,
+                                interestEarnedToBePostedForPeriod.negated(), isUserPosting);
+                    }
+                    if (newPostingTransaction != null) {
+                        if (backdatedTxnsAllowedTill) {
+                            addTransactionToExisting(newPostingTransaction);
+                        } else {
+                            addTransaction(newPostingTransaction);
+                        }
+
+                        if (applyWithHoldTax) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
+                        }
+                        recalucateDailyBalanceDetails = true;
+                    }
+
+                } else {
+                    boolean correctionRequired = false;
+                    if (postingTransaction.isInterestPostingAndNotReversed()) {
+                        correctionRequired = postingTransaction.hasNotAmount(interestEarnedToBePostedForPeriod);
+                    } else {
+                        correctionRequired = postingTransaction.hasNotAmount(interestEarnedToBePostedForPeriod.negated());
+                    }
+                    if (correctionRequired) {
+                        totalCorrectionAmount = totalCorrectionAmount.plus(postingTransaction.getAmount());
+                        boolean applyWithHoldTaxForOldTransaction = false;
+                        postingTransaction.reverse();
+                        SavingsAccountTransaction reversal = null;
+                        if (postReversals) {
+                            reversal = SavingsAccountTransaction.reversal(postingTransaction);
+                        }
+                        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
+                                withholdTransactions);
+                        if (withholdTransaction != null) {
+                            withholdTransaction.reverse();
+                            applyWithHoldTaxForOldTransaction = true;
+                        }
+                        SavingsAccountTransaction newPostingTransaction;
+                        if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(this.currency))) {
+                            newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod, isUserPosting);
+                        } else {
+                            newPostingTransaction = SavingsAccountTransaction.overdraftInterest(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod.negated(), isUserPosting);
+                        }
+                        if (backdatedTxnsAllowedTill) {
+                            addTransactionToExisting(newPostingTransaction);
+                            if (reversal != null) {
+                                addTransactionToExisting(reversal);
+                            }
+                        } else {
+                            addTransaction(newPostingTransaction);
+                            if (reversal != null) {
+                                addTransaction(reversal);
+                            }
+                        }
+                        if (applyWithHoldTaxForOldTransaction) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
+                        }
+                        recalucateDailyBalanceDetails = true;
+                    }
+                }
+            }
+        }
+
+        if (recalucateDailyBalanceDetails) {
+            Money openingAccountBalance = Money.zero(this.currency);
+            if (backdatedTxnsAllowedTill) {
+                if (getSummary().getLastInterestCalculationDate() == null) {
+                    openingAccountBalance = Money.zero(this.currency);
+                } else {
+                    openingAccountBalance = Money.of(this.currency, getSummary().getRunningBalanceOnPivotDate());
+                }
+            }
+            recalculateDailyBalances(openingAccountBalance, interestPostingUpToDate, backdatedTxnsAllowedTill, postReversals);
+        }
+
+        if (!backdatedTxnsAllowedTill) {
+            this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+        } else {
+            this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
+                    this.savingsAccountTransactions);
         }
     }
 

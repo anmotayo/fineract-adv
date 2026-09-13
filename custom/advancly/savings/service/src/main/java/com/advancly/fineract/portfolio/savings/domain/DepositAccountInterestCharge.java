@@ -131,6 +131,21 @@ public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTi
         this.interestChargeTransaction = interestChargeTransaction;
     }
 
+    /**
+     * Records what interest posting ACTUALLY applied for this row, replacing the provisional basis and amount the
+     * early-withdrawal path snapshotted (implementation plan Section 10 steps 7-8). The amount is recomputed at posting
+     * time from {@link #chargePercentage()} against the period's real gross interest and then pro-rated if the
+     * period-level cap bit, so without this overwrite {@code sumPostedChargeAmount(...)} - which backs
+     * {@code interest_based_charge_posted_derived} and the API's {@code interestBasedCharges} - would report figures
+     * that never matched the money that moved.
+     */
+    public void applyAtPosting(final BigDecimal actualInterestAmountBasis, final BigDecimal actualChargeAmount,
+            final SavingsAccountTransaction interestPostingTransaction, final SavingsAccountTransaction interestChargeTransaction) {
+        this.interestAmountBasis = actualInterestAmountBasis;
+        this.chargeAmount = actualChargeAmount;
+        linkToPosting(interestPostingTransaction, interestChargeTransaction);
+    }
+
     /** Not yet consumed by an interest posting. */
     public boolean isPending() {
         return this.interestChargeTransaction == null;

@@ -43,6 +43,7 @@ import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.client.domain.Client;
@@ -61,6 +62,7 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateCh
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargePaidBy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
@@ -579,6 +581,12 @@ public class DynamicDepositAccount extends SavingsAccount {
                             createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     backdatedTxnsAllowedTill);
                         }
+                        // Phase 4, Section 10 steps 2/4/7/8 - run AFTER the withholding tax transaction exists, since
+                        // the charge is capped at gross interest minus that tax. Deliberately not applied in the
+                        // correction branch below: core reverses only the posting and withholding transactions there,
+                        // so an already-applied charge transaction and its row links still stand.
+                        applyPendingInterestBasedCharges(interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
+                                newPostingTransaction, backdatedTxnsAllowedTill);
                         recalucateDailyBalanceDetails = true;
                     }
 
@@ -650,6 +658,130 @@ public class DynamicDepositAccount extends SavingsAccount {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
                     this.savingsAccountTransactions);
         }
+    }
+
+    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100L);
+
+    // NOT a static constant: MoneyHelper.getRoundingMode() resolves the CURRENT tenant's configured rounding mode
+    // from a thread-local, so freezing it in a static initialiser would either fail at class-load time or apply one
+    // tenant's setting to every other tenant. Core's own SavingsAccountCharge#percentageOf builds its MathContext per
+    // call for the same reason.
+    private static MathContext percentageMathContext() {
+        return new MathContext(8, MoneyHelper.getRoundingMode());
+    }
+
+    /**
+     * The authoritative cap on a period's interest-based charge (implementation plan Section 11 "Preserve principal",
+     * Section 10 step 9). Gross interest has just been credited and the withholding tax just debited, so capping the
+     * charge at their difference guarantees the whole posting's net effect on the balance is {@code gross - wht -
+     * charge >= 0} - i.e. the charge always comes out of interest and never reaches principal. Capping at gross alone
+     * would not be sufficient: with gross 500, withholding tax 50 and 500 recomputed, the balance would fall by 50.
+     *
+     * Package-private static so the arithmetic is unit-testable without building a whole posting run.
+     */
+    static BigDecimal cappedInterestBasedChargeAmount(final BigDecimal recomputedTotal, final BigDecimal grossInterestForPeriod,
+            final BigDecimal withholdingTaxForPeriod) {
+        final BigDecimal available = grossInterestForPeriod.subtract(withholdingTaxForPeriod).max(BigDecimal.ZERO);
+        return recomputedTotal.min(available).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * Implementation plan Section 10 steps 2, 4, 7 and 8, for one core posting-period boundary:
+     *
+     * <ol>
+     * <li>take the pending {@code m_deposit_account_interest_charge} rows whose interest period ended on or before this
+     * boundary and RECOMPUTE each one's amount from its stored {@code charge_percentage} against this period's real
+     * gross interest - the amount those rows were written with at withdrawal time is provisional and is deliberately
+     * ignored (see Task 7), which is what lets a withdrawal taken before any interest calculation still charge
+     * correctly;</li>
+     * <li>write ONE interest-based charge transaction for the period - and, per step 7, none at all when there is
+     * nothing pending, so posting behaves exactly as it did before Phase 4;</li>
+     * <li>link every consumed row to both the interest posting transaction and that charge transaction;</li>
+     * <li>refresh both derived read columns from the table rather than incrementing them, so they cannot drift.</li>
+     * </ol>
+     *
+     * The transaction is a {@code PAY_CHARGE} built by {@code SavingsAccountTransaction.charge(...)} and linked to the
+     * account charge through {@code SavingsAccountChargePaidBy}, exactly as core's own {@code handleChargeTransactions}
+     * does - so accounting and the charge/transaction link behave like every other savings charge.
+     */
+    private void applyPendingInterestBasedCharges(final LocalDate interestPostingTransactionDate, final Money grossInterestForPeriod,
+            final SavingsAccountTransaction interestPostingTransaction, final boolean backdatedTxnsAllowedTill) {
+
+        final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
+        final List<DepositAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
+                interestPostingTransactionDate);
+        if (pendingRows.isEmpty()) {
+            return;
+        }
+
+        // Recompute every row's amount from its stored percentage against THIS period's real gross interest - the
+        // same figure the interest posting transaction was just written with. The provisional charge_amount each row
+        // was created with at withdrawal time is intentionally not read: it was a snapshot of whatever the account
+        // summary happened to report then, which may have been stale or zero.
+        final BigDecimal grossInterest = grossInterestForPeriod.getAmount();
+        final List<BigDecimal> recomputedAmounts = new ArrayList<>(pendingRows.size());
+        BigDecimal recomputedTotal = BigDecimal.ZERO;
+        for (final DepositAccountInterestCharge row : pendingRows) {
+            final BigDecimal recomputed = grossInterest.multiply(row.chargePercentage()).divide(ONE_HUNDRED, percentageMathContext())
+                    .min(grossInterest).max(BigDecimal.ZERO);
+            recomputedAmounts.add(recomputed);
+            recomputedTotal = recomputedTotal.add(recomputed);
+        }
+
+        // Read the withholding tax this same posting just wrote: createWithHoldTransaction(...) returns only a
+        // boolean, so the amount has to come back off the transaction itself via core's own helpers.
+        final List<SavingsAccountTransaction> currentWithholdTransactions = backdatedTxnsAllowedTill
+                ? findWithHoldSavingsTransactionsWithPivotConfig()
+                : findWithHoldTransactions();
+        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
+                currentWithholdTransactions);
+        final BigDecimal withholdingTaxForPeriod = withholdTransaction == null ? BigDecimal.ZERO : withholdTransaction.getAmount();
+
+        final BigDecimal chargeAmount = cappedInterestBasedChargeAmount(recomputedTotal, grossInterest, withholdingTaxForPeriod);
+        if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        // All pending rows for an account reference the same charge - the product allows only one early-withdrawal
+        // charge - so the single transaction is attributed to the oldest row's account charge.
+        final SavingsAccountCharge attributedCharge = pendingRows.get(0).savingsAccountCharge();
+        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.charge(this, office(), interestPostingTransactionDate,
+                Money.of(this.currency, chargeAmount));
+        // The transaction's own amount is the currency-rounded figure Money.of(...) just produced above - NOT the raw
+        // chargeAmount this method computed it from. The rows below must be distributed against THAT rounded figure
+        // (what actually posted, and therefore what SavingsAccountChargePaidBy/accounting move), or the rows would
+        // sum to a value the ledger never saw whenever rounding changes the last digit.
+        final BigDecimal appliedTotal = chargeTransaction.getAmount();
+        chargeTransaction.getSavingsAccountChargesPaid()
+                .add(SavingsAccountChargePaidBy.instance(chargeTransaction, attributedCharge, appliedTotal));
+        if (backdatedTxnsAllowedTill) {
+            addTransactionToExisting(chargeTransaction);
+        } else {
+            addTransaction(chargeTransaction);
+        }
+
+        // Write back what was actually applied, pro-rated across the rows when the cap bit, so the last row absorbs
+        // any rounding remainder and the rows sum to exactly the transaction amount. Without this the posted-charge
+        // sum would keep reporting Task 7's provisional figures instead of the money that moved.
+        BigDecimal distributed = BigDecimal.ZERO;
+        for (int i = 0; i < pendingRows.size(); i++) {
+            final BigDecimal rowAmount;
+            if (i == pendingRows.size() - 1) {
+                rowAmount = appliedTotal.subtract(distributed);
+            } else if (recomputedTotal.compareTo(BigDecimal.ZERO) == 0) {
+                rowAmount = BigDecimal.ZERO;
+            } else {
+                rowAmount = recomputedAmounts.get(i).multiply(appliedTotal).divide(recomputedTotal, percentageMathContext())
+                        .setScale(this.currency.getDigitsAfterDecimal(), MoneyHelper.getRoundingMode());
+            }
+            distributed = distributed.add(rowAmount);
+            pendingRows.get(i).applyAtPosting(grossInterest, rowAmount, interestPostingTransaction, chargeTransaction);
+        }
+        interestChargeRepository.saveAll(pendingRows);
+        interestChargeRepository.flush();
+
+        updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
+        updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(getId()));
     }
 
     @Override

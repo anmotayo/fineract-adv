@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
@@ -117,6 +118,8 @@ class DynamicDepositPostInterestTaskletTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
+    private DepositAccountInterestChargeRepository interestChargeRepository;
+    @Mock
     private BusinessEventNotifierService businessEventNotifierService;
 
     private final PlatformTransactionManager transactionManager = new ResourcelessTransactionManager();
@@ -133,6 +136,13 @@ class DynamicDepositPostInterestTaskletTest {
 
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
+        // Phase 4: postInterest now resolves the interest-charge repository through the locator on every run (see
+        // DynamicDepositAccountInterestTest), so this end-to-end tasklet test needs the same stub or the real
+        // postInterest call below NPEs, gets swallowed by the tasklet's per-account catch, and silently drops the
+        // SavingsPostInterestBusinessEvent these tests verify. Defaults to "nothing pending" - these tests are not
+        // exercising interest-based charges themselves.
+        lenient().when(applicationContext.getBean(DepositAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
+        lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenReturn(List.of());
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
         lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(anyLong())).thenReturn(List.of());
 

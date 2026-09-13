@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -49,6 +50,8 @@ import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDoma
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
+import org.apache.fineract.infrastructure.event.business.domain.savings.SavingsPostInterestBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.organisation.office.domain.Office;
@@ -112,6 +115,8 @@ class DynamicDepositPostInterestTaskletTest {
     private ChunkContext chunkContext;
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
+    @Mock
+    private BusinessEventNotifierService businessEventNotifierService;
 
     private final PlatformTransactionManager transactionManager = new ResourcelessTransactionManager();
 
@@ -143,7 +148,7 @@ class DynamicDepositPostInterestTaskletTest {
                 mock(JdbcTemplate.class), mock(ConfigurationDomainService.class), mock(ExternalIdFactory.class));
 
         this.underTest = new DynamicDepositPostInterestTasklet(this.dynamicDepositAccountRepository, savingsAccountAssembler,
-                this.savingsAccountWritePlatformService, this.transactionManager);
+                this.savingsAccountWritePlatformService, this.transactionManager, this.businessEventNotifierService);
 
         // Forwards straight to the real, Task-3-overridden entity method - exactly what
         // SavingsAccountWritePlatformServiceJpaRepositoryImpl#postInterest(SavingsAccount,...) does in production
@@ -181,6 +186,10 @@ class DynamicDepositPostInterestTaskletTest {
         // catch, and left no interest posting transaction here at all - this assertion would then fail.
         assertThat(account1.getTransactions()).anyMatch(SavingsAccountTransaction::isInterestPostingAndNotReversed);
         assertThat(account2.getTransactions()).anyMatch(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        // The scheduled path must fire SavingsPostInterestBusinessEvent per successfully-posted account, exactly as
+        // SavingsAccountWritePlatformServiceJpaRepositoryImpl#postInterest(JsonCommand) does for the command-driven
+        // path - otherwise external event consumers (Kafka/JMS) never see scheduled Dynamic Deposit postings.
+        verify(this.businessEventNotifierService, times(2)).notifyPostBusinessEvent(isA(SavingsPostInterestBusinessEvent.class));
     }
 
     @Test
@@ -202,6 +211,7 @@ class DynamicDepositPostInterestTaskletTest {
         verify(this.savingsAccountWritePlatformService, times(1)).postInterest(any(SavingsAccount.class), anyBoolean(), any(),
                 anyBoolean());
         assertThat(account2.getTransactions()).anyMatch(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        verify(this.businessEventNotifierService, times(1)).notifyPostBusinessEvent(isA(SavingsPostInterestBusinessEvent.class));
     }
 
     @Test
@@ -214,6 +224,7 @@ class DynamicDepositPostInterestTaskletTest {
         verify(this.savingsAccountRepositoryWrapper, never()).findSavingsWithNotFoundDetection(anyLong(), anyBoolean());
         verify(this.savingsAccountWritePlatformService, never()).postInterest(any(SavingsAccount.class), anyBoolean(), any(),
                 anyBoolean());
+        verify(this.businessEventNotifierService, never()).notifyPostBusinessEvent(any());
     }
 
     private DynamicDepositAccount buildBareAccount(final long id) {
@@ -246,9 +257,10 @@ class DynamicDepositPostInterestTaskletTest {
                 .withAmount(BigDecimal.valueOf(1000)).build();
         account.getTransactions().add(openingDeposit);
 
-        // DynamicDepositInterestIntervalSplitter#resolveRateAsOf falls back to BigDecimal.ZERO for any period with no
-        // rate history at or before it - so a rate history row is required here for a non-zero interest posting to
-        // be possible at all (mirrors every fixture in DynamicDepositAccountInterestTest).
+        // DynamicDepositInterestIntervalSplitter#resolveRateAsOf throws IllegalStateException for any period with no
+        // rate history at or before it - so a rate history row is required here, or postInterest(...) above would
+        // throw and be swallowed by the tasklet's per-account catch (mirrors every fixture in
+        // DynamicDepositAccountInterestTest).
         final List<DepositAccountDynamicRateHistory> rateHistory = List.of(DepositAccountDynamicRateHistory.createNew(account,
                 openingDeposit, LocalDate.of(2026, 1, 1), DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000),
                 12, 2, null, null, BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART));

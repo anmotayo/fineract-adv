@@ -24,6 +24,8 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
+import org.apache.fineract.infrastructure.event.business.domain.savings.SavingsPostInterestBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
@@ -82,6 +84,7 @@ public class DynamicDepositPostInterestTasklet implements Tasklet {
     private final SavingsAccountAssembler savingsAccountAssembler;
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     private final PlatformTransactionManager transactionManager;
+    private final BusinessEventNotifierService businessEventNotifierService;
 
     @Override
     public RepeatStatus execute(final StepContribution contribution, final ChunkContext chunkContext) {
@@ -105,5 +108,6 @@ public class DynamicDepositPostInterestTasklet implements Tasklet {
     private void postInterestFor(final Long accountId, final LocalDate today) {
         final SavingsAccount account = this.savingsAccountAssembler.assembleFrom(accountId, false);
         this.savingsAccountWritePlatformService.postInterest(account, false, today, false);
+        this.businessEventNotifierService.notifyPostBusinessEvent(new SavingsPostInterestBusinessEvent(account));
     }
 }

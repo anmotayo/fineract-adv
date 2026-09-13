@@ -18,6 +18,8 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -63,19 +65,22 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsAccountTransactionHelper transactionHelper;
     private final SavingsAccountDomainService coreDomainService;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
+    private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
 
     @Autowired
     public AdvanclySavingsAccountDomainService(final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             final BusinessEventNotifierService businessEventNotifierService, final SavingsAccountTransactionHelper transactionHelper,
             @Qualifier("coreSavingsAccountDomainService") final SavingsAccountDomainService coreDomainService,
-            JournalEntryWritePlatformService journalEntryWritePlatformService) {
+            JournalEntryWritePlatformService journalEntryWritePlatformService,
+            final DynamicDepositRateHistoryService dynamicDepositRateHistoryService) {
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
         this.businessEventNotifierService = businessEventNotifierService;
         this.transactionHelper = transactionHelper;
         this.coreDomainService = coreDomainService;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
+        this.dynamicDepositRateHistoryService = dynamicDepositRateHistoryService;
     }
 
     /**
@@ -106,6 +111,12 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, true);
         businessEventNotifierService.notifyPostBusinessEvent(new SavingsDepositBusinessEvent(deposit));
+        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
+            // The append/optimized path never calls SavingsAccount.deposit() - it builds the transaction directly
+            // above - so it is hooked separately here rather than via DynamicDepositAccount's entity-level override.
+            dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, deposit,
+                    DynamicDepositRateHistoryEventType.DEPOSIT);
+        }
         return deposit;
     }
 
@@ -139,6 +150,10 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, true);
         businessEventNotifierService.notifyPostBusinessEvent(new SavingsWithdrawalBusinessEvent(withdrawal));
+        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
+            dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, withdrawal,
+                    DynamicDepositRateHistoryEventType.WITHDRAWAL);
+        }
         return withdrawal;
     }
 
@@ -187,7 +202,15 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     @Override
     public SavingsAccountTransaction handleReversal(SavingsAccount account, List<SavingsAccountTransaction> savingsAccountTransactions,
             boolean backdatedTxnsAllowedTill) {
-        return coreDomainService.handleReversal(account, savingsAccountTransactions, backdatedTxnsAllowedTill);
+        final SavingsAccountTransaction reversalTransaction = coreDomainService.handleReversal(account, savingsAccountTransactions,
+                backdatedTxnsAllowedTill);
+        if (account instanceof DynamicDepositAccount dynamicDepositAccount && reversalTransaction != null) {
+            // A reversal creates a new correcting transaction (it does not call SavingsAccount.deposit()/withdraw()),
+            // so it is hooked here rather than via DynamicDepositAccount's entity-level override.
+            dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, reversalTransaction,
+                    DynamicDepositRateHistoryEventType.REVERSAL);
+        }
+        return reversalTransaction;
     }
 
     @Override

@@ -29,7 +29,8 @@ public enum DepositAccountType {
     SAVINGS_DEPOSIT(100, "depositAccountType.savingsDeposit"), //
     FIXED_DEPOSIT(200, "depositAccountType.fixedDeposit"), //
     RECURRING_DEPOSIT(300, "depositAccountType.recurringDeposit"), //
-    CURRENT_DEPOSIT(400, "depositAccountType.currentDeposit"); //
+    CURRENT_DEPOSIT(400, "depositAccountType.currentDeposit"), //
+    DYNAMIC_DEPOSIT(500, "depositAccountType.dynamicDeposit"); //
 
     private final Integer value;
     private final String code;
@@ -62,6 +63,8 @@ public enum DepositAccountType {
                 return RECURRING_DEPOSIT;
             case 400:
                 return CURRENT_DEPOSIT;
+            case 500:
+                return DYNAMIC_DEPOSIT;
             default:
                 return INVALID;
         }
@@ -88,6 +91,11 @@ public enum DepositAccountType {
     }
 
     // TODO: why not just use the enum values... just more boilerplate code here!!
+    public boolean isDynamicDeposit() {
+        return this.equals(DYNAMIC_DEPOSIT);
+    }
+
+    // TODO: why not just use the enum values... just more boilerplate code here!!
     public boolean isInvalid() {
         return this.equals(INVALID);
     }
@@ -103,6 +111,8 @@ public enum DepositAccountType {
                 return DepositsApiConstants.FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME;
             case RECURRING_DEPOSIT:
                 return DepositsApiConstants.RECURRING_DEPOSIT_ACCOUNT_RESOURCE_NAME;
+            case DYNAMIC_DEPOSIT:
+                return DepositsApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
             case SAVINGS_DEPOSIT:
                 return DepositsApiConstants.SAVINGS_ACCOUNT_RESOURCE_NAME;
             default:

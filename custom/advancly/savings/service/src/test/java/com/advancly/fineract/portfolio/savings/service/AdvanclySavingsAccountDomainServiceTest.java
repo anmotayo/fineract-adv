@@ -62,6 +62,8 @@ class AdvanclySavingsAccountDomainServiceTest {
     private org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa coreDomainService;
     @Mock
     private JournalEntryWritePlatformService journalEntryWritePlatformService;
+    @Mock
+    private DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
 
     private AdvanclySavingsAccountDomainService domainService;
     private MonetaryCurrency currency;
@@ -71,7 +73,8 @@ class AdvanclySavingsAccountDomainServiceTest {
         MoneyHelperInitializer.initialize();
         currency = new MonetaryCurrency("USD", 2, null);
         domainService = new AdvanclySavingsAccountDomainService(savingsAccountRepository, savingsAccountTransactionRepository,
-                businessEventNotifierService, transactionHelper, coreDomainService, journalEntryWritePlatformService);
+                businessEventNotifierService, transactionHelper, coreDomainService, journalEntryWritePlatformService,
+                dynamicDepositRateHistoryService);
     }
 
     @Test

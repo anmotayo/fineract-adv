@@ -22,12 +22,16 @@ dependencies {
     implementation(project(':fineract-savings'))
     implementation(project(':fineract-loan'))
     implementation(project(':fineract-provider'))
+    implementation(project(':fineract-accounting'))
+    implementation(project(':fineract-charge'))
+    implementation(project(':fineract-tax'))
     implementation('org.eclipse.persistence:org.eclipse.persistence.jpa') {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'
     }
     implementation('com.google.code.gson:gson')
     implementation('jakarta.ws.rs:jakarta.ws.rs-api')
     implementation('io.swagger.core.v3:swagger-annotations-jakarta')
+    implementation('org.apache.commons:commons-lang3')
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     compileOnly('org.springframework.boot:spring-boot-autoconfigure')

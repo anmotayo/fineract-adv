@@ -43,6 +43,7 @@ import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.account.service.AccountTransfersReadPlatformService;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
@@ -226,6 +227,12 @@ class DynamicDepositAccountInterestTest {
         ReflectionTestUtils.setField(newAccount, "interestCalculationType", 1); // DAILY_BALANCE
         ReflectionTestUtils.setField(newAccount, "interestCalculationDaysInYearType", 365);
         ReflectionTestUtils.setField(newAccount, "savingsAccountTransactions", new ArrayList<SavingsAccountTransaction>());
+        // DynamicDepositAccount#withHoldTaxPostingType() dereferences accountTermAndPreClosure unconditionally
+        // (mirroring FixedDepositAccount/RecurringDepositAccount) - postInterest calls it regardless of whether
+        // withholding tax is actually configured, so it must never be null, even when these tests aren't exercising
+        // WHT themselves.
+        ReflectionTestUtils.setField(newAccount, "accountTermAndPreClosure",
+                DepositAccountTermAndPreClosure.createNew(null, null, null, null, null, null, null, null, null, null, false, null, null));
 
         final SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().build();
         ReflectionTestUtils.setField(newAccount, "summary", summary);

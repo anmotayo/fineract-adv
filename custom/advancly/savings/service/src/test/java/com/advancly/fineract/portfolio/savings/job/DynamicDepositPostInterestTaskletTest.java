@@ -61,6 +61,7 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
 import org.apache.fineract.portfolio.group.domain.GroupRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeAssembler;
@@ -237,6 +238,12 @@ class DynamicDepositPostInterestTaskletTest {
         ReflectionTestUtils.setField(account, "interestPostingPeriodType", 4); // MONTHLY
         ReflectionTestUtils.setField(account, "interestCalculationType", 1); // DAILY_BALANCE
         ReflectionTestUtils.setField(account, "interestCalculationDaysInYearType", 365);
+        // DynamicDepositAccount#withHoldTaxPostingType() dereferences accountTermAndPreClosure unconditionally
+        // (mirroring FixedDepositAccount/RecurringDepositAccount) - postInterest calls it regardless of whether
+        // withholding tax is actually configured, so it must never be null, even when these tests aren't exercising
+        // WHT themselves.
+        ReflectionTestUtils.setField(account, "accountTermAndPreClosure",
+                DepositAccountTermAndPreClosure.createNew(null, null, null, null, null, null, null, null, null, null, false, null, null));
         // Deliberately NOT setting savingsHelper/savingsAccountTransactionSummaryWrapper here - populating those is
         // exactly SavingsAccountAssembler#assembleFrom's job (via SavingsAccount#setHelpers), which is what these
         // tests are verifying the tasklet actually goes through.

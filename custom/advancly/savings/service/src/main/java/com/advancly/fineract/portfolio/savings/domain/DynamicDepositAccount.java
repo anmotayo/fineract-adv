@@ -54,6 +54,7 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
@@ -174,6 +175,20 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Override
     public DepositAccountType depositAccountType() {
         return DepositAccountType.fromInt(500);
+    }
+
+    /**
+     * Mirrors {@code FixedDepositAccount}/{@code RecurringDepositAccount}#withHoldTaxPostingType(), reading the same
+     * {@code withhold_tax_posting_type_enum} config off the reused, generic {@link DepositAccountTermAndPreClosure}
+     * this class already composes. Without this override, {@code SavingsAccount}'s base implementation (hard-coded
+     * {@code null}) combined with the {@code depositAccountType()} override above would make
+     * {@code isWithHoldTaxApplicable(...)} unconditionally {@code false} for every Dynamic Deposit account, regardless
+     * of the {@code withHoldTax} flag - silently disabling withholding tax for this product type.
+     */
+    @Override
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
+        final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
+        return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
     }
 
     public boolean isAllowWithdrawal() {

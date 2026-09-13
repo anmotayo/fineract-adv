@@ -365,6 +365,9 @@ public class DynamicDepositAccount extends SavingsAccount {
         DynamicDepositServiceLocator.rateHistoryService().recordPrincipalChangeEvent(this, transaction,
                 DynamicDepositRateHistoryEventType.WITHDRAWAL);
         DynamicDepositServiceLocator.interestWithdrawalService().recordIfApplicable(this, transaction);
+        // Phase 4: any withdrawal dated before maturity - including the withdrawal the generic core `close` command
+        // issues when withdrawBalance=true, i.e. premature closure - creates a pending early-withdrawal charge row.
+        DynamicDepositServiceLocator.earlyWithdrawalChargeService().recordIfApplicable(this, transaction);
         return transaction;
     }
 

@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -55,5 +56,13 @@ public class DynamicDepositServiceLocator implements ApplicationContextAware {
 
     public static DynamicDepositInterestWithdrawalService interestWithdrawalService() {
         return applicationContext.getBean(DynamicDepositInterestWithdrawalService.class);
+    }
+
+    public static DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService() {
+        return applicationContext.getBean(DynamicDepositEarlyWithdrawalChargeService.class);
+    }
+
+    public static DepositAccountInterestChargeRepository interestChargeRepository() {
+        return applicationContext.getBean(DepositAccountInterestChargeRepository.class);
     }
 }

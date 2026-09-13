@@ -66,6 +66,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsAccountDomainService coreDomainService;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
+    private final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService;
+    private final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService;
 
     @Autowired
     public AdvanclySavingsAccountDomainService(final SavingsAccountRepositoryWrapper savingsAccountRepository,
@@ -73,7 +75,9 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             final BusinessEventNotifierService businessEventNotifierService, final SavingsAccountTransactionHelper transactionHelper,
             @Qualifier("coreSavingsAccountDomainService") final SavingsAccountDomainService coreDomainService,
             JournalEntryWritePlatformService journalEntryWritePlatformService,
-            final DynamicDepositRateHistoryService dynamicDepositRateHistoryService) {
+            final DynamicDepositRateHistoryService dynamicDepositRateHistoryService,
+            final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService,
+            final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService) {
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
         this.businessEventNotifierService = businessEventNotifierService;
@@ -81,6 +85,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         this.coreDomainService = coreDomainService;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.dynamicDepositRateHistoryService = dynamicDepositRateHistoryService;
+        this.dynamicDepositInterestWithdrawalService = dynamicDepositInterestWithdrawalService;
+        this.dynamicDepositEarlyWithdrawalChargeService = dynamicDepositEarlyWithdrawalChargeService;
     }
 
     /**
@@ -153,6 +159,16 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
             dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, withdrawal,
                     DynamicDepositRateHistoryEventType.WITHDRAWAL);
+            // Pre-existing Phase 3 gap, found while wiring the early-withdrawal hook below and fixed here because it
+            // is literally the same three lines: DynamicDepositAccount#withdraw calls this, but this append/optimized
+            // path never reaches that override - so current-dated withdrawals produced no
+            // m_deposit_account_interest_withdrawal marker rows at all and the interest-summary API's
+            // interestWithdrawn under-reported.
+            dynamicDepositInterestWithdrawalService.recordIfApplicable(dynamicDepositAccount, withdrawal);
+            // Hooked here as well as on DynamicDepositAccount#withdraw, for the same reason the rate-history call
+            // above is: this append/optimized path builds the withdrawal transaction directly and never calls
+            // SavingsAccount#withdraw, so the entity-level override alone would miss every current-dated withdrawal.
+            dynamicDepositEarlyWithdrawalChargeService.recordIfApplicable(dynamicDepositAccount, withdrawal);
         }
         return withdrawal;
     }

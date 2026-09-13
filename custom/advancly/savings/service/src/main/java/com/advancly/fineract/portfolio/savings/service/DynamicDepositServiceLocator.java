@@ -52,4 +52,8 @@ public class DynamicDepositServiceLocator implements ApplicationContextAware {
     public static DepositAccountDynamicRateHistoryRepository rateHistoryRepository() {
         return applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class);
     }
+
+    public static DynamicDepositInterestWithdrawalService interestWithdrawalService() {
+        return applicationContext.getBean(DynamicDepositInterestWithdrawalService.class);
+    }
 }

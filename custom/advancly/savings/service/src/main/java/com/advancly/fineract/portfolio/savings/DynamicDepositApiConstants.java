@@ -39,6 +39,7 @@ public final class DynamicDepositApiConstants {
 
     // dynamic-detail parameters, shared between the product and account payloads
     public static final String allowWithdrawalParamName = "allowWithdrawal";
+    public static final String linkedAccountParamName = "linkAccountId";
     public static final String dynamicRateEnabledParamName = "dynamicRateEnabled";
 
     // product-only early-withdrawal penalty parameters (implementation plan Section 2 / Phase 4)
@@ -66,7 +67,7 @@ public final class DynamicDepositApiConstants {
             "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType", "interestCalculationDaysInYearType",
             "minRequiredOpeningBalance", "lockinPeriodFrequency", "lockinPeriodFrequencyType", "withdrawalFeeForTransfers", "charges",
             "withHoldTax", "depositAmount", "depositPeriod", "depositPeriodFrequencyId", "expectedFirstDepositOnDate",
-            "transferInterestToSavings", allowWithdrawalParamName, dynamicRateEnabledParamName));
+            "transferInterestToSavings", allowWithdrawalParamName, linkedAccountParamName, dynamicRateEnabledParamName));
 
     public static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS = new HashSet<>(Arrays.asList("id", "accountNo",
             "externalId", "clientId", "clientName", "groupId", "groupName", "savingsProductId", "savingsProductName", "fieldOfficerId",

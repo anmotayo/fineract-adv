@@ -43,6 +43,9 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
+import org.apache.fineract.portfolio.account.domain.AccountAssociations;
+import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
@@ -51,7 +54,12 @@ import org.apache.fineract.portfolio.group.exception.CenterNotActiveException;
 import org.apache.fineract.portfolio.group.exception.GroupNotActiveException;
 import org.apache.fineract.portfolio.note.domain.Note;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.DepositsApiConstants;
+import org.apache.fineract.portfolio.savings.data.DepositAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.useradministration.domain.AppUser;
@@ -65,8 +73,10 @@ import org.springframework.transaction.annotation.Transactional;
  * Lean, self-contained write-side implementation for the {@code DYNAMICDEPOSITACCOUNT} entity. Structurally mirrors
  * {@code DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl}'s fixed-deposit branch, reusing the generic
  * (core, not fixed-deposit-specific) {@link SavingsAccountApplicationTransitionApiJsonValidator} for the
- * approve/undo/reject/withdraw transition-guard validation. Deliberately excludes linked-savings-account association
- * and business-event notification wiring for Phase 1 leanness (see the implementation report).
+ * approve/undo/reject/withdraw transition-guard validation. Mirrors the same class's linked-savings-account
+ * association wiring in {@code submitApplication(...)} (Phase 5 Task 4), so an account submitted with
+ * {@code linkAccountId} set gets a real {@code m_portfolio_account_associations} row; still excludes
+ * business-event notification wiring for Phase 1 leanness (see the implementation report).
  */
 @Service
 public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implements DynamicDepositAccountWritePlatformService {
@@ -83,6 +93,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator;
     private final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator;
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
+    private final DepositAccountAssembler depositAccountAssembler;
+    private final DepositAccountDataValidator depositAccountDataValidator;
+    private final AccountAssociationsRepository accountAssociationsRepository;
 
     public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositAccountRepository dynamicDepositAccountRepository,
@@ -91,7 +104,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final AccountNumberFormatRepositoryWrapper accountNumberFormatRepository, final NoteRepository noteRepository,
             final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator,
             final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
-            final SavingsAccountWritePlatformService savingsAccountWritePlatformService) {
+            final SavingsAccountWritePlatformService savingsAccountWritePlatformService,
+            final DepositAccountAssembler depositAccountAssembler, final DepositAccountDataValidator depositAccountDataValidator,
+            final AccountAssociationsRepository accountAssociationsRepository) {
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -102,6 +117,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         this.savingsAccountApplicationTransitionApiJsonValidator = savingsAccountApplicationTransitionApiJsonValidator;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
+        this.depositAccountAssembler = depositAccountAssembler;
+        this.depositAccountDataValidator = depositAccountDataValidator;
+        this.accountAssociationsRepository = accountAssociationsRepository;
     }
 
     @Transactional
@@ -120,6 +138,16 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
                         .findByAccountType(EntityAccountType.SAVINGS);
                 account.updateAccountNo(this.accountNumberGenerator.generate(account, accountNumberFormat));
                 this.dynamicDepositAccountRepository.save(account);
+            }
+
+            final Long linkedSavingsAccountId = command.longValueOfParameterNamed(DepositsApiConstants.linkedAccountParamName);
+            if (linkedSavingsAccountId != null) {
+                final SavingsAccount linkedSavingsAccount = this.depositAccountAssembler.assembleFrom(linkedSavingsAccountId,
+                        DepositAccountType.SAVINGS_DEPOSIT);
+                this.depositAccountDataValidator.validatelinkedSavingsAccount(linkedSavingsAccount, account);
+                final AccountAssociations accountAssociations = AccountAssociations.associateSavingsAccount(account, linkedSavingsAccount,
+                        AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue(), true);
+                this.accountAssociationsRepository.save(accountAssociations);
             }
 
             final Long savingsId = account.getId();

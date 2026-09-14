@@ -160,17 +160,21 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
         boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
 
-        if (isBackdated) {
-            return delegate.withdrawal(savingsId, command);
-        }
-
+        // Resolved (and the account-rule guard applied) BEFORE the backdated branch decides whether to delegate to
+        // core - otherwise a backdated withdrawal would reach `delegate.withdrawal(...)` (core Fineract, which has no
+        // notion of this account-level rule) without ever being checked. assembleForAppendPath(...) is a read-only
+        // lookup (no persisted side effects), so resolving it here purely for the guard - even on the path that then
+        // delegates rather than using this instance - is safe; delegate.withdrawal(...) does its own fresh load.
         final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
-
         final SavingsAccount account = assembled.getAccount();
 
         if (account.isWithdrawalBlockedByAccountRule()) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.withdrawal.not.allowed.account.rule",
                     "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
+        }
+
+        if (isBackdated) {
+            return delegate.withdrawal(savingsId, command);
         }
 
         final Map<String, Object> changes = new LinkedHashMap<>();

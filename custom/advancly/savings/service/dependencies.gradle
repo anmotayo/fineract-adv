@@ -44,4 +44,7 @@ dependencies {
     testImplementation('org.springframework.batch:spring-batch-integration')
     testImplementation('org.mockito:mockito-core')
     testImplementation('org.assertj:assertj-core')
+    // AppUser implements Spring Security's UserDetails - compileOnly above does not propagate to the test source
+    // set, so mocking AppUser in a test needs this too (test-scope only, mirrors the main compileOnly entry).
+    testCompileOnly('org.springframework.boot:spring-boot-starter-security')
 }

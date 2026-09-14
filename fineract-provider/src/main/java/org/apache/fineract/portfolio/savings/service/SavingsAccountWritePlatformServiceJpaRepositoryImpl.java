@@ -966,6 +966,34 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             this.savingsAccountDomainService.handleWithdrawal(account, fmt, closedDate, transactionAmount, paymentDetail,
                     transactionBooleanValues, false);
 
+            if (account.depositAccountType().isDynamicDeposit()) {
+                // Premature closure finalizes the account's status immediately below (account.close(...)) and no
+                // scheduled interest posting job will ever run for it again, so any pending early-withdrawal-penalty
+                // charge row the withdrawal above just created (via the account's own withdraw(...) override) would
+                // otherwise stay permanently pending. Post final interest up to the closure date now: the account's
+                // own postInterest(...) override already applies/caps whatever pending charge row exists for the
+                // boundary it is given, so this is the same mechanism the scheduled Dynamic Deposit interest-posting
+                // job already relies on - just run once more, on demand, at the moment of closure.
+                //
+                // Gated via depositAccountType().isDynamicDeposit() rather than an instanceof check against the
+                // custom module's account subclass: this class (core, fineract-provider) has no compile-time
+                // visibility of that class, only of this core enum (see DynamicDepositAccount#depositAccountType's
+                // own javadoc, which documents this exact call site as a consumer of the override).
+                //
+                // backdatedTxnsAllowedTill is passed as false, not this.savingAccountAssembler.getPivotConfigStatus():
+                // `account` above was assembled with assembleFrom(savingsId, false) - a literal false, independent of
+                // the tenant's pivot-config setting - so its in-memory transaction lists were populated for the
+                // non-pivot-aware code path. Passing true here would desync postInterest(...) from how the account
+                // was actually loaded.
+                //
+                // postInterestAs=true with transactionDate=closedDate forces a posting-period boundary to land
+                // exactly on the closure date (mirrors the admin "post interest as on date" command). The wrapper's
+                // own upper bound for how far to post (today's business date) can differ from closedDate for a
+                // backdated closure, but every boundary after closedDate sees a zero balance (the withdrawal above
+                // took the account to zero), so no interest is earned and no further transaction is created for
+                // them - the boundary at closedDate is the only one that matters here.
+                this.postInterest(account, true, closedDate, false);
+            }
         }
 
         final Map<String, Object> accountChanges = account.close(user, command);

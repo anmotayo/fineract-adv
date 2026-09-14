@@ -249,6 +249,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             final SavingsTransactionBooleanValues transactionBooleanValues, final boolean backdatedTxnsAllowedTill,
             final boolean appendPath) {
         final SavingsAccount account = assembled.getAccount();
+        if (!transactionBooleanValues.isInterestTransfer() && account.isWithdrawalBlockedByAccountRule()) {
+            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.transfer.not.allowed.account.rule",
+                    "Transfer is not allowed from this account while withdrawals are disabled for it.", account.getId());
+        }
         final PaymentDetail paymentDetail = null;
         if (appendPath) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());

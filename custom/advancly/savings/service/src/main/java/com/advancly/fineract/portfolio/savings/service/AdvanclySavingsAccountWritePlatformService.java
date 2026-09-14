@@ -35,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.Money;
@@ -166,6 +167,11 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
 
         final SavingsAccount account = assembled.getAccount();
+
+        if (account.isWithdrawalBlockedByAccountRule()) {
+            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.withdrawal.not.allowed.account.rule",
+                    "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
+        }
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);

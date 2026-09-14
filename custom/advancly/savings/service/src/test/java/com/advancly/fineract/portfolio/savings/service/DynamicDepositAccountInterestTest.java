@@ -47,6 +47,8 @@ import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.account.service.AccountTransfersReadPlatformService;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
@@ -330,6 +332,69 @@ class DynamicDepositAccountInterestTest {
 
         assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    /**
+     * Review finding I3: {@code applyPendingInterestBasedCharges} builds the {@code PAY_CHARGE} transaction and its
+     * {@code SavingsAccountChargePaidBy} link but, unlike core's own {@code SavingsAccount.payCharge(...)}, never used
+     * to call {@code SavingsAccountCharge.pay(...)} on the attributed charge. Core's undo path is not symmetric about
+     * this: {@code SavingsAccount.undoTransaction(Long)} unconditionally calls {@code chargeToUndo.undoPayment(...)}
+     * for any {@code PAY_CHARGE} transaction being undone, decrementing {@code amountPaid} regardless of whether it was
+     * ever incremented. Uses a REAL (non-mocked) {@link SavingsAccountCharge} - a Mockito mock would silently accept
+     * the {@code pay(...)}/{@code undoPayment(...)} calls without mutating any state, which would make this test pass
+     * whether or not the fix is present.
+     */
+    @Test
+    void payingAndUndoingAnInterestBasedChargeKeepsTheAttributedChargesPaidAmountSymmetric() {
+        this.account = buildAccount();
+        stubSingleRateHistoryForJanuary();
+
+        final Charge chargeDefinition = mock(Charge.class);
+        lenient().when(chargeDefinition.getAmount()).thenReturn(new BigDecimal("10"));
+        lenient().when(chargeDefinition.getChargeCalculation()).thenReturn(ChargeCalculationType.PERCENT_OF_INTEREST.getValue());
+        // PERCENT_OF_INTEREST is the real calculation type Dynamic Deposit early-withdrawal charges use (see
+        // DynamicDepositEarlyWithdrawalChargeService) - its charge-definition amount/outstanding start at zero
+        // (SavingsAccountCharge#populateDerivedFields), since the real figures live in
+        // m_deposit_account_interest_charge instead.
+        final SavingsAccountCharge attributedCharge = SavingsAccountCharge.createNewWithoutSavingsAccount(chargeDefinition,
+                new BigDecimal("10"), ChargeTimeType.SAVINGS_ACTIVATION, ChargeCalculationType.PERCENT_OF_INTEREST, null, true, null, null);
+        assertThat(attributedCharge.isPaidOrPartiallyPaid(CURRENCY)).isFalse();
+        assertThat(attributedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+
+        final DepositAccountInterestCharge pendingRow = DepositAccountInterestCharge.createNew(this.account,
+                mock(SavingsAccountTransaction.class), attributedCharge, mock(Charge.class), LocalDate.of(2026, 1, 1),
+                LocalDate.of(2026, 1, 20), BigDecimal.ZERO, new BigDecimal("10"), BigDecimal.ZERO);
+        lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any()))
+                .thenReturn(new ArrayList<>(List.of(pendingRow)));
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(invocation -> pendingRow.chargeAmount());
+
+        this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+
+        final SavingsAccountTransaction chargeTransaction = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isPayCharge).findFirst()
+                .orElseThrow(() -> new AssertionError("Expected one PAY_CHARGE transaction to have been created"));
+
+        // The fix under test: the attributed charge must now reflect the payment.
+        assertThat(attributedCharge.isPaidOrPartiallyPaid(CURRENCY)).isTrue();
+
+        // None of postInterest's freshly-created transactions were persisted, so every one of them still has a null
+        // id - isIdentifiedBy(Long) would NPE on the first such transaction undoTransaction's own lookup stream
+        // reaches. Assign real ids, exactly as the database would, before exercising the undo path.
+        long nextId = 100L;
+        for (final SavingsAccountTransaction transaction : this.account.getTransactions()) {
+            if (transaction.getId() == null) {
+                ReflectionTestUtils.setField(transaction, "id", nextId++);
+            }
+        }
+
+        this.account.undoTransaction(chargeTransaction.getId());
+
+        // Symmetric with SavingsAccount.undoTransaction(Long)'s chargeToUndo.undoPayment(...): paid/outstanding must
+        // return to exactly their pre-charge values - not a negative paid amount and an inflated outstanding amount,
+        // which is what happened before pay(...) was called on the way in.
+        assertThat(attributedCharge.isPaidOrPartiallyPaid(CURRENCY)).isFalse();
+        assertThat(attributedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private DepositAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {

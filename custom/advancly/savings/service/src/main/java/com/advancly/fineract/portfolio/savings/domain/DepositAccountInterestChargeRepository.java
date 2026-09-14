@@ -30,22 +30,27 @@ public interface DepositAccountInterestChargeRepository extends JpaRepository<De
     /**
      * Pending (not yet consumed by an interest posting) early-withdrawal charge rows whose interest period ended on or
      * before {@code upToDate} - i.e. the rows a posting boundary ending on that date must sum (implementation plan
-     * Section 10 step 2). Rows whose withdrawal transaction has been reversed are excluded here rather than filtered by
-     * the caller, since this table carries no reversal state of its own. Ordered by id so the first row is the oldest,
-     * which is the one whose charge definition the single charge transaction is attributed to.
+     * Section 10 step 2). A row also counts as pending when its charge transaction was created but has since been
+     * reversed - a genuinely reversed charge must return to pending rather than vanish from both the pending and posted
+     * sums, since neither the pending nor posted derived columns would ever account for it again otherwise. Rows whose
+     * withdrawal transaction has been reversed are excluded here rather than filtered by the caller, since this table
+     * carries no reversal state of its own. Ordered by id so the first row is the oldest, which is the one whose charge
+     * definition the single charge transaction is attributed to.
      */
     @Query("select c from DepositAccountInterestCharge c where c.account.id = :savingsAccountId "
-            + "and c.interestChargeTransaction is null and c.interestPeriodEndDate <= :upToDate "
-            + "and c.withdrawalTransaction.reversed = false order by c.id asc")
+            + "and (c.interestChargeTransaction is null or c.interestChargeTransaction.reversed = true) "
+            + "and c.interestPeriodEndDate <= :upToDate and c.withdrawalTransaction.reversed = false order by c.id asc")
     List<DepositAccountInterestCharge> findPendingByAccountIdUpTo(@Param("savingsAccountId") Long savingsAccountId,
             @Param("upToDate") LocalDate upToDate);
 
     /**
      * Backs {@code m_savings_account.interest_based_charge_derived} (implementation plan Section 5): the current
-     * calculated-but-not-yet-posted interest-based charge amount.
+     * calculated-but-not-yet-posted interest-based charge amount. A row whose charge transaction was created but has
+     * since been reversed counts as pending here too - see {@link #findPendingByAccountIdUpTo} for why.
      */
     @Query("select coalesce(sum(c.chargeAmount), 0) from DepositAccountInterestCharge c where c.account.id = :savingsAccountId "
-            + "and c.interestChargeTransaction is null and c.withdrawalTransaction.reversed = false")
+            + "and (c.interestChargeTransaction is null or c.interestChargeTransaction.reversed = true) "
+            + "and c.withdrawalTransaction.reversed = false")
     BigDecimal sumPendingChargeAmount(@Param("savingsAccountId") Long savingsAccountId);
 
     /**

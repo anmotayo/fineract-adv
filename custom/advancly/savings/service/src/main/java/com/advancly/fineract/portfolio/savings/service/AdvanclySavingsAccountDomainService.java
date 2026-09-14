@@ -232,7 +232,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             // A reversed withdrawal or interest-based-charge posting leaves m_deposit_account_interest_charge itself
             // correct - its queries already exclude rows linked to a reversed transaction (see
             // DepositAccountInterestChargeRepository) - but the fast-read derived columns on this row are otherwise
-            // only refreshed inside DynamicDepositAccount#applyPendingEarlyWithdrawalChargesForPeriod(...) and would
+            // only refreshed inside DynamicDepositAccount#applyPendingInterestBasedCharges(...) and would
             // go stale (too high) until the next early withdrawal happens to refresh them. Recompute unconditionally
             // rather than only for a charge/withdrawal reversal, since it costs two cheap aggregate queries.
             dynamicDepositAccount.updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(account.getId()));

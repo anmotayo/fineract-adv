@@ -386,7 +386,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         // linked to; either way the repository queries backing these two columns already exclude reversed rows/links
         // (see DepositAccountInterestChargeRepository), so m_deposit_account_interest_charge itself stays correct -
         // but the fast-read derived columns on this row are otherwise only refreshed inside
-        // applyPendingEarlyWithdrawalChargesForPeriod(...) and would go stale (too high) until the next early
+        // applyPendingInterestBasedCharges(...) and would go stale (too high) until the next early
         // withdrawal happens to refresh them. Recompute unconditionally rather than only when transactionToUndo is a
         // charge/withdrawal, since it costs two cheap aggregate queries and keeps this correct regardless of which
         // transaction type was undone.
@@ -714,7 +714,12 @@ public class DynamicDepositAccount extends SavingsAccount {
      *
      * The transaction is a {@code PAY_CHARGE} built by {@code SavingsAccountTransaction.charge(...)} and linked to the
      * account charge through {@code SavingsAccountChargePaidBy}, exactly as core's own {@code handleChargeTransactions}
-     * does - so accounting and the charge/transaction link behave like every other savings charge.
+     * does - so accounting and the charge/transaction link behave like every other savings charge. The attributed
+     * charge's own {@code amount_paid_derived}/{@code amount_outstanding_derived} are updated via
+     * {@code SavingsAccountCharge.pay(...)} too, exactly as core's {@code SavingsAccount.payCharge(...)} does before
+     * building that link - without it, {@code SavingsAccount.undoTransaction(Long)}'s symmetric
+     * {@code chargeToUndo.undoPayment(...)} on this transaction being undone would decrement an amount that was never
+     * incremented, driving the charge's paid/outstanding bookkeeping negative.
      */
     private void applyPendingInterestBasedCharges(final LocalDate interestPostingTransactionDate, final Money grossInterestForPeriod,
             final SavingsAccountTransaction interestPostingTransaction, final boolean backdatedTxnsAllowedTill) {
@@ -764,6 +769,10 @@ public class DynamicDepositAccount extends SavingsAccount {
         // (what actually posted, and therefore what SavingsAccountChargePaidBy/accounting move), or the rows would
         // sum to a value the ledger never saw whenever rounding changes the last digit.
         final BigDecimal appliedTotal = chargeTransaction.getAmount();
+        // Mirrors SavingsAccount.payCharge(...): core calls SavingsAccountCharge.pay(...) before building the
+        // SavingsAccountChargePaidBy link, so the charge's own paid/outstanding bookkeeping stays symmetric with
+        // undoTransaction(Long)'s undoPayment(...) call on this same transaction.
+        attributedCharge.pay(this.currency, Money.of(this.currency, appliedTotal));
         chargeTransaction.getSavingsAccountChargesPaid()
                 .add(SavingsAccountChargePaidBy.instance(chargeTransaction, attributedCharge, appliedTotal));
         if (backdatedTxnsAllowedTill) {

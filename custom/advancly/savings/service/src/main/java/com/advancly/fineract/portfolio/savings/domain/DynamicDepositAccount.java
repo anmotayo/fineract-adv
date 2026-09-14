@@ -770,8 +770,18 @@ public class DynamicDepositAccount extends SavingsAccount {
         // incurs a penalty. It is treated as one more contribution alongside the pending rows below - summed with
         // them, capped with them ONCE, and pro-rated with them - rather than charged separately against the full
         // gross-minus-tax basis, which would double-count the basis those rows are already consuming.
+        //
+        // One-shot guard: core's SavingsAccountDomainServiceJpa#handleWithdrawal can re-enter postInterest(...) a
+        // second time for the SAME closure withdrawal (isBeforeLastPostingPeriod(...) is true whenever an interest
+        // posting transaction already exists dated after the closure date - a backdated closure hitting the
+        // "correction" branch), and closureSettlement stays set for that entire re-entrant call (it is only cleared
+        // afterwards, by completeClosureSettlement(...), by design - see that field's javadoc). Without
+        // !isApplied() here, a second boundary that also contains closedDate - 1 would select and re-apply the
+        // very same contribution again. isApplied() is an explicit flag set once by recordApplied(...) below,
+        // independent of the applied amount's value, so even a zero-amount application correctly marks itself
+        // "already handled" and is never selected a second time.
         final ClosureSettlement closureContribution = isClosureBoundary && this.closureSettlement != null
-                && this.closureSettlement.hasQualifyingCharge() ? this.closureSettlement : null;
+                && this.closureSettlement.hasQualifyingCharge() && !this.closureSettlement.isApplied() ? this.closureSettlement : null;
 
         final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
         final List<DepositAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
@@ -972,6 +982,14 @@ public class DynamicDepositAccount extends SavingsAccount {
         private BigDecimal appliedAmount;
         private SavingsAccountTransaction interestPostingTransaction;
         private SavingsAccountTransaction interestChargeTransaction;
+        /**
+         * One-shot guard, independent of {@link #appliedAmount}'s value: set {@code true} the moment this contribution
+         * is actually selected and recorded by {@link #recordApplied}, so a later re-entrant posting pass for the SAME
+         * closure (see the caller in {@code applyPendingInterestBasedCharges}) can never select or apply it a second
+         * time - even when the applied amount happened to be zero, which a value-based check (e.g. "amount > 0") would
+         * miss.
+         */
+        private boolean applied;
 
         private ClosureSettlement(final LocalDate closedDate, final LocalDate interestPeriodStartDate,
                 final SavingsAccountCharge accountCharge, final BigDecimal percentage) {
@@ -989,12 +1007,17 @@ public class DynamicDepositAccount extends SavingsAccount {
             return this.appliedAmount != null && this.appliedAmount.compareTo(BigDecimal.ZERO) > 0;
         }
 
+        private boolean isApplied() {
+            return this.applied;
+        }
+
         private void recordApplied(final BigDecimal grossInterestBasis, final BigDecimal appliedAmount,
                 final SavingsAccountTransaction interestPostingTransaction, final SavingsAccountTransaction interestChargeTransaction) {
             this.grossInterestBasis = grossInterestBasis;
             this.appliedAmount = appliedAmount;
             this.interestPostingTransaction = interestPostingTransaction;
             this.interestChargeTransaction = interestChargeTransaction;
+            this.applied = true;
         }
 
         private LocalDate closedDate() {

@@ -47,7 +47,10 @@ import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactio
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,6 +69,7 @@ import org.apache.fineract.infrastructure.security.service.PlatformSecurityConte
 import org.apache.fineract.organisation.holiday.domain.HolidayRepositoryWrapper;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
 import org.apache.fineract.organisation.workingdays.domain.WorkingDaysRepositoryWrapper;
@@ -291,6 +295,30 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
         assertThat(closureRow.interestPostingTransaction()).isSameAs(singleInterestPosting());
         assertThat(closureRow.withdrawalTransaction()).isSameAs(this.withdrawals.get(0));
+
+        // The actual 40/60 split, not just its sum: recomputedChargeAmount(...)'s formula applied to each
+        // contribution's own percentage, pro-rated against what the charge transaction actually moved (its total may
+        // differ from the sum of the two contributions' raw recomputed amounts by a rounding cent, which is why the
+        // pro-rata step, not the raw percentages, is what must be replicated here). Asserting only the SUM (as this
+        // test previously did) would still pass for a wrong 0/100 or 50/50 split as long as the two shares added up
+        // to the charge transaction's total - these assertions pin down each row's own amount.
+        final MathContext pctMc = new MathContext(8, MoneyHelper.getRoundingMode());
+        final BigDecimal recomputedEarlierShare = grossInterest.multiply(new BigDecimal("40")).divide(BigDecimal.valueOf(100), pctMc);
+        final BigDecimal recomputedClosureShare = grossInterest.multiply(new BigDecimal("60")).divide(BigDecimal.valueOf(100), pctMc);
+        final BigDecimal recomputedTotal = recomputedEarlierShare.add(recomputedClosureShare);
+        final BigDecimal appliedTotal = chargeTransaction.getAmount();
+        final BigDecimal expectedEarlierRowAmount = recomputedEarlierShare.multiply(appliedTotal).divide(recomputedTotal, pctMc)
+                .setScale(CURRENCY.getDigitsAfterDecimal(), RoundingMode.DOWN);
+        final BigDecimal expectedClosureRowAmount = appliedTotal.subtract(expectedEarlierRowAmount);
+
+        assertThat(earlierRow.chargeAmount()).isEqualByComparingTo(expectedEarlierRowAmount);
+        assertThat(closureRow.chargeAmount()).isEqualByComparingTo(expectedClosureRowAmount);
+        // Sanity bound so a degenerate 0/100 (or any other wrong split) cannot slip past even if the hand-replicated
+        // formula above were somehow also wrong: the smaller (40%) share must be a genuine, non-trivial fraction of
+        // the total, clearly less than the larger (60%) share.
+        assertThat(expectedEarlierRowAmount).isGreaterThan(BigDecimal.ZERO);
+        assertThat(expectedClosureRowAmount).isGreaterThan(expectedEarlierRowAmount);
+
         assertThat(earlierRow.chargeAmount().add(closureRow.chargeAmount())).isEqualByComparingTo(chargeTransaction.getAmount());
 
         // Exactly ONE withdrawal, for the whole final balance, leaving exactly zero.
@@ -411,6 +439,75 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         verifyNoInteractions(this.configurationDomainService);
         verify(this.savingsAccountTransactionRepository, never()).save(any());
         verifyNoInteractions(this.interestChargeRepository);
+    }
+
+    // Regression test (review finding): closureSettlement stays set (non-null) for the entire duration of close()'s
+    // withdrawal call - by design, since DynamicDepositEarlyWithdrawalChargeService's suppression guard depends on it
+    // staying set through any re-entrant posting the withdrawal triggers, and it is only ever cleared afterwards by
+    // completeClosureSettlement(...). But core's SavingsAccountDomainServiceJpa#handleWithdrawal can itself RE-ENTER
+    // account.postInterest(...) a second time while still inside that same withdrawal call, whenever
+    // isBeforeLastPostingPeriod(...) is true - i.e. a backdated closure whose period already has an interest posting
+    // transaction dated after the closure date. Before this fix, applyPendingInterestBasedCharges(...)'s closure-
+    // contribution SELECTION had no guard against being handed the SAME (still non-null, still "qualifying") closure
+    // settlement a second time, so a second boundary that also covers closedDate - 1 would select it again -
+    // double-charging the closure penalty and overwriting ClosureSettlement#recordApplied(...)'s previously recorded
+    // amount/transactions with whatever the second (wrong) application computed.
+    //
+    // Faithfully reproducing core's exact re-entrancy trigger through the full close()/handleWithdrawal path would
+    // require this Mockito-only, no-JPA test harness to reverse-engineer SavingsHelper#determineInterestPostingPeriods'
+    // manual-posting-date bookkeeping (which core's own comment notes only ACCIDENTALLY prevents this in some
+    // isSavingsInterestPostingAtCurrentPeriodEnd configurations and not others) - fragile and indirect. Instead this
+    // test drives applyPendingInterestBasedCharges(...) itself - the exact method the guard lives in - directly,
+    // twice in a row, against the SAME ClosureSettlement instance prepareClosureSettlement(...) built (nothing here
+    // ever calls completeClosureSettlement(...), so it is never cleared between the two calls - precisely the
+    // window core's re-entrant call would also see), each time as isClosureBoundary=true exactly as a boundary
+    // covering closedDate - 1 would be. This is the "more targeted unit test that directly proves the guard's
+    // SELECTION logic itself" the review allowed as an alternative to a full end-to-end reproduction.
+    @Test
+    void aSecondAttemptToApplyTheSameClosureContributionIsANoOp() throws Exception {
+        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
+        this.account = buildAccount(MATURITY_AFTER_CLOSURE, accountCharge);
+
+        // Step 1 of the real closure sequence: resolves and remembers the qualifying 60% charge, exactly as
+        // SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...) does before its own interest posting.
+        this.account.prepareClosureSettlement(CLOSED_DATE);
+        assertThat(this.account.isClosureSettlementInProgress()).isTrue();
+
+        final Method applyPendingInterestBasedCharges = DynamicDepositAccount.class.getDeclaredMethod("applyPendingInterestBasedCharges",
+                LocalDate.class, Money.class, SavingsAccountTransaction.class, boolean.class, boolean.class);
+        applyPendingInterestBasedCharges.setAccessible(true);
+
+        // First application - the real one, as the closure boundary's own interest posting would trigger it.
+        final SavingsAccountTransaction firstPosting = new SavingsAccountTransactionTestBuilder().withId(700L)
+                .withSavingsAccount(this.account).withType(SavingsAccountTransactionType.INTEREST_POSTING)
+                .withDate(CLOSED_DATE.minusDays(1)).withAmount(new BigDecimal("100.00")).build();
+        this.account.getTransactions().add(firstPosting);
+        applyPendingInterestBasedCharges.invoke(this.account, CLOSED_DATE, Money.of(CURRENCY, new BigDecimal("100.00")), firstPosting,
+                false, true);
+
+        final List<SavingsAccountTransaction> afterFirstCall = payChargeTransactions();
+        assertThat(afterFirstCall).hasSize(1);
+        final SavingsAccountTransaction chargeTransactionAfterFirstCall = afterFirstCall.get(0);
+        assertThat(chargeTransactionAfterFirstCall.getAmount()).isEqualByComparingTo("60.00");
+
+        // Second application - simulating core's re-entrant postInterest(...) landing on another boundary that also
+        // contains closedDate - 1, with closureSettlement still the very same, still-non-null instance (nothing has
+        // called completeClosureSettlement(...) yet). Without the one-shot applied guard this recomputes the
+        // closure's 60% against a DIFFERENT gross figure (50.00) and posts a SECOND PAY_CHARGE transaction, silently
+        // overwriting the settlement's previously recorded amount/transactions.
+        final SavingsAccountTransaction secondPosting = new SavingsAccountTransactionTestBuilder().withId(701L)
+                .withSavingsAccount(this.account).withType(SavingsAccountTransactionType.INTEREST_POSTING)
+                .withDate(CLOSED_DATE.minusDays(1)).withAmount(new BigDecimal("50.00")).build();
+        this.account.getTransactions().add(secondPosting);
+        applyPendingInterestBasedCharges.invoke(this.account, CLOSED_DATE, Money.of(CURRENCY, new BigDecimal("50.00")), secondPosting,
+                false, true);
+
+        // Exactly ONE PAY_CHARGE transaction - not two - and it is the very same transaction from the first call, not
+        // a second one that replaced or sat alongside it.
+        final List<SavingsAccountTransaction> afterSecondCall = payChargeTransactions();
+        assertThat(afterSecondCall).hasSize(1);
+        assertThat(afterSecondCall.get(0)).isSameAs(chargeTransactionAfterFirstCall);
+        assertThat(afterSecondCall.get(0).getAmount()).isEqualByComparingTo("60.00");
     }
 
     // === fixtures ===

@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestCharge;
@@ -62,6 +64,7 @@ import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDoma
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
@@ -632,6 +635,21 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
+    // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds
+    // OUTRIGHT - before any settlement (interest posting, charge collection) or the withdrawal itself runs - rather
+    // than partially settling the account and only then refusing the payout.
+    @Test
+    void closingEarlyWithAFundWithdrawalIsRejectedWhenWithdrawalIsDisallowed() {
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE);
+        this.account.setDynamicDetail(DepositAccountDynamicDetail.createNew(this.account, false, false));
+
+        assertThatThrownBy(() -> this.service.close(1L, closeCommandFor(1L, true))).isInstanceOf(GeneralPlatformDomainRuleException.class);
+
+        assertThat(this.account.isClosed()).isFalse();
+        assertThat(payChargeTransactions()).isEmpty();
+        assertThat(this.withdrawals).isEmpty();
+    }
+
     // === fixtures ===
 
     private List<DepositAccountInterestCharge> allRows() {
@@ -680,7 +698,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         when(this.context.authenticatedUser()).thenReturn(mock(AppUser.class));
         when(this.savingAccountAssembler.assembleFrom(1L, false)).thenReturn(this.account);
 
-        when(this.savingsAccountDomainService.handleWithdrawal(eq(this.account), any(), eq(CLOSED_DATE), any(), any(), any(), eq(false)))
+        // lenient: the Task 3 withdrawal-lock test deliberately never reaches this call - the guard rejects the
+        // closure before any withdrawal is attempted - so this stub goes unused there by design.
+        lenient().when(
+                this.savingsAccountDomainService.handleWithdrawal(eq(this.account), any(), eq(CLOSED_DATE), any(), any(), any(), eq(false)))
                 .thenAnswer(invocation -> {
                     final BigDecimal amount = invocation.getArgument(3);
                     final SavingsAccountTransaction withdrawal = SavingsAccountTransaction.withdrawal(this.account, this.office, null,
@@ -788,6 +809,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final SavingsProduct product = mock(SavingsProduct.class);
         lenient().when(product.getId()).thenReturn(PRODUCT_ID);
         ReflectionTestUtils.setField(newAccount, "product", product);
+
+        // Withdrawals allowed by default - the account-rule withdrawal lock (Phase 5) is opt-in per test via
+        // setDynamicDetail(...) with allowWithdrawal=false; every scenario here relies on withdrawals being possible
+        // unless it says otherwise.
+        newAccount.setDynamicDetail(DepositAccountDynamicDetail.createNew(newAccount, true, false));
 
         return newAccount;
     }

@@ -961,6 +961,12 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         final Map<String, Object> changes = new LinkedHashMap<>();
 
+        if (isWithdrawBalance && account.getSummary().getAccountBalance(account.getCurrency()).isGreaterThanZero()
+                && account.isWithdrawalBlockedByAccountRule()) {
+            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.close.withdrawal.not.allowed.account.rule",
+                    "This account cannot be closed with a fund withdrawal while withdrawals are disabled for it.", account.getId());
+        }
+
         if (isWithdrawBalance && account.getSummary().getAccountBalance(account.getCurrency()).isGreaterThanZero()) {
 
             final PaymentDetail paymentDetail = this.paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);

@@ -255,6 +255,11 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isAllowWithdrawal();
     }
 
+    @Override
+    public boolean isWithdrawalBlockedByAccountRule() {
+        return !isAllowWithdrawal();
+    }
+
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
     }

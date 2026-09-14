@@ -2823,6 +2823,20 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         // no-op by default - see javadoc.
     }
 
+    /**
+     * Whether this account currently refuses to have funds withdrawn from it via a regular cash withdrawal, a
+     * regular transfer-out, or a premature closure that withdraws funds (implementation plan Section 7). No-op
+     * ({@code false}) for every account type except Dynamic Deposit, which overrides it to reflect its
+     * {@code allowWithdrawal} product/account setting - see {@code DynamicDepositAccount#isWithdrawalBlockedByAccountRule()}.
+     *
+     * Deliberately NOT consulted for transfer-in, top-up, interest calculation, interest posting, or a configured
+     * transfer-interest-to-savings movement - none of those are withdrawals from this account's own perspective, and
+     * each caller of this hook is responsible for only invoking it on the withdrawal-shaped paths listed above.
+     */
+    public boolean isWithdrawalBlockedByAccountRule() {
+        return false;
+    }
+
     public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
         final Map<String, Object> actualChanges = new LinkedHashMap<>();
 

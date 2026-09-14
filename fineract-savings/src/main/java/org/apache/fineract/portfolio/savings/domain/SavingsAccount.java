@@ -2798,6 +2798,31 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
     }
 
+    /**
+     * Closure-settlement extension point, called by
+     * {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} on the close-with-withdraw-balance path
+     * BEFORE the account balance is read and withdrawn. A deposit type whose charges are derived from interest (today:
+     * Dynamic Deposit, see {@code DynamicDepositAccount}) uses it to work out - and remember for
+     * {@link #completeClosureSettlement(SavingsAccountTransaction)} - what the closure itself contributes to that
+     * period's interest-based charge, so the final interest posting that follows can collect it together with any other
+     * pending charge from the same period, and the single withdrawal below it pays out the true final balance.
+     *
+     * A no-op for every other account type: an account that settles nothing at closure simply ignores both hooks, and
+     * closure behaves exactly as it always has.
+     */
+    public void prepareClosureSettlement(final LocalDate closedDate) {
+        // no-op by default - see javadoc.
+    }
+
+    /**
+     * The other half of {@link #prepareClosureSettlement(LocalDate)}, called immediately after the single closure
+     * withdrawal transaction exists (and therefore has a real id) so an implementation can record its own
+     * already-applied charge row against it. A no-op by default.
+     */
+    public void completeClosureSettlement(final SavingsAccountTransaction closureWithdrawal) {
+        // no-op by default - see javadoc.
+    }
+
     public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
         final Map<String, Object> actualChanges = new LinkedHashMap<>();
 

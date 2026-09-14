@@ -122,6 +122,24 @@ public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTi
     }
 
     /**
+     * An already-applied row, created in one step rather than as a pending row that some later posting run finalizes.
+     * Used by premature closure: the interest posting, the withholding tax and the single capped interest-based charge
+     * for the period have all just been written, so this row's final basis, amount and both transaction links are
+     * already known by the time the closure withdrawal it belongs to exists - there is nothing left for it to wait for,
+     * and nothing will ever run again on a closed account to finalize it if it were left pending.
+     */
+    public static DepositAccountInterestCharge createApplied(final SavingsAccount account,
+            final SavingsAccountTransaction withdrawalTransaction, final SavingsAccountCharge savingsAccountCharge, final Charge charge,
+            final LocalDate interestPeriodStartDate, final LocalDate interestPeriodEndDate, final BigDecimal interestAmountBasis,
+            final BigDecimal chargePercentage, final BigDecimal chargeAmount, final SavingsAccountTransaction interestPostingTransaction,
+            final SavingsAccountTransaction interestChargeTransaction) {
+        final DepositAccountInterestCharge row = new DepositAccountInterestCharge(account, withdrawalTransaction, savingsAccountCharge,
+                charge, interestPeriodStartDate, interestPeriodEndDate, interestAmountBasis, chargePercentage, chargeAmount);
+        row.linkToPosting(interestPostingTransaction, interestChargeTransaction);
+        return row;
+    }
+
+    /**
      * Implementation plan Section 10 step 8: link this row to the interest posting transaction and to the single
      * interest-based charge transaction written for the period.
      */

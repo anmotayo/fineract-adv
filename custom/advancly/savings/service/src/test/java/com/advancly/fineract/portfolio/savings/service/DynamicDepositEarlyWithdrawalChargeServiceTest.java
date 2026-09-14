@@ -54,6 +54,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class DynamicDepositEarlyWithdrawalChargeServiceTest {
@@ -201,6 +202,29 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
         this.service.recordIfApplicable(account, reversed);
 
         assertThat(this.savedRows).isEmpty();
+    }
+
+    @Test
+    void theSettlementWithdrawalOfAPrematureClosureIsSkipped() {
+        // Premature closure computes and charges its own penalty as part of the period's single capped interest-based
+        // charge, then writes the row itself (already applied) against this very withdrawal. Recording a pending row
+        // here too would duplicate a charge that was already taken - and nothing would ever apply or clear it, since a
+        // closed account never posts interest again.
+        final DynamicDepositAccount account = account(new BigDecimal("500"), new BigDecimal("200"), accountCharge(new BigDecimal("10")));
+        final ApplicationContext applicationContext = mock(ApplicationContext.class);
+        lenient().when(applicationContext.getBean(DynamicDepositEarlyWithdrawalChargeService.class)).thenReturn(this.service);
+        ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
+
+        account.prepareClosureSettlement(BEFORE_MATURITY);
+        this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY));
+
+        assertThat(this.savedRows).isEmpty();
+
+        // ...and the suppression ends with the settlement: an ordinary early withdrawal afterwards records as usual.
+        account.completeClosureSettlement(null);
+        this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY));
+
+        assertThat(this.savedRows).hasSize(1);
     }
 
     @Test

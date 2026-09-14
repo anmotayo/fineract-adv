@@ -86,20 +86,30 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()) {
             return;
         }
+        // The settlement withdrawal issued by premature closure is the one withdrawal that must NOT create a pending
+        // row here. Its penalty has already been computed - and charged - by DynamicDepositAccount's closure
+        // settlement, folded into that period's single capped interest-based charge, and the account creates the
+        // corresponding row itself (already applied, linked to this very transaction) as soon as this transaction
+        // exists. A pending row from here would be a duplicate of a charge that was already taken, and, with no
+        // further interest posting ever due on a closed account, one that could never be applied or cleared.
+        //
+        // Guarding inside this single method rather than at each call site deliberately covers BOTH hooks that reach
+        // it - DynamicDepositAccount#withdraw and AdvanclySavingsAccountDomainService#handleWithdrawalOptimized -
+        // without touching either.
+        if (account.isClosureSettlementInProgress()) {
+            return;
+        }
         final LocalDate withdrawalDate = withdrawalTransaction.getTransactionDate();
         if (!account.isEarlyWithdrawal(withdrawalDate)) {
             return;
         }
 
-        final SavingsAccountCharge qualifyingCharge = resolveQualifyingCharge(account);
-        if (qualifyingCharge == null) {
+        final QualifyingCharge qualifying = resolveQualifyingChargeWithPercentage(account);
+        if (qualifying == null) {
             return;
         }
-
-        final BigDecimal percentage = resolvePercentage(qualifyingCharge);
-        if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
+        final SavingsAccountCharge qualifyingCharge = qualifying.accountCharge();
+        final BigDecimal percentage = qualifying.percentage();
 
         // PROVISIONAL ONLY. Task 8 recomputes the amount from the stored percentage against the period's real,
         // just-calculated gross interest before applying anything, so this snapshot never determines what the customer
@@ -122,6 +132,31 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         // Section 11: "Update interest_based_charge_derived during interest calculation". Recomputed from the table
         // rather than incremented, so the derived value can never drift from its source of truth.
         account.updateInterestBasedChargeDerived(this.interestChargeRepository.sumPendingChargeAmount(account.getId()));
+    }
+
+    /**
+     * The account charge an early withdrawal (or a premature closure) would be penalised with, together with the
+     * percentage to apply - or {@code null} when the product/account configuration disqualifies it, or the percentage
+     * is absent or not positive.
+     *
+     * Public because {@code DynamicDepositAccount}'s closure settlement resolves exactly the same charge and percentage
+     * for the closure's own contribution to the period's interest-based charge; sharing this one method is what keeps
+     * "which charge, at what percentage" a single answer rather than two that could drift.
+     */
+    public QualifyingCharge resolveQualifyingChargeWithPercentage(final DynamicDepositAccount account) {
+        final SavingsAccountCharge qualifyingCharge = resolveQualifyingCharge(account);
+        if (qualifyingCharge == null) {
+            return null;
+        }
+        final BigDecimal percentage = resolvePercentage(qualifyingCharge);
+        if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        return new QualifyingCharge(qualifyingCharge, percentage);
+    }
+
+    /** The resolved early-withdrawal penalty: the account charge it is taken against and the percentage to apply. */
+    public record QualifyingCharge(SavingsAccountCharge accountCharge, BigDecimal percentage) {
     }
 
     /**
@@ -205,8 +240,11 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * Start of the open interest period: the day after the latest non-reversed interest posting, or the account's
      * interest-calculation start date when nothing has been posted yet. Stored on the row for audit and for matching
      * pending rows to a posting boundary.
+     *
+     * Public for the same reason as {@link #resolveQualifyingChargeWithPercentage(DynamicDepositAccount)}: the closure
+     * settlement stamps its own row with the same period start an ordinary early withdrawal would have.
      */
-    private LocalDate currentPeriodStartDate(final DynamicDepositAccount account) {
+    public LocalDate currentPeriodStartDate(final DynamicDepositAccount account) {
         LocalDate lastPostingDate = null;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             if (!transaction.isInterestPostingAndNotReversed()) {

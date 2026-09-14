@@ -519,6 +519,18 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
     @Override
     public void postInterest(final SavingsAccount account, final boolean postInterestAs, final LocalDate transactionDate,
             final boolean backdatedTxnsAllowedTill) {
+        postInterestUpTo(account, postInterestAs, transactionDate, backdatedTxnsAllowedTill, DateUtils.getBusinessLocalDate());
+    }
+
+    /**
+     * The body of {@link #postInterest(SavingsAccount, boolean, LocalDate, boolean)}, with the upper bound for how far
+     * interest is posted made explicit instead of always being today's business date. Every existing caller keeps
+     * today's business date (see the delegation above); {@link #close(Long, JsonCommand)} passes the closure date, so a
+     * BACKDATED closure cannot post interest for the days between the closure date and today - days on which the
+     * account, being closed, no longer earns anything.
+     */
+    private void postInterestUpTo(final SavingsAccount account, final boolean postInterestAs, final LocalDate transactionDate,
+            final boolean backdatedTxnsAllowedTill, final LocalDate interestPostingUpToDate) {
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
@@ -534,7 +546,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 updateExistingTransactionsDetails(account, existingTransactionIds, existingReversedTransactionIds);
             }
 
-            final LocalDate today = DateUtils.getBusinessLocalDate();
             final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
             boolean isInterestTransfer = false;
             LocalDate postInterestOnDate = null;
@@ -542,8 +553,8 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 postInterestOnDate = transactionDate;
             }
             boolean postReversals = false;
-            account.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
-                    postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
+            account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+                    financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill, postReversals);
 
             if (!backdatedTxnsAllowedTill) {
                 List<SavingsAccountTransaction> transactions = account.getTransactions();
@@ -952,28 +963,22 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         if (isWithdrawBalance && account.getSummary().getAccountBalance(account.getCurrency()).isGreaterThanZero()) {
 
-            final BigDecimal transactionAmount = account.getSummary().getAccountBalance();
-
             final PaymentDetail paymentDetail = this.paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
 
-            final boolean isAccountTransfer = false;
-            final boolean isRegularTransaction = true;
-            final boolean isApplyWithdrawFee = false;
-            final boolean isInterestTransfer = false;
-            final SavingsTransactionBooleanValues transactionBooleanValues = new SavingsTransactionBooleanValues(isAccountTransfer,
-                    isRegularTransaction, isApplyWithdrawFee, isInterestTransfer, isWithdrawBalance);
-
-            this.savingsAccountDomainService.handleWithdrawal(account, fmt, closedDate, transactionAmount, paymentDetail,
-                    transactionBooleanValues, false);
-
             if (account.depositAccountType().isDynamicDeposit()) {
-                // Premature closure finalizes the account's status immediately below (account.close(...)) and no
-                // scheduled interest posting job will ever run for it again, so any pending early-withdrawal-penalty
-                // charge row the withdrawal above just created (via the account's own withdraw(...) override) would
-                // otherwise stay permanently pending. Post final interest up to the closure date now: the account's
-                // own postInterest(...) override already applies/caps whatever pending charge row exists for the
-                // boundary it is given, so this is the same mechanism the scheduled Dynamic Deposit interest-posting
-                // job already relies on - just run once more, on demand, at the moment of closure.
+                // Closure settlement for interest-derived charges, run BEFORE the balance is read and withdrawn (see
+                // SavingsAccount#prepareClosureSettlement/#completeClosureSettlement, the two no-op extension points
+                // this pair of calls uses). No scheduled interest posting job will ever run for the account again
+                // once account.close(...) below finalizes it, so this is the last chance to post the final period's
+                // interest and to collect both the early-withdrawal penalty this very closure incurs and any charge
+                // still pending from an earlier withdrawal in the same period.
+                //
+                // Ordering is the whole point: prepareClosureSettlement(...) tells the account a closure withdrawal
+                // dated closedDate is coming, so the posting immediately below folds that closure's own penalty into
+                // the SAME capped, pro-rated interest-based charge it writes for the period's other pending rows -
+                // one charge transaction, capped once, in one pass. Only then is the balance read, so the single
+                // withdrawal that follows pays out principal plus interest net of withholding tax and that charge -
+                // exactly zero left behind for account.close(...)'s own "results.in.balance.not.zero" check.
                 //
                 // Gated via depositAccountType().isDynamicDeposit() rather than an instanceof check against the
                 // custom module's account subclass: this class (core, fineract-provider) has no compile-time
@@ -987,13 +992,33 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 // was actually loaded.
                 //
                 // postInterestAs=true with transactionDate=closedDate forces a posting-period boundary to land
-                // exactly on the closure date (mirrors the admin "post interest as on date" command). The wrapper's
-                // own upper bound for how far to post (today's business date) can differ from closedDate for a
-                // backdated closure, but every boundary after closedDate sees a zero balance (the withdrawal above
-                // took the account to zero), so no interest is earned and no further transaction is created for
-                // them - the boundary at closedDate is the only one that matters here.
-                this.postInterest(account, true, closedDate, false);
+                // exactly on the closure date (mirrors the admin "post interest as on date" command), and closedDate
+                // is also the upper bound for how far interest is posted at all: a backdated closure must not earn
+                // interest for the days between the closure date and today (the balance is still untouched at this
+                // point, so leaving the bound at today's business date would credit exactly that).
+                account.prepareClosureSettlement(closedDate);
+                this.postInterestUpTo(account, true, closedDate, false, closedDate);
             }
+
+            // Read AFTER the settlement above: for a Dynamic Deposit account this now includes the final interest
+            // posting, its withholding tax and its interest-based charge, so this single withdrawal is the complete
+            // customer payout. For every other account type nothing has changed - the two hooks are no-ops and this
+            // is the same balance as before.
+            final BigDecimal transactionAmount = account.getSummary().getAccountBalance();
+
+            final boolean isAccountTransfer = false;
+            final boolean isRegularTransaction = true;
+            final boolean isApplyWithdrawFee = false;
+            final boolean isInterestTransfer = false;
+            final SavingsTransactionBooleanValues transactionBooleanValues = new SavingsTransactionBooleanValues(isAccountTransfer,
+                    isRegularTransaction, isApplyWithdrawFee, isInterestTransfer, isWithdrawBalance);
+
+            final SavingsAccountTransaction closureWithdrawal = this.savingsAccountDomainService.handleWithdrawal(account, fmt, closedDate,
+                    transactionAmount, paymentDetail, transactionBooleanValues, false);
+
+            // The closure withdrawal now exists and has a real id, which is all the settlement was still waiting for:
+            // a Dynamic Deposit account records its own already-applied charge row against it here. No-op otherwise.
+            account.completeClosureSettlement(closureWithdrawal);
         }
 
         final Map<String, Object> accountChanges = account.close(user, command);

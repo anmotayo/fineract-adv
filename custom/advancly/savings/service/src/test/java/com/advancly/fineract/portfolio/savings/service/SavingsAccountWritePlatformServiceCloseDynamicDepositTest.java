@@ -510,6 +510,128 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(afterSecondCall.get(0).getAmount()).isEqualByComparingTo("60.00");
     }
 
+    // Scenario 6 (same-day scheduled posting): the interest for the closure boundary was ALREADY posted - correctly -
+    // before the customer closed the account, e.g. because the scheduled interest posting job happened to run earlier
+    // that same day. Core's postInterest(...) then takes its "a posting transaction already exists" branch for that
+    // boundary and creates nothing, so before this fix applyPendingInterestBasedCharges(...) - which only ran inside
+    // the "create a NEW posting transaction" branch - never ran for the closure boundary at all, and a genuinely
+    // premature closure silently forwent its early-withdrawal penalty purely because of when the job happened to run.
+    // The penalty must still be collected, against the interest that is already there, and linked to that EXISTING
+    // posting transaction.
+    @Test
+    void aClosureWhoseInterestWasAlreadyPostedThatSameDayStillCollectsTheEarlyWithdrawalCharge() {
+        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
+
+        // The scheduled posting run that got there first: the exact same posting call close()'s settlement makes
+        // (postInterestUpTo(account, true, closedDate, false, closedDate)), but with NO closure settlement in
+        // progress - i.e. an ordinary interest posting for this boundary. It writes the boundary's one correct,
+        // non-reversed INTEREST_POSTING transaction dated CLOSED_DATE, exactly the state the bug is about. Deriving
+        // it from the production posting code rather than hand-building a transaction with a guessed amount is what
+        // makes "and its amount is correct" true by construction, so close() below genuinely reaches the
+        // already-posted branch and not the correction branch.
+        final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
+        this.account.postInterest(mc, CLOSED_DATE, false, false, 1, CLOSED_DATE, false, false);
+        final SavingsAccountTransaction preExistingPosting = singleInterestPosting();
+        final BigDecimal grossInterest = preExistingPosting.getAmount();
+        assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
+        // Nothing was charged by that run - there was nothing pending yet and no closure in flight.
+        assertThat(payChargeTransactions()).isEmpty();
+
+        // ... and only afterwards the customer takes an early withdrawal (leaving a 40% pending row) and closes.
+        final DepositAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
+
+        this.service.close(1L, closeCommandFor(1L, true));
+
+        assertThat(this.account.isClosed()).isTrue();
+
+        // No SECOND interest posting transaction: the one that was already there was correct, so it stands, and the
+        // charge below is linked to it.
+        final SavingsAccountTransaction postingAfterClosure = singleInterestPosting();
+        assertThat(postingAfterClosure).isSameAs(preExistingPosting);
+        assertThat(postingAfterClosure.getAmount()).isEqualByComparingTo(grossInterest);
+
+        // The charge was calculated and applied all the same: 40% pending + 60% closure = 100% of the gross interest
+        // already on the account, capped once and paid by ONE charge transaction.
+        final SavingsAccountTransaction chargeTransaction = singleChargeTransaction();
+        assertThat(chargeTransaction.getAmount()).isEqualByComparingTo(grossInterest);
+        assertThat(chargeTransaction.getTransactionDate()).isEqualTo(CLOSED_DATE);
+
+        assertThat(earlierRow.isPending()).isFalse();
+        assertThat(earlierRow.interestChargeTransaction()).isSameAs(chargeTransaction);
+        assertThat(earlierRow.interestPostingTransaction()).isSameAs(preExistingPosting);
+
+        assertThat(this.newlySavedRows).hasSize(1);
+        final DepositAccountInterestCharge closureRow = this.newlySavedRows.get(0);
+        assertThat(closureRow.isPending()).isFalse();
+        assertThat(closureRow.chargePercentage()).isEqualByComparingTo("60");
+        assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
+        // The link that this fix is really about: the closure's row points at the PRE-EXISTING posting transaction.
+        assertThat(closureRow.interestPostingTransaction()).isSameAs(preExistingPosting);
+        assertThat(closureRow.withdrawalTransaction()).isSameAs(this.withdrawals.get(0));
+
+        // Correctly distributed, not just correctly totalled - the same 40/60 pro-rata the create-new path produces.
+        final MathContext pctMc = new MathContext(8, MoneyHelper.getRoundingMode());
+        final BigDecimal recomputedEarlierShare = grossInterest.multiply(new BigDecimal("40")).divide(BigDecimal.valueOf(100), pctMc);
+        final BigDecimal recomputedClosureShare = grossInterest.multiply(new BigDecimal("60")).divide(BigDecimal.valueOf(100), pctMc);
+        final BigDecimal appliedTotal = chargeTransaction.getAmount();
+        final BigDecimal expectedEarlierRowAmount = recomputedEarlierShare.multiply(appliedTotal)
+                .divide(recomputedEarlierShare.add(recomputedClosureShare), pctMc)
+                .setScale(CURRENCY.getDigitsAfterDecimal(), RoundingMode.DOWN);
+        final BigDecimal expectedClosureRowAmount = appliedTotal.subtract(expectedEarlierRowAmount);
+        assertThat(earlierRow.chargeAmount()).isEqualByComparingTo(expectedEarlierRowAmount);
+        assertThat(closureRow.chargeAmount()).isEqualByComparingTo(expectedClosureRowAmount);
+        assertThat(expectedEarlierRowAmount).isGreaterThan(BigDecimal.ZERO);
+        assertThat(expectedClosureRowAmount).isGreaterThan(expectedEarlierRowAmount);
+
+        // Still exactly ONE withdrawal, and the account still lands on exactly zero: the interest posted earlier that
+        // day went in, the whole of it came back out as the charge, so the payout is the untouched principal.
+        assertThat(this.withdrawals).hasSize(1);
+        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
+        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+
+        assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(chargeTransaction.getAmount());
+    }
+
+    // Scenario 7 (deliberate scope boundary): when the posting transaction that already exists for the closure
+    // boundary has the WRONG amount, core reverses it and reposts - a genuine correction, not the "already posted,
+    // nothing to correct" case above. Task 8's original decision not to charge during corrections stands unchanged
+    // there (core reverses only the posting and withholding transactions, so whatever was already charged against the
+    // old amount in an earlier run still stands, and charging again here would double-charge). This test pins that
+    // behaviour down so the new already-posted path above cannot silently grow into the correction branch.
+    @Test
+    void aGenuineCorrectionAtTheClosureBoundaryStillChargesNothing() {
+        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
+        final DepositAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
+
+        // An interest posting transaction dated the closure boundary whose amount is nowhere near what the period
+        // actually earned - so postInterest(...) must reverse and repost it rather than leave it standing.
+        final SavingsAccountTransaction wrongPosting = new SavingsAccountTransactionTestBuilder().withId(800L)
+                .withSavingsAccount(this.account).withOffice(this.office).withType(SavingsAccountTransactionType.INTEREST_POSTING)
+                .withDate(CLOSED_DATE).withAmount(new BigDecimal("99.00")).build();
+        this.account.getTransactions().add(wrongPosting);
+
+        this.service.close(1L, closeCommandFor(1L, true));
+
+        assertThat(this.account.isClosed()).isTrue();
+        // It really was the correction branch: the wrong transaction is reversed and a different one now stands.
+        assertThat(wrongPosting.isReversed()).isTrue();
+        final SavingsAccountTransaction repostedInterest = singleInterestPosting();
+        assertThat(repostedInterest).isNotSameAs(wrongPosting);
+
+        // Unchanged prior behaviour: nothing charged, the pending row stays pending, no closure row written.
+        assertThat(payChargeTransactions()).isEmpty();
+        assertThat(this.newlySavedRows).isEmpty();
+        assertThat(earlierRow.isPending()).isTrue();
+
+        // And the closure still settles to exactly zero in one withdrawal.
+        assertThat(this.withdrawals).hasSize(1);
+        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(repostedInterest.getAmount()));
+        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
     // === fixtures ===
 
     private List<DepositAccountInterestCharge> allRows() {

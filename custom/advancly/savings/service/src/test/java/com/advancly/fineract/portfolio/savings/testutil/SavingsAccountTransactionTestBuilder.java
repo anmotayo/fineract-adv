@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -31,6 +32,7 @@ public class SavingsAccountTransactionTestBuilder {
 
     private Long id;
     private SavingsAccount savingsAccount;
+    private Office office;
     private int typeOf = SavingsAccountTransactionType.DEPOSIT.getValue();
     private LocalDate dateOf = LocalDate.now();
     private BigDecimal amount = BigDecimal.valueOf(100);
@@ -45,6 +47,11 @@ public class SavingsAccountTransactionTestBuilder {
 
     public SavingsAccountTransactionTestBuilder withSavingsAccount(SavingsAccount account) {
         this.savingsAccount = account;
+        return this;
+    }
+
+    public SavingsAccountTransactionTestBuilder withOffice(Office office) {
+        this.office = office;
         return this;
     }
 
@@ -80,7 +87,7 @@ public class SavingsAccountTransactionTestBuilder {
 
     public SavingsAccountTransaction build() {
         MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
-        SavingsAccountTransaction txn = SavingsAccountTransaction.deposit(savingsAccount, null, null, dateOf, Money.of(currency, amount),
+        SavingsAccountTransaction txn = SavingsAccountTransaction.deposit(savingsAccount, office, null, dateOf, Money.of(currency, amount),
                 SavingsAccountTransactionType.DEPOSIT, null);
 
         ReflectionTestUtils.setField(txn, "id", id);

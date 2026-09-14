@@ -64,6 +64,8 @@ public class DynamicDepositAccountData implements Serializable {
     private final boolean allowWithdrawal;
     private final boolean dynamicRateEnabled;
     private final boolean transferInterestToSavings;
+    private final BigDecimal interestBasedChargeDerived;
+    private final BigDecimal interestBasedChargePostedDerived;
 
     // template-only
     private final Collection<DynamicDepositProductData> productOptions;
@@ -77,12 +79,13 @@ public class DynamicDepositAccountData implements Serializable {
             final EnumOptionData depositPeriodFrequencyType, final LocalDate expectedFirstDepositOnDate, final LocalDate maturityDate,
             final BigDecimal maturityAmount, final LocalDate submittedOnDate, final LocalDate approvedOnDate,
             final LocalDate activatedOnDate, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean transferInterestToSavings) {
+            final boolean transferInterestToSavings, final BigDecimal interestBasedChargeDerived,
+            final BigDecimal interestBasedChargePostedDerived) {
         this(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId, savingsProductName, fieldOfficerId,
                 status, currency, nominalAnnualInterestRate, interestCompoundingPeriodType, interestPostingPeriodType,
                 interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType,
                 expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate, allowWithdrawal,
-                dynamicRateEnabled, transferInterestToSavings, null);
+                dynamicRateEnabled, transferInterestToSavings, interestBasedChargeDerived, interestBasedChargePostedDerived, null);
     }
 
     private DynamicDepositAccountData(final Long id, final String accountNo, final String externalId, final Long clientId,
@@ -94,7 +97,8 @@ public class DynamicDepositAccountData implements Serializable {
             final EnumOptionData depositPeriodFrequencyType, final LocalDate expectedFirstDepositOnDate, final LocalDate maturityDate,
             final BigDecimal maturityAmount, final LocalDate submittedOnDate, final LocalDate approvedOnDate,
             final LocalDate activatedOnDate, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean transferInterestToSavings, final Collection<DynamicDepositProductData> productOptions) {
+            final boolean transferInterestToSavings, final BigDecimal interestBasedChargeDerived,
+            final BigDecimal interestBasedChargePostedDerived, final Collection<DynamicDepositProductData> productOptions) {
         this.id = id;
         this.accountNo = accountNo;
         this.externalId = externalId;
@@ -124,6 +128,8 @@ public class DynamicDepositAccountData implements Serializable {
         this.allowWithdrawal = allowWithdrawal;
         this.dynamicRateEnabled = dynamicRateEnabled;
         this.transferInterestToSavings = transferInterestToSavings;
+        this.interestBasedChargeDerived = interestBasedChargeDerived;
+        this.interestBasedChargePostedDerived = interestBasedChargePostedDerived;
         this.productOptions = productOptions;
     }
 
@@ -135,7 +141,7 @@ public class DynamicDepositAccountData implements Serializable {
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.depositAmount, data.depositPeriod,
                 data.depositPeriodFrequencyType, data.expectedFirstDepositOnDate, data.maturityDate, data.maturityAmount,
                 data.submittedOnDate, data.approvedOnDate, data.activatedOnDate, data.allowWithdrawal, data.dynamicRateEnabled,
-                data.transferInterestToSavings, productOptions);
+                data.transferInterestToSavings, data.interestBasedChargeDerived, data.interestBasedChargePostedDerived, productOptions);
     }
 
     public Long id() {

@@ -73,6 +73,7 @@ class DynamicDepositAccountInterestTest {
     private DynamicDepositAccount account;
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     private DepositAccountInterestChargeRepository interestChargeRepository;
+    private DynamicDepositRateHistoryService rateHistoryService;
 
     @BeforeEach
     void setUp() {
@@ -80,6 +81,7 @@ class DynamicDepositAccountInterestTest {
 
         this.rateHistoryRepository = mock(DepositAccountDynamicRateHistoryRepository.class);
         this.interestChargeRepository = mock(DepositAccountInterestChargeRepository.class);
+        this.rateHistoryService = mock(DynamicDepositRateHistoryService.class);
         // Phase 4: postInterest now resolves the interest-charge repository through the locator on every run, so it
         // must be stubbed for every test in this class. Defaults to "nothing pending", which is the pre-Phase-4
         // behaviour the existing tests assert.
@@ -87,6 +89,9 @@ class DynamicDepositAccountInterestTest {
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
         lenient().when(applicationContext.getBean(DepositAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
+        // Only exercised by undoTransaction(...) - DynamicDepositAccount#undoTransaction resolves the rate-history
+        // service through the locator to reverse the invested-amount rate-history row for the undone transaction.
+        lenient().when(applicationContext.getBean(DynamicDepositRateHistoryService.class)).thenReturn(this.rateHistoryService);
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
     }
 
@@ -305,6 +310,26 @@ class DynamicDepositAccountInterestTest {
         final BigDecimal sumOfRows = pendingRows.stream().map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO,
                 BigDecimal::add);
         assertThat(sumOfRows).isEqualByComparingTo(appliedTotal);
+    }
+
+    @Test
+    void undoingATransactionRefreshesTheStaleDerivedInterestBasedChargeColumns() {
+        this.account = buildAccount();
+        final SavingsAccountTransaction withdrawal = transaction(1L, LocalDate.of(2026, 1, 20), BigDecimal.valueOf(100));
+
+        // Simulates the exact staleness Task 7's review found: an earlier early-withdrawal charge posting left these
+        // fast-read columns non-zero, and the withdrawal that produced them (or the charge posting itself) is now
+        // being undone. m_deposit_account_interest_charge itself is already correct post-undo - its queries exclude
+        // rows linked to a reversed transaction - the stubs below simulate what it now reports.
+        this.account.updateInterestBasedChargeDerived(BigDecimal.valueOf(12));
+        this.account.updateInterestBasedChargePostedDerived(BigDecimal.valueOf(30));
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
+
+        this.account.undoTransaction(withdrawal.getId());
+
+        assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private DepositAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {

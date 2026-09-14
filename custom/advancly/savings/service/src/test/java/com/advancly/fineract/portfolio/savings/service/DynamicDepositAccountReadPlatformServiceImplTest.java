@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -64,6 +65,8 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
+    private DepositAccountInterestChargeRepository interestChargeRepository;
+    @Mock
     private SavingsAccount account;
     @Mock
     private SavingsAccountSummary summary;
@@ -75,7 +78,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         MoneyHelperInitializer.initialize();
         this.service = new DynamicDepositAccountReadPlatformServiceImpl(this.context, this.jdbcTemplate,
                 this.dynamicDepositProductReadPlatformService, this.savingsAccountRepository, this.interestWithdrawalRepository,
-                this.rateHistoryRepository);
+                this.rateHistoryRepository, this.interestChargeRepository);
         lenient().when(this.savingsAccountRepository.findOneWithNotFoundDetection(eq(ACCOUNT_ID), eq(DepositAccountType.DYNAMIC_DEPOSIT)))
                 .thenReturn(this.account);
         lenient().when(this.account.getSummary()).thenReturn(this.summary);
@@ -125,6 +128,37 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         final BigDecimal netInterest = (BigDecimal) ReflectionTestUtils.getField(summaryData, "netInterest");
         assertThat(netInterest).isEqualByComparingTo("90");
         assertThat(netInterest).isNotNegative();
+    }
+
+    @Test
+    void interestBasedChargesReportsThePostedTotalAndIsSubtractedFromNetInterest() {
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
+        when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("30"));
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("12"));
+
+        final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        assertThat(summary.interestBasedCharges()).isEqualByComparingTo("30");
+        assertThat(summary.interestBasedChargePostedDerived()).isEqualByComparingTo("30");
+        assertThat(summary.interestBasedChargeDerived()).isEqualByComparingTo("12");
+        // 500 posted - 50 withholding tax - 30 interest-based charge
+        assertThat(summary.netInterest()).isEqualByComparingTo("420");
+    }
+
+    @Test
+    void interestBasedChargesIsZeroWhenNoChargeHasEverBeenApplied() {
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
+        when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
+
+        final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        assertThat(summary.interestBasedCharges()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(summary.netInterest()).isEqualByComparingTo("450");
     }
 
     private SavingsAccountTransaction interestPosting(final Long id, final LocalDate date, final boolean reversed) {

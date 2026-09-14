@@ -382,6 +382,17 @@ public class DynamicDepositAccount extends SavingsAccount {
         if (transactionToUndo != null) {
             DynamicDepositServiceLocator.rateHistoryService().reverseInvestedAmountForUndo(this, transactionToUndo);
         }
+        // The undone transaction may be an early-withdrawal charge posting or the withdrawal a pending charge row is
+        // linked to; either way the repository queries backing these two columns already exclude reversed rows/links
+        // (see DepositAccountInterestChargeRepository), so m_deposit_account_interest_charge itself stays correct -
+        // but the fast-read derived columns on this row are otherwise only refreshed inside
+        // applyPendingEarlyWithdrawalChargesForPeriod(...) and would go stale (too high) until the next early
+        // withdrawal happens to refresh them. Recompute unconditionally rather than only when transactionToUndo is a
+        // charge/withdrawal, since it costs two cheap aggregate queries and keeps this correct regardless of which
+        // transaction type was undone.
+        final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
+        updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
+        updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(getId()));
     }
 
     /**

@@ -18,6 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
@@ -68,6 +69,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
     private final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService;
     private final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService;
+    private final DepositAccountInterestChargeRepository interestChargeRepository;
 
     @Autowired
     public AdvanclySavingsAccountDomainService(final SavingsAccountRepositoryWrapper savingsAccountRepository,
@@ -77,7 +79,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             JournalEntryWritePlatformService journalEntryWritePlatformService,
             final DynamicDepositRateHistoryService dynamicDepositRateHistoryService,
             final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService,
-            final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService) {
+            final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService,
+            final DepositAccountInterestChargeRepository interestChargeRepository) {
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
         this.businessEventNotifierService = businessEventNotifierService;
@@ -87,6 +90,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         this.dynamicDepositRateHistoryService = dynamicDepositRateHistoryService;
         this.dynamicDepositInterestWithdrawalService = dynamicDepositInterestWithdrawalService;
         this.dynamicDepositEarlyWithdrawalChargeService = dynamicDepositEarlyWithdrawalChargeService;
+        this.interestChargeRepository = interestChargeRepository;
     }
 
     /**
@@ -225,6 +229,14 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             // so it is hooked here rather than via DynamicDepositAccount's entity-level override.
             dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, reversalTransaction,
                     DynamicDepositRateHistoryEventType.REVERSAL);
+            // A reversed withdrawal or interest-based-charge posting leaves m_deposit_account_interest_charge itself
+            // correct - its queries already exclude rows linked to a reversed transaction (see
+            // DepositAccountInterestChargeRepository) - but the fast-read derived columns on this row are otherwise
+            // only refreshed inside DynamicDepositAccount#applyPendingEarlyWithdrawalChargesForPeriod(...) and would
+            // go stale (too high) until the next early withdrawal happens to refresh them. Recompute unconditionally
+            // rather than only for a charge/withdrawal reversal, since it costs two cheap aggregate queries.
+            dynamicDepositAccount.updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(account.getId()));
+            dynamicDepositAccount.updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(account.getId()));
         }
         return reversalTransaction;
     }

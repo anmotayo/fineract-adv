@@ -72,5 +72,6 @@ public final class DynamicDepositApiConstants {
             "externalId", "clientId", "clientName", "groupId", "groupName", "savingsProductId", "savingsProductName", "fieldOfficerId",
             "status", "timeline", "currency", "nominalAnnualInterestRate", "interestCompoundingPeriodType", "interestPostingPeriodType",
             "interestCalculationType", "interestCalculationDaysInYearType", "depositAmount", "depositPeriod", "depositPeriodFrequencyType",
-            "maturityAmount", "maturityDate", allowWithdrawalParamName, dynamicRateEnabledParamName));
+            "maturityAmount", "maturityDate", allowWithdrawalParamName, dynamicRateEnabledParamName, "interestBasedChargeDerived",
+            "interestBasedChargePostedDerived"));
 }

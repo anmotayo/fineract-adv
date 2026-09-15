@@ -25,4 +25,8 @@ public class DynamicDepositAccountNotFoundException extends AbstractPlatformReso
     public DynamicDepositAccountNotFoundException(final Long id) {
         super("error.msg.dynamicdepositaccount.id.invalid", "Dynamic deposit account with identifier " + id + " does not exist", id);
     }
+
+    public DynamicDepositAccountNotFoundException(final Long id, final Throwable e) {
+        super("error.msg.dynamicdepositaccount.id.invalid", "Dynamic deposit account with identifier " + id + " does not exist", id, e);
+    }
 }

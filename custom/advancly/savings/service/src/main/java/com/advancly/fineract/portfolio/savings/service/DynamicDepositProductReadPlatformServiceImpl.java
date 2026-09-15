@@ -96,7 +96,7 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             productData = DynamicDepositProductData.withCharts(productData, charts);
             return productData;
         } catch (final EmptyResultDataAccessException e) {
-            throw new DynamicDepositProductNotFoundException(productId);
+            throw new DynamicDepositProductNotFoundException(productId, e);
         }
     }
 

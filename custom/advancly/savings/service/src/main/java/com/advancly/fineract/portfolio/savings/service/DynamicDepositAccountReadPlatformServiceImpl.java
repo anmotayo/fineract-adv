@@ -95,7 +95,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             final String sql = "select " + MAPPER.schema() + " where sa.id = ? and sa.deposit_type_enum = 500 ";
             return this.jdbcTemplate.queryForObject(sql, MAPPER, accountId);
         } catch (final EmptyResultDataAccessException e) {
-            throw new DynamicDepositAccountNotFoundException(accountId);
+            throw new DynamicDepositAccountNotFoundException(accountId, e);
         }
     }
 
@@ -107,7 +107,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         try {
             account = this.savingsAccountRepository.findOneWithNotFoundDetection(accountId, DepositAccountType.DYNAMIC_DEPOSIT);
         } catch (final SavingsAccountNotFoundException e) {
-            throw new DynamicDepositAccountNotFoundException(accountId);
+            throw new DynamicDepositAccountNotFoundException(accountId, e);
         }
         final SavingsAccountSummary summary = account.getSummary();
 

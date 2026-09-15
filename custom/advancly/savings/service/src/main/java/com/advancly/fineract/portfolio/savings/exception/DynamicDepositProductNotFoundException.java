@@ -25,4 +25,8 @@ public class DynamicDepositProductNotFoundException extends AbstractPlatformReso
     public DynamicDepositProductNotFoundException(final Long id) {
         super("error.msg.dynamicdepositproduct.id.invalid", "Dynamic deposit product with identifier " + id + " does not exist", id);
     }
+
+    public DynamicDepositProductNotFoundException(final Long id, final Throwable e) {
+        super("error.msg.dynamicdepositproduct.id.invalid", "Dynamic deposit product with identifier " + id + " does not exist", id, e);
+    }
 }

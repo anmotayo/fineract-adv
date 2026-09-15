@@ -19,7 +19,11 @@
 package com.advancly.fineract.portfolio.savings.domain;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
+import static org.apache.fineract.portfolio.interestratechart.InterestRateChartApiConstants.deleteParamName;
+import static org.apache.fineract.portfolio.interestratechart.InterestRateChartApiConstants.idParamName;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
@@ -28,9 +32,11 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,7 +49,10 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.interestratechart.InterestRateChartApiConstants;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
+import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
+import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
@@ -76,6 +85,9 @@ public class DynamicDepositProduct extends SavingsProduct {
 
     @OneToOne(mappedBy = "product", cascade = CascadeType.ALL)
     private DepositProductDynamicDetail dynamicDetail;
+
+    @Transient
+    private InterestRateChartAssembler chartAssembler;
 
     protected DynamicDepositProduct() {
         //
@@ -178,6 +190,9 @@ public class DynamicDepositProduct extends SavingsProduct {
     @Override
     public Map<String, Object> update(final JsonCommand command) {
         final Map<String, Object> actualChanges = new LinkedHashMap<>(10);
+        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
+        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
+                .resource(DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
 
         actualChanges.putAll(super.update(command));
 
@@ -185,25 +200,82 @@ public class DynamicDepositProduct extends SavingsProduct {
             actualChanges.putAll(this.dynamicDetail.update(command));
         }
 
-        validateDomainRules();
+        if (command.hasParameter(DepositsApiConstants.chartsParamName)) {
+            updateCharts(command, actualChanges, baseDataValidator);
+        }
+
+        validateDomainRules(baseDataValidator);
+
+        throwExceptionIfValidationWarningsExist(dataValidationErrors);
 
         return actualChanges;
+    }
+
+    private void updateCharts(final JsonCommand command, final Map<String, Object> actualChanges,
+            final DataValidatorBuilder baseDataValidator) {
+        final Map<String, Object> deletedCharts = new HashMap<>();
+        final Map<String, Object> chartsChanges = new HashMap<>();
+
+        final JsonArray array = command.arrayOfParameterNamed(DepositsApiConstants.chartsParamName);
+        if (array != null) {
+            for (int i = 0; i < array.size(); i++) {
+                final JsonObject chartElement = array.get(i).getAsJsonObject();
+                final JsonCommand chartCommand = JsonCommand.fromExistingCommand(command, chartElement);
+                if (chartCommand.parameterExists(idParamName)) {
+                    final Long chartId = chartCommand.longValueOfParameterNamed(idParamName);
+                    final InterestRateChart chart = this.findChart(chartId);
+                    if (chart == null) {
+                        baseDataValidator.parameter(idParamName).value(chartId).failWithCode("no.chart.associated.with.id");
+                    } else if (chartCommand.parameterExists(deleteParamName)) {
+                        if (removeChart(chart)) {
+                            deletedCharts.put(idParamName, chartId);
+                        }
+                    } else {
+                        chart.update(chartCommand, chartsChanges, baseDataValidator, this.setOfCharts(), this.currency().getCode());
+                    }
+                } else {
+                    final InterestRateChart newChart = this.chartAssembler.assembleFrom(chartElement, this.currency().getCode(),
+                            baseDataValidator);
+                    this.addChart(newChart);
+                }
+            }
+        }
+
+        if (!chartsChanges.isEmpty()) {
+            actualChanges.put(InterestRateChartApiConstants.chartSlabs, chartsChanges);
+        }
+
+        if (!deletedCharts.isEmpty()) {
+            actualChanges.put("deletedCharts", deletedCharts);
+        }
+    }
+
+    private boolean removeChart(final InterestRateChart chart) {
+        return setOfCharts().remove(chart);
+    }
+
+    public void setHelpers(final InterestRateChartAssembler chartAssembler) {
+        this.chartAssembler = chartAssembler;
     }
 
     private void validateDomainRules() {
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
                 .resource(DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
+        validateDomainRules(baseDataValidator);
+        throwExceptionIfValidationWarningsExist(dataValidationErrors);
+    }
 
-        // Business rule 6: either an interest rate chart or a flat nominal annual interest rate must be configured -
-        // the chart (when present) is consulted first at account creation, the nominal rate is the fallback.
+    private void validateDomainRules(final DataValidatorBuilder baseDataValidator) {
         if (this.charts == null || this.charts.isEmpty()) {
             if (this.nominalAnnualInterestRate == null || this.nominalAnnualInterestRate.compareTo(BigDecimal.ZERO) == 0) {
                 baseDataValidator.reset().parameter("nominalAnnualInterestRate").value(this.nominalAnnualInterestRate)
                         .failWithCodeNoParameterAddedToErrorCode("interest.chart.or.nominal.interest.rate.required");
             }
         }
+    }
 
+    private void throwExceptionIfValidationWarningsExist(final List<ApiParameterError> dataValidationErrors) {
         if (!dataValidationErrors.isEmpty()) {
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }

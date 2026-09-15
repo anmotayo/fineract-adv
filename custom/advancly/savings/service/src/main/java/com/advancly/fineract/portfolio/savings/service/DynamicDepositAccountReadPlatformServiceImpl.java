@@ -37,7 +37,9 @@ import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
@@ -190,11 +192,23 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sa.interest_posting_period_enum as interestPostingPeriodType, ");
             sqlBuilder.append("sa.interest_calculation_type_enum as interestCalculationType, ");
             sqlBuilder.append("sa.interest_calculation_days_in_year_type_enum as interestCalculationDaysInYearType, ");
+            sqlBuilder.append("sa.total_deposits_derived as totalDeposits, ");
+            sqlBuilder.append("sa.total_withdrawals_derived as totalWithdrawals, ");
+            sqlBuilder.append("sa.total_withdrawal_fees_derived as totalWithdrawalFees, ");
+            sqlBuilder.append("sa.total_annual_fees_derived as totalAnnualFees, ");
+            sqlBuilder.append("sa.total_interest_earned_derived as totalInterestEarned, ");
+            sqlBuilder.append("sa.total_interest_posted_derived as totalInterestPosted, ");
+            sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
+            sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
+            sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
+            sqlBuilder.append("sa.total_withhold_tax_derived as totalWithholdTax, ");
+            sqlBuilder.append("sa.interest_posted_till_date as interestPostedTillDate, ");
             sqlBuilder.append("dat.deposit_amount as depositAmount, dat.deposit_period as depositPeriod, ");
             sqlBuilder.append("dat.deposit_period_frequency_enum as depositPeriodFrequencyType, ");
             sqlBuilder.append("dat.expected_firstdepositon_date as expectedFirstDepositOnDate, ");
             sqlBuilder.append("dat.maturity_date as maturityDate, dat.maturity_amount as maturityAmount, ");
             sqlBuilder.append("dat.transfer_interest_to_linked_account as transferInterestToSavings, ");
+            sqlBuilder.append("aa.linked_savings_account_id as linkAccountId, ");
             sqlBuilder.append("sa.submittedon_date as submittedOnDate, sa.approvedon_date as approvedOnDate, ");
             sqlBuilder.append("sa.activatedon_date as activatedOnDate, ");
             sqlBuilder.append("ddd.allow_withdrawal as allowWithdrawal, ddd.dynamic_rate_enabled as dynamicRateEnabled, ");
@@ -207,6 +221,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("left join m_group g on g.id = sa.group_id ");
             sqlBuilder.append("left join m_deposit_account_term_and_preclosure dat on dat.savings_account_id = sa.id ");
             sqlBuilder.append("left join m_deposit_account_dynamic_detail ddd on ddd.savings_account_id = sa.id ");
+            sqlBuilder.append(
+                    "left join m_portfolio_account_associations aa on aa.savings_account_id = sa.id and aa.association_type_enum = 1 ");
             return sqlBuilder.toString();
         }
 
@@ -261,23 +277,41 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             final LocalDate maturityDate = JdbcSupport.getLocalDate(rs, "maturityDate");
             final BigDecimal maturityAmount = rs.getBigDecimal("maturityAmount");
             final boolean transferInterestToSavings = rs.getBoolean("transferInterestToSavings");
+            final Long linkAccountId = JdbcSupport.getLong(rs, "linkAccountId");
 
             final LocalDate submittedOnDate = JdbcSupport.getLocalDate(rs, "submittedOnDate");
             final LocalDate approvedOnDate = JdbcSupport.getLocalDate(rs, "approvedOnDate");
             final LocalDate activatedOnDate = JdbcSupport.getLocalDate(rs, "activatedOnDate");
+            final SavingsAccountApplicationTimelineData timeline = new SavingsAccountApplicationTimelineData(submittedOnDate, null, null,
+                    null, null, null, null, null, null, null, null, null, approvedOnDate, null, null, null, activatedOnDate, null, null,
+                    null, null, null, null, null);
 
             final boolean allowWithdrawal = rs.getBoolean("allowWithdrawal");
             final boolean dynamicRateEnabled = rs.getBoolean("dynamicRateEnabled");
             // Nullable for every row that predates Phase 4 and for every non-Dynamic-Deposit account, so normalise.
             final BigDecimal interestBasedChargeDerived = defaultToZero(rs.getBigDecimal("interestBasedChargeDerived"));
             final BigDecimal interestBasedChargePostedDerived = defaultToZero(rs.getBigDecimal("interestBasedChargePostedDerived"));
+            final BigDecimal totalDeposits = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalDeposits");
+            final BigDecimal totalWithdrawals = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithdrawals");
+            final BigDecimal totalWithdrawalFees = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithdrawalFees");
+            final BigDecimal totalAnnualFees = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalAnnualFees");
+            final BigDecimal totalInterestEarned = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestEarned");
+            final BigDecimal totalInterestPosted = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestPosted");
+            final BigDecimal accountBalance = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "accountBalance");
+            final BigDecimal totalFeeCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalFeeCharge");
+            final BigDecimal totalPenaltyCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalPenaltyCharge");
+            final BigDecimal totalWithholdTax = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithholdTax");
+            final LocalDate interestPostedTillDate = JdbcSupport.getLocalDate(rs, "interestPostedTillDate");
+            final SavingsAccountSummaryData summary = new SavingsAccountSummaryData(currency, totalDeposits, totalWithdrawals,
+                    totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
+                    totalPenaltyCharge, null, totalWithholdTax, null, null, null, interestPostedTillDate);
 
             return new DynamicDepositAccountData(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId,
-                    savingsProductName, fieldOfficerId, status, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
-                    interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod,
-                    depositPeriodFrequencyType, expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate,
-                    activatedOnDate, allowWithdrawal, dynamicRateEnabled, transferInterestToSavings, interestBasedChargeDerived,
-                    interestBasedChargePostedDerived);
+                    savingsProductName, fieldOfficerId, status, timeline, currency, nominalAnnualInterestRate,
+                    interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
+                    depositAmount, depositPeriod, depositPeriodFrequencyType, expectedFirstDepositOnDate, maturityDate, maturityAmount,
+                    submittedOnDate, approvedOnDate, activatedOnDate, allowWithdrawal, dynamicRateEnabled, transferInterestToSavings,
+                    linkAccountId, interestBasedChargeDerived, interestBasedChargePostedDerived, summary);
         }
     }
 }

@@ -56,8 +56,10 @@ public final class DynamicDepositApiConstants {
             "currency", "nominalAnnualInterestRate", "interestCompoundingPeriodType", "interestPostingPeriodType",
             "interestCalculationType", "interestCalculationDaysInYearType", "lockinPeriodFrequency", "lockinPeriodFrequencyType",
             "accountingRule", "charges", "charts", "minBalanceForInterestCalculation", "withHoldTax", "taxGroupId",
-            allowWithdrawalParamName, dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName,
-            earlyWithdrawalChargeIdParamName);
+            allowWithdrawalParamName, dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName,
+            "currencyOptions", "interestCompoundingPeriodTypeOptions", "interestPostingPeriodTypeOptions", "interestCalculationTypeOptions",
+            "interestCalculationDaysInYearTypeOptions", "lockinPeriodFrequencyTypeOptions", "accountingRuleOptions", "chargeOptions",
+            "taxGroupOptions", "chartTemplate");
 
     // account parameters
     public static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS = Set.of("locale", "dateFormat", "clientId", "groupId",
@@ -71,6 +73,7 @@ public final class DynamicDepositApiConstants {
             "clientName", "groupId", "groupName", "savingsProductId", "savingsProductName", "fieldOfficerId", "status", "timeline",
             "currency", "nominalAnnualInterestRate", "interestCompoundingPeriodType", "interestPostingPeriodType",
             "interestCalculationType", "interestCalculationDaysInYearType", "depositAmount", "depositPeriod", "depositPeriodFrequencyType",
-            "maturityAmount", "maturityDate", allowWithdrawalParamName, dynamicRateEnabledParamName, "interestBasedChargeDerived",
-            "interestBasedChargePostedDerived");
+            "expectedFirstDepositOnDate", "maturityAmount", "maturityDate", "submittedOnDate", "approvedOnDate", "activatedOnDate",
+            "transferInterestToSavings", linkedAccountParamName, "linkedAccount", "summary", "transactions", "charges",
+            allowWithdrawalParamName, dynamicRateEnabledParamName, "interestBasedChargeDerived", "interestBasedChargePostedDerived");
 }

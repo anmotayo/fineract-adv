@@ -26,6 +26,7 @@ import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummar
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountReadPlatformService;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
@@ -36,11 +37,15 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.UriInfo;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.exception.UnrecognizedQueryParamException;
@@ -48,7 +53,16 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsApiConstants;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
+import org.apache.fineract.portfolio.savings.service.DepositAccountReadPlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountChargeReadPlatformService;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 /**
  * REST resource for the Dynamic Deposit account (deposit_type_enum = 500). Lifecycle-only for Phase 1 (create / update
@@ -66,17 +80,26 @@ public class DynamicDepositAccountsApiResource {
     private final DefaultToApiJsonSerializer<DynamicDepositAccountData> toApiJsonSerializer;
     private final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService;
     private final ApiRequestParameterHelper apiRequestParameterHelper;
+    private final DepositAccountReadPlatformService depositAccountReadPlatformService;
+    private final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService;
+    private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
 
     public DynamicDepositAccountsApiResource(final PlatformSecurityContext context,
             final DynamicDepositAccountReadPlatformService dynamicDepositAccountReadPlatformService,
             final DefaultToApiJsonSerializer<DynamicDepositAccountData> toApiJsonSerializer,
             final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService,
-            final ApiRequestParameterHelper apiRequestParameterHelper) {
+            final ApiRequestParameterHelper apiRequestParameterHelper,
+            final DepositAccountReadPlatformService depositAccountReadPlatformService,
+            final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService,
+            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService) {
         this.context = context;
         this.dynamicDepositAccountReadPlatformService = dynamicDepositAccountReadPlatformService;
         this.toApiJsonSerializer = toApiJsonSerializer;
         this.commandsSourceWritePlatformService = commandsSourceWritePlatformService;
         this.apiRequestParameterHelper = apiRequestParameterHelper;
+        this.depositAccountReadPlatformService = depositAccountReadPlatformService;
+        this.savingsAccountChargeReadPlatformService = savingsAccountChargeReadPlatformService;
+        this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
     }
 
     @POST
@@ -182,14 +205,72 @@ public class DynamicDepositAccountsApiResource {
     @Path("{accountId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    public String retrieveOne(@PathParam("accountId") final Long accountId, @Context final UriInfo uriInfo) {
+    public String retrieveOne(@PathParam("accountId") final Long accountId,
+            @DefaultValue("all") @QueryParam("chargeStatus") final String chargeStatus, @Context final UriInfo uriInfo) {
 
         this.context.authenticatedUser().validateHasReadPermission(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 
-        final DynamicDepositAccountData accountData = this.dynamicDepositAccountReadPlatformService.retrieveOne(accountId);
+        if (!(CommandParameterUtil.is(chargeStatus, "all") || CommandParameterUtil.is(chargeStatus, "active")
+                || CommandParameterUtil.is(chargeStatus, "inactive"))) {
+            throw new UnrecognizedQueryParamException("status", chargeStatus, new Object[] { "all", "active", "inactive" });
+        }
 
+        final DynamicDepositAccountData accountData = this.dynamicDepositAccountReadPlatformService.retrieveOne(accountId);
+        final Set<String> mandatoryResponseParameters = new HashSet<>();
+        final DynamicDepositAccountData accountDataWithAssociations = populateTemplateAndAssociations(accountId, accountData, chargeStatus,
+                uriInfo, mandatoryResponseParameters);
+
+        final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters(),
+                mandatoryResponseParameters);
+        return this.toApiJsonSerializer.serialize(settings, accountDataWithAssociations, DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS);
+    }
+
+    private DynamicDepositAccountData populateTemplateAndAssociations(final Long accountId, final DynamicDepositAccountData accountData,
+            final String chargeStatus, final UriInfo uriInfo, final Set<String> mandatoryResponseParameters) {
+        Collection<SavingsAccountTransactionData> transactions = null;
+        Collection<SavingsAccountChargeData> charges = null;
+        PortfolioAccountData linkedAccount = null;
+
+        final Set<String> associationParameters = ApiParameterHelper.extractAssociationsForResponseIfProvided(uriInfo.getQueryParameters());
+        associationParameters.addAll(associationParameters.stream().filter(parameter -> parameter.startsWith("+"))
+                .map(parameter -> parameter.substring(1)).toList());
+        if (!associationParameters.isEmpty()) {
+            if (associationParameters.contains("all")) {
+                associationParameters.addAll(
+                        Arrays.asList(SavingsApiConstants.transactions, SavingsApiConstants.charges, SavingsApiConstants.linkedAccount));
+            }
+
+            if (associationParameters.contains(SavingsApiConstants.transactions)) {
+                mandatoryResponseParameters.add(SavingsApiConstants.transactions);
+                final Collection<SavingsAccountTransactionData> currentTransactions = this.depositAccountReadPlatformService
+                        .retrieveAllTransactions(DepositAccountType.DYNAMIC_DEPOSIT, accountId);
+                if (!CollectionUtils.isEmpty(currentTransactions)) {
+                    transactions = currentTransactions;
+                }
+            }
+
+            if (associationParameters.contains(SavingsApiConstants.charges)) {
+                mandatoryResponseParameters.add(SavingsApiConstants.charges);
+                final Collection<SavingsAccountChargeData> currentCharges = this.savingsAccountChargeReadPlatformService
+                        .retrieveSavingsAccountCharges(accountId, chargeStatus);
+                if (!CollectionUtils.isEmpty(currentCharges)) {
+                    charges = currentCharges;
+                }
+            }
+
+            if (associationParameters.contains(SavingsApiConstants.linkedAccount)) {
+                mandatoryResponseParameters.add(SavingsApiConstants.linkedAccount);
+                linkedAccount = this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(accountId);
+            }
+        }
+
+        DynamicDepositAccountData templateData = null;
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
-        return this.toApiJsonSerializer.serialize(settings, accountData, DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS);
+        if (settings.isTemplate()) {
+            templateData = this.dynamicDepositAccountReadPlatformService.retrieveTemplate();
+        }
+
+        return DynamicDepositAccountData.associationsAndTemplate(accountData, templateData, transactions, charges, linkedAccount);
     }
 
     @GET

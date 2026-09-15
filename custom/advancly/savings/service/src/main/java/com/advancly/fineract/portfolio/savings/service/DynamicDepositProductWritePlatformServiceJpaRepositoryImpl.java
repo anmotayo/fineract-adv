@@ -39,6 +39,7 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuild
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.slf4j.Logger;
@@ -62,17 +63,20 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final DynamicDepositProductDataValidator fromApiJsonDataValidator;
     private final DynamicDepositProductAssembler dynamicDepositProductAssembler;
     private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
+    private final InterestRateChartAssembler chartAssembler;
 
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
             final DynamicDepositProductDataValidator fromApiJsonDataValidator,
             final DynamicDepositProductAssembler dynamicDepositProductAssembler,
-            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
+            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
+            final InterestRateChartAssembler chartAssembler) {
         this.context = context;
         this.dynamicDepositProductRepository = dynamicDepositProductRepository;
         this.fromApiJsonDataValidator = fromApiJsonDataValidator;
         this.dynamicDepositProductAssembler = dynamicDepositProductAssembler;
         this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
+        this.chartAssembler = chartAssembler;
     }
 
     @Transactional
@@ -108,6 +112,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
 
             final DynamicDepositProduct product = this.dynamicDepositProductRepository.findById(productId)
                     .orElseThrow(() -> new DynamicDepositProductNotFoundException(productId));
+            product.setHelpers(this.chartAssembler);
 
             final Map<String, Object> changes = product.update(command);
 

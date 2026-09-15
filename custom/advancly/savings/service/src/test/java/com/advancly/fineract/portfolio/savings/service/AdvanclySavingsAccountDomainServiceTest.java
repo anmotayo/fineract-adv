@@ -144,6 +144,20 @@ class AdvanclySavingsAccountDomainServiceTest {
     }
 
     @Test
+    void anOptimizedDepositOnADynamicDepositAccountFiresRateHistoryHook() {
+        LocalDate today = LocalDate.now();
+        SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
+                .withRunningBalanceOnPivotDate(BigDecimal.valueOf(1000)).build();
+        DynamicDepositAccount dynamicDepositAccount = buildDynamicDepositAccount(summary);
+
+        SavingsAccountTransaction deposit = domainService.handleDepositOptimized(dynamicDepositAccount, today, BigDecimal.valueOf(500),
+                null, Money.of(currency, BigDecimal.valueOf(1000)), currency, null, true);
+
+        verify(dynamicDepositRateHistoryService).recordPrincipalChangeEvent(dynamicDepositAccount, deposit,
+                DynamicDepositRateHistoryEventType.DEPOSIT);
+    }
+
+    @Test
     void anOptimizedWithdrawalOnADynamicDepositAccountFiresBothMarkerHooks() {
         LocalDate today = LocalDate.now();
         SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))

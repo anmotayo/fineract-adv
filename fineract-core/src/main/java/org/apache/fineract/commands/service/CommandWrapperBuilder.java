@@ -2693,6 +2693,64 @@ public class CommandWrapperBuilder {
         return this;
     }
 
+    public CommandWrapperBuilder dynamicDepositAccountDeposit(final Long accountId) {
+        this.actionName = "DEPOSIT";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.savingsId = accountId;
+        this.entityId = accountId;
+        this.href = "/dynamicdepositaccounts/" + accountId + "/transactions?command=deposit";
+        return this;
+    }
+
+    public CommandWrapperBuilder dynamicDepositAccountWithdrawal(final Long accountId) {
+        this.actionName = "WITHDRAWAL";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.savingsId = accountId;
+        this.entityId = accountId;
+        this.href = "/dynamicdepositaccounts/" + accountId + "/transactions?command=withdrawal";
+        return this;
+    }
+
+    public CommandWrapperBuilder closeDynamicDepositAccount(final Long accountId) {
+        this.actionName = "CLOSE";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.entityId = accountId;
+        this.savingsId = accountId;
+        this.href = "/dynamicdepositaccounts/" + accountId + "?command=close";
+        return this;
+    }
+
+    public CommandWrapperBuilder prematureCloseDynamicDepositAccount(final Long accountId) {
+        this.actionName = "PREMATURECLOSE";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.entityId = accountId;
+        this.savingsId = accountId;
+        this.href = "/dynamicdepositaccounts/" + accountId + "?command=prematureClose";
+        return this;
+    }
+
+    public CommandWrapperBuilder undoDynamicDepositAccountTransaction(final Long accountId, final Long transactionId) {
+        this.actionName = "UNDOTRANSACTION";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.savingsId = accountId;
+        this.entityId = accountId;
+        this.subentityId = transactionId;
+        this.transactionId = transactionId.toString();
+        this.href = "/dynamicdepositaccounts/" + accountId + "/transactions/" + transactionId + "?command=undo";
+        return this;
+    }
+
+    public CommandWrapperBuilder adjustDynamicDepositAccountTransaction(final Long accountId, final Long transactionId) {
+        this.actionName = "ADJUSTTRANSACTION";
+        this.entityName = "DYNAMICDEPOSITACCOUNT";
+        this.savingsId = accountId;
+        this.entityId = accountId;
+        this.subentityId = transactionId;
+        this.transactionId = transactionId.toString();
+        this.href = "/dynamicdepositaccounts/" + accountId + "/transactions/" + transactionId + "?command=modify";
+        return this;
+    }
+
     public CommandWrapperBuilder createOfficeToGLAccountMapping() {
         this.actionName = "CREATE";
         this.entityName = "FINANCIALACTIVITYACCOUNT";

@@ -35,14 +35,17 @@ import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDa
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Optional;
 import org.apache.fineract.accounting.common.AccountingRuleType;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormatRepositoryWrapper;
+import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
+import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
@@ -120,6 +123,14 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 dynamicDepositAccountDataValidator, dynamicDepositAccountAssembler, accountNumberGenerator, accountNumberFormatRepository,
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,
                 savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository);
+
+        // The modifyApplication tests exercise the real DynamicDepositAccountDataValidator end-to-end, which reaches
+        // account.validateNewApplicationState(...) -> DateUtils.isDateInTheFuture(submittedOnDate) ->
+        // ThreadLocalContextUtil.getBusinessDates(). That thread-local is otherwise only populated by whichever test
+        // happens to run first in this JVM, so seed it explicitly here rather than relying on execution order.
+        final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
+        businessDates.put(BusinessDateType.BUSINESS_DATE, LocalDate.of(2026, 9, 15));
+        ThreadLocalContextUtil.setBusinessDates(businessDates);
     }
 
     @Test
@@ -210,6 +221,47 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
         ArgumentCaptor<AccountAssociations> captor = ArgumentCaptor.forClass(AccountAssociations.class);
         verify(accountAssociationsRepository).save(captor.capture());
         assertThat(captor.getValue().linkedSavingsAccount()).isSameAs(linkedSavingsAccount);
+    }
+
+    /**
+     * Task review regression: {@code modifyApplication(...)} must NOT reject an ordinary request that simply omits
+     * {@code linkAccountId} on an account that already has a satisfying linked-account association, even though
+     * {@code transferInterestToSavings=true} on that account (so {@code isLinkedAccRequired} is true). Mirrors FD's own
+     * {@code modifyFDApplication}, which only ever throws its "linked account required" error inside the two branches
+     * where {@code linkAccountId} is null AND (the request explicitly cleared it, or no association exists at all) -
+     * never when the field is simply untouched and an association already satisfies the requirement.
+     */
+    @Test
+    void modifyApplicationOmittingLinkAccountIdWithExistingAssociationIsANoOp() {
+        Long accountId = 5L;
+        DynamicDepositAccount account = dynamicDepositAccountWithTransferInterestEnabled(accountId, true, true);
+        SavingsAccount existingLinkedSavingsAccount = Mockito.mock(SavingsAccount.class);
+        AccountAssociations existingAssociation = AccountAssociations.associateSavingsAccount(account, existingLinkedSavingsAccount,
+                AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue(), true);
+
+        JsonCommand command = Mockito.mock(JsonCommand.class);
+        when(command.json()).thenReturn("{}");
+        // linkAccountId is entirely absent from the request: neither its value nor its presence was sent.
+        when(command.longValueOfParameterNamed(linkedAccountParamName)).thenReturn(null);
+        when(command.parameterExists(linkedAccountParamName)).thenReturn(false);
+
+        when(dynamicDepositAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(accountAssociationsRepository.findBySavingsIdAndType(accountId, AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue()))
+                .thenReturn(existingAssociation);
+
+        DynamicDepositAccountDataValidator realValidator = new DynamicDepositAccountDataValidator(new FromJsonHelper());
+        DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl serviceWithRealValidator = new DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(
+                context, dynamicDepositAccountRepository, realValidator, dynamicDepositAccountAssembler, accountNumberGenerator,
+                accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
+                savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
+                depositAccountDataValidator, accountAssociationsRepository);
+
+        assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
+
+        verify(accountAssociationsRepository, never()).delete(any(AccountAssociations.class));
+        verify(accountAssociationsRepository, never()).save(any());
+        verify(depositAccountAssembler, never()).assembleFrom(any(Long.class), any(DepositAccountType.class));
+        assertThat(existingAssociation.linkedSavingsAccount()).isSameAs(existingLinkedSavingsAccount);
     }
 
     private DynamicDepositAccount dynamicDepositAccountWithTransferInterestEnabled(Long accountId, boolean allowWithdrawal,

@@ -185,17 +185,27 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 
             // --- linked-account association sync (mirrors modifyFDApplication's linked-account update block) ---
+            // Validation only runs in the two branches below where linkAccountId is null (mirroring FD's own
+            // throwLinkedAccountRequiredError() placement exactly): either the request explicitly clears an
+            // existing association, or there was never one to begin with. When the request simply omits
+            // linkAccountId and an association already exists, this must be a no-op - an untouched field is not a
+            // validation failure, even if transferInterestToSavings is (already) true.
             final boolean isLinkedAccRequired = account.accountTermAndPreClosure().isTransferInterestToLinkedAccount();
             final Long linkedSavingsAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
-            this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired,
-                    linkedSavingsAccountId);
 
             AccountAssociations accountAssociations = this.accountAssociationsRepository.findBySavingsIdAndType(accountId,
                     AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue());
             if (linkedSavingsAccountId == null) {
-                if (accountAssociations != null && command.parameterExists(linkedAccountParamName)) {
-                    this.accountAssociationsRepository.delete(accountAssociations);
-                    changes.put(linkedAccountParamName, null);
+                if (accountAssociations != null) {
+                    if (command.parameterExists(linkedAccountParamName)) {
+                        this.accountAssociationsRepository.delete(accountAssociations);
+                        changes.put(linkedAccountParamName, null);
+                        this.dynamicDepositAccountDataValidator
+                                .validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired, null);
+                    }
+                } else {
+                    this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired,
+                            null);
                 }
             } else {
                 boolean isModified = false;

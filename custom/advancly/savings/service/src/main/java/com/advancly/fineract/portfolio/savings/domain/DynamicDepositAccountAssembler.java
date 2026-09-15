@@ -21,6 +21,7 @@ package com.advancly.fineract.portfolio.savings.domain;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodFrequencyIdParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
@@ -95,7 +96,9 @@ import org.springframework.stereotype.Component;
  * <li>{@code allowWithdrawal} / {@code dynamicRateEnabled}: use the request value if present, else inherit from the
  * product.</li>
  * <li>Persist the resolved values into {@link DepositAccountDynamicDetail}.</li>
- * <li>Validate {@code allowWithdrawal = false} => {@code transferInterestToSavings = false} (business rule 8).</li>
+ * <li>Validate that a linked savings account is present whenever {@code transferInterestToSavings} is enabled -
+ * independent of {@code allowWithdrawal}, since transferring interest is not a regular (withdrawal-style)
+ * transaction.</li>
  * <li>Resolve the initial interest rate: the request's {@code nominalAnnualInterestRate} if present, otherwise the
  * interest rate chart (via {@link DepositAccountInterestRateChart#getApplicableInterestRate}) using the initial
  * invested amount and fixed tenor - this chart fallback applies regardless of {@code dynamicRateEnabled} (business rule
@@ -227,8 +230,11 @@ public class DynamicDepositAccountAssembler {
 
         final boolean transferInterestToSavings = command.booleanPrimitiveValueOfParameterNamed(transferInterestToSavingsParamName);
 
-        // --- business rule 8 (plan section 3, step 5) ---
-        this.dynamicDepositAccountDataValidator.validateAllowWithdrawalTransferInterestRule(allowWithdrawal, transferInterestToSavings);
+        // --- linked account required when transfer-interest-to-savings is enabled (independent of allowWithdrawal -
+        // transfer-interest-to-savings is not a regular transaction) ---
+        final Long linkedAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
+        this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(transferInterestToSavings,
+                linkedAccountId);
 
         final BigDecimal depositAmount = command.bigDecimalValueOfParameterNamed(depositAmountParamName);
         final Integer depositPeriod = command.integerValueOfParameterNamed(depositPeriodParamName);

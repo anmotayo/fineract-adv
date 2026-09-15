@@ -18,6 +18,9 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
+
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
@@ -73,10 +76,10 @@ import org.springframework.transaction.annotation.Transactional;
  * Lean, self-contained write-side implementation for the {@code DYNAMICDEPOSITACCOUNT} entity. Structurally mirrors
  * {@code DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl}'s fixed-deposit branch, reusing the generic
  * (core, not fixed-deposit-specific) {@link SavingsAccountApplicationTransitionApiJsonValidator} for the
- * approve/undo/reject/withdraw transition-guard validation. Mirrors the same class's linked-savings-account
- * association wiring in {@code submitApplication(...)} (Phase 5 Task 4), so an account submitted with
- * {@code linkAccountId} set gets a real {@code m_portfolio_account_associations} row; still excludes
- * business-event notification wiring for Phase 1 leanness (see the implementation report).
+ * approve/undo/reject/withdraw transition-guard validation. Mirrors the same class's linked-savings-account association
+ * wiring in {@code submitApplication(...)} (Phase 5 Task 4), so an account submitted with {@code linkAccountId} set
+ * gets a real {@code m_portfolio_account_associations} row; still excludes business-event notification wiring for Phase
+ * 1 leanness (see the implementation report).
  */
 @Service
 public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implements DynamicDepositAccountWritePlatformService {
@@ -179,8 +182,45 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
 
             final Map<String, Object> changes = new LinkedHashMap<>(20);
             account.modifyApplication(command, changes);
-            account.validateNewApplicationState(
-                    com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+            account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+
+            // --- linked-account association sync (mirrors modifyFDApplication's linked-account update block) ---
+            final boolean isLinkedAccRequired = account.accountTermAndPreClosure().isTransferInterestToLinkedAccount();
+            final Long linkedSavingsAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
+            this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired,
+                    linkedSavingsAccountId);
+
+            AccountAssociations accountAssociations = this.accountAssociationsRepository.findBySavingsIdAndType(accountId,
+                    AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue());
+            if (linkedSavingsAccountId == null) {
+                if (accountAssociations != null && command.parameterExists(linkedAccountParamName)) {
+                    this.accountAssociationsRepository.delete(accountAssociations);
+                    changes.put(linkedAccountParamName, null);
+                }
+            } else {
+                boolean isModified = false;
+                if (accountAssociations == null) {
+                    isModified = true;
+                } else {
+                    final SavingsAccount linkedSavingsAccount = accountAssociations.linkedSavingsAccount();
+                    if (linkedSavingsAccount == null || !linkedSavingsAccount.getId().equals(linkedSavingsAccountId)) {
+                        isModified = true;
+                    }
+                }
+                if (isModified) {
+                    final SavingsAccount linkedSavingsAccount = this.depositAccountAssembler.assembleFrom(linkedSavingsAccountId,
+                            DepositAccountType.SAVINGS_DEPOSIT);
+                    this.depositAccountDataValidator.validatelinkedSavingsAccount(linkedSavingsAccount, account);
+                    if (accountAssociations == null) {
+                        accountAssociations = AccountAssociations.associateSavingsAccount(account, linkedSavingsAccount,
+                                AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue(), true);
+                    } else {
+                        accountAssociations.updateLinkedSavingsAccount(linkedSavingsAccount);
+                    }
+                    changes.put(linkedAccountParamName, linkedSavingsAccountId);
+                    this.accountAssociationsRepository.save(accountAssociations);
+                }
+            }
 
             if (!changes.isEmpty()) {
                 // depositPeriod / depositPeriodFrequencyId / submittedOnDate may all have changed, so the stored
@@ -215,8 +255,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
 
         if (account.isNotSubmittedAndPendingApproval()) {
             final List<ApiParameterError> dataValidationErrors = new java.util.ArrayList<>();
-            final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource(
-                    com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME + ".delete");
+            final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
+                    .resource(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME + ".delete");
             baseDataValidator.reset().parameter("activatedOnDate")
                     .failWithCodeNoParameterAddedToErrorCode("not.in.submittedandpendingapproval.state");
             if (!dataValidationErrors.isEmpty()) {

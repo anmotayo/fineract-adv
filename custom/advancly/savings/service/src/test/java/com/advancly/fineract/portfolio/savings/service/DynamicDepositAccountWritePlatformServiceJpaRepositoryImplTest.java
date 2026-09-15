@@ -18,31 +18,52 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDataValidator;
 import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Optional;
+import org.apache.fineract.accounting.common.AccountingRuleType;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormatRepositoryWrapper;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
+import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
 import org.apache.fineract.portfolio.account.domain.AccountAssociations;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
+import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.data.DepositAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
@@ -148,6 +169,72 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
         verify(depositAccountAssembler, never()).assembleFrom(any(Long.class), any(DepositAccountType.class));
         verify(depositAccountDataValidator, never()).validatelinkedSavingsAccount(any(), any());
         verify(accountAssociationsRepository, never()).save(any());
+    }
+
+    /**
+     * Phase 5 Task 5 regression: the now-deleted allow-withdrawal / transfer-interest coupling rule used to reject
+     * {@code allowWithdrawal = false} combined with {@code transferInterestToSavings = true}. This proves that
+     * combination now succeeds end-to-end through {@code modifyApplication(...)} - using the REAL
+     * {@link DynamicDepositAccountDataValidator} (not a mock) so the new
+     * {@code validateLinkedAccountRequiredWhenTransferInterestEnabled} rule is genuinely exercised - as long as a
+     * linked account is present, and that the update path creates the {@link AccountAssociations} row exactly like
+     * FD/RD's {@code modifyFDApplication}.
+     */
+    @Test
+    void modifyApplicationWithAllowWithdrawalFalseAndTransferInterestToSavingsTrueAndValidLinkAccountSucceeds() {
+        Long accountId = 5L;
+        Long linkedSavingsAccountId = 9L;
+        DynamicDepositAccount account = dynamicDepositAccountWithTransferInterestEnabled(accountId, false, true);
+        SavingsAccount linkedSavingsAccount = Mockito.mock(SavingsAccount.class);
+
+        JsonCommand command = Mockito.mock(JsonCommand.class);
+        when(command.json()).thenReturn("{}");
+        when(command.longValueOfParameterNamed(linkedAccountParamName)).thenReturn(linkedSavingsAccountId);
+
+        when(dynamicDepositAccountRepository.findById(accountId)).thenReturn(Optional.of(account));
+        when(accountAssociationsRepository.findBySavingsIdAndType(accountId, AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue()))
+                .thenReturn(null);
+        when(depositAccountAssembler.assembleFrom(linkedSavingsAccountId, DepositAccountType.SAVINGS_DEPOSIT))
+                .thenReturn(linkedSavingsAccount);
+
+        DynamicDepositAccountDataValidator realValidator = new DynamicDepositAccountDataValidator(new FromJsonHelper());
+        DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl serviceWithRealValidator = new DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(
+                context, dynamicDepositAccountRepository, realValidator, dynamicDepositAccountAssembler, accountNumberGenerator,
+                accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
+                savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
+                depositAccountDataValidator, accountAssociationsRepository);
+
+        assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
+
+        verify(depositAccountDataValidator).validatelinkedSavingsAccount(linkedSavingsAccount, account);
+        ArgumentCaptor<AccountAssociations> captor = ArgumentCaptor.forClass(AccountAssociations.class);
+        verify(accountAssociationsRepository).save(captor.capture());
+        assertThat(captor.getValue().linkedSavingsAccount()).isSameAs(linkedSavingsAccount);
+    }
+
+    private DynamicDepositAccount dynamicDepositAccountWithTransferInterestEnabled(Long accountId, boolean allowWithdrawal,
+            boolean transferInterestToSavings) {
+        MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
+        DynamicDepositProduct product = DynamicDepositProduct.createNew("Dynamic Deposit", "DD", "desc", currency, BigDecimal.TEN,
+                SavingsCompoundingInterestPeriodType.DAILY, SavingsPostingInterestPeriodType.MONTHLY,
+                SavingsInterestCalculationType.DAILY_BALANCE, SavingsInterestCalculationDaysInYearType.DAYS_365, null, null,
+                AccountingRuleType.NONE, new HashSet<>(), new HashSet<>(), null, false, null, allowWithdrawal, false, false);
+
+        DepositAccountTermAndPreClosure term = DepositAccountTermAndPreClosure
+                .createNew(DepositPreClosureDetail.createFrom(false, null, null),
+                        DepositTermDetail.createFrom(6, 6, SavingsPeriodFrequencyType.MONTHS, SavingsPeriodFrequencyType.MONTHS, null,
+                                null),
+                        null, BigDecimal.valueOf(100000), null, null, 6, SavingsPeriodFrequencyType.MONTHS, null, null,
+                        transferInterestToSavings, null, null);
+
+        DynamicDepositAccount account = DynamicDepositAccount.createNewApplicationForSubmittal(null, null, product, null, "ACC001",
+                ExternalId.empty(), AccountType.INDIVIDUAL, LocalDate.of(2026, 1, 15), null, BigDecimal.TEN,
+                SavingsCompoundingInterestPeriodType.DAILY, SavingsPostingInterestPeriodType.MONTHLY,
+                SavingsInterestCalculationType.DAILY_BALANCE, SavingsInterestCalculationDaysInYearType.DAYS_365, null, null, null, false,
+                new HashSet<>(), term, null, false);
+        account.setDynamicDetail(DepositAccountDynamicDetail.createNew(account, allowWithdrawal, false));
+        ReflectionTestUtils.setField(account, "id", accountId);
+        return account;
     }
 
     private DynamicDepositAccount dynamicDepositAccount(Long savingsId) {

@@ -20,7 +20,7 @@ package com.advancly.fineract.portfolio.savings.validator;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
-import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
 
 import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
@@ -36,12 +36,7 @@ import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates create/update requests for the {@code DYNAMICDEPOSITACCOUNT} entity, including business rule 8 of the
- * implementation plan: {@code allowWithdrawal = false} requires {@code transferInterestToSavings = false}. The rule is
- * checked against the request's raw values where present and, for whichever side is omitted, against the value
- * {@code DynamicDepositAccountAssembler} would resolve (passed in as {@code resolvedAllowWithdrawal} /
- * {@code resolvedTransferInterestToSavings}), since either field may be inherited from the product or the account's
- * current state rather than supplied on this request.
+ * Validates create/update requests for the {@code DYNAMICDEPOSITACCOUNT} entity.
  */
 @Component
 public class DynamicDepositAccountDataValidator {
@@ -103,19 +98,22 @@ public class DynamicDepositAccountDataValidator {
     }
 
     /**
-     * Business rule 8: {@code allow_withdrawal = false} => {@code transfer_interest_to_savings = false}. Called by
-     * {@code DynamicDepositAccountAssembler} with the values it has already resolved (request value, else the
-     * account's/product's current value), since either field may be inherited rather than supplied on this request.
+     * A linked savings account is required whenever {@code transferInterestToSavings} is enabled, since interest cannot
+     * be transferred anywhere without one. This does NOT depend on {@code allowWithdrawal} -
+     * transfer-interest-to-savings is not a regular (withdrawal-style) transaction, so disabling withdrawals must never
+     * force this off. Mirrors {@code DepositAccountDataValidator}'s {@code isLinkedAccRequired} /
+     * {@code throwLinkedAccountRequiredError()} pattern for FD/RD accounts.
      */
-    public void validateAllowWithdrawalTransferInterestRule(final boolean resolvedAllowWithdrawal,
-            final boolean resolvedTransferInterestToSavings) {
-        if (!resolvedAllowWithdrawal && resolvedTransferInterestToSavings) {
+    public void validateLinkedAccountRequiredWhenTransferInterestEnabled(final boolean transferInterestToSavings,
+            final Long linkedAccountId) {
+        if (transferInterestToSavings && linkedAccountId == null) {
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
             final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
                     .resource(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
-            baseDataValidator.reset().parameter("transferInterestToSavings").value(resolvedTransferInterestToSavings)
-                    .failWithCodeNoParameterAddedToErrorCode(allowWithdrawalParamName + ".false.requires.transferInterestToSavings.false");
-            throw new PlatformApiDataValidationException(dataValidationErrors);
+            baseDataValidator.reset().parameter(linkedAccountParamName).value(linkedAccountId).notNull().longGreaterThanZero();
+            if (!dataValidationErrors.isEmpty()) {
+                throw new PlatformApiDataValidationException(dataValidationErrors);
+            }
         }
     }
 }

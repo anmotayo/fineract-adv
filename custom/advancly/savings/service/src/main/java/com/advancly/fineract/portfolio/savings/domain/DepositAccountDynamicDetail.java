@@ -36,9 +36,9 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
  * Account-level configuration for a Dynamic Deposit account (deposit_type_enum = 500).
  *
  * The values are resolved once at submission time: the request value is used when present, otherwise the value is
- * inherited from the product's {@link DepositProductDynamicDetail} (see DynamicDepositAccountAssembler). Business rule:
- * when {@code allowWithdrawal = false}, {@code transferInterestToSavings} must also be false - enforced by
- * DynamicDepositAccountDataValidator.
+ * inherited from the product's {@link DepositProductDynamicDetail} (see DynamicDepositAccountAssembler).
+ * {@code allowWithdrawal} is independent of {@code transferInterestToSavings} - disabling withdrawals does not require
+ * or force disabling interest transfer, since that is not a regular (withdrawal-style) transaction.
  */
 @Entity
 @Table(name = "m_deposit_account_dynamic_detail")

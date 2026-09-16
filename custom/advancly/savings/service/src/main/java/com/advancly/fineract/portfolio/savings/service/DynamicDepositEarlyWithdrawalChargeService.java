@@ -148,7 +148,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         if (qualifyingCharge == null) {
             return null;
         }
-        final BigDecimal percentage = resolvePercentage(qualifyingCharge);
+        final BigDecimal percentage = resolvePercentage(account, qualifyingCharge);
         if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
@@ -201,11 +201,17 @@ public class DynamicDepositEarlyWithdrawalChargeService {
     }
 
     /**
-     * Section 11: "Use the account charge percentage when the client/account has an override; otherwise use the product
-     * charge percentage." A {@code SavingsAccountCharge} created from the product definition stores the definition's
-     * own amount as its percentage, so the fallback below only fires for a charge that genuinely carries none.
+     * Resolution order: (1) a per-transaction override set via
+     * {@link DynamicDepositAccount#setEarlyWithdrawalChargePercentageOverride(BigDecimal)} for THIS withdrawal only;
+     * (2) Section 11's "use the account charge percentage when the client/account has an override; otherwise use the
+     * product charge percentage" - a {@code SavingsAccountCharge} created from the product definition stores the
+     * definition's own amount as its percentage, so the fallback only fires for a charge that genuinely carries none.
      */
-    private BigDecimal resolvePercentage(final SavingsAccountCharge accountCharge) {
+    private BigDecimal resolvePercentage(final DynamicDepositAccount account, final SavingsAccountCharge accountCharge) {
+        final BigDecimal transactionOverride = account.earlyWithdrawalChargePercentageOverride();
+        if (transactionOverride != null) {
+            return transactionOverride;
+        }
         final BigDecimal accountPercentage = accountCharge.getPercentage();
         if (accountPercentage != null && accountPercentage.compareTo(BigDecimal.ZERO) > 0) {
             return accountPercentage;

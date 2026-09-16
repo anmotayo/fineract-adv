@@ -25,6 +25,7 @@ import java.util.Collection;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
+import org.apache.fineract.portfolio.savings.data.DepositAccountInterestRateChartData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
@@ -73,10 +74,15 @@ public class DynamicDepositAccountData implements Serializable {
     private final Long linkAccountId;
     private final PortfolioAccountData linkedAccount;
     private final BigDecimal interestBasedChargeDerived;
-    private final BigDecimal interestBasedChargePostedDerived;
     private final SavingsAccountSummaryData summary;
     private final Collection<SavingsAccountTransactionData> transactions;
     private final Collection<SavingsAccountChargeData> charges;
+    private final Integer minDepositTerm;
+    private final Integer maxDepositTerm;
+    private final BigDecimal minDepositAmount;
+    private final BigDecimal maxDepositAmount;
+    private final EnumOptionData withHoldTaxPostingType;
+    private final DepositAccountInterestRateChartData chart;
 
     // template-only
     private final Collection<DynamicDepositProductData> productOptions;
@@ -90,13 +96,12 @@ public class DynamicDepositAccountData implements Serializable {
             final EnumOptionData depositPeriodFrequencyType, final LocalDate expectedFirstDepositOnDate, final LocalDate maturityDate,
             final BigDecimal maturityAmount, final LocalDate submittedOnDate, final LocalDate approvedOnDate,
             final LocalDate activatedOnDate, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean transferInterestToSavings, final BigDecimal interestBasedChargeDerived,
-            final BigDecimal interestBasedChargePostedDerived) {
+            final boolean transferInterestToSavings, final BigDecimal interestBasedChargeDerived) {
         this(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId, savingsProductName, fieldOfficerId,
                 status, null, currency, nominalAnnualInterestRate, interestCompoundingPeriodType, interestPostingPeriodType,
                 interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType,
                 expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate, allowWithdrawal,
-                dynamicRateEnabled, transferInterestToSavings, null, null, interestBasedChargeDerived, interestBasedChargePostedDerived,
+                dynamicRateEnabled, transferInterestToSavings, null, null, interestBasedChargeDerived, null, null, null, null, null, null,
                 null, null, null, null);
     }
 
@@ -110,14 +115,13 @@ public class DynamicDepositAccountData implements Serializable {
             final LocalDate expectedFirstDepositOnDate, final LocalDate maturityDate, final BigDecimal maturityAmount,
             final LocalDate submittedOnDate, final LocalDate approvedOnDate, final LocalDate activatedOnDate, final boolean allowWithdrawal,
             final boolean dynamicRateEnabled, final boolean transferInterestToSavings, final Long linkAccountId,
-            final BigDecimal interestBasedChargeDerived, final BigDecimal interestBasedChargePostedDerived,
-            final SavingsAccountSummaryData summary) {
+            final BigDecimal interestBasedChargeDerived, final SavingsAccountSummaryData summary) {
         this(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId, savingsProductName, fieldOfficerId,
                 status, timeline, currency, nominalAnnualInterestRate, interestCompoundingPeriodType, interestPostingPeriodType,
                 interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType,
                 expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate, allowWithdrawal,
-                dynamicRateEnabled, transferInterestToSavings, linkAccountId, null, interestBasedChargeDerived,
-                interestBasedChargePostedDerived, summary, null, null, null);
+                dynamicRateEnabled, transferInterestToSavings, linkAccountId, null, interestBasedChargeDerived, summary, null, null, null,
+                null, null, null, null, null, null);
     }
 
     private DynamicDepositAccountData(final Long id, final String accountNo, final String externalId, final Long clientId,
@@ -130,9 +134,10 @@ public class DynamicDepositAccountData implements Serializable {
             final LocalDate expectedFirstDepositOnDate, final LocalDate maturityDate, final BigDecimal maturityAmount,
             final LocalDate submittedOnDate, final LocalDate approvedOnDate, final LocalDate activatedOnDate, final boolean allowWithdrawal,
             final boolean dynamicRateEnabled, final boolean transferInterestToSavings, final Long linkAccountId,
-            final PortfolioAccountData linkedAccount, final BigDecimal interestBasedChargeDerived,
-            final BigDecimal interestBasedChargePostedDerived, final SavingsAccountSummaryData summary,
+            final PortfolioAccountData linkedAccount, final BigDecimal interestBasedChargeDerived, final SavingsAccountSummaryData summary,
             final Collection<SavingsAccountTransactionData> transactions, final Collection<SavingsAccountChargeData> charges,
+            final Integer minDepositTerm, final Integer maxDepositTerm, final BigDecimal minDepositAmount,
+            final BigDecimal maxDepositAmount, final EnumOptionData withHoldTaxPostingType, final DepositAccountInterestRateChartData chart,
             final Collection<DynamicDepositProductData> productOptions) {
         this.id = id;
         this.accountNo = accountNo;
@@ -167,10 +172,15 @@ public class DynamicDepositAccountData implements Serializable {
         this.linkAccountId = linkAccountId;
         this.linkedAccount = linkedAccount;
         this.interestBasedChargeDerived = interestBasedChargeDerived;
-        this.interestBasedChargePostedDerived = interestBasedChargePostedDerived;
         this.summary = summary;
         this.transactions = transactions;
         this.charges = charges;
+        this.minDepositTerm = minDepositTerm;
+        this.maxDepositTerm = maxDepositTerm;
+        this.minDepositAmount = minDepositAmount;
+        this.maxDepositAmount = maxDepositAmount;
+        this.withHoldTaxPostingType = withHoldTaxPostingType;
+        this.chart = chart;
         this.productOptions = productOptions;
     }
 
@@ -182,8 +192,9 @@ public class DynamicDepositAccountData implements Serializable {
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.depositAmount, data.depositPeriod,
                 data.depositPeriodFrequencyType, data.expectedFirstDepositOnDate, data.maturityDate, data.maturityAmount,
                 data.submittedOnDate, data.approvedOnDate, data.activatedOnDate, data.allowWithdrawal, data.dynamicRateEnabled,
-                data.transferInterestToSavings, data.linkAccountId, data.linkedAccount, data.interestBasedChargeDerived,
-                data.interestBasedChargePostedDerived, data.summary, data.transactions, data.charges, productOptions);
+                data.transferInterestToSavings, data.linkAccountId, data.linkedAccount, data.interestBasedChargeDerived, data.summary,
+                data.transactions, data.charges, data.minDepositTerm, data.maxDepositTerm, data.minDepositAmount, data.maxDepositAmount,
+                data.withHoldTaxPostingType, data.chart, productOptions);
     }
 
     public static DynamicDepositAccountData withAssociations(final DynamicDepositAccountData data,
@@ -203,8 +214,36 @@ public class DynamicDepositAccountData implements Serializable {
                 data.interestCalculationType, data.interestCalculationDaysInYearType, data.depositAmount, data.depositPeriod,
                 data.depositPeriodFrequencyType, data.expectedFirstDepositOnDate, data.maturityDate, data.maturityAmount,
                 data.submittedOnDate, data.approvedOnDate, data.activatedOnDate, data.allowWithdrawal, data.dynamicRateEnabled,
-                data.transferInterestToSavings, linkAccountId, linkedAccount, data.interestBasedChargeDerived,
-                data.interestBasedChargePostedDerived, data.summary, transactions, charges, productOptions);
+                data.transferInterestToSavings, linkAccountId, linkedAccount, data.interestBasedChargeDerived, data.summary, transactions,
+                charges, data.minDepositTerm, data.maxDepositTerm, data.minDepositAmount, data.maxDepositAmount,
+                data.withHoldTaxPostingType, data.chart, productOptions);
+    }
+
+    public static DynamicDepositAccountData withRangeAndPostingType(final DynamicDepositAccountData data, final Integer minDepositTerm,
+            final Integer maxDepositTerm, final BigDecimal minDepositAmount, final BigDecimal maxDepositAmount,
+            final EnumOptionData withHoldTaxPostingType) {
+        return new DynamicDepositAccountData(data.id, data.accountNo, data.externalId, data.clientId, data.clientName, data.groupId,
+                data.groupName, data.savingsProductId, data.savingsProductName, data.fieldOfficerId, data.status, data.timeline,
+                data.currency, data.nominalAnnualInterestRate, data.interestCompoundingPeriodType, data.interestPostingPeriodType,
+                data.interestCalculationType, data.interestCalculationDaysInYearType, data.depositAmount, data.depositPeriod,
+                data.depositPeriodFrequencyType, data.expectedFirstDepositOnDate, data.maturityDate, data.maturityAmount,
+                data.submittedOnDate, data.approvedOnDate, data.activatedOnDate, data.allowWithdrawal, data.dynamicRateEnabled,
+                data.transferInterestToSavings, data.linkAccountId, data.linkedAccount, data.interestBasedChargeDerived, data.summary,
+                data.transactions, data.charges, minDepositTerm, maxDepositTerm, minDepositAmount, maxDepositAmount, withHoldTaxPostingType,
+                data.chart, data.productOptions);
+    }
+
+    public static DynamicDepositAccountData withChart(final DynamicDepositAccountData data,
+            final DepositAccountInterestRateChartData chart) {
+        return new DynamicDepositAccountData(data.id, data.accountNo, data.externalId, data.clientId, data.clientName, data.groupId,
+                data.groupName, data.savingsProductId, data.savingsProductName, data.fieldOfficerId, data.status, data.timeline,
+                data.currency, data.nominalAnnualInterestRate, data.interestCompoundingPeriodType, data.interestPostingPeriodType,
+                data.interestCalculationType, data.interestCalculationDaysInYearType, data.depositAmount, data.depositPeriod,
+                data.depositPeriodFrequencyType, data.expectedFirstDepositOnDate, data.maturityDate, data.maturityAmount,
+                data.submittedOnDate, data.approvedOnDate, data.activatedOnDate, data.allowWithdrawal, data.dynamicRateEnabled,
+                data.transferInterestToSavings, data.linkAccountId, data.linkedAccount, data.interestBasedChargeDerived, data.summary,
+                data.transactions, data.charges, data.minDepositTerm, data.maxDepositTerm, data.minDepositAmount, data.maxDepositAmount,
+                data.withHoldTaxPostingType, chart, data.productOptions);
     }
 
     public Long id() {

@@ -58,6 +58,8 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 
@@ -67,13 +69,10 @@ import org.apache.fineract.portfolio.tax.domain.TaxGroup;
  * fixed tenor. See {@code DynamicDepositProductAssembler} for how accounts are created from this product, and
  * {@code DepositProductDynamicDetail} for the allow-withdrawal / dynamic-rate-enabled configuration.
  *
- * Deliberately lean for Phase 1: unlike {@code FixedDepositProduct}, this class does not compose a
- * {@code DepositProductTermAndPreClosure} - that core entity's {@code product} field is hard-typed to
- * {@code FixedDepositProduct} (with an explicit cast in its constructor), so it cannot be reused here without a further
- * core change. Preclosure-penalty configuration is out of scope for Phase 1 in any case (see the implementation plan).
- * The account's fixed tenor and current invested amount instead live on the reused, generic
- * {@code DepositAccountTermAndPreClosure} (account-level), matching business rule 1 in the plan ("the tenor remains
- * fixed during top-up/withdrawal").
+ * Composes the same {@code DepositProductTermAndPreClosure} entity FD/RD use (persisted in
+ * {@code m_deposit_product_term_and_preclosure}) for min/max deposit term, min/default/max deposit amount and the
+ * withholding-tax posting type. Nominal interest is not modeled at all here - the rate always comes from the
+ * {@link InterestRateChart}.
  */
 @Entity
 @DiscriminatorValue("500")
@@ -85,6 +84,9 @@ public class DynamicDepositProduct extends SavingsProduct {
 
     @OneToOne(mappedBy = "product", cascade = CascadeType.ALL)
     private DepositProductDynamicDetail dynamicDetail;
+
+    @OneToOne(mappedBy = "product", cascade = CascadeType.ALL)
+    private DepositProductTermAndPreClosure productTermAndPreClosure;
 
     @Transient
     private InterestRateChartAssembler chartAssembler;
@@ -99,9 +101,9 @@ public class DynamicDepositProduct extends SavingsProduct {
             final SavingsPostingInterestPeriodType interestPostingPeriodType, final SavingsInterestCalculationType interestCalculationType,
             final SavingsInterestCalculationDaysInYearType interestCalculationDaysInYearType, final Integer lockinPeriodFrequency,
             final SavingsPeriodFrequencyType lockinPeriodFrequencyType, final AccountingRuleType accountingRuleType,
-            final Set<Charge> charges, final Set<InterestRateChart> charts, final BigDecimal minBalanceForInterestCalculation,
-            final boolean withHoldTax, final TaxGroup taxGroup, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean earlyWithdrawalPenaltyEnabled) {
+            final Set<Charge> charges, final DepositProductTermAndPreClosure productTermAndPreClosure, final Set<InterestRateChart> charts,
+            final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final TaxGroup taxGroup,
+            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled) {
 
         final BigDecimal minRequiredOpeningBalance = null;
         final boolean withdrawalFeeApplicableForTransfer = false;
@@ -111,8 +113,8 @@ public class DynamicDepositProduct extends SavingsProduct {
         final DynamicDepositProduct product = new DynamicDepositProduct(name, shortName, description, currency, interestRate,
                 interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
                 minRequiredOpeningBalance, lockinPeriodFrequency, lockinPeriodFrequencyType, withdrawalFeeApplicableForTransfer,
-                accountingRuleType, charges, charts, allowOverdraft, overdraftLimit, minBalanceForInterestCalculation, withHoldTax,
-                taxGroup);
+                accountingRuleType, charges, productTermAndPreClosure, charts, allowOverdraft, overdraftLimit,
+                minBalanceForInterestCalculation, withHoldTax, taxGroup);
 
         final DepositProductDynamicDetail dynamicDetail = DepositProductDynamicDetail.createNew(product, allowWithdrawal,
                 dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
@@ -127,8 +129,9 @@ public class DynamicDepositProduct extends SavingsProduct {
             final SavingsInterestCalculationDaysInYearType interestCalculationDaysInYearType, final BigDecimal minRequiredOpeningBalance,
             final Integer lockinPeriodFrequency, final SavingsPeriodFrequencyType lockinPeriodFrequencyType,
             final boolean withdrawalFeeApplicableForTransfer, final AccountingRuleType accountingRuleType, final Set<Charge> charges,
-            final Set<InterestRateChart> charts, final boolean allowOverdraft, final BigDecimal overdraftLimit,
-            final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final TaxGroup taxGroup) {
+            final DepositProductTermAndPreClosure productTermAndPreClosure, final Set<InterestRateChart> charts,
+            final boolean allowOverdraft, final BigDecimal overdraftLimit, final BigDecimal minBalanceForInterestCalculation,
+            final boolean withHoldTax, final TaxGroup taxGroup) {
 
         super(name, shortName, description, currency, interestRate, interestCompoundingPeriodType, interestPostingPeriodType,
                 interestCalculationType, interestCalculationDaysInYearType, minRequiredOpeningBalance, lockinPeriodFrequency,
@@ -138,6 +141,7 @@ public class DynamicDepositProduct extends SavingsProduct {
         if (charts != null) {
             this.charts = charts;
         }
+        this.productTermAndPreClosure = productTermAndPreClosure;
     }
 
     public void addChart(final InterestRateChart newChart) {
@@ -175,6 +179,10 @@ public class DynamicDepositProduct extends SavingsProduct {
         return this.dynamicDetail;
     }
 
+    public DepositProductTermAndPreClosure depositProductTermAndPreClosure() {
+        return this.productTermAndPreClosure;
+    }
+
     public boolean isAllowWithdrawal() {
         return this.dynamicDetail != null && this.dynamicDetail.isAllowWithdrawal();
     }
@@ -198,6 +206,10 @@ public class DynamicDepositProduct extends SavingsProduct {
 
         if (this.dynamicDetail != null) {
             actualChanges.putAll(this.dynamicDetail.update(command));
+        }
+
+        if (this.productTermAndPreClosure != null) {
+            actualChanges.putAll(this.productTermAndPreClosure.update(command, baseDataValidator));
         }
 
         if (command.hasParameter(DepositsApiConstants.chartsParamName)) {
@@ -268,9 +280,15 @@ public class DynamicDepositProduct extends SavingsProduct {
 
     private void validateDomainRules(final DataValidatorBuilder baseDataValidator) {
         if (this.charts == null || this.charts.isEmpty()) {
-            if (this.nominalAnnualInterestRate == null || this.nominalAnnualInterestRate.compareTo(BigDecimal.ZERO) == 0) {
-                baseDataValidator.reset().parameter("nominalAnnualInterestRate").value(this.nominalAnnualInterestRate)
-                        .failWithCodeNoParameterAddedToErrorCode("interest.chart.or.nominal.interest.rate.required");
+            baseDataValidator.reset().parameter(DepositsApiConstants.chartsParamName).value(null)
+                    .failWithCodeNoParameterAddedToErrorCode("interest.rate.chart.required");
+        }
+
+        if (this.productTermAndPreClosure != null) {
+            final DepositTermDetail termDetails = this.productTermAndPreClosure.depositTermDetail();
+            if (termDetails != null && termDetails.isMinDepositTermGreaterThanMaxDepositTerm()) {
+                baseDataValidator.reset().parameter(DepositsApiConstants.maxDepositTermParamName).value(termDetails.maxDepositTerm())
+                        .failWithCodeNoParameterAddedToErrorCode("max.term.lessthan.min.term");
             }
         }
     }

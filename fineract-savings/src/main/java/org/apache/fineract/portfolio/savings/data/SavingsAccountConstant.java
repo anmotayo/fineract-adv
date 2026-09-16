@@ -50,7 +50,12 @@ public class SavingsAccountConstant extends SavingsApiConstants {
             dateFormatParamName, transactionDateParamName, transactionAmountParamName, paymentTypeIdParamName,
             transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName, receiptNumberParamName, bankNumberParamName,
             retailEntriesParamName, childAccountIdParamName, noteParamName, amountParamName, dateParamName, isManualTransaction,
-            lienTransaction, chargesPaidByData, submittedOnDateParamName, accountIdParamName, accountNoParamName));
+            lienTransaction, chargesPaidByData, submittedOnDateParamName, accountIdParamName, accountNoParamName,
+            // "earlyWithdrawalChargePercentage" - optional, ignored by every account type except Dynamic Deposit (the
+            // custom advancly module has no compile-time visibility of this core validator to add its own param, so
+            // it is allow-listed here instead): overrides the account's snapshotted early-withdrawal charge
+            // percentage for this single withdrawal only. See DynamicDepositEarlyWithdrawalChargeService.
+            "earlyWithdrawalChargePercentage"));
 
     protected static final Set<String> SAVINGS_ACCOUNT_TRANSACTION_RESPONSE_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(idParamName, accountNoParamName));

@@ -330,7 +330,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
         assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(chargeTransaction.getAmount());
     }
 
     // Scenario 2: three pending charges at 60% each plus a 60% closure contribution - 240% uncapped. The aggregate cap
@@ -372,7 +371,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.service.close(1L, closeCommandFor(1L, true));
 
         assertThat(this.account.isClosed()).isTrue();
-        final BigDecimal grossInterest = singleInterestPosting().getAmount();
+        // Posted ON MATURITY_BEFORE_CLOSURE, not CLOSED_DATE: this closure is at/after maturity, so the interest
+        // transaction is dated at maturity (mirrors FixedDepositAccount#postMaturityInterest), even though the
+        // accrual itself is capped at MATURITY_BEFORE_CLOSURE.minusDays(1) - interest must never be calculated for
+        // the maturity day itself (see DynamicDepositAccount#postInterest's javadoc).
+        final BigDecimal grossInterest = singleInterestPosting(MATURITY_BEFORE_CLOSURE).getAmount();
         assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
         assertThat(payChargeTransactions()).isEmpty();
         assertThat(this.newlySavedRows).isEmpty();
@@ -594,7 +597,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
         assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(chargeTransaction.getAmount());
     }
 
     // Scenario 7 (deliberate scope boundary): when the posting transaction that already exists for the closure
@@ -659,15 +661,28 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     }
 
     private SavingsAccountTransaction singleInterestPosting() {
+        return singleInterestPosting(CLOSED_DATE);
+    }
+
+    /**
+     * @param expectedPostingDate
+     *            CLOSED_DATE for every premature-closure scenario in this file (uncapped - see
+     *            SavingsAccount#interestPostingUpToForClosure's javadoc), or the account's maturityDate for a normal
+     *            (at-or-after-maturity) closure - the posting transaction itself still lands ON the maturity day (it is
+     *            the day after the last day interest accrues, maturityDate.minusDays(1); see
+     *            DynamicDepositAccount#postInterest's javadoc for why the guard is deliberately left uncapped while
+     *            only the accrual math is capped).
+     */
+    private SavingsAccountTransaction singleInterestPosting(final LocalDate expectedPostingDate) {
         final List<SavingsAccountTransaction> postings = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
         assertThat(postings).hasSize(1);
-        assertThat(postings.get(0).getTransactionDate()).isEqualTo(CLOSED_DATE);
+        assertThat(postings.get(0).getTransactionDate()).isEqualTo(expectedPostingDate);
         return postings.get(0);
     }
 
     private List<SavingsAccountTransaction> payChargeTransactions() {
-        return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isPayCharge).toList();
+        return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestBasedCharge).toList();
     }
 
     private SavingsAccountTransaction singleChargeTransaction() {

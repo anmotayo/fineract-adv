@@ -210,7 +210,8 @@ public final class ProductToGLAccountMappingFromApiJsonDeserializer {
                         .notNull().integerGreaterThanZero();
             }
 
-            if (!accountType.equals(DepositAccountType.RECURRING_DEPOSIT) && !accountType.equals(DepositAccountType.FIXED_DEPOSIT)) {
+            if (!accountType.equals(DepositAccountType.RECURRING_DEPOSIT) && !accountType.equals(DepositAccountType.FIXED_DEPOSIT)
+                    && !accountType.equals(DepositAccountType.DYNAMIC_DEPOSIT)) {
                 final Long overdraftAccount = this.fromApiJsonHelper
                         .extractLongNamed(SavingProductAccountingParams.OVERDRAFT_PORTFOLIO_CONTROL.getValue(), element);
                 baseDataValidator.reset().parameter(SavingProductAccountingParams.OVERDRAFT_PORTFOLIO_CONTROL.getValue())

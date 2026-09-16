@@ -182,7 +182,7 @@ class DynamicDepositAccountsApiResourceTest {
 
     private DynamicDepositAccountData accountData() {
         return new DynamicDepositAccountData(ACCOUNT_ID, "DD000042", null, 1L, "Client", null, null, 2L, "Dynamic Product", null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, true, true, true, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, true, true, true, null);
     }
 
     private UriInfo uriInfo(final String associations) {

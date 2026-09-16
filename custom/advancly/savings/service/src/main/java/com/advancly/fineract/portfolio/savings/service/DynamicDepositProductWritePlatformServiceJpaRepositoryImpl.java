@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.fineract.accounting.producttoaccountmapping.service.ProductToGLAccountMappingWritePlatformService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -64,19 +65,22 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final DynamicDepositProductAssembler dynamicDepositProductAssembler;
     private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
     private final InterestRateChartAssembler chartAssembler;
+    private final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
 
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
             final DynamicDepositProductDataValidator fromApiJsonDataValidator,
             final DynamicDepositProductAssembler dynamicDepositProductAssembler,
             final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
-            final InterestRateChartAssembler chartAssembler) {
+            final InterestRateChartAssembler chartAssembler,
+            final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService) {
         this.context = context;
         this.dynamicDepositProductRepository = dynamicDepositProductRepository;
         this.fromApiJsonDataValidator = fromApiJsonDataValidator;
         this.dynamicDepositProductAssembler = dynamicDepositProductAssembler;
         this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
         this.chartAssembler = chartAssembler;
+        this.accountMappingWritePlatformService = accountMappingWritePlatformService;
     }
 
     @Transactional
@@ -89,6 +93,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             final DynamicDepositProduct product = this.dynamicDepositProductAssembler.assembleDynamicDepositProduct(command);
 
             this.dynamicDepositProductRepository.saveAndFlush(product);
+            this.accountMappingWritePlatformService.createSavingProductToGLAccountMapping(product.getId(), command,
+                    DepositAccountType.DYNAMIC_DEPOSIT);
             reconcileEarlyWithdrawalChargeSelection(product, command);
 
             return new CommandProcessingResultBuilder() //
@@ -128,6 +134,12 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             if (changes.containsKey(SavingsApiConstants.taxGroupIdParamName)) {
                 product.setTaxGroup(this.dynamicDepositProductAssembler.assembleTaxGroup(command));
             }
+
+            final boolean accountingTypeChanged = changes.containsKey(SavingsApiConstants.accountingRuleParamName);
+            final Map<String, Object> accountingMappingChanges = this.accountMappingWritePlatformService
+                    .updateSavingsProductToGLAccountMapping(product.getId(), command, accountingTypeChanged, product.getAccountingType(),
+                            DepositAccountType.DYNAMIC_DEPOSIT);
+            changes.putAll(accountingMappingChanges);
 
             if (!changes.isEmpty()) {
                 this.dynamicDepositProductRepository.saveAndFlush(product);

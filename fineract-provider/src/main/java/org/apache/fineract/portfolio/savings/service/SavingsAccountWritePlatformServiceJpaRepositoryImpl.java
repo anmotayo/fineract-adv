@@ -373,6 +373,19 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDate(transactionDate, account);
 
+        // Optional, ignored by every account type except Dynamic Deposit (see
+        // SavingsAccount#setWithdrawalChargePercentageOverride's javadoc): overrides the account's snapshotted
+        // early-withdrawal charge percentage for this single withdrawal only.
+        if (command.parameterExists("earlyWithdrawalChargePercentage")) {
+            final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage");
+            if (chargePercentageOverride != null && (chargePercentageOverride.compareTo(BigDecimal.ZERO) < 0
+                    || chargePercentageOverride.compareTo(BigDecimal.valueOf(100)) > 0)) {
+                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
+                        "earlyWithdrawalChargePercentage must be between 0 and 100.");
+            }
+            account.setWithdrawalChargePercentageOverride(chargePercentageOverride);
+        }
+
         final boolean isAccountTransfer = false;
         final boolean isRegularTransaction = true;
         final boolean isApplyWithdrawFee = true;
@@ -997,13 +1010,24 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
                 // non-pivot-aware code path. Passing true here would desync postInterest(...) from how the account
                 // was actually loaded.
                 //
-                // postInterestAs=true with transactionDate=closedDate forces a posting-period boundary to land
-                // exactly on the closure date (mirrors the admin "post interest as on date" command), and closedDate
-                // is also the upper bound for how far interest is posted at all: a backdated closure must not earn
+                // postInterestAs=true forces a posting-period boundary to land exactly on
+                // #interestPostingTransactionDateForClosure(closedDate) - needed because the closure date frequently
+                // falls short of a full natural compounding period (e.g. a MONTHLY product closed a few weeks in),
+                // and without a forced boundary no partial-period interest would be posted at all. For a Dynamic
+                // Deposit account that date is the maturity date itself once closedDate is at or after it (not
+                // closedDate, which can be a later administrative closure date after interest already stopped
+                // accruing at maturity) - mirroring FixedDepositAccount's postMaturityInterest, which posts the
+                // account's final interest transaction dated at its maturity date. The forced date is what makes the
+                // shared period-splitting logic cap the ACCRUAL at the day before it - see that method's javadoc.
+                //
+                // interestPostingUpToDate (last argument) stays raw closedDate: a backdated closure must not earn
                 // interest for the days between the closure date and today (the balance is still untouched at this
-                // point, so leaving the bound at today's business date would credit exactly that).
+                // point, so leaving the bound at today's business date would credit exactly that); it is also the
+                // guard account.postInterest(...) uses to decide whether the resulting transaction date is acceptable
+                // at all, which the forced date above always satisfies.
                 account.prepareClosureSettlement(closedDate);
-                this.postInterestUpTo(account, true, closedDate, false, closedDate);
+                final LocalDate closureInterestTransactionDate = account.interestPostingTransactionDateForClosure(closedDate);
+                this.postInterestUpTo(account, true, closureInterestTransactionDate, false, closedDate);
             }
 
             // Read AFTER the settlement above: for a Dynamic Deposit account this now includes the final interest

@@ -39,6 +39,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.service.DepositAccountInterestRateChartReadPlatformService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,6 +68,8 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
     @Mock
     private DepositAccountInterestChargeRepository interestChargeRepository;
     @Mock
+    private DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
+    @Mock
     private SavingsAccount account;
     @Mock
     private SavingsAccountSummary summary;
@@ -78,7 +81,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         MoneyHelperInitializer.initialize();
         this.service = new DynamicDepositAccountReadPlatformServiceImpl(this.context, this.jdbcTemplate,
                 this.dynamicDepositProductReadPlatformService, this.savingsAccountRepository, this.interestWithdrawalRepository,
-                this.rateHistoryRepository, this.interestChargeRepository);
+                this.rateHistoryRepository, this.interestChargeRepository, this.accountChartReadPlatformService);
         lenient().when(this.savingsAccountRepository.findOneWithNotFoundDetection(eq(ACCOUNT_ID), eq(DepositAccountType.DYNAMIC_DEPOSIT)))
                 .thenReturn(this.account);
         lenient().when(this.account.getSummary()).thenReturn(this.summary);

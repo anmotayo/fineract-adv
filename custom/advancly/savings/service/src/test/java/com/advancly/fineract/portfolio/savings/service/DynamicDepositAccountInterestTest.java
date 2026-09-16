@@ -237,8 +237,7 @@ class DynamicDepositAccountInterestTest {
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
-        assertThat(this.account.getTransactions()).noneMatch(SavingsAccountTransaction::isPayCharge);
-        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(this.account.getTransactions()).noneMatch(SavingsAccountTransaction::isInterestBasedCharge);
         verify(this.interestChargeRepository, never()).saveAll(any());
     }
 
@@ -252,7 +251,7 @@ class DynamicDepositAccountInterestTest {
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> chargeTransactions = this.account.getTransactions().stream()
-                .filter(SavingsAccountTransaction::isPayCharge).toList();
+                .filter(SavingsAccountTransaction::isInterestBasedCharge).toList();
         assertThat(chargeTransactions).hasSize(1);
         assertThat(chargeTransactions.get(0).getAmount()).isEqualByComparingTo(expectedChargeAt(new BigDecimal("10")));
         assertThat(chargeTransactions.get(0).getTransactionDate()).isEqualTo(LocalDate.of(2026, 2, 1));
@@ -264,7 +263,6 @@ class DynamicDepositAccountInterestTest {
         assertThat(pendingRow.chargeAmount()).isEqualByComparingTo(chargeTransactions.get(0).getAmount());
         assertThat(pendingRow.interestAmountBasis()).isEqualByComparingTo(grossInterestPosted());
         assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(chargeTransactions.get(0).getAmount());
         verify(this.interestChargeRepository).saveAll(List.of(pendingRow));
     }
 
@@ -279,7 +277,7 @@ class DynamicDepositAccountInterestTest {
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> chargeTransactions = this.account.getTransactions().stream()
-                .filter(SavingsAccountTransaction::isPayCharge).toList();
+                .filter(SavingsAccountTransaction::isInterestBasedCharge).toList();
         assertThat(chargeTransactions).hasSize(1);
         assertThat(chargeTransactions.get(0).getAmount()).isEqualByComparingTo(expectedChargeAt(new BigDecimal("10")));
         assertThat(chargeTransactions.get(0).getAmount()).isGreaterThan(BigDecimal.ZERO);
@@ -301,7 +299,7 @@ class DynamicDepositAccountInterestTest {
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> chargeTransactions = this.account.getTransactions().stream()
-                .filter(SavingsAccountTransaction::isPayCharge).toList();
+                .filter(SavingsAccountTransaction::isInterestBasedCharge).toList();
         assertThat(chargeTransactions).hasSize(1);
         final BigDecimal appliedTotal = chargeTransactions.get(0).getAmount();
 
@@ -315,23 +313,20 @@ class DynamicDepositAccountInterestTest {
     }
 
     @Test
-    void undoingATransactionRefreshesTheStaleDerivedInterestBasedChargeColumns() {
+    void undoingATransactionRefreshesTheStaleDerivedInterestBasedChargeColumn() {
         this.account = buildAccount();
         final SavingsAccountTransaction withdrawal = transaction(1L, LocalDate.of(2026, 1, 20), BigDecimal.valueOf(100));
 
-        // Simulates the exact staleness Task 7's review found: an earlier early-withdrawal charge posting left these
-        // fast-read columns non-zero, and the withdrawal that produced them (or the charge posting itself) is now
+        // Simulates the exact staleness Task 7's review found: an earlier early-withdrawal charge posting left this
+        // fast-read column non-zero, and the withdrawal that produced it (or the charge posting itself) is now
         // being undone. m_deposit_account_interest_charge itself is already correct post-undo - its queries exclude
-        // rows linked to a reversed transaction - the stubs below simulate what it now reports.
+        // rows linked to a reversed transaction - the stub below simulates what it now reports.
         this.account.updateInterestBasedChargeDerived(BigDecimal.valueOf(12));
-        this.account.updateInterestBasedChargePostedDerived(BigDecimal.valueOf(30));
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
 
         this.account.undoTransaction(withdrawal.getId());
 
         assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(this.account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     /**
@@ -372,7 +367,7 @@ class DynamicDepositAccountInterestTest {
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final SavingsAccountTransaction chargeTransaction = this.account.getTransactions().stream()
-                .filter(SavingsAccountTransaction::isPayCharge).findFirst()
+                .filter(SavingsAccountTransaction::isInterestBasedCharge).findFirst()
                 .orElseThrow(() -> new AssertionError("Expected one PAY_CHARGE transaction to have been created"));
 
         // The fix under test: the attributed charge must now reflect the payment.

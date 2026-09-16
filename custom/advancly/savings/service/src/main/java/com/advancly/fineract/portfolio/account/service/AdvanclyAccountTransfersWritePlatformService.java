@@ -233,7 +233,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         final SavingsAccount account = assembled.getAccount();
         final PaymentDetail paymentDetail = null;
 
-        if (appendPath) {
+        // Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path - see the equivalent check in
+        // AdvanclySavingsAccountWritePlatformService - since this append path builds the transaction directly and
+        // would otherwise silently skip their entity-level overrides.
+        if (appendPath && account.depositAccountType().isSavingsDeposit()) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             return savingsAccountDomainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
                     lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(),
@@ -254,7 +257,8 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
                     "Transfer is not allowed from this account while withdrawals are disabled for it.", account.getId());
         }
         final PaymentDetail paymentDetail = null;
-        if (appendPath) {
+        // See the equivalent check in postOptimizedDeposit(...) above.
+        if (appendPath && account.depositAccountType().isSavingsDeposit()) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             return savingsAccountDomainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail,
                     transactionBooleanValues.isApplyWithdrawFee(), lastRunningBalance, account.getCurrency(),

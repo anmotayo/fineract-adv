@@ -106,23 +106,22 @@ public class DynamicDepositAccount extends SavingsAccount {
     private DepositAccountInterestRateChart chart;
 
     /**
-     * Implementation plan Section 5. Read-side conveniences only: {@code interestBasedChargeDerived} is the current
-     * calculated/pending interest-based charge amount and {@code interestBasedChargePostedDerived} the total already
-     * applied through interest posting. The spec is explicit that these are "not used as the source of truth for
-     * posting, reversals, or accounting" - that remains {@code m_deposit_account_interest_charge} plus the linked
-     * transactions.
+     * Implementation plan Section 5. Read-side convenience only: the current calculated/pending interest-based charge
+     * amount not yet consumed by an interest posting. The already-posted total is deliberately NOT mirrored into its
+     * own column here - Dynamic Deposit's early-withdrawal charge is the only penalty this product ever applies, so
+     * that figure is exactly {@code SavingsAccountSummary.totalPenaltyCharge}, and a second column would just be a
+     * duplicate of it that could drift. The spec is explicit that this pending figure is "not used as the source of
+     * truth for posting, reversals, or accounting" - that remains {@code m_deposit_account_interest_charge} plus the
+     * linked transactions.
      *
      * Mapped here, on the subclass, rather than on {@code SavingsAccount}: the hierarchy is
-     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so these become two extra
-     * nullable columns on {@code m_savings_account} without touching the class every savings and deposit account type
-     * shares. Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves them NULL
-     * - which is why both accessors below normalise NULL to zero.
+     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so this becomes one extra
+     * nullable column on {@code m_savings_account} without touching the class every savings and deposit account type
+     * shares. Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves it NULL -
+     * which is why the accessor below normalises NULL to zero.
      */
     @Column(name = "interest_based_charge_derived", scale = 6, precision = 19)
     private BigDecimal interestBasedChargeDerived;
-
-    @Column(name = "interest_based_charge_posted_derived", scale = 6, precision = 19)
-    private BigDecimal interestBasedChargePostedDerived;
 
     /**
      * In-flight state for a premature closure, spanning the three steps closure takes on this instance: what the
@@ -139,6 +138,18 @@ public class DynamicDepositAccount extends SavingsAccount {
      */
     @Transient
     private ClosureSettlement closureSettlement;
+
+    /**
+     * A per-transaction override of the early-withdrawal charge percentage, set by the write-platform layer just before
+     * it calls {@link #withdraw} when the withdraw command carries an {@code earlyWithdrawalChargePercentage} param,
+     * and cleared immediately after that single withdrawal is recorded. {@code @Transient} for the same reason
+     * {@link #closureSettlement} is: it exists only for the duration of one withdrawal transaction and is never the
+     * account's snapshotted default -
+     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService} uses it in
+     * place of the account charge's own percentage for that withdrawal only.
+     */
+    @Transient
+    private BigDecimal earlyWithdrawalChargePercentageOverride;
 
     protected DynamicDepositAccount() {
         //
@@ -221,34 +232,18 @@ public class DynamicDepositAccount extends SavingsAccount {
     /**
      * Structural mirror of {@code FixedDepositAccount}/{@code RecurringDepositAccount}#withHoldTaxPostingType(),
      * reading the same {@code withhold_tax_posting_type_enum} config off the reused, generic
-     * {@link DepositAccountTermAndPreClosure} this class already composes. In practice this always returns {@code null}
-     * today: neither {@code DynamicDepositAccountAssembler} nor {@code DynamicDepositApiConstants} ever populate or
-     * accept a {@code withHoldTaxPostingTypeId} for a Dynamic Deposit account or product (Phase 1 deliberately has no
-     * product-level {@code DepositProductTermAndPreClosure}-equivalent to default from either). Kept for structural
-     * parity with FD/RD and in case a future phase adds real posting-type support - see
-     * {@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)} below, which does NOT consult this method's return
-     * value, precisely because it can never be meaningfully populated yet.
+     * {@link DepositAccountTermAndPreClosure} this class already composes. {@code DynamicDepositAccountAssembler}
+     * populates this from the account's own {@code withHoldTaxPostingTypeId} param, defaulting from the product's
+     * configured posting type when the account does not send one. No longer hard-coded to {@code null}: this class no
+     * longer overrides {@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)}, so the inherited
+     * {@code SavingsAccount} gate - {@code withHoldTax() && (depositAccountType().isSavingsDeposit() ||
+     * (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()))} - now applies exactly as it does
+     * for FD/RD, using the value this method returns.
      */
     @Override
     protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
         return withHoldTaxPostingTypeId != null ? WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId) : null;
-    }
-
-    /**
-     * {@code SavingsAccount}'s base implementation is {@code withHoldTax() && (depositAccountType().isSavingsDeposit()
-     * || (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()))} - the first disjunct is
-     * {@code false} for Dynamic Deposit (see the {@code depositAccountType()} override above), and the second can never
-     * be {@code true} either, since {@link #withHoldTaxPostingType()} always returns {@code null} in practice (see its
-     * javadoc). Left as-is, that combination would make withholding tax unconditionally unavailable for Dynamic Deposit
-     * accounts regardless of the {@code withHoldTax} flag - silently disabling this fork's original core feature for
-     * the new product type. Rather than adding new API surface to configure a real posting type (a deliberate product
-     * decision for a future phase), this override restores the simpler, previously-working behaviour: for Dynamic
-     * Deposit, WHT applicability is keyed on the {@code withHoldTax} flag alone.
-     */
-    @Override
-    public boolean isWithHoldTaxApplicable(final WithHoldTaxPostingType withHoldTaxPostingType) {
-        return withHoldTax();
     }
 
     public boolean isAllowWithdrawal() {
@@ -268,16 +263,8 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.interestBasedChargeDerived == null ? BigDecimal.ZERO : this.interestBasedChargeDerived;
     }
 
-    public BigDecimal interestBasedChargePostedDerived() {
-        return this.interestBasedChargePostedDerived == null ? BigDecimal.ZERO : this.interestBasedChargePostedDerived;
-    }
-
     public void updateInterestBasedChargeDerived(final BigDecimal amount) {
         this.interestBasedChargeDerived = amount == null ? BigDecimal.ZERO : amount;
-    }
-
-    public void updateInterestBasedChargePostedDerived(final BigDecimal amount) {
-        this.interestBasedChargePostedDerived = amount == null ? BigDecimal.ZERO : amount;
     }
 
     /**
@@ -351,6 +338,35 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
+     * Caps closure interest at {@code maturityDate.minusDays(1)} once {@code closedDate} is at or after maturity
+     * (mirrors {@code FixedDepositAccount}'s "interest should not be calculated for maturity day" rule). A premature
+     * closure - {@link #isEarlyWithdrawal(LocalDate)} true for {@code closedDate} - is left uncapped: it keeps posting
+     * through the actual {@code closedDate}, unchanged from before this override existed.
+     */
+    @Override
+    public LocalDate interestPostingUpToForClosure(final LocalDate closedDate) {
+        final LocalDate maturityDate = maturityDate();
+        if (maturityDate == null || isEarlyWithdrawal(closedDate)) {
+            return closedDate;
+        }
+        return maturityDate.minusDays(1);
+    }
+
+    /**
+     * A normal (matured) closure forces the final interest posting onto the maturity date itself, not the later
+     * administrative {@code closedDate} - see the base class javadoc for why. A premature closure is unaffected: it
+     * keeps posting on {@code closedDate}, unchanged from before either of these overrides existed.
+     */
+    @Override
+    public LocalDate interestPostingTransactionDateForClosure(final LocalDate closedDate) {
+        final LocalDate maturityDate = maturityDate();
+        if (maturityDate == null || isEarlyWithdrawal(closedDate)) {
+            return closedDate;
+        }
+        return maturityDate;
+    }
+
+    /**
      * Lets {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService} keep the account's
      * own rate current between Phase 2 (this class) and the Phase 3 interest engine landing (see implementation plan,
      * Section 8) - {@code SavingsAccount.nominalAnnualInterestRate} is {@code protected}, so a same-hierarchy setter is
@@ -394,7 +410,27 @@ public class DynamicDepositAccount extends SavingsAccount {
         // Phase 4: any withdrawal dated before maturity - including the withdrawal the generic core `close` command
         // issues when withdrawBalance=true, i.e. premature closure - creates a pending early-withdrawal charge row.
         DynamicDepositServiceLocator.earlyWithdrawalChargeService().recordIfApplicable(this, transaction);
+        // Single-shot: whatever the caller set via #setEarlyWithdrawalChargePercentageOverride applied to this one
+        // withdrawal only (recordIfApplicable above already consumed it) - clear it so it can never leak into a later,
+        // unrelated withdrawal on this same in-memory instance (e.g. a bulk transaction).
+        this.earlyWithdrawalChargePercentageOverride = null;
         return transaction;
+    }
+
+    /**
+     * Sets the per-transaction early-withdrawal charge percentage override for the NEXT withdrawal only - see
+     * {@link #earlyWithdrawalChargePercentageOverride}. {@code null} (the default) means no override: the account's
+     * normal snapshotted charge percentage applies. Overrides the core no-op
+     * {@link org.apache.fineract.portfolio.savings.domain.SavingsAccount#setWithdrawalChargePercentageOverride(BigDecimal)}
+     * extension point, which is how the core write-platform layer reaches this without depending on this class.
+     */
+    @Override
+    public void setWithdrawalChargePercentageOverride(final BigDecimal earlyWithdrawalChargePercentageOverride) {
+        this.earlyWithdrawalChargePercentageOverride = earlyWithdrawalChargePercentageOverride;
+    }
+
+    public BigDecimal earlyWithdrawalChargePercentageOverride() {
+        return this.earlyWithdrawalChargePercentageOverride;
     }
 
     @Override
@@ -406,16 +442,15 @@ public class DynamicDepositAccount extends SavingsAccount {
             DynamicDepositServiceLocator.rateHistoryService().reverseInvestedAmountForUndo(this, transactionToUndo);
         }
         // The undone transaction may be an early-withdrawal charge posting or the withdrawal a pending charge row is
-        // linked to; either way the repository queries backing these two columns already exclude reversed rows/links
+        // linked to; either way the repository query backing this column already excludes reversed rows/links
         // (see DepositAccountInterestChargeRepository), so m_deposit_account_interest_charge itself stays correct -
-        // but the fast-read derived columns on this row are otherwise only refreshed inside
+        // but the fast-read derived column on this row is otherwise only refreshed inside
         // applyPendingInterestBasedCharges(...) and would go stale (too high) until the next early
-        // withdrawal happens to refresh them. Recompute unconditionally rather than only when transactionToUndo is a
-        // charge/withdrawal, since it costs two cheap aggregate queries and keeps this correct regardless of which
+        // withdrawal happens to refresh it. Recompute unconditionally rather than only when transactionToUndo is a
+        // charge/withdrawal, since it costs one cheap aggregate query and keeps this correct regardless of which
         // transaction type was undone.
         final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
         updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-        updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(getId()));
     }
 
     /**
@@ -437,9 +472,16 @@ public class DynamicDepositAccount extends SavingsAccount {
             final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
             final boolean postReversals) {
 
+        // Capped independently of the caller (mirrors FixedDepositAccount#calculateInterestUsing calling its own
+        // interestPostingUpToDate(postingDate)): whatever raw date is requested - "today" from a COB job, or the
+        // closure date from #postInterest below - accrual must never include the maturity day itself. This is the
+        // ONLY date used for the calculation; the caller-supplied raw date remains untouched for anything outside
+        // this method (see #postInterest's guard, which deliberately keeps using the raw parameter).
+        final LocalDate cappedUpToInterestCalculationDate = interestPostingUpToForClosure(upToInterestCalculationDate);
+
         final Money openingAccountBalance = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getRunningBalanceOnPivotDate())
                 : Money.zero(this.currency);
-        recalculateDailyBalances(openingAccountBalance, upToInterestCalculationDate, backdatedTxnsAllowedTill, postReversals);
+        recalculateDailyBalances(openingAccountBalance, cappedUpToInterestCalculationDate, backdatedTxnsAllowedTill, postReversals);
 
         final List<PostingPeriod> allPostingPeriods = new ArrayList<>();
         if (hasInterestCalculation()) {
@@ -459,7 +501,7 @@ public class DynamicDepositAccount extends SavingsAccount {
             }
 
             final List<LocalDateInterval> corePostingPeriodIntervals = this.savingsHelper.determineInterestPostingPeriods(
-                    getStartInterestCalculationDate(), upToInterestCalculationDate, postingPeriodType, financialYearBeginningMonth,
+                    getStartInterestCalculationDate(), cappedUpToInterestCalculationDate, postingPeriodType, financialYearBeginningMonth,
                     postedAsOnDates);
 
             final List<DepositAccountDynamicRateHistory> rateHistoryAscending = DynamicDepositServiceLocator.rateHistoryRepository()
@@ -482,7 +524,7 @@ public class DynamicDepositAccount extends SavingsAccount {
 
                 final PostingPeriod postingPeriod = PostingPeriod.createFrom(ratedInterval.periodInterval(), periodStartingBalance,
                         transactionDetails, this.currency, compoundingPeriodType, interestCalculationType, interestRateAsFraction,
-                        daysInYearType.getValue(), upToInterestCalculationDate, interestPostTransactions, isInterestTransfer,
+                        daysInYearType.getValue(), cappedUpToInterestCalculationDate, interestPostTransactions, isInterestTransfer,
                         minBalanceForInterestCalculation, isSavingsInterestPostingAtCurrentPeriodEnd, isUserPosting,
                         financialYearBeginningMonth);
 
@@ -539,6 +581,18 @@ public class DynamicDepositAccount extends SavingsAccount {
             final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
             final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
 
+        // interestPostingUpToDate here is the RAW date the caller asked for (e.g. the actual closedDate on a normal,
+        // matured closure) and is deliberately left untouched below for the guard at the bottom of this method - a
+        // posting transaction dated on the maturity day itself must still be allowed through, exactly as
+        // FixedDepositAccount's own final maturity posting (postMaturityInterest) keeps its guard at the raw
+        // maturity date while only the accrual math is capped one day earlier. Only the value used to determine core
+        // posting-period BOUNDARIES is capped (mirroring the same distinction #calculateInterestUsing makes
+        // internally); capping this value too and reusing it for the guard was the bug this comment replaces - it
+        // silently dropped the final period's interest transaction, because the transaction naturally lands one day
+        // after the last period boundary (see PostingPeriod#dateOfPostingTransaction), which is always after a capped
+        // bound.
+        final LocalDate cappedInterestPostingUpToDate = interestPostingUpToForClosure(interestPostingUpToDate);
+
         final List<PostingPeriod> ratedSubPeriods = calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
                 isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
                 postReversals);
@@ -552,7 +606,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
         final SavingsPostingInterestPeriodType postingPeriodType = SavingsPostingInterestPeriodType.fromInt(this.interestPostingPeriodType);
         final List<LocalDateInterval> coreBoundaries = this.savingsHelper.determineInterestPostingPeriods(getStartInterestCalculationDate(),
-                interestPostingUpToDate, postingPeriodType, financialYearBeginningMonth, postedAsOnDates);
+                cappedInterestPostingUpToDate, postingPeriodType, financialYearBeginningMonth, postedAsOnDates);
 
         Money interestPostedToDate = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getTotalInterestPosted())
                 : Money.zero(this.currency);
@@ -791,10 +845,17 @@ public class DynamicDepositAccount extends SavingsAccount {
      * <li>refresh both derived read columns from the table rather than incrementing them, so they cannot drift.</li>
      * </ol>
      *
-     * The transaction is a {@code PAY_CHARGE} built by {@code SavingsAccountTransaction.charge(...)} and linked to the
-     * account charge through {@code SavingsAccountChargePaidBy}, exactly as core's own {@code handleChargeTransactions}
-     * does - so accounting and the charge/transaction link behave like every other savings charge. The attributed
-     * charge's own {@code amount_paid_derived}/{@code amount_outstanding_derived} are updated via
+     * The transaction is an {@code INTEREST_BASED_CHARGE} built by
+     * {@code SavingsAccountTransaction.interestBasedCharge(...)} - a dedicated debit type, not {@code PAY_CHARGE},
+     * because per the spec (Section 10/11/13) this charge must be funded from interest and must not reduce principal:
+     * it is excluded from the interest-bearing balance in {@code PostingPeriod} the same way {@code WITHHOLD_TAX} is,
+     * so it cannot shrink the compounding base for future periods the way an ordinary {@code PAY_CHARGE} debit would.
+     * It is still linked to the account charge through {@code SavingsAccountChargePaidBy}, exactly as core's own
+     * {@code handleChargeTransactions} does - so accounting and the charge/transaction link behave like every other
+     * savings charge (see the dedicated GL branch in
+     * {@code CashBasedAccountingProcessorForSavings}/{@code AccrualBasedAccountingProcessorForSavings} keyed on
+     * {@code isInterestBasedCharge()}, posting to {@code INCOME_FROM_PENALTIES}). The attributed charge's own
+     * {@code amount_paid_derived}/{@code amount_outstanding_derived} are updated via
      * {@code SavingsAccountCharge.pay(...)} too, exactly as core's {@code SavingsAccount.payCharge(...)} does before
      * building that link - without it, {@code SavingsAccount.undoTransaction(Long)}'s symmetric
      * {@code chargeToUndo.undoPayment(...)} on this transaction being undone would decrement an amount that was never
@@ -878,8 +939,8 @@ public class DynamicDepositAccount extends SavingsAccount {
         // own contribution is the only one, to the charge that closure resolved (the same one).
         final SavingsAccountCharge attributedCharge = pendingRows.isEmpty() ? closureContribution.accountCharge()
                 : pendingRows.get(0).savingsAccountCharge();
-        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.charge(this, office(), interestPostingTransactionDate,
-                Money.of(this.currency, chargeAmount));
+        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestBasedCharge(this, office(),
+                interestPostingTransactionDate, Money.of(this.currency, chargeAmount));
         // The transaction's own amount is the currency-rounded figure Money.of(...) just produced above - NOT the raw
         // chargeAmount this method computed it from. The rows below must be distributed against THAT rounded figure
         // (what actually posted, and therefore what SavingsAccountChargePaidBy/accounting move), or the rows would
@@ -935,7 +996,6 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
 
         updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-        updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(getId()));
         return true;
     }
 
@@ -1009,7 +1069,6 @@ public class DynamicDepositAccount extends SavingsAccount {
                 settlement.interestPostingTransaction(), settlement.interestChargeTransaction()));
 
         updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-        updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(getId()));
     }
 
     /**

@@ -22,6 +22,16 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMaxAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMinAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -48,6 +58,11 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
+import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
+import org.apache.fineract.portfolio.savings.domain.DepositProductAmountDetails;
+import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductBaseAssembler;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
@@ -78,8 +93,6 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final Integer digitsAfterDecimal = command.integerValueOfParameterNamed(SavingsApiConstants.digitsAfterDecimalParamName);
         final Integer inMultiplesOf = command.integerValueOfParameterNamed(SavingsApiConstants.inMultiplesOfParamName);
         final MonetaryCurrency currency = new MonetaryCurrency(currencyCode, digitsAfterDecimal, inMultiplesOf);
-
-        BigDecimal interestRate = command.bigDecimalValueOfParameterNamed(SavingsApiConstants.nominalAnnualInterestRateParamName);
 
         final SavingsCompoundingInterestPeriodType interestCompoundingPeriodType = SavingsCompoundingInterestPeriodType
                 .fromInt(command.integerValueOfParameterNamed(SavingsApiConstants.interestCompoundingPeriodTypeParamName));
@@ -116,9 +129,8 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }
 
-        if (interestRate == null) {
-            interestRate = BigDecimal.ZERO;
-        }
+        // Chart-driven product: no nominal interest rate is modeled or persisted.
+        final BigDecimal interestRate = BigDecimal.ZERO;
 
         final boolean withHoldTax = command.booleanPrimitiveValueOfParameterNamed(SavingsApiConstants.withHoldTaxParamName);
         final TaxGroup taxGroup = assembleTaxGroup(command);
@@ -133,10 +145,60 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
                 .booleanObjectValueOfParameterNamed(earlyWithdrawalPenaltyEnabledParamName);
         final boolean earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabledValue != null && earlyWithdrawalPenaltyEnabledValue;
 
-        return DynamicDepositProduct.createNew(name, shortName, description, currency, interestRate, interestCompoundingPeriodType,
-                interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,
-                lockinPeriodFrequencyType, accountingRuleType, charges, charts, minBalanceForInterestCalculation, withHoldTax, taxGroup,
-                allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
+        final DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(false, null, null);
+        final DepositTermDetail depositTermDetail = assembleDepositTermDetail(command);
+        final DepositProductAmountDetails depositProductAmountDetails = assembleDepositAmountDetails(command);
+
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+        if (withHoldTaxPostingTypeId != null) {
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+        }
+
+        final DepositProductTermAndPreClosure productTermAndPreClosure = DepositProductTermAndPreClosure.createNew(preClosureDetail,
+                depositTermDetail, depositProductAmountDetails, null, withHoldTaxPostingType);
+
+        final DynamicDepositProduct product = DynamicDepositProduct.createNew(name, shortName, description, currency, interestRate,
+                interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
+                lockinPeriodFrequency, lockinPeriodFrequencyType, accountingRuleType, charges, productTermAndPreClosure, charts,
+                minBalanceForInterestCalculation, withHoldTax, taxGroup, allowWithdrawal, dynamicRateEnabled,
+                earlyWithdrawalPenaltyEnabled);
+
+        productTermAndPreClosure.updateProductReference(product);
+
+        return product;
+    }
+
+    private DepositTermDetail assembleDepositTermDetail(final JsonCommand command) {
+        final Integer minDepositTerm = command.integerValueOfParameterNamed(minDepositTermParamName);
+        final Integer maxDepositTerm = command.integerValueOfParameterNamed(maxDepositTermParamName);
+        final Integer minDepositTermTypeId = command.integerValueOfParameterNamed(minDepositTermTypeIdParamName);
+        final SavingsPeriodFrequencyType minDepositTermType = (minDepositTermTypeId == null) ? null
+                : SavingsPeriodFrequencyType.fromInt(minDepositTermTypeId);
+        final Integer maxDepositTermTypeId = command.integerValueOfParameterNamed(maxDepositTermTypeIdParamName);
+        final SavingsPeriodFrequencyType maxDepositTermType = (maxDepositTermTypeId == null) ? null
+                : SavingsPeriodFrequencyType.fromInt(maxDepositTermTypeId);
+        final Integer inMultiplesOfDepositTerm = command.integerValueOfParameterNamed(inMultiplesOfDepositTermParamName);
+        final Integer inMultiplesOfDepositTermTypeId = command.integerValueOfParameterNamed(inMultiplesOfDepositTermTypeIdParamName);
+        final SavingsPeriodFrequencyType inMultiplesOfDepositTermType = (inMultiplesOfDepositTermTypeId == null) ? null
+                : SavingsPeriodFrequencyType.fromInt(inMultiplesOfDepositTermTypeId);
+
+        return DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
+    }
+
+    private DepositProductAmountDetails assembleDepositAmountDetails(final JsonCommand command) {
+        final BigDecimal minDepositAmount = command.parameterExists(depositMinAmountParamName)
+                ? command.bigDecimalValueOfParameterNamed(depositMinAmountParamName)
+                : null;
+        final BigDecimal maxDepositAmount = command.parameterExists(depositMaxAmountParamName)
+                ? command.bigDecimalValueOfParameterNamed(depositMaxAmountParamName)
+                : null;
+        final BigDecimal depositAmount = command.parameterExists(depositAmountParamName)
+                ? command.bigDecimalValueOfParameterNamed(depositAmountParamName)
+                : null;
+
+        return new DepositProductAmountDetails(minDepositAmount, depositAmount, maxDepositAmount);
     }
 
     private Set<InterestRateChart> assembleListOfCharts(final JsonCommand command, final String currencyCode,

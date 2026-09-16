@@ -270,7 +270,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
         DynamicDepositProduct product = DynamicDepositProduct.createNew("Dynamic Deposit", "DD", "desc", currency, BigDecimal.TEN,
                 SavingsCompoundingInterestPeriodType.DAILY, SavingsPostingInterestPeriodType.MONTHLY,
                 SavingsInterestCalculationType.DAILY_BALANCE, SavingsInterestCalculationDaysInYearType.DAYS_365, null, null,
-                AccountingRuleType.NONE, new HashSet<>(), new HashSet<>(), null, false, null, allowWithdrawal, false, false);
+                AccountingRuleType.NONE, new HashSet<>(), null, new HashSet<>(), null, false, null, allowWithdrawal, false, false);
 
         DepositAccountTermAndPreClosure term = DepositAccountTermAndPreClosure
                 .createNew(DepositPreClosureDetail.createFrom(false, null, null),

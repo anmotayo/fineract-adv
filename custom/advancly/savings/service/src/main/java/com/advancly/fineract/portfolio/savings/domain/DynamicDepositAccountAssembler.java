@@ -27,6 +27,7 @@ import static org.apache.fineract.portfolio.savings.DepositsApiConstants.deposit
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.expectedFirstDepositOnDateParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferInterestToSavingsParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.accountNoParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.clientIdParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.externalIdParamName;
@@ -75,9 +76,11 @@ import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYea
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
+import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeAssembler;
@@ -242,6 +245,21 @@ public class DynamicDepositAccountAssembler {
         final SavingsPeriodFrequencyType depositPeriodFrequency = SavingsPeriodFrequencyType.fromInt(depositPeriodFrequencyId);
         final LocalDate expectedFirstDepositOnDate = command.localDateValueOfParameterNamed(expectedFirstDepositOnDateParamName);
 
+        final DepositProductTermAndPreClosure productTermAndPreClosure = product.depositProductTermAndPreClosure();
+        this.dynamicDepositAccountDataValidator.validateDepositAmountAndTermWithinProductRange(depositAmount, depositPeriod,
+                depositPeriodFrequency, productTermAndPreClosure);
+
+        // --- withholding-tax posting type: the account's own override when sent, else inherited from the product
+        // (Section D fix - previously never populated, which forced DynamicDepositAccount#isWithHoldTaxApplicable to
+        // hard-code WHT as always-interest-posting; see that class's javadoc) ---
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        if (command.parameterExists(withHoldTaxPostingTypeIdParamName)) {
+            final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+            withHoldTaxPostingType = withHoldTaxPostingTypeId == null ? null : WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+        } else if (productTermAndPreClosure != null && productTermAndPreClosure.withHoldTaxPostingType() != null) {
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(productTermAndPreClosure.withHoldTaxPostingType());
+        }
+
         // --- account-level interest rate chart snapshot (this correction): captured once, here, at submission time -
         // so a later edit to the product's chart never retroactively changes the rate an already-open account
         // resolves against. Both the initial rate resolution below and every later re-resolution
@@ -263,7 +281,7 @@ public class DynamicDepositAccountAssembler {
                 depositPeriodFrequency, null, null);
         final DepositAccountTermAndPreClosure accountTermAndPreClosure = DepositAccountTermAndPreClosure.createNew(preClosureDetail,
                 depositTermDetail, null, depositAmount, null, null, depositPeriod, depositPeriodFrequency, expectedFirstDepositOnDate, null,
-                transferInterestToSavings, null, null);
+                transferInterestToSavings, null, withHoldTaxPostingType);
 
         final DynamicDepositAccount account = DynamicDepositAccount.createNewApplicationForSubmittal(client, group, product, fieldOfficer,
                 accountNo, this.externalIdFactory.create(externalId), accountType, submittedOnDate, null, interestRate,

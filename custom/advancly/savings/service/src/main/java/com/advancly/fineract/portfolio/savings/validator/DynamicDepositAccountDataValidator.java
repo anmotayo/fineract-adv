@@ -21,10 +21,13 @@ package com.advancly.fineract.portfolio.savings.validator;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
 
 import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +36,10 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.domain.DepositProductAmountDetails;
+import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.springframework.stereotype.Component;
 
 /**
@@ -114,6 +121,59 @@ public class DynamicDepositAccountDataValidator {
             if (!dataValidationErrors.isEmpty()) {
                 throw new PlatformApiDataValidationException(dataValidationErrors);
             }
+        }
+    }
+
+    /**
+     * Range-checks the account's chosen deposit amount and term against the product's configured min/max (mirrors
+     * FD/RD's account-level range validation). The product's ranges may be entirely unconfigured (both null), in which
+     * case no check applies to that dimension.
+     */
+    public void validateDepositAmountAndTermWithinProductRange(final BigDecimal depositAmount, final Integer depositPeriod,
+            final SavingsPeriodFrequencyType depositPeriodFrequency, final DepositProductTermAndPreClosure productTermAndPreClosure) {
+        if (productTermAndPreClosure == null) {
+            return;
+        }
+
+        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
+        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
+                .resource(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+
+        final DepositProductAmountDetails amountDetails = productTermAndPreClosure.depositProductAmountDetails();
+        if (amountDetails != null && depositAmount != null) {
+            final BigDecimal minDepositAmount = amountDetails.getMinDepositAmount();
+            final BigDecimal maxDepositAmount = amountDetails.getMaxDepositAmount();
+            if (minDepositAmount != null && depositAmount.compareTo(minDepositAmount) < 0) {
+                baseDataValidator.reset().parameter(depositAmountParamName).value(depositAmount).notLessThanMin(minDepositAmount);
+            }
+            if (maxDepositAmount != null && depositAmount.compareTo(maxDepositAmount) > 0) {
+                baseDataValidator.reset().parameter(depositAmountParamName).value(depositAmount).notGreaterThanMax(maxDepositAmount);
+            }
+        }
+
+        final DepositTermDetail termDetail = productTermAndPreClosure.depositTermDetail();
+        if (termDetail != null && depositPeriod != null && depositPeriodFrequency != null) {
+            final Integer depositPeriodInDays = termDetail.getDepositPeriodInDays(depositPeriod, depositPeriodFrequency);
+            if (termDetail.minDepositTerm() != null) {
+                final Integer minInDays = termDetail.getDepositPeriodInDays(termDetail.minDepositTerm(),
+                        SavingsPeriodFrequencyType.fromInt(termDetail.minDepositTermType()));
+                if (depositPeriodInDays.compareTo(minInDays) < 0) {
+                    baseDataValidator.reset().parameter(depositPeriodParamName).value(depositPeriod)
+                            .failWithCodeNoParameterAddedToErrorCode("deposit.period.less.than.product.min.term");
+                }
+            }
+            if (termDetail.maxDepositTerm() != null) {
+                final Integer maxInDays = termDetail.getDepositPeriodInDays(termDetail.maxDepositTerm(),
+                        SavingsPeriodFrequencyType.fromInt(termDetail.maxDepositTermType()));
+                if (depositPeriodInDays.compareTo(maxInDays) > 0) {
+                    baseDataValidator.reset().parameter(depositPeriodParamName).value(depositPeriod)
+                            .failWithCodeNoParameterAddedToErrorCode("deposit.period.greater.than.product.max.term");
+                }
+            }
+        }
+
+        if (!dataValidationErrors.isEmpty()) {
+            throw new PlatformApiDataValidationException(dataValidationErrors);
         }
     }
 }

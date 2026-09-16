@@ -213,6 +213,11 @@ public final class SavingsEnumerations {
                 optionData = new SavingsAccountTransactionEnumData(SavingsAccountTransactionType.AMOUNT_RELEASE.getValue().longValue(),
                         SavingsAccountTransactionType.AMOUNT_RELEASE.getCode(), "Release Amount");
             break;
+            case INTEREST_BASED_CHARGE:
+                optionData = new SavingsAccountTransactionEnumData(
+                        SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue().longValue(),
+                        SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getCode(), "Interest Based Charge");
+            break;
         }
         return optionData;
     }

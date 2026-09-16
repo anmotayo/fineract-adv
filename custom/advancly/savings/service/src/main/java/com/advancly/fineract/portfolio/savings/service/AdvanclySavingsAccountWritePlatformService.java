@@ -133,6 +133,14 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         final SavingsAccount account = assembled.getAccount();
 
+        // The O(1) append path builds SavingsAccountTransaction rows directly rather than calling
+        // SavingsAccount#deposit(...), so any deposit-type-specific entity override (e.g. DynamicDepositAccount's) is
+        // never invoked here. Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path instead,
+        // where their entity overrides run correctly; only plain savings uses the optimized path.
+        if (!account.depositAccountType().isSavingsDeposit()) {
+            return delegate.deposit(savingsId, command);
+        }
+
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
 
@@ -173,7 +181,9 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                     "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
         }
 
-        if (isBackdated) {
+        // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
+        // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
+        if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
             return delegate.withdrawal(savingsId, command);
         }
 
@@ -210,13 +220,19 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 final JsonObject txn = transactions.get(i).getAsJsonObject();
                 final LocalDate txnDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat, locale);
                 if (txnDate.isBefore(lastTxnDate.get())) {
-                    return handleBackdatedBulkTransaction(savingsId, transactions, dateFormat, locale);
+                    return delegateBulkTransactionToCore(savingsId, transactions, dateFormat, locale);
                 }
             }
         }
 
         final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
         final SavingsAccount account = assembled.getAccount();
+
+        // See the equivalent check in deposit(...)/withdrawal(...) - deposit-type accounts always go through core,
+        // one transaction at a time, so their entity-level overrides run correctly.
+        if (!account.depositAccountType().isSavingsDeposit()) {
+            return delegateBulkTransactionToCore(savingsId, transactions, dateFormat, locale);
+        }
 
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
         SavingsAccountTransaction lastNonReversedTxn = assembled.getLastNonReversedTransaction();
@@ -272,7 +288,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return paymentDetailRepository.saveAndFlush(paymentDetail);
     }
 
-    private CommandProcessingResult handleBackdatedBulkTransaction(final Long savingsId, final JsonArray transactions,
+    private CommandProcessingResult delegateBulkTransactionToCore(final Long savingsId, final JsonArray transactions,
             final String dateFormat, final java.util.Locale locale) {
         final Map<String, Object> changes = new LinkedHashMap<>();
 

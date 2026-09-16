@@ -124,7 +124,8 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                 if (data.getFromAccountType().isSavingsAccount()) {
                     final SavingsAccount fromAccount = this.savingsAccountAssembler.assembleFrom(data.getFromAccount().getId(), false);
                     final SavingsAccountSubStatusEnum fromSubStatus = SavingsAccountSubStatusEnum.fromInt(fromAccount.getSubStatus());
-                    if (fromSubStatus.isSubStatusAccountBlocked() || fromSubStatus.isSubStatusDebitBlocked() || fromSubStatus.isSubStatusDormant() || fromSubStatus.isSubStatusInactive()) {
+                    if (fromSubStatus.isSubStatusAccountBlocked() || fromSubStatus.isSubStatusDebitBlocked()
+                            || fromSubStatus.isSubStatusDormant() || fromSubStatus.isSubStatusInactive()) {
                         log.warn(
                                 "Debits are blocked on the from account for standing instruction id {} from account {} to account {}. Skipping transfer.",
                                 data.getId(), data.getFromAccount().getId(), data.getToAccount().getId());

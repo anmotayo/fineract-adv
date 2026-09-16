@@ -84,7 +84,8 @@ public class SavingsProductAccountingDataValidator {
                 baseDataValidator.reset().parameter(SavingProductAccountingParams.INCOME_FROM_PENALTIES.getValue())
                         .value(incomeFromPenaltyId).notNull().integerGreaterThanZero();
             }
-            if (!accountType.equals(DepositAccountType.RECURRING_DEPOSIT) && !accountType.equals(DepositAccountType.FIXED_DEPOSIT)) {
+            if (!accountType.equals(DepositAccountType.RECURRING_DEPOSIT) && !accountType.equals(DepositAccountType.FIXED_DEPOSIT)
+                    && !accountType.equals(DepositAccountType.DYNAMIC_DEPOSIT)) {
                 if (fromApiJsonHelper.parameterExists(SavingProductAccountingParams.OVERDRAFT_PORTFOLIO_CONTROL.getValue(), element)
                         || ignoreExistenceValidation) {
                     final Long overdraftControlAccountId = fromApiJsonHelper

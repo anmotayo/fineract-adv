@@ -35,6 +35,10 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.UriInfo;
 import java.util.Collection;
+import java.util.Map;
+import org.apache.fineract.accounting.producttoaccountmapping.data.ChargeToGLAccountMapper;
+import org.apache.fineract.accounting.producttoaccountmapping.data.PaymentTypeToGLAccountMapper;
+import org.apache.fineract.accounting.producttoaccountmapping.service.ProductToGLAccountMappingReadPlatformService;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
@@ -58,17 +62,20 @@ public class DynamicDepositProductsApiResource {
 
     private final PlatformSecurityContext context;
     private final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService;
+    private final ProductToGLAccountMappingReadPlatformService accountMappingReadPlatformService;
     private final DefaultToApiJsonSerializer<DynamicDepositProductData> toApiJsonSerializer;
     private final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService;
     private final ApiRequestParameterHelper apiRequestParameterHelper;
 
     public DynamicDepositProductsApiResource(final PlatformSecurityContext context,
             final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService,
+            final ProductToGLAccountMappingReadPlatformService accountMappingReadPlatformService,
             final DefaultToApiJsonSerializer<DynamicDepositProductData> toApiJsonSerializer,
             final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService,
             final ApiRequestParameterHelper apiRequestParameterHelper) {
         this.context = context;
         this.dynamicDepositProductReadPlatformService = dynamicDepositProductReadPlatformService;
+        this.accountMappingReadPlatformService = accountMappingReadPlatformService;
         this.toApiJsonSerializer = toApiJsonSerializer;
         this.commandsSourceWritePlatformService = commandsSourceWritePlatformService;
         this.apiRequestParameterHelper = apiRequestParameterHelper;
@@ -142,13 +149,29 @@ public class DynamicDepositProductsApiResource {
         DynamicDepositProductData productData = this.dynamicDepositProductReadPlatformService.retrieveOne(productId);
 
         final ApiRequestJsonSerializationSettings settings = this.apiRequestParameterHelper.process(uriInfo.getQueryParameters());
+
+        if (productData.hasAccountingEnabled()) {
+            final Map<String, Object> accountingMappings = this.accountMappingReadPlatformService
+                    .fetchAccountMappingDetailsForSavingsProduct(productId, productData.accountingRuleTypeId());
+            final Collection<PaymentTypeToGLAccountMapper> paymentChannelToFundSourceMappings = this.accountMappingReadPlatformService
+                    .fetchPaymentTypeToFundSourceMappingsForSavingsProduct(productId);
+            final Collection<ChargeToGLAccountMapper> feeToGLAccountMappings = this.accountMappingReadPlatformService
+                    .fetchFeeToIncomeAccountMappingsForSavingsProduct(productId);
+            final Collection<ChargeToGLAccountMapper> penaltyToGLAccountMappings = this.accountMappingReadPlatformService
+                    .fetchPenaltyToIncomeAccountMappingsForSavingsProduct(productId);
+            productData = DynamicDepositProductData.withAccountingDetails(productData, accountingMappings,
+                    paymentChannelToFundSourceMappings, feeToGLAccountMappings, penaltyToGLAccountMappings);
+        }
+
         if (settings.isTemplate()) {
             final DynamicDepositProductData templateData = this.dynamicDepositProductReadPlatformService.retrieveTemplate();
             productData = DynamicDepositProductData.withTemplateOptions(productData, templateData.currencyOptions(),
                     templateData.interestCompoundingPeriodTypeOptions(), templateData.interestPostingPeriodTypeOptions(),
                     templateData.interestCalculationTypeOptions(), templateData.interestCalculationDaysInYearTypeOptions(),
                     templateData.lockinPeriodFrequencyTypeOptions(), templateData.accountingRuleOptions(), templateData.chargeOptions(),
-                    templateData.taxGroupOptions(), templateData.chartTemplate());
+                    templateData.penaltyOptions(), templateData.paymentTypeOptions(), templateData.accountingMappingOptions(),
+                    templateData.taxGroupOptions(), templateData.chartTemplate(), templateData.depositTermTypeOptions(),
+                    templateData.withHoldTaxPostingTypeOptions());
         }
 
         return this.toApiJsonSerializer.serialize(settings, productData, DYNAMIC_DEPOSIT_PRODUCT_RESPONSE_DATA_PARAMETERS);

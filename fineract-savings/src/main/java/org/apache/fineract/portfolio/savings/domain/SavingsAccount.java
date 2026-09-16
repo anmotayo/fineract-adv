@@ -2824,6 +2824,46 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     /**
+     * The upper bound {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} should use when posting
+     * the final closure-triggered interest, given the closure is dated {@code closedDate}. A no-op ({@code closedDate}
+     * itself, unchanged) for every account type except a maturity-bearing deposit (today: Dynamic Deposit, see
+     * {@code DynamicDepositAccount}), which caps it at {@code maturityDate.minusDays(1)} once {@code closedDate} is at
+     * or after its maturity date - mirroring {@code FixedDepositAccount}'s "interest should not be calculated for
+     * maturity day" rule - while leaving a premature closure (closed before maturity) uncapped, posting through the
+     * actual {@code closedDate} as before.
+     */
+    public LocalDate interestPostingUpToForClosure(final LocalDate closedDate) {
+        return closedDate;
+    }
+
+    /**
+     * The date {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} should force the final
+     * closure-triggered interest-posting transaction to land on, given the closure is dated {@code closedDate}. A no-op
+     * ({@code closedDate} itself, unchanged) for every account type except a maturity-bearing deposit (today: Dynamic
+     * Deposit), which returns its maturity date instead once {@code closedDate} is at or after it - so a closure
+     * processed some days after the account actually matured (interest having already stopped accruing at maturity)
+     * still posts and dates its final interest transaction on the maturity day, not on the later administrative closure
+     * date. Used together with {@link #interestPostingUpToForClosure(LocalDate)}: forcing the posting to land here is
+     * what makes the shared interest-period-splitting logic (see {@code SavingsHelper#determineInterestPostingPeriods})
+     * cap the ACCRUAL at the day before this date - a separate mechanism from, and not replaced by, capping the outer
+     * calculation bound alone.
+     */
+    public LocalDate interestPostingTransactionDateForClosure(final LocalDate closedDate) {
+        return closedDate;
+    }
+
+    /**
+     * Lets {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#withdrawal(...)} pass an optional per-transaction
+     * override of the early-withdrawal charge percentage through to a deposit type that supports one (today: Dynamic
+     * Deposit, see {@code DynamicDepositAccount}), without this core class needing compile-time visibility of that
+     * custom-module subclass - the same pattern {@link #prepareClosureSettlement(LocalDate)} uses. A no-op for every
+     * other account type: {@code percentage} is simply discarded.
+     */
+    public void setWithdrawalChargePercentageOverride(final BigDecimal percentage) {
+        // no-op by default - see javadoc.
+    }
+
+    /**
      * Whether this account currently refuses to have funds withdrawn from it via a regular cash withdrawal, a regular
      * transfer-out, or a premature closure that withdraws funds (implementation plan Section 7). No-op ({@code false})
      * for every account type except Dynamic Deposit, which overrides it to reflect its {@code allowWithdrawal}

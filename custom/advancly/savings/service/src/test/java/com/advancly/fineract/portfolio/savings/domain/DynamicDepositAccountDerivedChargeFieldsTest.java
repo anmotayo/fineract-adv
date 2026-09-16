@@ -27,35 +27,29 @@ import org.junit.jupiter.api.Test;
 class DynamicDepositAccountDerivedChargeFieldsTest {
 
     @Test
-    void bothDerivedFieldsReadAsZeroBeforeAnythingIsWritten() {
+    void derivedFieldReadsAsZeroBeforeAnythingIsWritten() {
         final DynamicDepositAccount account = newAccount();
 
         assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    void derivedFieldsRoundTripTheValuesWrittenToThem() {
+    void derivedFieldRoundTripsTheValueWrittenToIt() {
         final DynamicDepositAccount account = newAccount();
 
         account.updateInterestBasedChargeDerived(new BigDecimal("12.50"));
-        account.updateInterestBasedChargePostedDerived(new BigDecimal("40.00"));
 
         assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo("12.50");
-        assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo("40.00");
     }
 
     @Test
-    void writingNullIsTreatedAsZeroSoTheColumnsNeverGoBackToNull() {
+    void writingNullIsTreatedAsZeroSoTheColumnNeverGoesBackToNull() {
         final DynamicDepositAccount account = newAccount();
         account.updateInterestBasedChargeDerived(new BigDecimal("12.50"));
-        account.updateInterestBasedChargePostedDerived(new BigDecimal("40.00"));
 
         account.updateInterestBasedChargeDerived(null);
-        account.updateInterestBasedChargePostedDerived(null);
 
         assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private DynamicDepositAccount newAccount() {

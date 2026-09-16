@@ -295,8 +295,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
-        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
         when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
                 eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
 
@@ -342,8 +342,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         SavingsAccountTransaction deposit = transaction(302L, linkedAccount, BigDecimal.valueOf(3000));
-        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
         when(savingsAccountDomainService.handleDepositOptimized(eq(linkedAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
                 eq(linkedAccount.getCurrency()), eq(linkedLastTxn), eq(true))).thenReturn(deposit);
 
@@ -357,8 +357,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         Long transferId = service.transferFunds(interestTransferDto);
 
         assertThat(transferId).isEqualTo(104L);
-        verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
@@ -405,7 +404,12 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     }
 
     @Test
-    void transferFundsIntoDynamicDepositUsesOptimizedDepositEvenWhenDestinationDisallowsWithdrawal() {
+    void transferFundsIntoDynamicDepositAlwaysUsesCoreDepositEvenWhenAppendPathEligible() {
+        // Deposit-type accounts (FD/RD/Dynamic Deposit) never use the optimized append path: it builds the
+        // transaction directly and would silently skip DynamicDepositAccount's entity-level overrides. This
+        // supersedes the old expectation that a same-day transfer into a Dynamic Deposit account used
+        // handleDepositOptimized - it must now go through coreDomainService.handleDeposit(...) instead, regardless of
+        // append-path eligibility.
         LocalDate transferDate = LocalDate.of(2026, 5, 27);
         BigDecimal amount = BigDecimal.valueOf(1000);
         Long fromSavingsId = 10L;
@@ -432,8 +436,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
         when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
                 any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
-        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
-                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+        when(coreDomainService.handleDeposit(eq(toAccount), any(), eq(transferDate), eq(amount), isNull(), eq(true), eq(true), eq(false)))
+                .thenReturn(deposit);
 
         AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
         when(transferDetails.getId()).thenReturn(102L);
@@ -443,13 +447,17 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         Long transferId = service.transferFunds(dto);
 
         assertThat(transferId).isEqualTo(102L);
-        verify(savingsAccountDomainService).handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
-                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true));
+        verify(coreDomainService).handleDeposit(eq(toAccount), any(), eq(transferDate), eq(amount), isNull(), eq(true), eq(true),
+                eq(false));
+        verify(savingsAccountDomainService, never()).handleDepositOptimized(eq(toAccount), any(), any(), any(), any(), any(), any(),
+                anyBoolean());
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
     @Test
-    void transferFundsOutOfDynamicDepositWithWithdrawalsAllowedUsesOptimizedWithdrawalEntryPoint() {
+    void transferFundsOutOfDynamicDepositWithWithdrawalsAllowedAlwaysUsesCoreWithdrawal() {
+        // See transferFundsIntoDynamicDepositAlwaysUsesCoreDepositEvenWhenAppendPathEligible above - the same
+        // deposit-type gating applies to the withdrawal side.
         LocalDate transferDate = LocalDate.of(2026, 5, 27);
         BigDecimal amount = BigDecimal.valueOf(1000);
         Long fromSavingsId = 10L;
@@ -474,8 +482,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
         SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
-        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
         when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
                 eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
 
@@ -487,8 +495,9 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         Long transferId = service.transferFunds(dto);
 
         assertThat(transferId).isEqualTo(103L);
-        verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
-                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(eq(fromAccount), any(), any(), any(), anyBoolean(), any(),
+                any(), any(), anyBoolean());
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 

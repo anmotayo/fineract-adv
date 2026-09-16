@@ -163,6 +163,14 @@ public class SavingsAccountSummaryData implements Serializable {
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
                 break;
+                case INTEREST_BASED_CHARGE:
+                    if (transaction.isInterestBasedChargeAndNotReversed()) {
+                        // interest-based charges are always penalty-flagged charges (see eligibility gate); bucket
+                        // with other penalty charges rather than introducing a dedicated summary column.
+                        this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
+                        this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
+                    }
+                break;
                 default:
                 break;
             }

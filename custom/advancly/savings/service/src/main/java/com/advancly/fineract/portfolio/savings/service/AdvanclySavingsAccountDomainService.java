@@ -67,8 +67,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     private final SavingsAccountDomainService coreDomainService;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
-    private final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService;
-    private final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService;
     private final DepositAccountInterestChargeRepository interestChargeRepository;
 
     @Autowired
@@ -78,8 +76,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             @Qualifier("coreSavingsAccountDomainService") final SavingsAccountDomainService coreDomainService,
             JournalEntryWritePlatformService journalEntryWritePlatformService,
             final DynamicDepositRateHistoryService dynamicDepositRateHistoryService,
-            final DynamicDepositInterestWithdrawalService dynamicDepositInterestWithdrawalService,
-            final DynamicDepositEarlyWithdrawalChargeService dynamicDepositEarlyWithdrawalChargeService,
             final DepositAccountInterestChargeRepository interestChargeRepository) {
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -88,8 +84,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         this.coreDomainService = coreDomainService;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.dynamicDepositRateHistoryService = dynamicDepositRateHistoryService;
-        this.dynamicDepositInterestWithdrawalService = dynamicDepositInterestWithdrawalService;
-        this.dynamicDepositEarlyWithdrawalChargeService = dynamicDepositEarlyWithdrawalChargeService;
         this.interestChargeRepository = interestChargeRepository;
     }
 
@@ -121,18 +115,15 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, true);
         businessEventNotifierService.notifyPostBusinessEvent(new SavingsDepositBusinessEvent(deposit));
-        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
-            // The append/optimized path never calls SavingsAccount.deposit() - it builds the transaction directly
-            // above - so it is hooked separately here rather than via DynamicDepositAccount's entity-level override.
-            dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, deposit,
-                    DynamicDepositRateHistoryEventType.DEPOSIT);
-        }
         return deposit;
     }
 
     /**
      * O(1) append-only withdrawal handler. The caller (WritePlatformService) must ensure the transaction is not
-     * backdated.
+     * backdated. The caller also guarantees {@code account} is a plain savings account: deposit-type accounts
+     * (FD/RD/Dynamic Deposit) are always routed to the core path instead, since this append path builds
+     * {@code SavingsAccountTransaction} rows directly rather than calling {@code SavingsAccount#deposit()}/
+     * {@code #withdraw()} and would otherwise silently skip their entity-level overrides.
      */
     public SavingsAccountTransaction handleWithdrawalOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final boolean applyWithdrawFee,
@@ -160,20 +151,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, true);
         businessEventNotifierService.notifyPostBusinessEvent(new SavingsWithdrawalBusinessEvent(withdrawal));
-        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
-            dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, withdrawal,
-                    DynamicDepositRateHistoryEventType.WITHDRAWAL);
-            // Pre-existing Phase 3 gap, found while wiring the early-withdrawal hook below and fixed here because it
-            // is literally the same three lines: DynamicDepositAccount#withdraw calls this, but this append/optimized
-            // path never reaches that override - so current-dated withdrawals produced no
-            // m_deposit_account_interest_withdrawal marker rows at all and the interest-summary API's
-            // interestWithdrawn under-reported.
-            dynamicDepositInterestWithdrawalService.recordIfApplicable(dynamicDepositAccount, withdrawal);
-            // Hooked here as well as on DynamicDepositAccount#withdraw, for the same reason the rate-history call
-            // above is: this append/optimized path builds the withdrawal transaction directly and never calls
-            // SavingsAccount#withdraw, so the entity-level override alone would miss every current-dated withdrawal.
-            dynamicDepositEarlyWithdrawalChargeService.recordIfApplicable(dynamicDepositAccount, withdrawal);
-        }
         return withdrawal;
     }
 
@@ -231,12 +208,11 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
                     DynamicDepositRateHistoryEventType.REVERSAL);
             // A reversed withdrawal or interest-based-charge posting leaves m_deposit_account_interest_charge itself
             // correct - its queries already exclude rows linked to a reversed transaction (see
-            // DepositAccountInterestChargeRepository) - but the fast-read derived columns on this row are otherwise
+            // DepositAccountInterestChargeRepository) - but the fast-read derived column on this row is otherwise
             // only refreshed inside DynamicDepositAccount#applyPendingInterestBasedCharges(...) and would
-            // go stale (too high) until the next early withdrawal happens to refresh them. Recompute unconditionally
-            // rather than only for a charge/withdrawal reversal, since it costs two cheap aggregate queries.
+            // go stale (too high) until the next early withdrawal happens to refresh it. Recompute unconditionally
+            // rather than only for a charge/withdrawal reversal, since it costs one cheap aggregate query.
             dynamicDepositAccount.updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(account.getId()));
-            dynamicDepositAccount.updateInterestBasedChargePostedDerived(interestChargeRepository.sumPostedChargeAmount(account.getId()));
         }
         return reversalTransaction;
     }

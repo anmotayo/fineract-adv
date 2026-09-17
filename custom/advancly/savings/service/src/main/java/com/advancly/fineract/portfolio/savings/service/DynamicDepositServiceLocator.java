@@ -20,6 +20,7 @@ package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
@@ -66,5 +67,23 @@ public class DynamicDepositServiceLocator implements ApplicationContextAware {
 
     public static SavingsAccountInterestChargeRepository interestChargeRepository() {
         return applicationContext.getBean(SavingsAccountInterestChargeRepository.class);
+    }
+
+    /**
+     * Task 10: lets {@code DynamicDepositAccount#beginClosureSettlement} resolve the product's early-withdrawal-charge
+     * mode selection itself, mirroring how {@code AdvanclySavingsAccountWritePlatformService} resolves the same thing
+     * for the withdrawal trigger via ordinary constructor injection - an entity has no such injection available.
+     */
+    public static SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository() {
+        return applicationContext.getBean(SavingsProductEarlyWithdrawalChargeRepository.class);
+    }
+
+    /**
+     * Task 10: lets {@code DynamicDepositAccount#beginClosureSettlement} route a cumulative-mode premature closure
+     * through the same forfeiture path an ordinary early withdrawal uses, without this entity needing constructor
+     * injection (entities are not Spring-managed).
+     */
+    public static CumulativeInterestForfeitureService cumulativeInterestForfeitureService() {
+        return applicationContext.getBean(CumulativeInterestForfeitureService.class);
     }
 }

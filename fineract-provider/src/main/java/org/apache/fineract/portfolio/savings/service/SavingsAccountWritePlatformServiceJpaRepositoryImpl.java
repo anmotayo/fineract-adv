@@ -984,48 +984,51 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
             final PaymentDetail paymentDetail = this.paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
 
-            if (account.depositAccountType().isDynamicDeposit()) {
-                // Closure settlement for interest-derived charges, run BEFORE the balance is read and withdrawn (see
-                // SavingsAccount#prepareClosureSettlement/#completeClosureSettlement, the two no-op extension points
-                // this pair of calls uses). No scheduled interest posting job will ever run for the account again
-                // once account.close(...) below finalizes it, so this is the last chance to post the final period's
-                // interest and to collect both the early-withdrawal penalty this very closure incurs and any charge
-                // still pending from an earlier withdrawal in the same period.
-                //
-                // Ordering is the whole point: prepareClosureSettlement(...) tells the account a closure withdrawal
-                // dated closedDate is coming, so the posting immediately below folds that closure's own penalty into
-                // the SAME capped, pro-rated interest-based charge it writes for the period's other pending rows -
-                // one charge transaction, capped once, in one pass. Only then is the balance read, so the single
-                // withdrawal that follows pays out principal plus interest net of withholding tax and that charge -
-                // exactly zero left behind for account.close(...)'s own "results.in.balance.not.zero" check.
-                //
-                // Gated via depositAccountType().isDynamicDeposit() rather than an instanceof check against the
-                // custom module's account subclass: this class (core, fineract-provider) has no compile-time
-                // visibility of that class, only of this core enum (see DynamicDepositAccount#depositAccountType's
-                // own javadoc, which documents this exact call site as a consumer of the override).
-                //
-                // backdatedTxnsAllowedTill is passed as false, not this.savingAccountAssembler.getPivotConfigStatus():
-                // `account` above was assembled with assembleFrom(savingsId, false) - a literal false, independent of
-                // the tenant's pivot-config setting - so its in-memory transaction lists were populated for the
-                // non-pivot-aware code path. Passing true here would desync postInterest(...) from how the account
-                // was actually loaded.
-                //
-                // postInterestAs=true forces a posting-period boundary to land exactly on
-                // #interestPostingTransactionDateForClosure(closedDate) - needed because the closure date frequently
-                // falls short of a full natural compounding period (e.g. a MONTHLY product closed a few weeks in),
-                // and without a forced boundary no partial-period interest would be posted at all. For a Dynamic
-                // Deposit account that date is the maturity date itself once closedDate is at or after it (not
-                // closedDate, which can be a later administrative closure date after interest already stopped
-                // accruing at maturity) - mirroring FixedDepositAccount's postMaturityInterest, which posts the
-                // account's final interest transaction dated at its maturity date. The forced date is what makes the
-                // shared period-splitting logic cap the ACCRUAL at the day before it - see that method's javadoc.
-                //
-                // interestPostingUpToDate (last argument) stays raw closedDate: a backdated closure must not earn
-                // interest for the days between the closure date and today (the balance is still untouched at this
-                // point, so leaving the bound at today's business date would credit exactly that); it is also the
-                // guard account.postInterest(...) uses to decide whether the resulting transaction date is acceptable
-                // at all, which the forced date above always satisfies.
-                account.prepareClosureSettlement(closedDate);
+            // Closure settlement for interest-derived charges, run BEFORE the balance is read and withdrawn (see
+            // SavingsAccount#prepareClosureSettlement/#completeClosureSettlement, the two no-op extension points this
+            // pair of calls uses). No scheduled interest posting job will ever run for the account again once
+            // account.close(...) below finalizes it, so this is the last chance to post the final period's interest
+            // and to collect both the early-withdrawal penalty this very closure incurs and any charge still pending
+            // from an earlier withdrawal in the same period.
+            //
+            // Ordering is the whole point: prepareClosureSettlement(...) tells the account a closure withdrawal dated
+            // closedDate is coming, so the posting immediately below folds that closure's own penalty into the SAME
+            // capped, pro-rated interest-based charge it writes for the period's other pending rows - one charge
+            // transaction, capped once, in one pass. Only then is the balance read, so the single withdrawal that
+            // follows pays out principal plus interest net of withholding tax and that charge - exactly zero left
+            // behind for account.close(...)'s own "results.in.balance.not.zero" check.
+            //
+            // The account decides which settlement applies and whether core still owes it an interest posting.
+            // Under cumulative early-withdrawal mode the account has already force-posted its closing interest and
+            // forfeited it, so it returns false here and this posting is correctly skipped; under per-period mode it
+            // prepares the settlement as before and returns true. See SavingsAccount#beginClosureSettlement - this
+            // replaces a hard-coded depositAccountType().isDynamicDeposit() check that used to gate this whole block,
+            // since core (fineract-provider) has no compile-time visibility of the custom module's account subclass,
+            // only of the core enum that override used to key off (see DynamicDepositAccount#depositAccountType's own
+            // javadoc, which documents this exact call site as a consumer of that override).
+            //
+            // backdatedTxnsAllowedTill is passed as false, not this.savingAccountAssembler.getPivotConfigStatus():
+            // `account` above was assembled with assembleFrom(savingsId, false) - a literal false, independent of
+            // the tenant's pivot-config setting - so its in-memory transaction lists were populated for the
+            // non-pivot-aware code path. Passing true here would desync postInterest(...) from how the account
+            // was actually loaded.
+            //
+            // postInterestAs=true forces a posting-period boundary to land exactly on
+            // #interestPostingTransactionDateForClosure(closedDate) - needed because the closure date frequently
+            // falls short of a full natural compounding period (e.g. a MONTHLY product closed a few weeks in),
+            // and without a forced boundary no partial-period interest would be posted at all. For a Dynamic
+            // Deposit account that date is the maturity date itself once closedDate is at or after it (not
+            // closedDate, which can be a later administrative closure date after interest already stopped
+            // accruing at maturity) - mirroring FixedDepositAccount's postMaturityInterest, which posts the
+            // account's final interest transaction dated at its maturity date. The forced date is what makes the
+            // shared period-splitting logic cap the ACCRUAL at the day before it - see that method's javadoc.
+            //
+            // interestPostingUpToDate (last argument) stays raw closedDate: a backdated closure must not earn
+            // interest for the days between the closure date and today (the balance is still untouched at this
+            // point, so leaving the bound at today's business date would credit exactly that); it is also the
+            // guard account.postInterest(...) uses to decide whether the resulting transaction date is acceptable
+            // at all, which the forced date above always satisfies.
+            if (account.beginClosureSettlement(closedDate)) {
                 final LocalDate closureInterestTransactionDate = account.interestPostingTransactionDateForClosure(closedDate);
                 this.postInterestUpTo(account, true, closureInterestTransactionDate, false, closedDate);
             }

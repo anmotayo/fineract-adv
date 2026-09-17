@@ -52,6 +52,7 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepositor
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -415,8 +416,25 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return delegate.adjustSavingsTransaction(savingsId, transactionId, command);
     }
 
+    // @Transactional is load-bearing here, unlike on every other pure-delegate override below: this override now does
+    // real transactional work (forfeitIfApplicable force-posts interest) before delegating, and that method requires
+    // Propagation.MANDATORY - an existing transaction - exactly like the same requirement on withdrawal(...) above.
+    // Without this, a cumulative-mode plain-Savings closure would throw IllegalTransactionStateException at runtime.
+    @Transactional
     @Override
-    public CommandProcessingResult close(Long savingsId, JsonCommand command) {
+    public CommandProcessingResult close(final Long savingsId, final JsonCommand command) {
+        final AssembledSavingsAccount assembled = this.assembler.assembleForAppendPath(savingsId);
+        final SavingsAccount account = assembled.getAccount();
+
+        // Dynamic Deposit routes its own closure through DynamicDepositAccount#beginClosureSettlement, which core
+        // invokes on the close path below - forfeiting here as well would take the interest twice. Plain Savings has
+        // no subclass to override that hook, so its cumulative forfeiture is triggered here instead, before core
+        // reads the balance.
+        if (!account.depositAccountType().isDynamicDeposit() && isCumulativeMode(account)
+                && command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")) {
+            this.cumulativeInterestForfeitureService.forfeitIfApplicable(account,
+                    command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName), false);
+        }
         return delegate.close(savingsId, command);
     }
 

@@ -254,6 +254,14 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         lenient().when(applicationContext.getBean(SavingsAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
         lenient().when(applicationContext.getBean(DynamicDepositEarlyWithdrawalChargeService.class))
                 .thenReturn(earlyWithdrawalChargeService);
+        // Task 10: DynamicDepositAccount#beginClosureSettlement resolves both of these through the locator to decide
+        // whether a premature closure routes through cumulative forfeiture instead of the per-period settlement this
+        // whole test class exercises. The product is stubbed PER_PERIOD above, so every scenario here keeps taking
+        // the existing settlement path unchanged; the forfeiture service is never actually invoked.
+        lenient().when(applicationContext.getBean(SavingsProductEarlyWithdrawalChargeRepository.class))
+                .thenReturn(this.productEarlyWithdrawalChargeRepository);
+        lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
+                .thenReturn(mock(CumulativeInterestForfeitureService.class));
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
 
         this.service = new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer,

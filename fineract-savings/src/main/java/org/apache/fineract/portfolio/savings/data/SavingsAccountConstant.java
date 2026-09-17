@@ -71,7 +71,13 @@ public class SavingsAccountConstant extends SavingsApiConstants {
     protected static final Set<String> SAVINGS_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(localeParamName, dateFormatParamName, closedOnDateParamName, noteParamName, paymentTypeIdParamName,
                     withdrawBalanceParamName, transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName,
-                    receiptNumberParamName, bankNumberParamName, postInterestValidationOnClosure));
+                    receiptNumberParamName, bankNumberParamName, postInterestValidationOnClosure,
+                    // "applyEarlyWithdrawalCharge" - optional, mirroring the same param on a withdrawal (see
+                    // SAVINGS_ACCOUNT_TRANSACTION_REQUEST_DATA_PARAMETERS above). A premature closure is just another
+                    // early exit, and plain Savings has no maturity date to decide earliness for itself, so the
+                    // upstream application signals it here too. Allow-listed in core for the same reason: the custom
+                    // advancly module cannot see this validator.
+                    "applyEarlyWithdrawalCharge"));
 
     protected static final Set<String> SAVINGS_ACCOUNT_CHARGES_ADD_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(chargeIdParamName, amountParamName, dueAsOfDateParamName, dateFormatParamName, localeParamName,

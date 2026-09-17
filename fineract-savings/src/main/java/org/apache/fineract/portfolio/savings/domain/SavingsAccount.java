@@ -2837,6 +2837,25 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     /**
+     * Begins a premature-closure settlement dated {@code closedDate}, returning whether the caller must still post the
+     * closing interest itself.
+     *
+     * Replaces a hard-coded {@code isDynamicDeposit()} check at the close call site: core no longer knows which
+     * settlement an account type uses, only whether its own {@code postInterestUpTo} is still required afterwards. The
+     * default does nothing and returns {@code false} - no settlement, no posting - which is the behaviour every account
+     * type except Dynamic Deposit already had.
+     *
+     * A Dynamic Deposit account overrides this to route a cumulative-mode early closure through the same interest
+     * forfeiture path an ordinary early withdrawal uses - forfeiting everything and returning {@code false}, since the
+     * forfeiture service has already force-posted the closing interest itself - while a per-period-mode (or non-early)
+     * closure falls through to {@link #prepareClosureSettlement(LocalDate)} exactly as before, returning {@code true}
+     * so the caller still posts the final period's interest. See {@code DynamicDepositAccount#beginClosureSettlement}.
+     */
+    public boolean beginClosureSettlement(final LocalDate closedDate) {
+        return false;
+    }
+
+    /**
      * The upper bound {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} should use when posting
      * the final closure-triggered interest, given the closure is dated {@code closedDate}. A no-op ({@code closedDate}
      * itself, unchanged) for every account type except a maturity-bearing deposit (today: Dynamic Deposit, see

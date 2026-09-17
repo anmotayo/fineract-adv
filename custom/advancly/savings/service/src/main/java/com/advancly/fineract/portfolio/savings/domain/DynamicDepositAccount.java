@@ -1033,6 +1033,36 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
+     * Routes a premature closure to whichever settlement applies (implementation plan Task 10). Under cumulative
+     * early-withdrawal mode, an early closure is just another early exit - the same forfeiture path a partial
+     * withdrawal uses, which force-posts the closing interest and forfeits it itself, so this returns {@code false} to
+     * tell core not to post interest again. Otherwise (per-period mode, or a closure that is not early - e.g. at or
+     * after maturity) this falls through to the existing {@link #prepareClosureSettlement(LocalDate)}/interest-based-
+     * charge path unchanged, returning {@code true} so core still posts the final period's interest.
+     *
+     * The mode check is resolved fresh from the product's single early-withdrawal-charge selection, exactly as
+     * {@code AdvanclySavingsAccountWritePlatformService#isCumulativeMode} resolves it for the withdrawal trigger - a
+     * product with no selection, or more than one (which validation never allows), is treated as per-period.
+     */
+    @Override
+    public boolean beginClosureSettlement(final LocalDate closedDate) {
+        if (isCumulativeEarlyWithdrawalMode() && isEarlyWithdrawal(closedDate)) {
+            // Cumulative mode: one path for every early exit, whether a partial withdrawal or a full closure. The
+            // service force-posts the closing interest itself, so core must not post again - hence false.
+            DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false);
+            return false;
+        }
+        prepareClosureSettlement(closedDate);
+        return true;
+    }
+
+    private boolean isCumulativeEarlyWithdrawalMode() {
+        final List<SavingsProductEarlyWithdrawalCharge> selections = DynamicDepositServiceLocator.productEarlyWithdrawalChargeRepository()
+                .findBySavingsProductId(productId());
+        return selections.size() == 1 && selections.get(0).mode().isCumulative();
+    }
+
+    /**
      * True between {@link #prepareClosureSettlement(LocalDate)} and
      * {@link #completeClosureSettlement(SavingsAccountTransaction)}, i.e. for exactly the one withdrawal premature
      * closure issues. {@code DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable} reads this to skip that

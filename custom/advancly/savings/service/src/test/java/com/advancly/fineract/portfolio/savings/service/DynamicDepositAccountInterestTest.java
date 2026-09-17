@@ -28,11 +28,12 @@ import static org.mockito.Mockito.verify;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
@@ -76,6 +77,7 @@ class DynamicDepositAccountInterestTest {
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     private SavingsAccountInterestChargeRepository interestChargeRepository;
     private DynamicDepositRateHistoryService rateHistoryService;
+    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
 
     @BeforeEach
     void setUp() {
@@ -84,16 +86,24 @@ class DynamicDepositAccountInterestTest {
         this.rateHistoryRepository = mock(DepositAccountDynamicRateHistoryRepository.class);
         this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         this.rateHistoryService = mock(DynamicDepositRateHistoryService.class);
+        this.productEarlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
         // Phase 4: postInterest now resolves the interest-charge repository through the locator on every run, so it
         // must be stubbed for every test in this class. Defaults to "nothing pending", which is the pre-Phase-4
         // behaviour the existing tests assert.
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenReturn(List.of());
+        // Task 10: no test in this class exercises closure, so this is never actually consulted - stubbed only so
+        // beginClosureSettlement would resolve to "no selection" (per-period/no-op) if a future test ever reached it.
+        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(any())).thenReturn(List.of());
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
         lenient().when(applicationContext.getBean(SavingsAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
         // Only exercised by undoTransaction(...) - DynamicDepositAccount#undoTransaction resolves the rate-history
         // service through the locator to reverse the invested-amount rate-history row for the undone transaction.
         lenient().when(applicationContext.getBean(DynamicDepositRateHistoryService.class)).thenReturn(this.rateHistoryService);
+        lenient().when(applicationContext.getBean(SavingsProductEarlyWithdrawalChargeRepository.class))
+                .thenReturn(this.productEarlyWithdrawalChargeRepository);
+        lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
+                .thenReturn(mock(CumulativeInterestForfeitureService.class));
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
     }
 
@@ -406,7 +416,7 @@ class DynamicDepositAccountInterestTest {
 
     private BigDecimal interestOverFebruaryWith(final Integer debitTransactionType) {
         this.account = buildAccount(); // buildAccount() already defaults interestCompoundingPeriodType to 8
-                                        // (NO_COMPOUNDING_SIMPLE_INTEREST), which this assertion is specific to.
+                                       // (NO_COMPOUNDING_SIMPLE_INTEREST), which this assertion is specific to.
 
         final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
         lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))

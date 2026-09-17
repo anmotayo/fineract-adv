@@ -52,7 +52,8 @@ public enum SavingsAccountTransactionType {
     AMOUNT_HOLD(20, "savingsAccountTransactionType.onHold", TransactionEntryType.DEBIT), //
     AMOUNT_RELEASE(21, "savingsAccountTransactionType.release", TransactionEntryType.CREDIT), //
     // 100+ reserved for Advancly-specific custom transaction types, kept clear of core Fineract's own id range.
-    INTEREST_BASED_CHARGE(100, "savingsAccountTransactionType.interestBasedCharge", TransactionEntryType.DEBIT); //
+    INTEREST_BASED_CHARGE(100, "savingsAccountTransactionType.interestBasedCharge", TransactionEntryType.DEBIT), //
+    INTEREST_FORFEITURE(101, "savingsAccountTransactionType.interestForfeiture", TransactionEntryType.DEBIT); //
 
     private static final Map<Integer, SavingsAccountTransactionType> BY_ID = Arrays.stream(values())
             .collect(Collectors.toMap(SavingsAccountTransactionType::getValue, v -> v));
@@ -121,6 +122,7 @@ public enum SavingsAccountTransactionType {
             case 20 -> SavingsAccountTransactionType.AMOUNT_HOLD;
             case 21 -> SavingsAccountTransactionType.AMOUNT_RELEASE;
             case 100 -> SavingsAccountTransactionType.INTEREST_BASED_CHARGE;
+            case 101 -> SavingsAccountTransactionType.INTEREST_FORFEITURE;
             default -> SavingsAccountTransactionType.INVALID;
         };
     }
@@ -157,6 +159,10 @@ public enum SavingsAccountTransactionType {
         return this == INTEREST_BASED_CHARGE;
     }
 
+    public boolean isInterestForfeiture() {
+        return this == INTEREST_FORFEITURE;
+    }
+
     public boolean isWithdrawalFee() {
         return this == WITHDRAWAL_FEE;
     }
@@ -170,12 +176,12 @@ public enum SavingsAccountTransactionType {
     }
 
     public boolean isChargeTransaction() {
-        // INTEREST_BASED_CHARGE is included here (unlike WITHHOLD_TAX) because it, like PAY_CHARGE, is attributed to
-        // a SavingsAccountCharge via SavingsAccountChargePaidBy and needs the same pay/undoPayment lifecycle symmetry
-        // core provides for charge transactions (see SavingsAccount.undoTransaction(Long)). It is deliberately NOT
-        // included in the interest-bearing balance calculation, though - that exclusion is handled separately, and
-        // earlier, via isInterestBasedChargeAndNotReversed() in PostingPeriod's shouldNotAffectInterestPosting check.
-        return isPayCharge() || isWithdrawalFee() || isAnnualFee() || isInterestBasedCharge();
+        // INTEREST_BASED_CHARGE and INTEREST_FORFEITURE are both included here (unlike WITHHOLD_TAX) because both are
+        // attributed to a SavingsAccountCharge via SavingsAccountChargePaidBy and need the same pay/undoPayment
+        // lifecycle symmetry core provides for charge transactions (see SavingsAccount.undoTransaction(Long)). Both
+        // are ALSO excluded from the interest-bearing balance in PostingPeriod's shouldNotAffectInterestPosting - see
+        // that class for why (no-compounding products have no separate accumulator for a debit to hide in).
+        return isPayCharge() || isWithdrawalFee() || isAnnualFee() || isInterestBasedCharge() || isInterestForfeiture();
     }
 
     public boolean isWaiveCharge() {

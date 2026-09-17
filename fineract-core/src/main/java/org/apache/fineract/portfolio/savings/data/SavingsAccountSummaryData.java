@@ -171,6 +171,12 @@ public class SavingsAccountSummaryData implements Serializable {
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
                 break;
+                case INTEREST_FORFEITURE:
+                    if (transaction.isInterestForfeitureAndNotReversed()) {
+                        this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
+                        this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
+                    }
+                break;
                 default:
                 break;
             }

@@ -215,6 +215,13 @@ public class AccrualBasedAccountingProcessorForSavings implements AccountingProc
                         paymentTypeId, savingsId, transactionId, transactionDate, amount, isReversal, penaltyPayments);
             }
 
+            /** Handle interest forfeiture (always penalty-flagged, same GL treatment as interest-based charges) **/
+            else if (savingsTransactionDTO.getTransactionType().isInterestForfeiture()) {
+                this.helper.createAccrualBasedJournalEntriesAndReversalsForSavingsCharges(office, currencyCode,
+                        AccrualAccountsForSavings.SAVINGS_CONTROL, AccrualAccountsForSavings.INCOME_FROM_PENALTIES, savingsProductId,
+                        paymentTypeId, savingsId, transactionId, transactionDate, amount, isReversal, penaltyPayments);
+            }
+
             /** Handle Fees Deductions and reversals of Fees Deductions **/
             else if (savingsTransactionDTO.getTransactionType().isFeeDeduction() && savingsTransactionDTO.isOverdraftTransaction()) {
                 boolean isPositive = amount.subtract(overdraftAmount).compareTo(BigDecimal.ZERO) > 0;

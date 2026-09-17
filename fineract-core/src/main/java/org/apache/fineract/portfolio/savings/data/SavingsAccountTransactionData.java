@@ -683,6 +683,14 @@ public class SavingsAccountTransactionData implements Serializable {
         return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isInterestBasedCharge();
     }
 
+    public boolean isInterestForfeitureAndNotReversed() {
+        return isInterestForfeiture() && isNotReversed();
+    }
+
+    public boolean isInterestForfeiture() {
+        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isInterestForfeiture();
+    }
+
     public boolean isAccrual() {
         return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isAccrual();
     }

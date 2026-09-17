@@ -42,4 +42,5 @@ public class SavingsAccountTransactionToUpdateSummary {
     private final boolean isOverdraftInterestAndNotReversed;
     private final boolean isWithHoldTaxAndNotReversed;
     private final boolean isInterestBasedChargeAndNotReversed;
+    private final boolean isInterestForfeitureAndNotReversed;
 }

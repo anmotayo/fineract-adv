@@ -392,6 +392,39 @@ class DynamicDepositAccountInterestTest {
         assertThat(attributedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
+    @Test
+    void anInterestForfeitureDoesNotShrinkTheInterestBearingBalanceAnyMoreThanAnInterestBasedChargeDoesUnderNoCompounding() {
+        final BigDecimal interestAfterForfeiture = interestOverFebruaryWith(SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue());
+        final BigDecimal interestAfterInterestBasedCharge = interestOverFebruaryWith(
+                SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue());
+
+        // Both debit 500 on Feb 1. Under no-compounding there is no separate accumulator for a forfeiture debit to
+        // net against (see Task 4's header) - it must be excluded from the walk exactly like INTEREST_BASED_CHARGE,
+        // or the base drops below the customer's true remaining principal by the full forfeited amount.
+        assertThat(interestAfterForfeiture).isEqualByComparingTo(interestAfterInterestBasedCharge);
+    }
+
+    private BigDecimal interestOverFebruaryWith(final Integer debitTransactionType) {
+        this.account = buildAccount(); // buildAccount() already defaults interestCompoundingPeriodType to 8
+                                        // (NO_COMPOUNDING_SIMPLE_INTEREST), which this assertion is specific to.
+
+        final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
+                .thenReturn(List.of(DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, LocalDate.of(2026, 1, 1),
+                        DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
+                        BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART)));
+
+        this.account.addTransaction(new SavingsAccountTransactionTestBuilder().withId(2L).withSavingsAccount(this.account)
+                .withType(SavingsAccountTransactionType.fromInt(debitTransactionType)).withDate(LocalDate.of(2026, 2, 1))
+                .withAmount(BigDecimal.valueOf(500)).build());
+
+        this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
+
+        return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestPostingAndNotReversed)
+                .filter(posting -> posting.getTransactionDate().isAfter(LocalDate.of(2026, 2, 1))).findFirst()
+                .orElseThrow(() -> new IllegalStateException("no February interest posting was created")).getAmount();
+    }
+
     private SavingsAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {
         final SavingsAccountInterestCharge pendingRow = SavingsAccountInterestCharge.createNew(this.account,
                 mock(SavingsAccountTransaction.class), mock(SavingsAccountCharge.class), mock(Charge.class), LocalDate.of(2026, 1, 1),

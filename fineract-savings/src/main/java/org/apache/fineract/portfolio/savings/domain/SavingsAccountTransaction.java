@@ -263,6 +263,16 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
                 amount, isReversed, isManualTransaction, lienTransaction, refNo);
     }
 
+    public static SavingsAccountTransaction interestForfeiture(final SavingsAccount savingsAccount, final Office office,
+            final LocalDate date, final Money amount) {
+        final boolean isReversed = false;
+        final boolean isManualTransaction = false;
+        final Boolean lienTransaction = false;
+        final String refNo = null;
+        return new SavingsAccountTransaction(savingsAccount, office, SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue(), date,
+                amount, isReversed, isManualTransaction, lienTransaction, refNo);
+    }
+
     public static SavingsAccountTransaction waiver(final SavingsAccount savingsAccount, final Office office, final LocalDate date,
             final Money amount) {
         final boolean isReversed = false;
@@ -809,6 +819,14 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return isInterestBasedCharge() && isNotReversed();
     }
 
+    public boolean isInterestForfeiture() {
+        return getTransactionType().isInterestForfeiture();
+    }
+
+    public boolean isInterestForfeitureAndNotReversed() {
+        return isInterestForfeiture() && isNotReversed();
+    }
+
     public boolean isOverdraftInterestAndNotReversed() {
         return getTransactionType().isIncomeFromInterest() && isNotReversed();
     }
@@ -910,7 +928,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return new SavingsAccountTransactionDetailsForPostingPeriod(getId(), this.dateOf, this.balanceEndDate, this.runningBalance,
                 this.amount, currency, this.balanceNumberOfDays, isDeposit(), isWithdrawal(), isAllowOverDraft,
                 isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed(), isWithHoldTaxAndNotReversed(),
-                isInterestBasedChargeAndNotReversed());
+                isInterestBasedChargeAndNotReversed(), isInterestForfeitureAndNotReversed());
     }
 
     public boolean isAccrualAndNotReversed() {

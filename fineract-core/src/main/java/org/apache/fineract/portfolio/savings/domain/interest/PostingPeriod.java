@@ -118,7 +118,8 @@ public final class PostingPeriod {
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
                 shouldNotAffectInterestPosting = true;
-            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestBasedChargeAndNotReversed()) {
+            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestBasedChargeAndNotReversed()
+                    || transaction.isInterestForfeitureAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
             // }
@@ -210,7 +211,8 @@ public final class PostingPeriod {
             } else if (interestPostTransactions.contains(transaction.getId())) {
                 interestTransfered = true;
                 shouldNotAffectInterestPosting = true;
-            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestBasedChargeAndNotReversed()) {
+            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestBasedChargeAndNotReversed()
+                    || transaction.isInterestForfeitureAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
             // }

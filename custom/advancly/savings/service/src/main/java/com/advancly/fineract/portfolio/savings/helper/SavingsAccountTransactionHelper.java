@@ -183,7 +183,8 @@ public class SavingsAccountTransactionHelper {
             if (txn.isWaiveFeeChargeAndNotReversed()) {
                 totalFeeChargesWaived = totalFeeChargesWaived.plus(amount);
             }
-            if (txn.isPenaltyChargeAndNotReversed() || txn.isInterestBasedChargeAndNotReversed()) {
+            if (txn.isPenaltyChargeAndNotReversed() || txn.isInterestBasedChargeAndNotReversed()
+                    || txn.isInterestForfeitureAndNotReversed()) {
                 totalPenaltyCharge = totalPenaltyCharge.plus(amount);
             }
             if (txn.isWaivePenaltyChargeAndNotReversed()) {

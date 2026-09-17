@@ -93,6 +93,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final PaymentDetailRepository paymentDetailRepository;
     private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
+    private final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
 
     @Autowired
     public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
@@ -105,7 +106,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
             final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
             final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
-            final CumulativeInterestForfeitureService cumulativeInterestForfeitureService) {
+            final CumulativeInterestForfeitureService cumulativeInterestForfeitureService,
+            final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService) {
         this.context = context;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
         this.assembler = assembler;
@@ -121,6 +123,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.paymentDetailRepository = paymentDetailRepository;
         this.productEarlyWithdrawalChargeRepository = productEarlyWithdrawalChargeRepository;
         this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
+        this.earlyWithdrawalChargeService = earlyWithdrawalChargeService;
     }
 
     @Transactional
@@ -217,6 +220,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
                 paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
 
+        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawal);
+
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
 
@@ -229,15 +234,14 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
      * exactly as it always has, so its behaviour does not depend on the caller passing a flag. Plain Savings has no
      * maturity date, so the upstream application - which owns the withdrawal-window rules - asserts it on the request.
      *
-     * KNOWN LIMITATION (Phase 1): the {@code applyEarlyWithdrawalCharge} half of this is scaffolding for a future phase
-     * and is currently unreachable in practice. It only matters when {@link #isCumulativeMode(SavingsAccount)} is also
-     * true, and that reads {@code m_savings_product_early_withdrawal_charge}, whose rows are written by exactly one
-     * place -
-     * {@code DynamicDepositProductWritePlatformServiceJpaRepositoryImpl#reconcileEarlyWithdrawalChargeSelection} - on
-     * the Dynamic Deposit product API alone. A plain Savings product therefore never has a row, so
-     * {@code isCumulativeMode} is always false for it and the flag alone can never trigger a forfeiture. Do not read
-     * this as "plain Savings is wired up end to end": making it so needs a way to configure the early-withdrawal charge
-     * selection on a plain Savings product, which Phase 1 does not provide.
+     * The {@code applyEarlyWithdrawalCharge} half of this matters when either {@link #isCumulativeMode(SavingsAccount)}
+     * or {@link #isPerPeriodMode(SavingsAccount)} is also true, and both read
+     * {@code m_savings_product_early_withdrawal_charge}. That table's rows were originally written by the Dynamic
+     * Deposit product API alone, which is why an earlier version of this comment described the flag as unreachable in
+     * practice for plain Savings; the plain-Savings product write path now reconciles the same table too (see
+     * {@code EarlyWithdrawalChargeReconciler}), so a plain Savings product can carry a row in either mode and the flag
+     * is reachable for it. PER_PERIOD mode's withdrawal-time effect - recording the pending
+     * {@code SavingsAccountInterestCharge} row - is wired via {@link #recordPerPeriodChargeIfApplicable}, below.
      */
     private boolean isEarlyForForfeiture(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command) {
         return account.isEarlyWithdrawal(transactionDate) || command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge");
@@ -247,6 +251,31 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
                 .findBySavingsProductId(account.productId());
         return selections.size() == 1 && selections.get(0).mode().isCumulative();
+    }
+
+    private boolean isPerPeriodMode(final SavingsAccount account) {
+        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
+                .findBySavingsProductId(account.productId());
+        return selections.size() == 1 && selections.get(0).mode().isPerPeriod();
+    }
+
+    /**
+     * Records the pending {@code SavingsAccountInterestCharge} row a PER_PERIOD-mode early withdrawal needs, so the
+     * next interest posting can apply the charge. This is the plain-Savings counterpart to the cumulative-forfeiture
+     * branch above: that one force-posts interest before the transaction exists, this one records against the
+     * transaction the O(1) append path just created, so it must run after {@code domainService.handleWithdrawalOptimized}
+     * returns rather than before it.
+     *
+     * {@link DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable(SavingsAccount, SavingsAccountTransaction)}
+     * has nothing Dynamic-Deposit-specific in its signature or logic, so it is equally safe to call here for a plain
+     * Savings account; the entity-level {@code DynamicDepositAccount#withdraw} hook that already calls it never runs on
+     * this optimized append path, which is exactly the gap this method closes.
+     */
+    void recordPerPeriodChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command,
+            final SavingsAccountTransaction withdrawalTransaction) {
+        if (isEarlyForForfeiture(account, transactionDate, command) && isPerPeriodMode(account)) {
+            this.earlyWithdrawalChargeService.recordIfApplicable(account, withdrawalTransaction);
+        }
     }
 
     @Transactional
@@ -445,14 +474,11 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         // no subclass to override that hook, so its cumulative forfeiture is triggered here instead, before core
         // reads the balance.
         //
-        // KNOWN LIMITATION (Phase 1): this plain-Savings branch is scaffolding for a future phase and is currently
-        // unreachable in practice - isCumulativeMode(...) can only ever be true for a Dynamic Deposit product, since
-        // m_savings_product_early_withdrawal_charge rows are written by the Dynamic Deposit product API alone. See
-        // #isEarlyForForfeiture's javadoc for the full reasoning. It is kept (rather than deleted) so the closure hole
-        // it covers does not have to be rediscovered when plain-Savings configuration does arrive; it is NOT evidence
-        // that plain Savings is wired up end to end today. Whoever does wire it up must also give this branch the
-        // backdated-closure guard DynamicDepositAccount#beginClosureSettlement has - deliberately not added here,
-        // since guarding a branch nothing can reach would only make it look more finished than it is.
+        // This plain-Savings branch is reachable today: isCumulativeMode(...) can be true for a plain Savings product,
+        // since its product write path now reconciles m_savings_product_early_withdrawal_charge too rather than that
+        // table being Dynamic-Deposit-only. See #isEarlyForForfeiture's javadoc for the full reasoning. It still lacks
+        // the backdated-closure guard DynamicDepositAccount#beginClosureSettlement has - that gap is separate,
+        // unaddressed follow-up work, not something this comment claims is already covered.
         if (!account.depositAccountType().isDynamicDeposit() && isCumulativeMode(account)
                 && command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")) {
             this.cumulativeInterestForfeitureService.forfeitIfApplicable(account,

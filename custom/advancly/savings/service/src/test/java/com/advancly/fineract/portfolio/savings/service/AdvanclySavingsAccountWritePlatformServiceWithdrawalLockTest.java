@@ -107,6 +107,8 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
     private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     @Mock
     private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
+    @Mock
+    private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
 
     private AdvanclySavingsAccountWritePlatformService service;
     private FromJsonHelper fromJsonHelper;
@@ -120,7 +122,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
                 fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, productEarlyWithdrawalChargeRepository,
-                cumulativeInterestForfeitureService);
+                cumulativeInterestForfeitureService, earlyWithdrawalChargeService);
     }
 
     @Test

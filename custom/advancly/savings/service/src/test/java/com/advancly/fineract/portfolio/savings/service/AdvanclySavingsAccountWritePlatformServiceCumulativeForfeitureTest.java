@@ -98,6 +98,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
     private PaymentDetailRepository paymentDetailRepository;
     private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private CumulativeInterestForfeitureService forfeitureService;
+    private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
     private AdvanclySavingsAccountWritePlatformService service;
 
     @BeforeEach
@@ -116,13 +117,14 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
         this.paymentDetailRepository = mock(PaymentDetailRepository.class);
         this.productEarlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
         this.forfeitureService = mock(CumulativeInterestForfeitureService.class);
+        this.earlyWithdrawalChargeService = mock(DynamicDepositEarlyWithdrawalChargeService.class);
 
         final FromJsonHelper fromJsonHelper = new FromJsonHelper();
         this.service = new AdvanclySavingsAccountWritePlatformService(this.context, this.savingsAccountTransactionDataValidator,
                 this.assembler, this.domainService, this.advanclyTransactionRepository, this.paymentDetailWritePlatformService,
                 this.noteRepository, this.gsimRepository, this.delegate, new BulkTransactionDataValidator(fromJsonHelper), fromJsonHelper,
                 this.paymentTypeRepositoryWrapper, this.paymentDetailRepository, this.productEarlyWithdrawalChargeRepository,
-                this.forfeitureService);
+                this.forfeitureService, this.earlyWithdrawalChargeService);
 
         lenient().when(this.advanclyTransactionRepository.findLastTransactionDate(SAVINGS_ID)).thenReturn(Optional.empty());
     }

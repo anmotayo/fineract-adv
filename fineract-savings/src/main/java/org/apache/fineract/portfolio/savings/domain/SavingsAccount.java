@@ -2910,6 +2910,32 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     /**
+     * Brings {@link #getSummary()} back in line with this account's transactions, running exactly the same refresh
+     * {@link #postInterest(MathContext, LocalDate, boolean, boolean, Integer, LocalDate, boolean, boolean)} runs as its
+     * own last step - and picking the same branch on the same flag.
+     *
+     * For a caller that adds transactions of its own AFTER a posting call has already run (and therefore after that
+     * call's refresh): cumulative early-withdrawal forfeiture force-posts interest, then writes its INTEREST_FORFEITURE
+     * transaction and the deferred withholding tax on top. {@code addTransaction(...)} alone never touches the summary,
+     * so without this the very next read of {@code getSummary().getAccountBalance()} - which is exactly what a
+     * premature closure does to decide how much to pay out - would still report the balance from before the forfeiture.
+     *
+     * Note the {@code backdatedTxnsAllowedTill == true} branch is core's own pivot-configuration refresh, which
+     * recomputes the balance from the pivot running balance plus deposits/interest minus withdrawals, withholding tax
+     * and overdraft interest - it does NOT re-apply charge debits (the same is already true of INTEREST_BASED_CHARGE).
+     * Cumulative forfeiture passes {@code false} from both of its callers, so it always takes the full-recompute
+     * branch, which does subtract them.
+     */
+    public void refreshSummary(final boolean backdatedTxnsAllowedTill) {
+        if (backdatedTxnsAllowedTill) {
+            this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
+                    this.savingsAccountTransactions);
+        } else {
+            this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+        }
+    }
+
+    /**
      * Whether a premature closure settlement is mid-flight on this account, during which an ordinary early-withdrawal
      * charge must not be recorded for the settlement withdrawal (the closure records its own, already applied). A no-op
      * {@code false} for every account type except one that implements closure settlement - today Dynamic Deposit. Same

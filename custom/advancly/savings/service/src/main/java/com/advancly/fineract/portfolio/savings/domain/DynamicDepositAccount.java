@@ -43,6 +43,7 @@ import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.Money;
@@ -1043,13 +1044,28 @@ public class DynamicDepositAccount extends SavingsAccount {
      * The mode check is resolved fresh from the product's single early-withdrawal-charge selection, exactly as
      * {@code AdvanclySavingsAccountWritePlatformService#isCumulativeMode} resolves it for the withdrawal trigger - a
      * product with no selection, or more than one (which validation never allows), is treated as per-period.
+     *
+     * A BACKDATED cumulative closure is rejected outright, mirroring the equivalent guard
+     * {@code AdvanclySavingsAccountWritePlatformService#withdrawal} already applies to a backdated cumulative
+     * withdrawal. The reason is specific and mechanical: the forfeiture service force-posts through the public
+     * {@code SavingsAccountWritePlatformService#postInterest(SavingsAccount, boolean, LocalDate, boolean)}, whose
+     * interest-calculation upper bound is always today's business date (core's own per-period closure path instead
+     * reaches a private overload that takes {@code closedDate} explicitly). On a closure dated before today that bound
+     * would credit interest for every day between the closure date and today - days on which the account, being closed,
+     * earns nothing - and then forfeit a percentage of that inflated figure. Rejecting the closure keeps
+     * {@code closedDate} equal to the business date, which makes the public call's bound exactly the one core's
+     * per-period path passes.
      */
     @Override
     public boolean beginClosureSettlement(final LocalDate closedDate) {
         if (isCumulativeEarlyWithdrawalMode() && isEarlyWithdrawal(closedDate)) {
+            if (DateUtils.isBefore(closedDate, DateUtils.getBusinessLocalDate())) {
+                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
+                        "A backdated premature closure cannot apply a cumulative early-withdrawal interest forfeiture.", getId());
+            }
             // Cumulative mode: one path for every early exit, whether a partial withdrawal or a full closure. The
             // service force-posts the closing interest itself, so core must not post again - hence false.
-            DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false);
+            DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false, true);
             return false;
         }
         prepareClosureSettlement(closedDate);

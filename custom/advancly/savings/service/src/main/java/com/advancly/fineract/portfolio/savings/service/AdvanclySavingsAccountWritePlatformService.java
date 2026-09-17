@@ -200,7 +200,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
                         "A backdated withdrawal cannot apply a cumulative early-withdrawal interest forfeiture.", savingsId);
             }
-            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false);
+            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false, false);
         }
 
         // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
@@ -228,6 +228,16 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
      * Earliness comes from whichever source the account type has. Dynamic Deposit answers from its own maturity date,
      * exactly as it always has, so its behaviour does not depend on the caller passing a flag. Plain Savings has no
      * maturity date, so the upstream application - which owns the withdrawal-window rules - asserts it on the request.
+     *
+     * KNOWN LIMITATION (Phase 1): the {@code applyEarlyWithdrawalCharge} half of this is scaffolding for a future phase
+     * and is currently unreachable in practice. It only matters when {@link #isCumulativeMode(SavingsAccount)} is also
+     * true, and that reads {@code m_savings_product_early_withdrawal_charge}, whose rows are written by exactly one
+     * place -
+     * {@code DynamicDepositProductWritePlatformServiceJpaRepositoryImpl#reconcileEarlyWithdrawalChargeSelection} - on
+     * the Dynamic Deposit product API alone. A plain Savings product therefore never has a row, so
+     * {@code isCumulativeMode} is always false for it and the flag alone can never trigger a forfeiture. Do not read
+     * this as "plain Savings is wired up end to end": making it so needs a way to configure the early-withdrawal charge
+     * selection on a plain Savings product, which Phase 1 does not provide.
      */
     private boolean isEarlyForForfeiture(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command) {
         return account.isEarlyWithdrawal(transactionDate) || command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge");
@@ -434,10 +444,19 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         // invokes on the close path below - forfeiting here as well would take the interest twice. Plain Savings has
         // no subclass to override that hook, so its cumulative forfeiture is triggered here instead, before core
         // reads the balance.
+        //
+        // KNOWN LIMITATION (Phase 1): this plain-Savings branch is scaffolding for a future phase and is currently
+        // unreachable in practice - isCumulativeMode(...) can only ever be true for a Dynamic Deposit product, since
+        // m_savings_product_early_withdrawal_charge rows are written by the Dynamic Deposit product API alone. See
+        // #isEarlyForForfeiture's javadoc for the full reasoning. It is kept (rather than deleted) so the closure hole
+        // it covers does not have to be rediscovered when plain-Savings configuration does arrive; it is NOT evidence
+        // that plain Savings is wired up end to end today. Whoever does wire it up must also give this branch the
+        // backdated-closure guard DynamicDepositAccount#beginClosureSettlement has - deliberately not added here,
+        // since guarding a branch nothing can reach would only make it look more finished than it is.
         if (!account.depositAccountType().isDynamicDeposit() && isCumulativeMode(account)
                 && command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")) {
             this.cumulativeInterestForfeitureService.forfeitIfApplicable(account,
-                    command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName), false);
+                    command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName), false, true);
         }
         return delegate.close(savingsId, command);
     }

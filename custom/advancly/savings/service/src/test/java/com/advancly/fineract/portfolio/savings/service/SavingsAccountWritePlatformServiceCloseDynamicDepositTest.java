@@ -204,6 +204,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     @Mock
     private DepositProductDynamicDetailRepository productDynamicDetailRepository;
+    @Mock
+    private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
 
     private SavingsAccountWritePlatformServiceJpaRepositoryImpl service;
     private DynamicDepositAccount account;
@@ -257,11 +259,15 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // Task 10: DynamicDepositAccount#beginClosureSettlement resolves both of these through the locator to decide
         // whether a premature closure routes through cumulative forfeiture instead of the per-period settlement this
         // whole test class exercises. The product is stubbed PER_PERIOD above, so every scenario here keeps taking
-        // the existing settlement path unchanged; the forfeiture service is never actually invoked.
+        // the existing settlement path unchanged and never invokes the forfeiture service - except the one scenario
+        // (aCumulativeModeClosureRoutesThroughForfeitureInsteadOfThePerPeriodSettlement) that overrides the product
+        // stub to CUMULATIVE precisely to exercise the other branch.
         lenient().when(applicationContext.getBean(SavingsProductEarlyWithdrawalChargeRepository.class))
                 .thenReturn(this.productEarlyWithdrawalChargeRepository);
+        // Backed by the @Mock field (not an anonymous mock() call) so a test can verify(...) against it - see
+        // aCumulativeModeClosureRoutesThroughForfeitureInsteadOfThePerPeriodSettlement below.
         lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
-                .thenReturn(mock(CumulativeInterestForfeitureService.class));
+                .thenReturn(this.cumulativeInterestForfeitureService);
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
 
         this.service = new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer,
@@ -643,6 +649,51 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // And the closure still settles to exactly zero in one withdrawal.
         assertThat(this.withdrawals).hasSize(1);
         assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(repostedInterest.getAmount()));
+        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // Scenario 8 (Task 10 review finding): every other scenario in this file stubs the product PER_PERIOD, so none of
+    // them ever reaches beginClosureSettlement's cumulative branch - this is the one that does, proving the two paths
+    // are genuinely mutually exclusive and the cumulative one is real, not just theoretically wired.
+    //
+    // No account-level charge is configured (prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE) with no charges):
+    // the settlement withdrawal still runs through the REAL
+    // DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable
+    // (see this class's javadoc), and with no qualifying charge on the account it resolves nothing and writes nothing,
+    // regardless of mode - keeping this test's evidence squarely about beginClosureSettlement's own routing decision
+    // rather than entangled with that separate service's behaviour.
+    @Test
+    void aCumulativeModeClosureRoutesThroughForfeitureInsteadOfThePerPeriodSettlement() {
+        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
+                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.CUMULATIVE)));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE);
+
+        final CommandProcessingResult result = this.service.close(1L, closeCommandFor(1L, true));
+
+        assertThat(result).isNotNull();
+        assertThat(this.account.isClosed()).isTrue();
+
+        // The cumulative path is real, not just theoretically wired: the forfeiture service was actually invoked,
+        // with this account and the closed date, exactly as DynamicDepositAccount#beginClosureSettlement calls it.
+        verify(this.cumulativeInterestForfeitureService).forfeitIfApplicable(this.account, CLOSED_DATE, false);
+
+        // The per-period settlement's own distinctive side effects never happened - proving it was genuinely never
+        // entered, not merely that it happened to produce nothing this time:
+        // (1) beginClosureSettlement returned false, so core's close() must have skipped its own postInterestUpTo(...)
+        // call entirely (see the routing gate this task added) - and since the (mocked) forfeiture service does
+        // nothing to the account here, that means NO interest was posted at all.
+        assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList())
+                .isEmpty();
+        // (2) applyPendingInterestBasedCharges - reachable only from a postInterest(...) call - therefore never ran
+        // either, so no interest-based-charge transaction and no already-applied settlement row (the one and only
+        // thing completeClosureSettlement(...) would produce) exist.
+        assertThat(payChargeTransactions()).isEmpty();
+        assertThat(this.newlySavedRows).isEmpty();
+
+        // Principal-only payout: with no interest posted and nothing charged, the single settlement withdrawal pays
+        // out exactly the untouched opening balance, landing on exactly zero - core's own close() invariant.
+        assertThat(this.withdrawals).hasSize(1);
+        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 

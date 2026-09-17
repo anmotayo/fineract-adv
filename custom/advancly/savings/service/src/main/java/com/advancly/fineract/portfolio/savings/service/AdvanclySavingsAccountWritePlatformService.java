@@ -416,10 +416,14 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return delegate.adjustSavingsTransaction(savingsId, transactionId, command);
     }
 
-    // @Transactional is load-bearing here, unlike on every other pure-delegate override below: this override now does
-    // real transactional work (forfeitIfApplicable force-posts interest) before delegating, and that method requires
-    // Propagation.MANDATORY - an existing transaction - exactly like the same requirement on withdrawal(...) above.
-    // Without this, a cumulative-mode plain-Savings closure would throw IllegalTransactionStateException at runtime.
+    // @Transactional added for consistency with deposit(...)/withdrawal(...) above, and as defensive insurance for
+    // CumulativeInterestForfeitureService.forfeitIfApplicable's Propagation.MANDATORY requirement - not because it is
+    // strictly necessary given the current call graph. Every real caller of close() (CloseSavingsAccountCommandHandler
+    // /PrematureCloseDynamicDepositAccountCommandHandler/CloseDynamicDepositAccountCommandHandler) is itself
+    // @Transactional and invokes this synchronously, so a transaction is already ambient by the time this method
+    // runs - exactly why deposit(...)/withdrawal(...)'s own @Transactional here is already redundant for the same
+    // reason. Keeping it anyway is still the right, low-risk choice: it makes this method safe to call from anywhere,
+    // present or future, without relying on every caller happening to already be transactional.
     @Transactional
     @Override
     public CommandProcessingResult close(final Long savingsId, final JsonCommand command) {

@@ -24,7 +24,6 @@ import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetai
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
@@ -32,6 +31,7 @@ import java.util.List;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -82,7 +82,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void recordIfApplicable(final DynamicDepositAccount account, final SavingsAccountTransaction withdrawalTransaction) {
+    public void recordIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction) {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()) {
             return;
         }
@@ -93,9 +93,11 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         // exists. A pending row from here would be a duplicate of a charge that was already taken, and, with no
         // further interest posting ever due on a closed account, one that could never be applied or cleared.
         //
-        // Guarding inside this single method rather than at each call site deliberately covers BOTH hooks that reach
-        // it - DynamicDepositAccount#withdraw and AdvanclySavingsAccountDomainService#handleWithdrawalOptimized -
-        // without touching either.
+        // Guarding inside this single method rather than at each call site keeps the rule in one place. Note that
+        // only DynamicDepositAccount#withdraw actually reaches here: the optimized append path in
+        // AdvanclySavingsAccountDomainService bypasses SavingsAccount#withdraw() entirely and so never records a
+        // per-period row. Cumulative mode is unaffected - it is triggered at the write-platform layer, above both
+        // paths (see CumulativeInterestForfeitureService).
         if (account.isClosureSettlementInProgress()) {
             return;
         }
@@ -143,7 +145,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * for the closure's own contribution to the period's interest-based charge; sharing this one method is what keeps
      * "which charge, at what percentage" a single answer rather than two that could drift.
      */
-    public QualifyingCharge resolveQualifyingChargeWithPercentage(final DynamicDepositAccount account) {
+    public QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account) {
         final SavingsAccountCharge qualifyingCharge = resolveQualifyingCharge(account);
         if (qualifyingCharge == null) {
             return null;
@@ -166,7 +168,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * also have supplied as an override); the account charge is active; it or its definition is a penalty; and the
      * calculation type is {@code PERCENT_OF_INTEREST}.
      */
-    private SavingsAccountCharge resolveQualifyingCharge(final DynamicDepositAccount account) {
+    private SavingsAccountCharge resolveQualifyingCharge(final SavingsAccount account) {
         final DepositProductDynamicDetail productDetail = this.productDynamicDetailRepository.findByProductId(account.productId())
                 .orElse(null);
         if (productDetail == null || !productDetail.isEarlyWithdrawalPenaltyEnabled()) {
@@ -207,7 +209,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * product charge percentage" - a {@code SavingsAccountCharge} created from the product definition stores the
      * definition's own amount as its percentage, so the fallback only fires for a charge that genuinely carries none.
      */
-    private BigDecimal resolvePercentage(final DynamicDepositAccount account, final SavingsAccountCharge accountCharge) {
+    private BigDecimal resolvePercentage(final SavingsAccount account, final SavingsAccountCharge accountCharge) {
         final BigDecimal transactionOverride = account.earlyWithdrawalChargePercentageOverride();
         if (transactionOverride != null) {
             return transactionOverride;
@@ -231,7 +233,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * optimized append path assembles accounts without the helpers {@code calculateInterestUsing} needs (see
      * {@code DynamicDepositPostInterestTasklet}'s javadoc).
      */
-    private BigDecimal currentPeriodInterestBasis(final DynamicDepositAccount account) {
+    private BigDecimal currentPeriodInterestBasis(final SavingsAccount account) {
         final SavingsAccountSummary summary = account.getSummary();
         if (summary == null) {
             return BigDecimal.ZERO;
@@ -247,10 +249,10 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * interest-calculation start date when nothing has been posted yet. Stored on the row for audit and for matching
      * pending rows to a posting boundary.
      *
-     * Public for the same reason as {@link #resolveQualifyingChargeWithPercentage(DynamicDepositAccount)}: the closure
+     * Public for the same reason as {@link #resolveQualifyingChargeWithPercentage(SavingsAccount)}: the closure
      * settlement stamps its own row with the same period start an ordinary early withdrawal would have.
      */
-    public LocalDate currentPeriodStartDate(final DynamicDepositAccount account) {
+    public LocalDate currentPeriodStartDate(final SavingsAccount account) {
         LocalDate lastPostingDate = null;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             if (!transaction.isInterestPostingAndNotReversed()) {

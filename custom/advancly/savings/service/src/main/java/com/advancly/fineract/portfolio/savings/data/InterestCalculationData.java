@@ -29,14 +29,14 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
  * Response for {@code GET /interestcalculation/{savingsAccountId}} - a read-only interest-calculation preview that
  * works across plain Savings, Fixed Deposit, Recurring Deposit and Dynamic Deposit accounts. Runs the same
  * {@code calculateInterestUsing(...)} engine each account type already uses for its own interest posting, but never
- * persists anything - the loaded account is detached before (and remains detached throughout) the calculation, so
- * this is safe to call as often as needed, including with a simulated top-up or withdrawal.
+ * persists anything - the loaded account is detached before (and remains detached throughout) the calculation, so this
+ * is safe to call as often as needed, including with a simulated top-up or withdrawal.
  *
  * {@code maturityDate}/{@code interestAtMaturity}/{@code maturityAmount} are {@code null} for plain Savings accounts,
- * which have no maturity concept. {@code interestAtMaturity} and {@code maturityAmount} project forward from the
- * amount actually invested to date (including any simulated top-up/withdrawal) - not from the account's originally
- * approved schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's
- * life (Dynamic Deposit and Recurring Deposit can both add/remove principal after opening).
+ * which have no maturity concept. {@code interestAtMaturity} and {@code maturityAmount} project forward from the amount
+ * actually invested to date (including any simulated top-up/withdrawal) - not from the account's originally approved
+ * schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life (Dynamic
+ * Deposit and Recurring Deposit can both add/remove principal after opening).
  *
  * {@code pendingInterestBasedCharges}/{@code postedInterestBasedCharges} are only ever non-null for Dynamic Deposit -
  * the early-withdrawal interest-based charge mechanism doesn't exist for the other three account types. These two
@@ -85,15 +85,14 @@ public class InterestCalculationData implements Serializable {
 
     public InterestCalculationData(final Long accountId, final String accountNo, final String externalId, final Long clientId,
             final Long groupId, final Long productId, final SavingsAccountStatusEnumData status, final CurrencyData currency,
-            final LocalDate maturityDate, final BigDecimal interestAsAtToday,
-            final BigDecimal interestAtMaturity, final BigDecimal maturityAmount, final BigDecimal pendingInterestBasedCharges,
-            final BigDecimal postedInterestBasedCharges, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
-            final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
-            final BigDecimal totalInterestPosted, final BigDecimal accountBalance, final BigDecimal totalFeeCharge,
-            final BigDecimal totalPenaltyCharge, final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax,
-            final LocalDate interestPostedTillDate, final Collection<InterestCalculationTransactionData> transactions,
-            final Collection<PostingPeriodData> postingPeriods, final BigDecimal simulatedTopUpAmount,
-            final BigDecimal simulatedWithdrawalAmount) {
+            final LocalDate maturityDate, final BigDecimal interestAsAtToday, final BigDecimal interestAtMaturity,
+            final BigDecimal maturityAmount, final BigDecimal pendingInterestBasedCharges, final BigDecimal postedInterestBasedCharges,
+            final BigDecimal totalDeposits, final BigDecimal totalWithdrawals, final BigDecimal totalWithdrawalFees,
+            final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned, final BigDecimal totalInterestPosted,
+            final BigDecimal accountBalance, final BigDecimal totalFeeCharge, final BigDecimal totalPenaltyCharge,
+            final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax, final LocalDate interestPostedTillDate,
+            final Collection<InterestCalculationTransactionData> transactions, final Collection<PostingPeriodData> postingPeriods,
+            final BigDecimal simulatedTopUpAmount, final BigDecimal simulatedWithdrawalAmount) {
         this.accountId = accountId;
         this.accountNo = accountNo;
         this.externalId = externalId;

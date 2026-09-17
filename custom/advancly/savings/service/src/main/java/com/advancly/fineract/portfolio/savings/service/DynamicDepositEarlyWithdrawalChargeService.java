@@ -18,10 +18,10 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import java.math.BigDecimal;

@@ -33,10 +33,9 @@ import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSer
 import org.springframework.stereotype.Component;
 
 /**
- * Read-only interest-calculation preview, spanning plain Savings, Fixed Deposit, Recurring Deposit and Dynamic
- * Deposit accounts - see {@link InterestCalculationReadPlatformService} for what it computes and the guarantee that
- * it never persists anything, including when {@code topUpAmount}/{@code withdrawalAmount} simulate a hypothetical
- * transaction.
+ * Read-only interest-calculation preview, spanning plain Savings, Fixed Deposit, Recurring Deposit and Dynamic Deposit
+ * accounts - see {@link InterestCalculationReadPlatformService} for what it computes and the guarantee that it never
+ * persists anything, including when {@code topUpAmount}/{@code withdrawalAmount} simulate a hypothetical transaction.
  */
 @Path("/v1/interestcalculation")
 @Component

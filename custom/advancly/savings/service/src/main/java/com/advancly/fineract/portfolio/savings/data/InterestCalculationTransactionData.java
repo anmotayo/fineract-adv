@@ -26,8 +26,8 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumD
 /**
  * Lightweight transaction row for the interest-calculation preview response - deliberately not the full
  * {@code SavingsAccountTransactionData} (charge-paid-by breakdowns etc. aren't needed here), just enough to show what
- * happened and when. A simulated top-up/withdrawal (see {@code InterestCalculationReadPlatformServiceImpl}) is
- * included with a {@code null} id so callers can tell it apart from a real, persisted transaction.
+ * happened and when. A simulated top-up/withdrawal (see {@code InterestCalculationReadPlatformServiceImpl}) is included
+ * with a {@code null} id so callers can tell it apart from a real, persisted transaction.
  */
 public class InterestCalculationTransactionData implements Serializable {
 
@@ -39,9 +39,8 @@ public class InterestCalculationTransactionData implements Serializable {
     private final boolean reversed;
     private final boolean simulated;
 
-    public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType,
-            final LocalDate date, final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed,
-            final boolean simulated) {
+    public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType, final LocalDate date,
+            final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated) {
         this.id = id;
         this.transactionType = transactionType;
         this.date = date;

@@ -219,8 +219,7 @@ public final class SavingsEnumerations {
                         SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getCode(), "Interest Based Charge");
             break;
             case INTEREST_FORFEITURE:
-                optionData = new SavingsAccountTransactionEnumData(
-                        SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue().longValue(),
+                optionData = new SavingsAccountTransactionEnumData(SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue().longValue(),
                         SavingsAccountTransactionType.INTEREST_FORFEITURE.getCode(), "Interest Forfeiture");
             break;
         }

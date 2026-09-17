@@ -21,8 +21,8 @@ package com.advancly.fineract.portfolio.savings.service;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
@@ -49,11 +49,11 @@ import org.springframework.stereotype.Service;
  *
  * Deliberately has NO {@code @Transactional} annotation of its own. {@link SavingsAccountRepositoryWrapper}'s own
  * {@code findOneWithNotFoundDetection(Long)} is independently {@code @Transactional(readOnly = true)}; called with no
- * outer transaction already open, that method starts and commits its own transaction before returning, which closes
- * the Hibernate session and detaches the entity it just loaded. Every mutation this class makes afterwards - adding a
+ * outer transaction already open, that method starts and commits its own transaction before returning, which closes the
+ * Hibernate session and detaches the entity it just loaded. Every mutation this class makes afterwards - adding a
  * simulated transaction, running {@code calculateInterestUsing(...)} (which rewrites daily balances and the in-memory
- * summary as a side effect) - therefore happens on an object nothing is tracking for a flush. This is the whole
- * safety guarantee behind "this endpoint never persists anything," so don't add {@code @Transactional} here without
+ * summary as a side effect) - therefore happens on an object nothing is tracking for a flush. This is the whole safety
+ * guarantee behind "this endpoint never persists anything," so don't add {@code @Transactional} here without
  * re-deriving that guarantee some other way.
  */
 @Service
@@ -66,8 +66,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final SavingsAccountInterestChargeRepository interestChargeRepository;
 
     @Override
-    public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount,
-            final BigDecimal withdrawalAmount) {
+    public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
 
         final SavingsAccount account = this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(savingsAccountId);
 
@@ -166,9 +165,9 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     }
 
     /**
-     * Adds a transient (never persisted - see class javadoc) deposit and/or withdrawal transaction dated today, so
-     * the calculation engine's daily-balance walk reflects "what if I did this today" from that point forward while
-     * leaving every already-elapsed day untouched. Both are independently optional and can be combined.
+     * Adds a transient (never persisted - see class javadoc) deposit and/or withdrawal transaction dated today, so the
+     * calculation engine's daily-balance walk reflects "what if I did this today" from that point forward while leaving
+     * every already-elapsed day untouched. Both are independently optional and can be combined.
      */
     private void addSimulatedTransactionIfPresent(final SavingsAccount account, final LocalDate today, final BigDecimal topUpAmount,
             final BigDecimal withdrawalAmount) {

@@ -21,7 +21,6 @@ package com.advancly.fineract.portfolio.savings.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -30,8 +29,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import java.math.BigDecimal;
@@ -40,9 +39,8 @@ import java.util.List;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
-import org.apache.fineract.useradministration.domain.AppUser;
-import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.domain.FixedDepositAccount;
@@ -52,6 +50,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
+import org.apache.fineract.useradministration.domain.AppUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -93,10 +92,10 @@ class InterestCalculationReadPlatformServiceImplTest {
 
     /**
      * A spy, not a plain built object: {@code calculateInterestUsing(...)} is entirely mocked out in these tests (no
-     * real interest math runs), so {@code getTotalInterestEarned()} needs per-test sequential stubbing to simulate
-     * what each of the two real {@code calculateInterestUsing} calls (today-bounded, then maturity-bounded) would
-     * have left behind - a spy lets tests override just that one method while every other summary getter keeps its
-     * normal, builder-set behaviour.
+     * real interest math runs), so {@code getTotalInterestEarned()} needs per-test sequential stubbing to simulate what
+     * each of the two real {@code calculateInterestUsing} calls (today-bounded, then maturity-bounded) would have left
+     * behind - a spy lets tests override just that one method while every other summary getter keeps its normal,
+     * builder-set behaviour.
      */
     private void commonStubs(final SavingsAccount account, final DepositAccountType depositAccountType) {
         final SavingsAccountSummary summary = Mockito
@@ -113,8 +112,7 @@ class InterestCalculationReadPlatformServiceImplTest {
         lenient().when(account.depositAccountType()).thenReturn(depositAccountType);
         lenient().when(account.office()).thenReturn(mock(Office.class));
         lenient().when(account.getTransactions()).thenReturn(List.of());
-        lenient()
-                .when(account.calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
+        lenient().when(account.calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of());
         lenient().when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
     }
@@ -170,8 +168,8 @@ class InterestCalculationReadPlatformServiceImplTest {
                 new BigDecimal("32.00"), new BigDecimal("1032.00"));
         when(account.calculateInterestUsing(any(), eq(today), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(partialToday));
-        when(account.calculateInterestUsing(any(), eq(maturityDate), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(),
-                anyBoolean())).thenReturn(List.of(fullPeriodProjectedToMaturity));
+        when(account.calculateInterestUsing(any(), eq(maturityDate), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
+                .thenReturn(List.of(fullPeriodProjectedToMaturity));
         // First call (today-bounded) leaves totalInterestEarned=2.00; second call (maturity-bounded) overwrites it to
         // 32.00 - exactly what two real, sequential calculateInterestUsing invocations would do.
         when(summaryOf(account).getTotalInterestEarned()).thenReturn(new BigDecimal("2.00"), new BigDecimal("32.00"));
@@ -195,10 +193,10 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         this.service.calculate(ACCOUNT_ID, new BigDecimal("100"), new BigDecimal("40"));
 
-        verify(account).addTransaction(org.mockito.ArgumentMatchers
-                .argThat(txn -> txn.getTransactionType().isDeposit() && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("100")) == 0));
-        verify(account).addTransaction(org.mockito.ArgumentMatchers
-                .argThat(txn -> txn.getTransactionType().isWithdrawal() && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("40")) == 0));
+        verify(account).addTransaction(org.mockito.ArgumentMatchers.argThat(
+                txn -> txn.getTransactionType().isDeposit() && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("100")) == 0));
+        verify(account).addTransaction(org.mockito.ArgumentMatchers.argThat(txn -> txn.getTransactionType().isWithdrawal()
+                && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("40")) == 0));
     }
 
     @Test

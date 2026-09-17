@@ -31,8 +31,7 @@ public interface InterestCalculationReadPlatformService {
      * @param savingsAccountId
      *            the account to preview
      * @param topUpAmount
-     *            optional - simulates an additional deposit of this amount, dated today, before running the
-     *            calculation
+     *            optional - simulates an additional deposit of this amount, dated today, before running the calculation
      * @param withdrawalAmount
      *            optional - simulates a withdrawal of this amount, dated today, before running the calculation
      */

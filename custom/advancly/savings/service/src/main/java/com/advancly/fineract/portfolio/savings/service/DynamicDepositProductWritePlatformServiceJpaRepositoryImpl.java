@@ -182,8 +182,9 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     /**
      * Applies the request's early-withdrawal penalty charge selection (implementation plan Section 2) with
      * replace-rather-than-append semantics, which is the primary enforcement of "only one active early-withdrawal
-     * charge per dynamic deposit product". When the request omits {@code earlyWithdrawalChargeId} entirely, the
-     * currently-stored selection is re-validated instead, so a partial product update never silently drops it.
+     * charge per dynamic deposit product". When the request omits {@code earlyWithdrawalChargeId} or
+     * {@code earlyWithdrawalChargeMode} entirely, the currently-stored value is re-used instead, so a partial product
+     * update never silently drops or downgrades either one.
      */
     private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
         final List<SavingsProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
@@ -194,7 +195,9 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
                 ? command.longValueOfParameterNamed(earlyWithdrawalChargeIdParamName)
                 : (existingRows.isEmpty() ? null : existingRows.get(0).chargeId());
 
-        final Integer requestedMode = command.integerValueOfParameterNamed(earlyWithdrawalChargeModeParamName);
+        final Integer requestedMode = command.parameterExists(earlyWithdrawalChargeModeParamName)
+                ? command.integerValueOfParameterNamed(earlyWithdrawalChargeModeParamName)
+                : (existingRows.isEmpty() ? null : existingRows.get(0).mode().getValue());
         final EarlyWithdrawalChargeMode mode = EarlyWithdrawalChargeMode.fromInt(requestedMode);
 
         final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(

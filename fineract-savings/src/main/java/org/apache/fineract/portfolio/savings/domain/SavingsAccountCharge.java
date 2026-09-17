@@ -293,7 +293,7 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 // Leaving `amount` null also made the constructor's own determineIfFullyPaid() ->
                 // calculateOutstanding() dereference throw. There is no amount until an interest period is posted;
                 // the Dynamic Deposit early-withdrawal mechanism tracks the real figures in
-                // m_deposit_account_interest_charge and never consults these fields.
+                // m_savings_account_interest_charge and never consults these fields.
                 this.percentage = chargeAmount;
                 this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;

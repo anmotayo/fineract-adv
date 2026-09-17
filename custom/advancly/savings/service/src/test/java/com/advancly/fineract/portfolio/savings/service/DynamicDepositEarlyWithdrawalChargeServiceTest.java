@@ -24,8 +24,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
@@ -66,9 +66,9 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
     private static final LocalDate BEFORE_MATURITY = LocalDate.of(2026, 4, 1);
     private static final LocalDate AFTER_MATURITY = LocalDate.of(2026, 8, 1);
 
-    private final List<DepositAccountInterestCharge> savedRows = new ArrayList<>();
+    private final List<SavingsAccountInterestCharge> savedRows = new ArrayList<>();
 
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
     private DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private DepositProductDynamicDetailRepository productDynamicDetailRepository;
     private DynamicDepositEarlyWithdrawalChargeService service;
@@ -77,14 +77,14 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
     void setUp() {
         MoneyHelperInitializer.initialize();
         this.savedRows.clear();
-        this.interestChargeRepository = mock(DepositAccountInterestChargeRepository.class);
+        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         lenient().when(this.interestChargeRepository.saveAndFlush(any())).thenAnswer(invocation -> {
-            final DepositAccountInterestCharge row = invocation.getArgument(0);
+            final SavingsAccountInterestCharge row = invocation.getArgument(0);
             this.savedRows.add(row);
             return row;
         });
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong())).thenAnswer(invocation -> this.savedRows.stream()
-                .map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+                .map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
 
         this.productEarlyWithdrawalChargeRepository = mock(DepositProductEarlyWithdrawalChargeRepository.class);
         lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID))
@@ -104,7 +104,7 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
         this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY));
 
         assertThat(this.savedRows).hasSize(1);
-        final DepositAccountInterestCharge row = this.savedRows.get(0);
+        final SavingsAccountInterestCharge row = this.savedRows.get(0);
         // basis = 500 earned - 200 posted = 300; 10% of 300 = 30
         assertThat(row.interestAmountBasis()).isEqualByComparingTo("300");
         assertThat(row.chargePercentage()).isEqualByComparingTo("10");

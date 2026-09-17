@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <!-- m_deposit_account_interest_charge is keyed to core savings types, not Dynamic-Deposit-specific, and should not
+         read as if it were. renameTable is metadata-only (MariaDB/MySQL RENAME TABLE) - no rows are copied, dropped,
+         or at risk, and existing FK metadata pointing at this table is automatically repointed at the new name. This
+         is a new, additive changeset rather than an edit to 0012's createTable, which has already run against real
+         data on every existing database (see the file header there for why editing or renaming that changeset is
+         unsafe). FK constraint and index names are deliberately left unchanged - purely cosmetic, and not worth any
+         additional risk on a populated table. -->
+    <changeSet author="advancly" id="1">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_deposit_account_interest_charge"/>
+                <not>
+                    <tableExists tableName="m_savings_account_interest_charge"/>
+                </not>
+            </and>
+        </preConditions>
+        <renameTable oldTableName="m_deposit_account_interest_charge" newTableName="m_savings_account_interest_charge"/>
+    </changeSet>
+
+</databaseChangeLog>

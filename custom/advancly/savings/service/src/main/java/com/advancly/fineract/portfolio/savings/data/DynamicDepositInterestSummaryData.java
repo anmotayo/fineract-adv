@@ -33,7 +33,7 @@ import java.util.List;
  * (Transfers And Withdrawal Lock) is responsible for populating it.
  *
  * {@code interestBasedCharges} is the life-to-date total actually applied through interest posting, read from
- * {@code m_deposit_account_interest_charge} - the source of truth per Section 5 - and is on the same life-to-date
+ * {@code m_savings_account_interest_charge} - the source of truth per Section 5 - and is on the same life-to-date
  * footing as {@code interestPosted} and {@code withholdingTax}. {@code interestBasedChargeDerived} and
  * {@code interestBasedChargePostedDerived} are the Section 5 fast-read columns returned alongside it.
  */

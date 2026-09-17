@@ -340,7 +340,7 @@ public class DynamicDepositAccountAssembler {
      * Only this one charge is inherited. Dynamic Deposit deliberately does not use core's
      * {@code SavingsAccountChargeAssembler#fromSavingsProduct}, which would pull in every product charge and change
      * long-standing behaviour for this product type; the early-withdrawal charge has to be attached because
-     * {@code m_deposit_account_interest_charge.savings_account_charge_id} is NOT NULL.
+     * {@code m_savings_account_interest_charge.savings_account_charge_id} is NOT NULL.
      *
      * Static (and visible to tests) so the merge rule can be exercised without a Spring context.
      */

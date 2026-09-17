@@ -38,7 +38,7 @@ import org.springframework.data.jpa.repository.Query;
  * this fix warrants, so these assertions instead pin the exact JPQL predicate on the three affected query methods, read
  * straight off their {@code @Query} annotations, rather than executing them against a database.
  */
-class DepositAccountInterestChargeRepositoryTest {
+class SavingsAccountInterestChargeRepositoryTest {
 
     private static final String REVERSED_CHARGE_COUNTS_AS_PENDING = "(c.interestChargeTransaction is null or c.interestChargeTransaction.reversed = true)";
 
@@ -71,7 +71,7 @@ class DepositAccountInterestChargeRepositoryTest {
     }
 
     private String queryFor(final String methodName, final Class<?>... parameterTypes) throws NoSuchMethodException {
-        final Method method = DepositAccountInterestChargeRepository.class.getMethod(methodName, parameterTypes);
+        final Method method = SavingsAccountInterestChargeRepository.class.getMethod(methodName, parameterTypes);
         final Query query = method.getAnnotation(Query.class);
         assertThat(query).as("@Query annotation on %s", methodName).isNotNull();
         return query.value();

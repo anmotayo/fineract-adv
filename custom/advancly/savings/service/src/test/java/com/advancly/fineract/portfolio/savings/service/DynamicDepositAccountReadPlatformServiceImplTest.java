@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -66,7 +66,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
     @Mock
     private DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
     @Mock

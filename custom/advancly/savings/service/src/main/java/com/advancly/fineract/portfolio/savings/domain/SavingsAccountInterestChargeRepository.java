@@ -25,7 +25,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface DepositAccountInterestChargeRepository extends JpaRepository<DepositAccountInterestCharge, Long> {
+public interface SavingsAccountInterestChargeRepository extends JpaRepository<SavingsAccountInterestCharge, Long> {
 
     /**
      * Pending (not yet consumed by an interest posting) early-withdrawal charge rows whose interest period ended on or
@@ -37,10 +37,10 @@ public interface DepositAccountInterestChargeRepository extends JpaRepository<De
      * carries no reversal state of its own. Ordered by id so the first row is the oldest, which is the one whose charge
      * definition the single charge transaction is attributed to.
      */
-    @Query("select c from DepositAccountInterestCharge c where c.account.id = :savingsAccountId "
+    @Query("select c from SavingsAccountInterestCharge c where c.account.id = :savingsAccountId "
             + "and (c.interestChargeTransaction is null or c.interestChargeTransaction.reversed = true) "
             + "and c.interestPeriodEndDate <= :upToDate and c.withdrawalTransaction.reversed = false order by c.id asc")
-    List<DepositAccountInterestCharge> findPendingByAccountIdUpTo(@Param("savingsAccountId") Long savingsAccountId,
+    List<SavingsAccountInterestCharge> findPendingByAccountIdUpTo(@Param("savingsAccountId") Long savingsAccountId,
             @Param("upToDate") LocalDate upToDate);
 
     /**
@@ -48,7 +48,7 @@ public interface DepositAccountInterestChargeRepository extends JpaRepository<De
      * calculated-but-not-yet-posted interest-based charge amount. A row whose charge transaction was created but has
      * since been reversed counts as pending here too - see {@link #findPendingByAccountIdUpTo} for why.
      */
-    @Query("select coalesce(sum(c.chargeAmount), 0) from DepositAccountInterestCharge c where c.account.id = :savingsAccountId "
+    @Query("select coalesce(sum(c.chargeAmount), 0) from SavingsAccountInterestCharge c where c.account.id = :savingsAccountId "
             + "and (c.interestChargeTransaction is null or c.interestChargeTransaction.reversed = true) "
             + "and c.withdrawalTransaction.reversed = false")
     BigDecimal sumPendingChargeAmount(@Param("savingsAccountId") Long savingsAccountId);
@@ -58,7 +58,7 @@ public interface DepositAccountInterestChargeRepository extends JpaRepository<De
      * already applied through interest posting. Excludes rows whose charge transaction or originating withdrawal has
      * since been reversed.
      */
-    @Query("select coalesce(sum(c.chargeAmount), 0) from DepositAccountInterestCharge c where c.account.id = :savingsAccountId "
+    @Query("select coalesce(sum(c.chargeAmount), 0) from SavingsAccountInterestCharge c where c.account.id = :savingsAccountId "
             + "and c.interestChargeTransaction is not null and c.interestChargeTransaction.reversed = false "
             + "and c.withdrawalTransaction.reversed = false")
     BigDecimal sumPostedChargeAmount(@Param("savingsAccountId") Long savingsAccountId);

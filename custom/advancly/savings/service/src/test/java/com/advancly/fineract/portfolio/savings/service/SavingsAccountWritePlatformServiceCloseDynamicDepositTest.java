@@ -33,8 +33,8 @@ import static org.mockito.Mockito.when;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
@@ -198,7 +198,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
     @Mock
     private DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     @Mock
@@ -208,10 +208,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     private DynamicDepositAccount account;
     private Office office;
 
-    /** Rows that already exist in m_deposit_account_interest_charge for the account under test. */
-    private final List<DepositAccountInterestCharge> existingRows = new ArrayList<>();
+    /** Rows that already exist in m_savings_account_interest_charge for the account under test. */
+    private final List<SavingsAccountInterestCharge> existingRows = new ArrayList<>();
     /** Rows written during the call under test - i.e. the closure's own already-applied row, if any. */
-    private final List<DepositAccountInterestCharge> newlySavedRows = new ArrayList<>();
+    private final List<SavingsAccountInterestCharge> newlySavedRows = new ArrayList<>();
     /** Every withdrawal the (mocked) domain service was asked to make, to prove there is exactly one. */
     private final List<SavingsAccountTransaction> withdrawals = new ArrayList<>();
 
@@ -223,17 +223,17 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.withdrawals.clear();
 
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenAnswer(
-                invocation -> new ArrayList<>(this.existingRows.stream().filter(DepositAccountInterestCharge::isPending).toList()));
+                invocation -> new ArrayList<>(this.existingRows.stream().filter(SavingsAccountInterestCharge::isPending).toList()));
         lenient().when(this.interestChargeRepository.saveAndFlush(any())).thenAnswer(invocation -> {
-            final DepositAccountInterestCharge row = invocation.getArgument(0);
+            final SavingsAccountInterestCharge row = invocation.getArgument(0);
             this.newlySavedRows.add(row);
             return row;
         });
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong()))
-                .thenAnswer(invocation -> allRows().stream().filter(DepositAccountInterestCharge::isPending)
-                        .map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+                .thenAnswer(invocation -> allRows().stream().filter(SavingsAccountInterestCharge::isPending)
+                        .map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
         lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(invocation -> allRows().stream()
-                .filter(row -> !row.isPending()).map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+                .filter(row -> !row.isPending()).map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
 
         lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID))
                 .thenReturn(List.of(DepositProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID)));
@@ -250,7 +250,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // the same pattern).
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
-        lenient().when(applicationContext.getBean(DepositAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
+        lenient().when(applicationContext.getBean(SavingsAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
         lenient().when(applicationContext.getBean(DynamicDepositEarlyWithdrawalChargeService.class))
                 .thenReturn(earlyWithdrawalChargeService);
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
@@ -272,7 +272,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
         // An earlier early withdrawal in this same period left this behind at 40%.
-        final DepositAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
+        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
 
         final CommandProcessingResult result = this.service.close(1L, closeCommandFor(1L, true));
 
@@ -292,7 +292,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(earlierRow.isPending()).isFalse();
         assertThat(earlierRow.interestChargeTransaction()).isSameAs(chargeTransaction);
         assertThat(this.newlySavedRows).hasSize(1);
-        final DepositAccountInterestCharge closureRow = this.newlySavedRows.get(0);
+        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
         assertThat(closureRow.isPending()).isFalse();
         assertThat(closureRow.chargePercentage()).isEqualByComparingTo("60");
         assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
@@ -338,9 +338,9 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     void severalPendingChargesPlusTheClosureAreCappedInAggregateSoPrincipalIsNeverTouched() {
         final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-        final DepositAccountInterestCharge row1 = pendingRow(accountCharge, new BigDecimal("60"));
-        final DepositAccountInterestCharge row2 = pendingRow(accountCharge, new BigDecimal("60"));
-        final DepositAccountInterestCharge row3 = pendingRow(accountCharge, new BigDecimal("60"));
+        final SavingsAccountInterestCharge row1 = pendingRow(accountCharge, new BigDecimal("60"));
+        final SavingsAccountInterestCharge row2 = pendingRow(accountCharge, new BigDecimal("60"));
+        final SavingsAccountInterestCharge row3 = pendingRow(accountCharge, new BigDecimal("60"));
 
         this.service.close(1L, closeCommandFor(1L, true));
 
@@ -350,7 +350,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(chargeTransaction.getAmount()).isEqualByComparingTo(grossInterest);
 
         assertThat(this.newlySavedRows).hasSize(1);
-        final DepositAccountInterestCharge closureRow = this.newlySavedRows.get(0);
+        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
         assertThat(List.of(row1, row2, row3).stream().allMatch(row -> !row.isPending())).isTrue();
         // The four shares sum to exactly what the single charge transaction moved - no more, no less.
         assertThat(row1.chargeAmount().add(row2.chargeAmount()).add(row3.chargeAmount()).add(closureRow.chargeAmount()))
@@ -545,7 +545,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(payChargeTransactions()).isEmpty();
 
         // ... and only afterwards the customer takes an early withdrawal (leaving a 40% pending row) and closes.
-        final DepositAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
+        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
 
         this.service.close(1L, closeCommandFor(1L, true));
 
@@ -568,7 +568,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(earlierRow.interestPostingTransaction()).isSameAs(preExistingPosting);
 
         assertThat(this.newlySavedRows).hasSize(1);
-        final DepositAccountInterestCharge closureRow = this.newlySavedRows.get(0);
+        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
         assertThat(closureRow.isPending()).isFalse();
         assertThat(closureRow.chargePercentage()).isEqualByComparingTo("60");
         assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
@@ -609,7 +609,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     void aGenuineCorrectionAtTheClosureBoundaryStillChargesNothing() {
         final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-        final DepositAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
+        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
 
         // An interest posting transaction dated the closure boundary whose amount is nowhere near what the period
         // actually earned - so postInterest(...) must reverse and repost it rather than leave it standing.
@@ -654,8 +654,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
 
     // === fixtures ===
 
-    private List<DepositAccountInterestCharge> allRows() {
-        final List<DepositAccountInterestCharge> rows = new ArrayList<>(this.existingRows);
+    private List<SavingsAccountInterestCharge> allRows() {
+        final List<SavingsAccountInterestCharge> rows = new ArrayList<>(this.existingRows);
         rows.addAll(this.newlySavedRows);
         return rows;
     }
@@ -737,11 +737,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 });
     }
 
-    private DepositAccountInterestCharge pendingRow(final SavingsAccountCharge accountCharge, final BigDecimal percentage) {
+    private SavingsAccountInterestCharge pendingRow(final SavingsAccountCharge accountCharge, final BigDecimal percentage) {
         final SavingsAccountTransaction earlierWithdrawal = new SavingsAccountTransactionTestBuilder()
                 .withId(500L + this.existingRows.size()).withSavingsAccount(this.account).withType(SavingsAccountTransactionType.WITHDRAWAL)
                 .withDate(ACTIVATION_DATE.plusDays(5)).withAmount(BigDecimal.ZERO).build();
-        final DepositAccountInterestCharge row = DepositAccountInterestCharge.createNew(this.account, earlierWithdrawal, accountCharge,
+        final SavingsAccountInterestCharge row = SavingsAccountInterestCharge.createNew(this.account, earlierWithdrawal, accountCharge,
                 accountCharge.getCharge(), ACTIVATION_DATE, ACTIVATION_DATE.plusDays(5), BigDecimal.ZERO, percentage, BigDecimal.ZERO);
         this.existingRows.add(row);
         return row;

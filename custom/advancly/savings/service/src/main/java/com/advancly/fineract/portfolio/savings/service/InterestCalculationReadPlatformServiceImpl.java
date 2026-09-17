@@ -21,7 +21,7 @@ package com.advancly.fineract.portfolio.savings.service;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -63,7 +63,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final ConfigurationDomainService configurationDomainService;
-    private final DepositAccountInterestChargeRepository interestChargeRepository;
+    private final SavingsAccountInterestChargeRepository interestChargeRepository;
 
     @Override
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount,

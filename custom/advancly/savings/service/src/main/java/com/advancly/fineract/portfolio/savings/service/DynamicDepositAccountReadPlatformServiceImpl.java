@@ -22,7 +22,7 @@ import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositAccountNotFoundException;
@@ -68,7 +68,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository;
     private final DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
-    private final DepositAccountInterestChargeRepository interestChargeRepository;
+    private final SavingsAccountInterestChargeRepository interestChargeRepository;
     private final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
 
     public DynamicDepositAccountReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
@@ -76,7 +76,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository,
             final DepositAccountDynamicRateHistoryRepository rateHistoryRepository,
-            final DepositAccountInterestChargeRepository interestChargeRepository,
+            final SavingsAccountInterestChargeRepository interestChargeRepository,
             final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService) {
         this.context = context;
         this.jdbcTemplate = jdbcTemplate;
@@ -126,7 +126,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         // The current period's unposted accrual: total earned to date minus what has already been posted.
         final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
-        // Section 5 keeps m_deposit_account_interest_charge as the source of truth, so all three figures are read
+        // Section 5 keeps m_savings_account_interest_charge as the source of truth, so all three figures are read
         // from it rather than from m_savings_account's derived columns - which are returned alongside, so any drift
         // between the two shows up directly in the API response.
         final BigDecimal interestBasedChargePostedDerived = defaultToZero(this.interestChargeRepository.sumPostedChargeAmount(accountId));
@@ -149,7 +149,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         }
 
         // Life-to-date scope, consistent with withholdingTax and interestBasedCharges (both life-to-date, read from
-        // m_deposit_account_interest_charge) - not totalInterestForPeriod, which is the current unposted accrual.
+        // m_savings_account_interest_charge) - not totalInterestForPeriod, which is the current unposted accrual.
         // Phase 5's Transfer Interest To Savings Job computes its own period-scoped net interest directly from
         // per-transaction data and does not read this DTO, so this field is a reporting convenience only; a correct
         // per-period WHT figure isn't computable this phase anyway since WHT is only known once a period is actually

@@ -30,7 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
@@ -64,7 +64,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     private PlatformSecurityContext context;
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private ConfigurationDomainService configurationDomainService;
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
     private InterestCalculationReadPlatformServiceImpl service;
 
     @BeforeEach
@@ -76,7 +76,7 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
-        this.interestChargeRepository = mock(DepositAccountInterestChargeRepository.class);
+        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
                 this.configurationDomainService, this.interestChargeRepository);
     }

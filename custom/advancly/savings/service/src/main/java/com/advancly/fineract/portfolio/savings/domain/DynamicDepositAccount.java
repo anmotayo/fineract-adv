@@ -111,7 +111,7 @@ public class DynamicDepositAccount extends SavingsAccount {
      * own column here - Dynamic Deposit's early-withdrawal charge is the only penalty this product ever applies, so
      * that figure is exactly {@code SavingsAccountSummary.totalPenaltyCharge}, and a second column would just be a
      * duplicate of it that could drift. The spec is explicit that this pending figure is "not used as the source of
-     * truth for posting, reversals, or accounting" - that remains {@code m_deposit_account_interest_charge} plus the
+     * truth for posting, reversals, or accounting" - that remains {@code m_savings_account_interest_charge} plus the
      * linked transactions.
      *
      * Mapped here, on the subclass, rather than on {@code SavingsAccount}: the hierarchy is
@@ -132,7 +132,7 @@ public class DynamicDepositAccount extends SavingsAccount {
      * ({@link #completeClosureSettlement(SavingsAccountTransaction)}).
      *
      * {@code @Transient} - deliberately never persisted: it lives only for the duration of the single closure
-     * transaction, and its durable output is the {@code m_deposit_account_interest_charge} row plus the transactions
+     * transaction, and its durable output is the {@code m_savings_account_interest_charge} row plus the transactions
      * written for it. Being non-null is also the signal that suppresses the ordinary early-withdrawal hook for the
      * settlement withdrawal (see {@link #isClosureSettlementInProgress()}).
      */
@@ -443,7 +443,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
         // The undone transaction may be an early-withdrawal charge posting or the withdrawal a pending charge row is
         // linked to; either way the repository query backing this column already excludes reversed rows/links
-        // (see DepositAccountInterestChargeRepository), so m_deposit_account_interest_charge itself stays correct -
+        // (see SavingsAccountInterestChargeRepository), so m_savings_account_interest_charge itself stays correct -
         // but the fast-read derived column on this row is otherwise only refreshed inside
         // applyPendingInterestBasedCharges(...) and would go stale (too high) until the next early
         // withdrawal happens to refresh it. Recompute unconditionally rather than only when transactionToUndo is a
@@ -830,7 +830,7 @@ public class DynamicDepositAccount extends SavingsAccount {
      * Implementation plan Section 10 steps 2, 4, 7 and 8, for one core posting-period boundary:
      *
      * <ol>
-     * <li>take the pending {@code m_deposit_account_interest_charge} rows whose interest period ended on or before this
+     * <li>take the pending {@code m_savings_account_interest_charge} rows whose interest period ended on or before this
      * boundary and RECOMPUTE each one's amount from its stored {@code charge_percentage} against this period's real
      * gross interest - the amount those rows were written with at withdrawal time is provisional and is deliberately
      * ignored (see Task 7), which is what lets a withdrawal taken before any interest calculation still charge
@@ -891,7 +891,7 @@ public class DynamicDepositAccount extends SavingsAccount {
                 && this.closureSettlement.hasQualifyingCharge() && !this.closureSettlement.isApplied() ? this.closureSettlement : null;
 
         final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
-        final List<DepositAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
+        final List<SavingsAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
                 interestPostingTransactionDate);
         if (pendingRows.isEmpty() && closureContribution == null) {
             return false;
@@ -909,7 +909,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         final int contributionCount = pendingRows.size() + (closureContribution == null ? 0 : 1);
         final List<BigDecimal> recomputedAmounts = new ArrayList<>(contributionCount);
         BigDecimal recomputedTotal = BigDecimal.ZERO;
-        for (final DepositAccountInterestCharge row : pendingRows) {
+        for (final SavingsAccountInterestCharge row : pendingRows) {
             final BigDecimal recomputed = recomputedChargeAmount(grossInterest, row.chargePercentage());
             recomputedAmounts.add(recomputed);
             recomputedTotal = recomputedTotal.add(recomputed);
@@ -1063,7 +1063,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
 
         final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
-        interestChargeRepository.saveAndFlush(DepositAccountInterestCharge.createApplied(this, closureWithdrawal,
+        interestChargeRepository.saveAndFlush(SavingsAccountInterestCharge.createApplied(this, closureWithdrawal,
                 settlement.accountCharge(), settlement.accountCharge().getCharge(), settlement.interestPeriodStartDate(),
                 settlement.closedDate(), settlement.grossInterestBasis(), settlement.percentage(), settlement.appliedAmount(),
                 settlement.interestPostingTransaction(), settlement.interestChargeTransaction()));

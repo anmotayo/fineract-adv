@@ -30,11 +30,11 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.junit.jupiter.api.Test;
 
-class DepositAccountInterestChargeTest {
+class SavingsAccountInterestChargeTest {
 
     @Test
     void aNewRowIsPendingAndCarriesNoTransactionLinks() {
-        final DepositAccountInterestCharge row = row(false);
+        final SavingsAccountInterestCharge row = row(false);
 
         assertThat(row.isPending()).isTrue();
         assertThat(row.interestPostingTransaction()).isNull();
@@ -46,7 +46,7 @@ class DepositAccountInterestChargeTest {
 
     @Test
     void linkToPostingStoresBothTransactionsAndClearsThePendingState() {
-        final DepositAccountInterestCharge row = row(false);
+        final SavingsAccountInterestCharge row = row(false);
         final SavingsAccountTransaction posting = mock(SavingsAccountTransaction.class);
         final SavingsAccountTransaction chargeTransaction = mock(SavingsAccountTransaction.class);
 
@@ -63,14 +63,14 @@ class DepositAccountInterestChargeTest {
         assertThat(row(false).isVoidedByReversal()).isFalse();
     }
 
-    private DepositAccountInterestCharge row(final boolean withdrawalReversed) {
+    private SavingsAccountInterestCharge row(final boolean withdrawalReversed) {
         final SavingsAccount account = mock(SavingsAccount.class);
         final SavingsAccountTransaction withdrawal = mock(SavingsAccountTransaction.class);
         lenient().when(withdrawal.isReversed()).thenReturn(withdrawalReversed);
         final SavingsAccountCharge savingsAccountCharge = mock(SavingsAccountCharge.class);
         final Charge charge = mock(Charge.class);
 
-        return DepositAccountInterestCharge.createNew(account, withdrawal, savingsAccountCharge, charge, LocalDate.of(2026, 1, 1),
+        return SavingsAccountInterestCharge.createNew(account, withdrawal, savingsAccountCharge, charge, LocalDate.of(2026, 1, 1),
                 LocalDate.of(2026, 1, 20), new BigDecimal("300.00"), new BigDecimal("5"), new BigDecimal("15.00"));
     }
 }

@@ -18,8 +18,8 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Creates the pending {@code m_deposit_account_interest_charge} row for an early withdrawal from a Dynamic Deposit
+ * Creates the pending {@code m_savings_account_interest_charge} row for an early withdrawal from a Dynamic Deposit
  * account (implementation plan Section 11).
  *
  * "Early withdrawal" is any withdrawal transaction dated strictly before the account's maturity date - which also
@@ -69,11 +69,11 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         return new MathContext(8, MoneyHelper.getRoundingMode());
     }
 
-    private final DepositAccountInterestChargeRepository interestChargeRepository;
+    private final SavingsAccountInterestChargeRepository interestChargeRepository;
     private final DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private final DepositProductDynamicDetailRepository productDynamicDetailRepository;
 
-    public DynamicDepositEarlyWithdrawalChargeService(final DepositAccountInterestChargeRepository interestChargeRepository,
+    public DynamicDepositEarlyWithdrawalChargeService(final SavingsAccountInterestChargeRepository interestChargeRepository,
             final DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
             final DepositProductDynamicDetailRepository productDynamicDetailRepository) {
         this.interestChargeRepository = interestChargeRepository;
@@ -126,7 +126,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
                 .min(interestBasis).max(BigDecimal.ZERO);
 
         this.interestChargeRepository.saveAndFlush(
-                DepositAccountInterestCharge.createNew(account, withdrawalTransaction, qualifyingCharge, qualifyingCharge.getCharge(),
+                SavingsAccountInterestCharge.createNew(account, withdrawalTransaction, qualifyingCharge, qualifyingCharge.getCharge(),
                         currentPeriodStartDate(account), withdrawalDate, interestBasis, percentage, provisionalChargeAmount));
 
         // Section 11: "Update interest_based_charge_derived during interest calculation". Recomputed from the table

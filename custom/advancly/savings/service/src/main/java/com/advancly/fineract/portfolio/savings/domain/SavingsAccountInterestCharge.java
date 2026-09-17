@@ -46,8 +46,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
  * columns on {@code m_savings_account} are read-side conveniences only (Section 5).
  */
 @Entity
-@Table(name = "m_deposit_account_interest_charge")
-public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTimeCustom<Long> {
+@Table(name = "m_savings_account_interest_charge")
+public class SavingsAccountInterestCharge extends AbstractAuditableWithUTCDateTimeCustom<Long> {
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "savings_account_id", nullable = false)
@@ -94,11 +94,11 @@ public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTi
     @Column(name = "charge_amount", nullable = false, scale = 6, precision = 19)
     private BigDecimal chargeAmount;
 
-    protected DepositAccountInterestCharge() {
+    protected SavingsAccountInterestCharge() {
         //
     }
 
-    private DepositAccountInterestCharge(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
+    private SavingsAccountInterestCharge(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
             final SavingsAccountCharge savingsAccountCharge, final Charge charge, final LocalDate interestPeriodStartDate,
             final LocalDate interestPeriodEndDate, final BigDecimal interestAmountBasis, final BigDecimal chargePercentage,
             final BigDecimal chargeAmount) {
@@ -113,11 +113,11 @@ public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTi
         this.chargeAmount = chargeAmount;
     }
 
-    public static DepositAccountInterestCharge createNew(final SavingsAccount account,
+    public static SavingsAccountInterestCharge createNew(final SavingsAccount account,
             final SavingsAccountTransaction withdrawalTransaction, final SavingsAccountCharge savingsAccountCharge, final Charge charge,
             final LocalDate interestPeriodStartDate, final LocalDate interestPeriodEndDate, final BigDecimal interestAmountBasis,
             final BigDecimal chargePercentage, final BigDecimal chargeAmount) {
-        return new DepositAccountInterestCharge(account, withdrawalTransaction, savingsAccountCharge, charge, interestPeriodStartDate,
+        return new SavingsAccountInterestCharge(account, withdrawalTransaction, savingsAccountCharge, charge, interestPeriodStartDate,
                 interestPeriodEndDate, interestAmountBasis, chargePercentage, chargeAmount);
     }
 
@@ -128,12 +128,12 @@ public class DepositAccountInterestCharge extends AbstractAuditableWithUTCDateTi
      * already known by the time the closure withdrawal it belongs to exists - there is nothing left for it to wait for,
      * and nothing will ever run again on a closed account to finalize it if it were left pending.
      */
-    public static DepositAccountInterestCharge createApplied(final SavingsAccount account,
+    public static SavingsAccountInterestCharge createApplied(final SavingsAccount account,
             final SavingsAccountTransaction withdrawalTransaction, final SavingsAccountCharge savingsAccountCharge, final Charge charge,
             final LocalDate interestPeriodStartDate, final LocalDate interestPeriodEndDate, final BigDecimal interestAmountBasis,
             final BigDecimal chargePercentage, final BigDecimal chargeAmount, final SavingsAccountTransaction interestPostingTransaction,
             final SavingsAccountTransaction interestChargeTransaction) {
-        final DepositAccountInterestCharge row = new DepositAccountInterestCharge(account, withdrawalTransaction, savingsAccountCharge,
+        final SavingsAccountInterestCharge row = new SavingsAccountInterestCharge(account, withdrawalTransaction, savingsAccountCharge,
                 charge, interestPeriodStartDate, interestPeriodEndDate, interestAmountBasis, chargePercentage, chargeAmount);
         row.linkToPosting(interestPostingTransaction, interestChargeTransaction);
         return row;

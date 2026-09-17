@@ -28,8 +28,8 @@ import static org.mockito.Mockito.verify;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
@@ -74,7 +74,7 @@ class DynamicDepositAccountInterestTest {
 
     private DynamicDepositAccount account;
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
     private DynamicDepositRateHistoryService rateHistoryService;
 
     @BeforeEach
@@ -82,7 +82,7 @@ class DynamicDepositAccountInterestTest {
         MoneyHelperInitializer.initialize();
 
         this.rateHistoryRepository = mock(DepositAccountDynamicRateHistoryRepository.class);
-        this.interestChargeRepository = mock(DepositAccountInterestChargeRepository.class);
+        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         this.rateHistoryService = mock(DynamicDepositRateHistoryService.class);
         // Phase 4: postInterest now resolves the interest-charge repository through the locator on every run, so it
         // must be stubbed for every test in this class. Defaults to "nothing pending", which is the pre-Phase-4
@@ -90,7 +90,7 @@ class DynamicDepositAccountInterestTest {
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenReturn(List.of());
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
-        lenient().when(applicationContext.getBean(DepositAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
+        lenient().when(applicationContext.getBean(SavingsAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
         // Only exercised by undoTransaction(...) - DynamicDepositAccount#undoTransaction resolves the rate-history
         // service through the locator to reverse the invested-amount rate-history row for the undone transaction.
         lenient().when(applicationContext.getBean(DynamicDepositRateHistoryService.class)).thenReturn(this.rateHistoryService);
@@ -246,7 +246,7 @@ class DynamicDepositAccountInterestTest {
         this.account = buildAccount();
         stubSingleRateHistoryForJanuary();
         // Provisional amount deliberately nonsense (99.99): it must have no influence whatsoever on what is charged.
-        final DepositAccountInterestCharge pendingRow = stubOnePendingRow(new BigDecimal("10"), new BigDecimal("99.99"));
+        final SavingsAccountInterestCharge pendingRow = stubOnePendingRow(new BigDecimal("10"), new BigDecimal("99.99"));
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
@@ -272,7 +272,7 @@ class DynamicDepositAccountInterestTest {
         stubSingleRateHistoryForJanuary();
         // Exactly what Task 7 writes when no interest calculation has run since the last posting: the authoritative
         // percentage, a zero basis and a zero provisional amount.
-        final DepositAccountInterestCharge pendingRow = stubOnePendingRow(new BigDecimal("10"), BigDecimal.ZERO);
+        final SavingsAccountInterestCharge pendingRow = stubOnePendingRow(new BigDecimal("10"), BigDecimal.ZERO);
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
@@ -294,7 +294,7 @@ class DynamicDepositAccountInterestTest {
         // up) pushes the non-last rows' running sum above the transaction's real applied total, driving the last
         // row's remainder negative - e.g. 0.01, 0.01, 0.01, 0.01, -0.01 for a 0.03 transaction. Truncating each
         // non-last row DOWN instead is the fix under test here.
-        final List<DepositAccountInterestCharge> pendingRows = stubPendingRows(5, new BigDecimal("0.17"));
+        final List<SavingsAccountInterestCharge> pendingRows = stubPendingRows(5, new BigDecimal("0.17"));
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
@@ -307,7 +307,7 @@ class DynamicDepositAccountInterestTest {
         // sum to the right total, which a negative row can hide behind (0.01, 0.01, 0.01, 0.01, -0.01 still sums to
         // 0.03).
         assertThat(pendingRows).allSatisfy(row -> assertThat(row.chargeAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
-        final BigDecimal sumOfRows = pendingRows.stream().map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO,
+        final BigDecimal sumOfRows = pendingRows.stream().map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO,
                 BigDecimal::add);
         assertThat(sumOfRows).isEqualByComparingTo(appliedTotal);
     }
@@ -319,7 +319,7 @@ class DynamicDepositAccountInterestTest {
 
         // Simulates the exact staleness Task 7's review found: an earlier early-withdrawal charge posting left this
         // fast-read column non-zero, and the withdrawal that produced it (or the charge posting itself) is now
-        // being undone. m_deposit_account_interest_charge itself is already correct post-undo - its queries exclude
+        // being undone. m_savings_account_interest_charge itself is already correct post-undo - its queries exclude
         // rows linked to a reversed transaction - the stub below simulates what it now reports.
         this.account.updateInterestBasedChargeDerived(BigDecimal.valueOf(12));
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
@@ -350,13 +350,13 @@ class DynamicDepositAccountInterestTest {
         // PERCENT_OF_INTEREST is the real calculation type Dynamic Deposit early-withdrawal charges use (see
         // DynamicDepositEarlyWithdrawalChargeService) - its charge-definition amount/outstanding start at zero
         // (SavingsAccountCharge#populateDerivedFields), since the real figures live in
-        // m_deposit_account_interest_charge instead.
+        // m_savings_account_interest_charge instead.
         final SavingsAccountCharge attributedCharge = SavingsAccountCharge.createNewWithoutSavingsAccount(chargeDefinition,
                 new BigDecimal("10"), ChargeTimeType.SAVINGS_ACTIVATION, ChargeCalculationType.PERCENT_OF_INTEREST, null, true, null, null);
         assertThat(attributedCharge.isPaidOrPartiallyPaid(CURRENCY)).isFalse();
         assertThat(attributedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
 
-        final DepositAccountInterestCharge pendingRow = DepositAccountInterestCharge.createNew(this.account,
+        final SavingsAccountInterestCharge pendingRow = SavingsAccountInterestCharge.createNew(this.account,
                 mock(SavingsAccountTransaction.class), attributedCharge, mock(Charge.class), LocalDate.of(2026, 1, 1),
                 LocalDate.of(2026, 1, 20), BigDecimal.ZERO, new BigDecimal("10"), BigDecimal.ZERO);
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any()))
@@ -392,8 +392,8 @@ class DynamicDepositAccountInterestTest {
         assertThat(attributedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    private DepositAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {
-        final DepositAccountInterestCharge pendingRow = DepositAccountInterestCharge.createNew(this.account,
+    private SavingsAccountInterestCharge stubOnePendingRow(final BigDecimal percentage, final BigDecimal provisionalAmount) {
+        final SavingsAccountInterestCharge pendingRow = SavingsAccountInterestCharge.createNew(this.account,
                 mock(SavingsAccountTransaction.class), mock(SavingsAccountCharge.class), mock(Charge.class), LocalDate.of(2026, 1, 1),
                 LocalDate.of(2026, 1, 20), provisionalAmount, percentage, provisionalAmount);
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any()))
@@ -405,17 +405,17 @@ class DynamicDepositAccountInterestTest {
     }
 
     /** {@code count} pending rows, each with the same {@code percentageEach} and a zero provisional basis/amount. */
-    private List<DepositAccountInterestCharge> stubPendingRows(final int count, final BigDecimal percentageEach) {
-        final List<DepositAccountInterestCharge> rows = new ArrayList<>();
+    private List<SavingsAccountInterestCharge> stubPendingRows(final int count, final BigDecimal percentageEach) {
+        final List<SavingsAccountInterestCharge> rows = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            rows.add(DepositAccountInterestCharge.createNew(this.account, mock(SavingsAccountTransaction.class),
+            rows.add(SavingsAccountInterestCharge.createNew(this.account, mock(SavingsAccountTransaction.class),
                     mock(SavingsAccountCharge.class), mock(Charge.class), LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 20),
                     BigDecimal.ZERO, percentageEach, BigDecimal.ZERO));
         }
         lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenReturn(new ArrayList<>(rows));
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(
-                invocation -> rows.stream().map(DepositAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+                invocation -> rows.stream().map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
         return rows;
     }
 

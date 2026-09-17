@@ -27,7 +27,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -75,7 +75,7 @@ class AdvanclySavingsAccountDomainServiceTest {
     @Mock
     private DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
     @Mock
-    private DepositAccountInterestChargeRepository interestChargeRepository;
+    private SavingsAccountInterestChargeRepository interestChargeRepository;
 
     private AdvanclySavingsAccountDomainService domainService;
     private MonetaryCurrency currency;
@@ -157,7 +157,7 @@ class AdvanclySavingsAccountDomainServiceTest {
         lenient().when(coreDomainService.handleReversal(eq(dynamicDepositAccount),
                 eq(java.util.Collections.singletonList(originalWithdrawal)), eq(false))).thenReturn(reversalTransaction);
 
-        // m_deposit_account_interest_charge itself is already correct post-reversal (its queries exclude rows linked
+        // m_savings_account_interest_charge itself is already correct post-reversal (its queries exclude rows linked
         // to a reversed transaction) - the repository stub below simulates what it now reports.
         lenient().when(interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
 

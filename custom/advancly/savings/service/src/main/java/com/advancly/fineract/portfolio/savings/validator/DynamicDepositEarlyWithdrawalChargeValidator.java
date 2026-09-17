@@ -18,7 +18,6 @@
  */
 package com.advancly.fineract.portfolio.savings.validator;
 
-import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeModeParamName;
 
@@ -64,15 +63,17 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
      *            {@code NO_COMPOUNDING_SIMPLE_INTEREST} product (see the check below)
      * @param compoundingPeriodType
      *            the product's compounding period type
+     * @param resourceName
+     *            the API resource name used in error responses (allows sharing this validator across product types)
      * @return the resolved {@link Charge}, or {@code null} when the penalty is disabled and no charge is selected
      */
     public static Charge validateAndResolve(final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId,
             final Collection<Charge> productCharges, final EarlyWithdrawalChargeMode mode,
-            final SavingsCompoundingInterestPeriodType compoundingPeriodType) {
+            final SavingsCompoundingInterestPeriodType compoundingPeriodType, final String resourceName) {
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
-                .resource(DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
+                .resource(resourceName);
 
         if (!earlyWithdrawalPenaltyEnabled) {
             if (earlyWithdrawalChargeId != null) {
@@ -133,15 +134,20 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
     }
 
     /**
-     * Defensive enforcement of "only one active early-withdrawal charge per dynamic deposit product" (Section 2). The
+     * Defensive enforcement of "only one active early-withdrawal charge per product" (Section 2). The
      * primary enforcement is the singular {@code earlyWithdrawalChargeId} API parameter plus the write service's
      * replace-rather-than-append semantics; this rejects a product whose classifier table already holds more than one
      * row, which can only happen if rows were written outside the API.
+     *
+     * @param existingRows
+     *            the currently-stored early-withdrawal charge rows for the product
+     * @param resourceName
+     *            the API resource name used in error responses (allows sharing this validator across product types)
      */
-    public static void validateAtMostOneActiveCharge(final List<SavingsProductEarlyWithdrawalCharge> existingRows) {
+    public static void validateAtMostOneActiveCharge(final List<SavingsProductEarlyWithdrawalCharge> existingRows, final String resourceName) {
         if (existingRows != null && existingRows.size() > 1) {
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
-            new DataValidatorBuilder(dataValidationErrors).resource(DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME).reset()
+            new DataValidatorBuilder(dataValidationErrors).resource(resourceName).reset()
                     .parameter(earlyWithdrawalChargeIdParamName).value(existingRows.size())
                     .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.must.be.unique.per.product");
             throw new PlatformApiDataValidationException(dataValidationErrors);

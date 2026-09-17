@@ -18,6 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeModeParamName;
 
@@ -187,7 +188,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
      */
     private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
         this.earlyWithdrawalChargeReconciler.reconcile(product.getId(), command, product.isEarlyWithdrawalPenaltyEnabled(),
-                product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName, earlyWithdrawalChargeModeParamName);
+                product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName, earlyWithdrawalChargeModeParamName,
+                DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dae) {

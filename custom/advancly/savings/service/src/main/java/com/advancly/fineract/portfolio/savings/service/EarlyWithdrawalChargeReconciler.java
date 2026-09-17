@@ -33,8 +33,8 @@ import org.springframework.stereotype.Component;
  * Applies a product's early-withdrawal penalty charge+mode selection with replace-rather-than-append semantics
  * (implementation plan Section 2) — the primary enforcement of "only one active early-withdrawal charge per
  * product". Shared by Dynamic Deposit's and plain Savings's product write services so the rule has exactly one
- * implementation; the resource name for error codes is supplied by the caller since the two products' API resources
- * differ.
+ * implementation. The resource name flows from the caller into the shared validator methods, enabling each product
+ * type's error responses to name the correct API resource.
  */
 @Component
 public class EarlyWithdrawalChargeReconciler {
@@ -47,11 +47,11 @@ public class EarlyWithdrawalChargeReconciler {
 
     public void reconcile(final Long savingsProductId, final JsonCommand command, final boolean earlyWithdrawalPenaltyEnabled,
             final Collection<Charge> productCharges, final SavingsCompoundingInterestPeriodType compoundingPeriodType,
-            final String earlyWithdrawalChargeIdParamName, final String earlyWithdrawalChargeModeParamName) {
+            final String earlyWithdrawalChargeIdParamName, final String earlyWithdrawalChargeModeParamName, final String resourceName) {
 
         final List<SavingsProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
                 .findBySavingsProductId(savingsProductId);
-        DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(existingRows);
+        DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(existingRows, resourceName);
 
         final Long requestedChargeId = command.parameterExists(earlyWithdrawalChargeIdParamName)
                 ? command.longValueOfParameterNamed(earlyWithdrawalChargeIdParamName)
@@ -63,7 +63,7 @@ public class EarlyWithdrawalChargeReconciler {
         final EarlyWithdrawalChargeMode mode = EarlyWithdrawalChargeMode.fromInt(requestedMode);
 
         final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(earlyWithdrawalPenaltyEnabled,
-                requestedChargeId, productCharges, mode, compoundingPeriodType);
+                requestedChargeId, productCharges, mode, compoundingPeriodType, resourceName);
 
         this.earlyWithdrawalChargeRepository.deleteAll(existingRows);
         this.earlyWithdrawalChargeRepository.flush();

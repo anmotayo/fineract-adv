@@ -18,12 +18,10 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import java.util.Collections;
@@ -60,7 +58,7 @@ class EarlyWithdrawalChargeReconcilerTest {
 
         final EarlyWithdrawalChargeReconciler reconciler = new EarlyWithdrawalChargeReconciler(earlyWithdrawalChargeRepository);
         reconciler.reconcile(1L, command, true, List.of(charge), SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST,
-                "earlyWithdrawalChargeId", "earlyWithdrawalChargeMode");
+                "earlyWithdrawalChargeId", "earlyWithdrawalChargeMode", "testResource");
 
         verify(earlyWithdrawalChargeRepository).deleteAll(Collections.emptyList());
         verify(earlyWithdrawalChargeRepository).saveAndFlush(any(SavingsProductEarlyWithdrawalCharge.class));
@@ -73,7 +71,7 @@ class EarlyWithdrawalChargeReconcilerTest {
 
         final EarlyWithdrawalChargeReconciler reconciler = new EarlyWithdrawalChargeReconciler(earlyWithdrawalChargeRepository);
         reconciler.reconcile(1L, command, false, Collections.emptyList(),
-                SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST, "earlyWithdrawalChargeId", "earlyWithdrawalChargeMode");
+                SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST, "earlyWithdrawalChargeId", "earlyWithdrawalChargeMode", "testResource");
 
         verify(earlyWithdrawalChargeRepository).deleteAll(Collections.emptyList());
         verify(earlyWithdrawalChargeRepository, org.mockito.Mockito.never()).saveAndFlush(any());

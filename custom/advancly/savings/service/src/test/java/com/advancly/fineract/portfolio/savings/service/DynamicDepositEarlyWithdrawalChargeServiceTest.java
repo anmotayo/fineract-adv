@@ -145,6 +145,21 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
     }
 
     @Test
+    void nothingIsRecordedWhenTheSelectedChargeIsConfiguredForCumulativeMode() {
+        // Identical setup to a PER_PERIOD charge that WOULD record a pending row - only the mode differs. CUMULATIVE
+        // mode's forfeiture already ran at the write-platform layer for this same withdrawal (see
+        // CumulativeInterestForfeitureService), so recording a per-period pending row here too would double-charge
+        // the customer.
+        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
+                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.CUMULATIVE)));
+        final DynamicDepositAccount account = account(new BigDecimal("500"), new BigDecimal("200"), accountCharge(new BigDecimal("10")));
+
+        this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY));
+
+        assertThat(this.savedRows).isEmpty();
+    }
+
+    @Test
     void aRowIsStillRecordedWithTheAuthoritativePercentageWhenTheBasisIsStaleOrZero() {
         // Nothing has been calculated since the last posting, so the summary reports no unposted interest. The row
         // must still be written: charge_percentage is the authoritative input, and posting recomputes the amount from

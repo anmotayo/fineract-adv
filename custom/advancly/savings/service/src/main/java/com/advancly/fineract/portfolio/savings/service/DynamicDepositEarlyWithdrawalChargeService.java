@@ -96,13 +96,27 @@ public class DynamicDepositEarlyWithdrawalChargeService {
         // Guarding inside this single method rather than at each call site keeps the rule in one place. Note that
         // only DynamicDepositAccount#withdraw actually reaches here: the optimized append path in
         // AdvanclySavingsAccountDomainService bypasses SavingsAccount#withdraw() entirely and so never records a
-        // per-period row. Cumulative mode is unaffected - it is triggered at the write-platform layer, above both
-        // paths (see CumulativeInterestForfeitureService).
+        // per-period row. CUMULATIVE-mode products need the same skip for a related but distinct reason, checked
+        // separately just below: their entire lifetime interest is already forfeited synchronously at the
+        // write-platform layer (see CumulativeInterestForfeitureService), so a pending per-period row here would
+        // double the customer's penalty on an ordinary early withdrawal - and, on a premature closure, would be
+        // exactly as orphaned as the duplicate this guard already exists to prevent, since a closed account never
+        // posts interest again either.
         if (account.isClosureSettlementInProgress()) {
             return;
         }
         final LocalDate withdrawalDate = withdrawalTransaction.getTransactionDate();
         if (!account.isEarlyWithdrawal(withdrawalDate)) {
+            return;
+        }
+
+        // Same lookup as AdvanclySavingsAccountWritePlatformService#isCumulativeMode: CUMULATIVE-mode's forfeiture
+        // already ran for this very withdrawal at the write-platform layer, above this entity-level hook, taking the
+        // account's whole lifetime interest. Checked before resolving a qualifying charge below so a CUMULATIVE
+        // product never gets as far as that resolution just to have it discarded.
+        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
+                .findBySavingsProductId(account.productId());
+        if (selections.size() == 1 && selections.get(0).mode().isCumulative()) {
             return;
         }
 

@@ -24,14 +24,10 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductRepository;
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositProductNotFoundException;
-import com.advancly.fineract.portfolio.savings.validator.DynamicDepositEarlyWithdrawalChargeValidator;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositProductDataValidator;
 import jakarta.persistence.PersistenceException;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -68,6 +64,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
     private final InterestRateChartAssembler chartAssembler;
     private final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
+    private final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler;
 
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
@@ -75,7 +72,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             final DynamicDepositProductAssembler dynamicDepositProductAssembler,
             final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
             final InterestRateChartAssembler chartAssembler,
-            final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService) {
+            final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService,
+            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler) {
         this.context = context;
         this.dynamicDepositProductRepository = dynamicDepositProductRepository;
         this.fromApiJsonDataValidator = fromApiJsonDataValidator;
@@ -83,6 +81,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
         this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
         this.chartAssembler = chartAssembler;
         this.accountMappingWritePlatformService = accountMappingWritePlatformService;
+        this.earlyWithdrawalChargeReconciler = earlyWithdrawalChargeReconciler;
     }
 
     @Transactional
@@ -187,29 +186,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
      * update never silently drops or downgrades either one.
      */
     private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
-        final List<SavingsProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
-                .findBySavingsProductId(product.getId());
-        DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(existingRows);
-
-        final Long requestedChargeId = command.parameterExists(earlyWithdrawalChargeIdParamName)
-                ? command.longValueOfParameterNamed(earlyWithdrawalChargeIdParamName)
-                : (existingRows.isEmpty() ? null : existingRows.get(0).chargeId());
-
-        final Integer requestedMode = command.parameterExists(earlyWithdrawalChargeModeParamName)
-                ? command.integerValueOfParameterNamed(earlyWithdrawalChargeModeParamName)
-                : (existingRows.isEmpty() ? null : existingRows.get(0).mode().getValue());
-        final EarlyWithdrawalChargeMode mode = EarlyWithdrawalChargeMode.fromInt(requestedMode);
-
-        final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(
-                product.isEarlyWithdrawalPenaltyEnabled(), requestedChargeId, product.charges(), mode,
-                product.interestCompoundingPeriodType());
-
-        this.earlyWithdrawalChargeRepository.deleteAll(existingRows);
-        this.earlyWithdrawalChargeRepository.flush();
-        if (resolvedCharge != null) {
-            this.earlyWithdrawalChargeRepository
-                    .saveAndFlush(SavingsProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId(), mode));
-        }
+        this.earlyWithdrawalChargeReconciler.reconcile(product.getId(), command, product.isEarlyWithdrawalPenaltyEnabled(),
+                product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName, earlyWithdrawalChargeModeParamName);
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dae) {

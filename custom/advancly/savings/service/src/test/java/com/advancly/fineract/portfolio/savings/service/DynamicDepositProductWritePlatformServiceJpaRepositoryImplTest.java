@@ -66,6 +66,7 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
     private SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
     private InterestRateChartAssembler chartAssembler;
     private ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
+    private EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler;
     private DynamicDepositProductWritePlatformServiceJpaRepositoryImpl service;
 
     @BeforeEach
@@ -79,13 +80,14 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
         this.earlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
         this.chartAssembler = mock(InterestRateChartAssembler.class);
         this.accountMappingWritePlatformService = mock(ProductToGLAccountMappingWritePlatformService.class);
+        this.earlyWithdrawalChargeReconciler = new EarlyWithdrawalChargeReconciler(this.earlyWithdrawalChargeRepository);
 
         lenient().when(this.accountMappingWritePlatformService.updateSavingsProductToGLAccountMapping(any(), any(), anyBoolean(), anyInt(),
                 eq(DepositAccountType.DYNAMIC_DEPOSIT))).thenReturn(new HashMap<>());
 
         this.service = new DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(this.context, this.dynamicDepositProductRepository,
                 this.fromApiJsonDataValidator, this.dynamicDepositProductAssembler, this.earlyWithdrawalChargeRepository,
-                this.chartAssembler, this.accountMappingWritePlatformService);
+                this.chartAssembler, this.accountMappingWritePlatformService, this.earlyWithdrawalChargeReconciler);
     }
 
     @Test

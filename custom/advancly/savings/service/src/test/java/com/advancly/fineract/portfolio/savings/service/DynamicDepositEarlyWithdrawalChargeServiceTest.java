@@ -28,8 +28,8 @@ import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChar
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
@@ -69,7 +69,7 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
     private final List<SavingsAccountInterestCharge> savedRows = new ArrayList<>();
 
     private SavingsAccountInterestChargeRepository interestChargeRepository;
-    private DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private DepositProductDynamicDetailRepository productDynamicDetailRepository;
     private DynamicDepositEarlyWithdrawalChargeService service;
 
@@ -86,9 +86,9 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
         lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong())).thenAnswer(invocation -> this.savedRows.stream()
                 .map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
 
-        this.productEarlyWithdrawalChargeRepository = mock(DepositProductEarlyWithdrawalChargeRepository.class);
+        this.productEarlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
         lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID))
-                .thenReturn(List.of(DepositProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID)));
+                .thenReturn(List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID)));
 
         this.productDynamicDetailRepository = mock(DepositProductDynamicDetailRepository.class);
         lenient().when(this.productDynamicDetailRepository.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(productDetail(true)));

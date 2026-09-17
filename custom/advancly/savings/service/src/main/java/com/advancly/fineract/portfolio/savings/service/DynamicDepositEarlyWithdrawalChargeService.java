@@ -22,8 +22,8 @@ import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChar
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -70,11 +70,11 @@ public class DynamicDepositEarlyWithdrawalChargeService {
     }
 
     private final SavingsAccountInterestChargeRepository interestChargeRepository;
-    private final DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private final DepositProductDynamicDetailRepository productDynamicDetailRepository;
 
     public DynamicDepositEarlyWithdrawalChargeService(final SavingsAccountInterestChargeRepository interestChargeRepository,
-            final DepositProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
+            final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
             final DepositProductDynamicDetailRepository productDynamicDetailRepository) {
         this.interestChargeRepository = interestChargeRepository;
         this.productEarlyWithdrawalChargeRepository = productEarlyWithdrawalChargeRepository;
@@ -161,7 +161,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
 
     /**
      * Section 11's qualification list, in order: the product has {@code early_withdrawal_penalty_enabled}; exactly one
-     * charge is selected in {@code m_deposit_product_early_withdrawal_charge}; the account carries that charge (which
+     * charge is selected in {@code m_savings_product_early_withdrawal_charge}; the account carries that charge (which
      * {@code DynamicDepositAccountAssembler} guarantees for accounts created after Phase 4, and which the caller may
      * also have supplied as an override); the account charge is active; it or its definition is a penalty; and the
      * calculation type is {@code PERCENT_OF_INTEREST}.
@@ -173,7 +173,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
             return null;
         }
 
-        final List<DepositProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
+        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
                 .findBySavingsProductId(account.productId());
         if (selections.size() != 1) {
             return null;

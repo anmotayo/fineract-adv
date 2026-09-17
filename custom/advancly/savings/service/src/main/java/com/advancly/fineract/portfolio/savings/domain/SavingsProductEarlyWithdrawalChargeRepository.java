@@ -21,8 +21,8 @@ package com.advancly.fineract.portfolio.savings.domain;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface DepositProductEarlyWithdrawalChargeRepository
-        extends JpaRepository<DepositProductEarlyWithdrawalCharge, DepositProductEarlyWithdrawalCharge.Key> {
+public interface SavingsProductEarlyWithdrawalChargeRepository
+        extends JpaRepository<SavingsProductEarlyWithdrawalCharge, SavingsProductEarlyWithdrawalCharge.Key> {
 
-    List<DepositProductEarlyWithdrawalCharge> findBySavingsProductId(Long savingsProductId);
+    List<SavingsProductEarlyWithdrawalCharge> findBySavingsProductId(Long savingsProductId);
 }

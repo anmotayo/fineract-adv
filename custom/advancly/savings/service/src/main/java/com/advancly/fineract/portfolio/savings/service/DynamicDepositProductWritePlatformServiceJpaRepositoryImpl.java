@@ -20,8 +20,8 @@ package com.advancly.fineract.portfolio.savings.service;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductRepository;
@@ -63,7 +63,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final DynamicDepositProductRepository dynamicDepositProductRepository;
     private final DynamicDepositProductDataValidator fromApiJsonDataValidator;
     private final DynamicDepositProductAssembler dynamicDepositProductAssembler;
-    private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
+    private final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
     private final InterestRateChartAssembler chartAssembler;
     private final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
 
@@ -71,7 +71,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             final DynamicDepositProductRepository dynamicDepositProductRepository,
             final DynamicDepositProductDataValidator fromApiJsonDataValidator,
             final DynamicDepositProductAssembler dynamicDepositProductAssembler,
-            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
+            final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
             final InterestRateChartAssembler chartAssembler,
             final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService) {
         this.context = context;
@@ -184,7 +184,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
      * currently-stored selection is re-validated instead, so a partial product update never silently drops it.
      */
     private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
-        final List<DepositProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
+        final List<SavingsProductEarlyWithdrawalCharge> existingRows = this.earlyWithdrawalChargeRepository
                 .findBySavingsProductId(product.getId());
         DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(existingRows);
 
@@ -199,7 +199,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
         this.earlyWithdrawalChargeRepository.flush();
         if (resolvedCharge != null) {
             this.earlyWithdrawalChargeRepository
-                    .saveAndFlush(DepositProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId()));
+                    .saveAndFlush(SavingsProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId()));
         }
     }
 

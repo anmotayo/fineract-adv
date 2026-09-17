@@ -120,14 +120,14 @@ public class DynamicDepositAccountAssembler {
     private final SavingsHelper savingsHelper;
     private final ExternalIdFactory externalIdFactory;
     private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
-    private final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
+    private final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
 
     public DynamicDepositAccountAssembler(final ClientRepositoryWrapper clientRepository, final GroupRepositoryWrapper groupRepository,
             final StaffRepositoryWrapper staffRepository, final DynamicDepositProductRepository dynamicDepositProductRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
-            final DepositProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
+            final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
         this.clientRepository = clientRepository;
         this.groupRepository = groupRepository;
         this.staffRepository = staffRepository;
@@ -317,7 +317,7 @@ public class DynamicDepositAccountAssembler {
         if (!product.isEarlyWithdrawalPenaltyEnabled()) {
             return null;
         }
-        final List<DepositProductEarlyWithdrawalCharge> selections = this.earlyWithdrawalChargeRepository
+        final List<SavingsProductEarlyWithdrawalCharge> selections = this.earlyWithdrawalChargeRepository
                 .findBySavingsProductId(product.getId());
         if (selections.size() != 1) {
             return null;

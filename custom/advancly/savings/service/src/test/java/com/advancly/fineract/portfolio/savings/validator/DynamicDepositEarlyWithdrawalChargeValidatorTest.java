@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import java.util.List;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
@@ -101,8 +101,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
 
     @Test
     void rejectsAProductThatAlreadyHasMoreThanOneEarlyWithdrawalCharge() {
-        final List<DepositProductEarlyWithdrawalCharge> rows = List.of(DepositProductEarlyWithdrawalCharge.createNew(1L, 7L),
-                DepositProductEarlyWithdrawalCharge.createNew(1L, 8L));
+        final List<SavingsProductEarlyWithdrawalCharge> rows = List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L),
+                SavingsProductEarlyWithdrawalCharge.createNew(1L, 8L));
 
         assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(rows))
                 .isInstanceOf(PlatformApiDataValidationException.class)
@@ -113,7 +113,7 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void acceptsAProductWithZeroOrOneEarlyWithdrawalCharge() {
         DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(List.of());
         DynamicDepositEarlyWithdrawalChargeValidator
-                .validateAtMostOneActiveCharge(List.of(DepositProductEarlyWithdrawalCharge.createNew(1L, 7L)));
+                .validateAtMostOneActiveCharge(List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L)));
     }
 
     private Charge charge(final Long id, final boolean active, final boolean penalty, final ChargeCalculationType calculationType) {

@@ -57,7 +57,7 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
     /**
      * Phase 4 (implementation plan Section 2): gate for the early-withdrawal penalty mechanism. When {@code false}, no
      * pending {@code m_savings_account_interest_charge} row is ever created for accounts of this product, whatever is
-     * selected in {@code m_deposit_product_early_withdrawal_charge}.
+     * selected in {@code m_savings_product_early_withdrawal_charge}.
      */
     @Column(name = "early_withdrawal_penalty_enabled", nullable = false)
     private boolean earlyWithdrawalPenaltyEnabled;

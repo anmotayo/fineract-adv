@@ -39,9 +39,9 @@ import java.util.Objects;
  * state beyond the selection itself.
  */
 @Entity
-@Table(name = "m_deposit_product_early_withdrawal_charge")
-@IdClass(DepositProductEarlyWithdrawalCharge.Key.class)
-public class DepositProductEarlyWithdrawalCharge {
+@Table(name = "m_savings_product_early_withdrawal_charge")
+@IdClass(SavingsProductEarlyWithdrawalCharge.Key.class)
+public class SavingsProductEarlyWithdrawalCharge {
 
     @Id
     @Column(name = "savings_product_id", nullable = false)
@@ -51,17 +51,17 @@ public class DepositProductEarlyWithdrawalCharge {
     @Column(name = "charge_id", nullable = false)
     private Long chargeId;
 
-    protected DepositProductEarlyWithdrawalCharge() {
+    protected SavingsProductEarlyWithdrawalCharge() {
         //
     }
 
-    private DepositProductEarlyWithdrawalCharge(final Long savingsProductId, final Long chargeId) {
+    private SavingsProductEarlyWithdrawalCharge(final Long savingsProductId, final Long chargeId) {
         this.savingsProductId = savingsProductId;
         this.chargeId = chargeId;
     }
 
-    public static DepositProductEarlyWithdrawalCharge createNew(final Long savingsProductId, final Long chargeId) {
-        return new DepositProductEarlyWithdrawalCharge(savingsProductId, chargeId);
+    public static SavingsProductEarlyWithdrawalCharge createNew(final Long savingsProductId, final Long chargeId) {
+        return new SavingsProductEarlyWithdrawalCharge(savingsProductId, chargeId);
     }
 
     public Long savingsProductId() {

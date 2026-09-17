@@ -203,7 +203,7 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id ");
             sqlBuilder.append("left join m_deposit_product_dynamic_detail ddd on ddd.savings_product_id = sp.id ");
-            sqlBuilder.append("left join m_deposit_product_early_withdrawal_charge ewc on ewc.savings_product_id = sp.id ");
+            sqlBuilder.append("left join m_savings_product_early_withdrawal_charge ewc on ewc.savings_product_id = sp.id ");
             sqlBuilder.append("left join m_deposit_product_term_and_preclosure dptp on dptp.savings_product_id = sp.id ");
             return sqlBuilder.toString();
         }

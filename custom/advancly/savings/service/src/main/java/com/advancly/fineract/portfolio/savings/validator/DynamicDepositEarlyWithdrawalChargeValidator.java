@@ -21,7 +21,7 @@ package com.advancly.fineract.portfolio.savings.validator;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
 
-import com.advancly.fineract.portfolio.savings.domain.DepositProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -123,7 +123,7 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
      * replace-rather-than-append semantics; this rejects a product whose classifier table already holds more than one
      * row, which can only happen if rows were written outside the API.
      */
-    public static void validateAtMostOneActiveCharge(final List<DepositProductEarlyWithdrawalCharge> existingRows) {
+    public static void validateAtMostOneActiveCharge(final List<SavingsProductEarlyWithdrawalCharge> existingRows) {
         if (existingRows != null && existingRows.size() > 1) {
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
             new DataValidatorBuilder(dataValidationErrors).resource(DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME).reset()

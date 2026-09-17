@@ -794,40 +794,11 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
     }
 
-    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100L);
-
-    // NOT a static constant: MoneyHelper.getRoundingMode() resolves the CURRENT tenant's configured rounding mode
-    // from a thread-local, so freezing it in a static initialiser would either fail at class-load time or apply one
-    // tenant's setting to every other tenant. Core's own SavingsAccountCharge#percentageOf builds its MathContext per
-    // call for the same reason.
+    // Private helper for pro-rata distribution of charges. MoneyHelper.getRoundingMode() resolves the CURRENT
+    // tenant's configured rounding mode from a thread-local, so capturing it in a static initialiser would freeze
+    // one tenant's setting for every other tenant.
     private static MathContext percentageMathContext() {
         return new MathContext(8, MoneyHelper.getRoundingMode());
-    }
-
-    /**
-     * One contribution's amount, recomputed from its stored/resolved percentage against the period's real gross
-     * interest. Extracted so the pending rows and a closure's own contribution can never be recomputed by two subtly
-     * different expressions. Clamped to [0, gross] per contribution; the authoritative cap on their SUM is
-     * {@link #cappedInterestBasedChargeAmount(BigDecimal, BigDecimal, BigDecimal)}.
-     */
-    private static BigDecimal recomputedChargeAmount(final BigDecimal grossInterest, final BigDecimal chargePercentage) {
-        return grossInterest.multiply(chargePercentage).divide(ONE_HUNDRED, percentageMathContext()).min(grossInterest)
-                .max(BigDecimal.ZERO);
-    }
-
-    /**
-     * The authoritative cap on a period's interest-based charge (implementation plan Section 11 "Preserve principal",
-     * Section 10 step 9). Gross interest has just been credited and the withholding tax just debited, so capping the
-     * charge at their difference guarantees the whole posting's net effect on the balance is {@code gross - wht -
-     * charge >= 0} - i.e. the charge always comes out of interest and never reaches principal. Capping at gross alone
-     * would not be sufficient: with gross 500, withholding tax 50 and 500 recomputed, the balance would fall by 50.
-     *
-     * Package-private static so the arithmetic is unit-testable without building a whole posting run.
-     */
-    static BigDecimal cappedInterestBasedChargeAmount(final BigDecimal recomputedTotal, final BigDecimal grossInterestForPeriod,
-            final BigDecimal withholdingTaxForPeriod) {
-        final BigDecimal available = grossInterestForPeriod.subtract(withholdingTaxForPeriod).max(BigDecimal.ZERO);
-        return recomputedTotal.min(available).max(BigDecimal.ZERO);
     }
 
     /**
@@ -914,12 +885,12 @@ public class DynamicDepositAccount extends SavingsAccount {
         final List<BigDecimal> recomputedAmounts = new ArrayList<>(contributionCount);
         BigDecimal recomputedTotal = BigDecimal.ZERO;
         for (final SavingsAccountInterestCharge row : pendingRows) {
-            final BigDecimal recomputed = recomputedChargeAmount(grossInterest, row.chargePercentage());
+            final BigDecimal recomputed = InterestBasedChargeMath.recomputedChargeAmount(grossInterest, row.chargePercentage());
             recomputedAmounts.add(recomputed);
             recomputedTotal = recomputedTotal.add(recomputed);
         }
         if (closureContribution != null) {
-            final BigDecimal recomputed = recomputedChargeAmount(grossInterest, closureContribution.percentage());
+            final BigDecimal recomputed = InterestBasedChargeMath.recomputedChargeAmount(grossInterest, closureContribution.percentage());
             recomputedAmounts.add(recomputed);
             recomputedTotal = recomputedTotal.add(recomputed);
         }
@@ -933,7 +904,7 @@ public class DynamicDepositAccount extends SavingsAccount {
                 currentWithholdTransactions);
         final BigDecimal withholdingTaxForPeriod = withholdTransaction == null ? BigDecimal.ZERO : withholdTransaction.getAmount();
 
-        final BigDecimal chargeAmount = cappedInterestBasedChargeAmount(recomputedTotal, grossInterest, withholdingTaxForPeriod);
+        final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest, withholdingTaxForPeriod);
         if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }

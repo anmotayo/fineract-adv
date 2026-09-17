@@ -22,12 +22,15 @@ import com.advancly.fineract.portfolio.savings.data.BulkTransactionDataValidator
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -87,6 +90,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final FromJsonHelper fromApiJsonHelper;
     private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     private final PaymentDetailRepository paymentDetailRepository;
+    private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
 
     @Autowired
     public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
@@ -97,7 +102,9 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final GSIMRepositoy gsimRepository,
             @Qualifier("coreSavingsAccountWritePlatformService") final SavingsAccountWritePlatformService delegate,
             final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
-            final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository) {
+            final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
+            final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
+            final CumulativeInterestForfeitureService cumulativeInterestForfeitureService) {
         this.context = context;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
         this.assembler = assembler;
@@ -111,6 +118,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.fromApiJsonHelper = fromApiJsonHelper;
         this.paymentTypeRepositoryWrapper = paymentTypeRepositoryWrapper;
         this.paymentDetailRepository = paymentDetailRepository;
+        this.productEarlyWithdrawalChargeRepository = productEarlyWithdrawalChargeRepository;
+        this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
     }
 
     @Transactional
@@ -181,6 +190,18 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                     "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
         }
 
+        // Single insertion point for both account types: this class is @Primary, so plain-Savings withdrawals (core
+        // savings API) and Dynamic Deposit withdrawals (WithdrawalDynamicDepositAccountCommandHandler, which injects
+        // the interface) both arrive here before the routing decision below. Cumulative forfeiture must run at this
+        // layer because it force-posts interest, which would be re-entrant from inside an entity-level hook.
+        if (isEarlyForForfeiture(account, transactionDate, command) && isCumulativeMode(account)) {
+            if (isBackdated) {
+                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
+                        "A backdated withdrawal cannot apply a cumulative early-withdrawal interest forfeiture.", savingsId);
+            }
+            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false);
+        }
+
         // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
         // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
         if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
@@ -200,6 +221,21 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         return new CommandProcessingResultBuilder().withEntityId(withdrawal.getId()).withOfficeId(account.officeId())
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
+    }
+
+    /**
+     * Earliness comes from whichever source the account type has. Dynamic Deposit answers from its own maturity date,
+     * exactly as it always has, so its behaviour does not depend on the caller passing a flag. Plain Savings has no
+     * maturity date, so the upstream application - which owns the withdrawal-window rules - asserts it on the request.
+     */
+    private boolean isEarlyForForfeiture(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command) {
+        return account.isEarlyWithdrawal(transactionDate) || command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge");
+    }
+
+    private boolean isCumulativeMode(final SavingsAccount account) {
+        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
+                .findBySavingsProductId(account.productId());
+        return selections.size() == 1 && selections.get(0).mode().isCumulative();
     }
 
     @Transactional

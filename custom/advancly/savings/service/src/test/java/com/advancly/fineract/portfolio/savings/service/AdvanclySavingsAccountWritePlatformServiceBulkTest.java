@@ -27,6 +27,7 @@ import com.advancly.fineract.portfolio.savings.data.BulkTransactionDataValidator
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
@@ -85,6 +86,10 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     private PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     @Mock
     private PaymentDetailRepository paymentDetailRepository;
+    @Mock
+    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    @Mock
+    private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
 
     private AdvanclySavingsAccountWritePlatformService service;
     private FromJsonHelper fromJsonHelper;
@@ -97,7 +102,8 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         bulkValidator = new BulkTransactionDataValidator(fromJsonHelper);
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
-                fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository);
+                fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, productEarlyWithdrawalChargeRepository,
+                cumulativeInterestForfeitureService);
     }
 
     @Test

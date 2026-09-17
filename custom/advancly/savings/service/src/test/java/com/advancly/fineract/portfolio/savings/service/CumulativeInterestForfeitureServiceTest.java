@@ -171,6 +171,24 @@ class CumulativeInterestForfeitureServiceTest {
         verify(account).withholdTaxIfApplicable(eq(new BigDecimal("10")), eq(WITHDRAWAL_DATE.minusDays(1)), eq(false));
     }
 
+    @Test
+    void theWholeNewlyPostedStubIsTaxedWhenNothingRemainsToForfeit() {
+        // Everything forfeitable (the whole 20 basis) was already forfeited by a prior withdrawal, so this
+        // withdrawal's forfeit computes to exactly zero - but the 20 stub was still force-posted and must still be
+        // taxed in full, exactly as an ordinary posting would be. Guards against a future "cleanup" moving the
+        // tax-on-survivor block after the zero-forfeit early return, or gating it on amount > 0.
+        final SavingsAccount account = account(new BigDecimal("20"), BigDecimal.ZERO);
+        lenient().when(account.withHoldTax()).thenReturn(true);
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenReturn(new BigDecimal("20"));
+        withNewlyPostedStub(account, WITHDRAWAL_DATE.minusDays(1), new BigDecimal("20"));
+        stubQualifyingCharge(new BigDecimal("50"));
+
+        final SavingsAccountTransaction forfeiture = this.service.forfeitIfApplicable(account, WITHDRAWAL_DATE, false);
+
+        assertThat(forfeiture).isNull();
+        verify(account).withholdTaxIfApplicable(eq(new BigDecimal("20")), eq(WITHDRAWAL_DATE.minusDays(1)), eq(false));
+    }
+
     private void withNewlyPostedStub(final SavingsAccount account, final LocalDate date, final BigDecimal amount) {
         final SavingsAccountTransaction stub = mock(SavingsAccountTransaction.class);
         lenient().when(stub.isInterestPostingAndNotReversed()).thenReturn(true);

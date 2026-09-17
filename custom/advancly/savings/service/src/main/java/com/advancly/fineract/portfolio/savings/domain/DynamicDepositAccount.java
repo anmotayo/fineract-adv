@@ -263,6 +263,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.interestBasedChargeDerived == null ? BigDecimal.ZERO : this.interestBasedChargeDerived;
     }
 
+    @Override
     public void updateInterestBasedChargeDerived(final BigDecimal amount) {
         this.interestBasedChargeDerived = amount == null ? BigDecimal.ZERO : amount;
     }
@@ -332,6 +333,7 @@ public class DynamicDepositAccount extends SavingsAccount {
      * {@code false} when no maturity date has been computed, so an unactivated or misconfigured account can never be
      * penalised.
      */
+    @Override
     public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
         final LocalDate maturityDate = maturityDate();
         return maturityDate != null && transactionDate != null && DateUtils.isBefore(transactionDate, maturityDate);
@@ -429,6 +431,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         this.earlyWithdrawalChargePercentageOverride = earlyWithdrawalChargePercentageOverride;
     }
 
+    @Override
     public BigDecimal earlyWithdrawalChargePercentageOverride() {
         return this.earlyWithdrawalChargePercentageOverride;
     }
@@ -1037,6 +1040,7 @@ public class DynamicDepositAccount extends SavingsAccount {
      * corresponding row itself - already applied - rather than leaving a pending one behind that nothing would ever
      * apply on a closed account.
      */
+    @Override
     public boolean isClosureSettlementInProgress() {
         return this.closureSettlement != null;
     }

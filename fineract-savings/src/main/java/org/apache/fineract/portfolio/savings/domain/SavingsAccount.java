@@ -2877,6 +2877,44 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return false;
     }
 
+    /**
+     * Whether a premature closure settlement is mid-flight on this account, during which an ordinary early-withdrawal
+     * charge must not be recorded for the settlement withdrawal (the closure records its own, already applied). A no-op
+     * {@code false} for every account type except one that implements closure settlement - today Dynamic Deposit. Same
+     * extension-point pattern as {@link #prepareClosureSettlement(LocalDate)}.
+     */
+    public boolean isClosureSettlementInProgress() {
+        return false;
+    }
+
+    /**
+     * The per-transaction early-withdrawal charge percentage override set via
+     * {@link #setWithdrawalChargePercentageOverride(BigDecimal)} for the next withdrawal only, or {@code null} when
+     * none applies. The matching getter for that already-existing setter, so a charge service can read it back without
+     * compile-time visibility of the custom-module subclass that stores it.
+     */
+    public BigDecimal earlyWithdrawalChargePercentageOverride() {
+        return null;
+    }
+
+    /**
+     * Records the account's current pending interest-based charge total on the fast-read derived column, for account
+     * types that carry one. A no-op for every other type: the value is simply discarded.
+     */
+    public void updateInterestBasedChargeDerived(final BigDecimal amount) {
+        // no-op by default - see javadoc.
+    }
+
+    /**
+     * Whether a withdrawal on this date is early by the account's OWN terms. Only an account type with a maturity date
+     * can answer this - Dynamic Deposit compares against {@code maturityDate()}. Plain Savings has no maturity date and
+     * so is never early by its own terms: for it, earliness is asserted by the caller on the withdrawal request, and
+     * the two sources are combined at the trigger (see Task 9).
+     */
+    public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
+        return false;
+    }
+
     public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
         final Map<String, Object> actualChanges = new LinkedHashMap<>();
 

@@ -68,6 +68,7 @@ public class DynamicDepositProductData implements Serializable {
     private final boolean dynamicRateEnabled;
     private final boolean earlyWithdrawalPenaltyEnabled;
     private final Long earlyWithdrawalChargeId;
+    private final Integer earlyWithdrawalChargeMode;
     private final Integer minDepositTerm;
     private final Integer maxDepositTerm;
     private final EnumOptionData minDepositTermType;
@@ -111,7 +112,8 @@ public class DynamicDepositProductData implements Serializable {
             final Integer lockinPeriodFrequency, final EnumOptionData lockinPeriodFrequencyType, final EnumOptionData accountingRule,
             final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final Long taxGroupId,
             final TaxGroupData taxGroup, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId, final Integer minDepositTerm,
+            final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId, final Integer earlyWithdrawalChargeMode,
+            final Integer minDepositTerm,
             final Integer maxDepositTerm, final EnumOptionData minDepositTermType, final EnumOptionData maxDepositTermType,
             final BigDecimal minDepositAmount, final BigDecimal depositAmount, final BigDecimal maxDepositAmount,
             final EnumOptionData withHoldTaxPostingType, final Collection<ChargeData> charges,
@@ -119,8 +121,9 @@ public class DynamicDepositProductData implements Serializable {
         this(id, name, shortName, description, currency, interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType,
                 interestCalculationDaysInYearType, lockinPeriodFrequency, lockinPeriodFrequencyType, accountingRule,
                 minBalanceForInterestCalculation, withHoldTax, taxGroupId, taxGroup, allowWithdrawal, dynamicRateEnabled,
-                earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, minDepositTerm, maxDepositTerm, minDepositTermType,
-                maxDepositTermType, minDepositAmount, depositAmount, maxDepositAmount, withHoldTaxPostingType, charges, charts,
+                earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode, minDepositTerm, maxDepositTerm,
+                minDepositTermType, maxDepositTermType, minDepositAmount, depositAmount, maxDepositAmount, withHoldTaxPostingType, charges,
+                charts,
                 // accountingMappings, paymentChannelToFundSourceMappings, feeToIncomeAccountMappings,
                 // penaltyToIncomeAccountMappings
                 null, null, null, null,
@@ -139,7 +142,8 @@ public class DynamicDepositProductData implements Serializable {
             final Integer lockinPeriodFrequency, final EnumOptionData lockinPeriodFrequencyType, final EnumOptionData accountingRule,
             final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final Long taxGroupId,
             final TaxGroupData taxGroup, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId, final Integer minDepositTerm,
+            final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId, final Integer earlyWithdrawalChargeMode,
+            final Integer minDepositTerm,
             final Integer maxDepositTerm, final EnumOptionData minDepositTermType, final EnumOptionData maxDepositTermType,
             final BigDecimal minDepositAmount, final BigDecimal depositAmount, final BigDecimal maxDepositAmount,
             final EnumOptionData withHoldTaxPostingType, final Collection<ChargeData> charges,
@@ -176,6 +180,7 @@ public class DynamicDepositProductData implements Serializable {
         this.dynamicRateEnabled = dynamicRateEnabled;
         this.earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabled;
         this.earlyWithdrawalChargeId = earlyWithdrawalChargeId;
+        this.earlyWithdrawalChargeMode = earlyWithdrawalChargeMode;
         this.minDepositTerm = minDepositTerm;
         this.maxDepositTerm = maxDepositTerm;
         this.minDepositTermType = minDepositTermType;
@@ -222,11 +227,11 @@ public class DynamicDepositProductData implements Serializable {
                 data.interestCompoundingPeriodType, data.interestPostingPeriodType, data.interestCalculationType,
                 data.interestCalculationDaysInYearType, data.lockinPeriodFrequency, data.lockinPeriodFrequencyType, data.accountingRule,
                 data.minBalanceForInterestCalculation, data.withHoldTax, data.taxGroupId, data.taxGroup, data.allowWithdrawal,
-                data.dynamicRateEnabled,
-                data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.minDepositTerm, data.maxDepositTerm,
-                data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount, data.depositAmount, data.maxDepositAmount,
-                data.withHoldTaxPostingType, data.charges, data.charts, data.accountingMappings, data.paymentChannelToFundSourceMappings,
-                data.feeToIncomeAccountMappings, data.penaltyToIncomeAccountMappings, currencyOptions, interestCompoundingPeriodTypeOptions,
+                data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.earlyWithdrawalChargeMode,
+                data.minDepositTerm, data.maxDepositTerm, data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount,
+                data.depositAmount, data.maxDepositAmount, data.withHoldTaxPostingType, data.charges, data.charts,
+                data.accountingMappings, data.paymentChannelToFundSourceMappings, data.feeToIncomeAccountMappings,
+                data.penaltyToIncomeAccountMappings, currencyOptions, interestCompoundingPeriodTypeOptions,
                 interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
                 lockinPeriodFrequencyTypeOptions, accountingRuleOptions, chargeOptions, penaltyOptions, paymentTypeOptions,
                 accountingMappingOptions, taxGroupOptions, chartTemplate, depositTermTypeOptions, withHoldTaxPostingTypeOptions);
@@ -240,15 +245,14 @@ public class DynamicDepositProductData implements Serializable {
                 data.interestCompoundingPeriodType, data.interestPostingPeriodType, data.interestCalculationType,
                 data.interestCalculationDaysInYearType, data.lockinPeriodFrequency, data.lockinPeriodFrequencyType, data.accountingRule,
                 data.minBalanceForInterestCalculation, data.withHoldTax, data.taxGroupId, data.taxGroup, data.allowWithdrawal,
-                data.dynamicRateEnabled,
-                data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.minDepositTerm, data.maxDepositTerm,
-                data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount, data.depositAmount, data.maxDepositAmount,
-                data.withHoldTaxPostingType, data.charges, data.charts, accountingMappings, paymentChannelToFundSourceMappings,
-                feeToIncomeAccountMappings, penaltyToIncomeAccountMappings, data.currencyOptions, data.interestCompoundingPeriodTypeOptions,
-                data.interestPostingPeriodTypeOptions, data.interestCalculationTypeOptions, data.interestCalculationDaysInYearTypeOptions,
-                data.lockinPeriodFrequencyTypeOptions, data.accountingRuleOptions, data.chargeOptions, data.penaltyOptions,
-                data.paymentTypeOptions, data.accountingMappingOptions, data.taxGroupOptions, data.chartTemplate,
-                data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
+                data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.earlyWithdrawalChargeMode,
+                data.minDepositTerm, data.maxDepositTerm, data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount,
+                data.depositAmount, data.maxDepositAmount, data.withHoldTaxPostingType, data.charges, data.charts, accountingMappings,
+                paymentChannelToFundSourceMappings, feeToIncomeAccountMappings, penaltyToIncomeAccountMappings, data.currencyOptions,
+                data.interestCompoundingPeriodTypeOptions, data.interestPostingPeriodTypeOptions, data.interestCalculationTypeOptions,
+                data.interestCalculationDaysInYearTypeOptions, data.lockinPeriodFrequencyTypeOptions, data.accountingRuleOptions,
+                data.chargeOptions, data.penaltyOptions, data.paymentTypeOptions, data.accountingMappingOptions, data.taxGroupOptions,
+                data.chartTemplate, data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
     }
 
     public static DynamicDepositProductData withCharts(final DynamicDepositProductData data,
@@ -257,15 +261,14 @@ public class DynamicDepositProductData implements Serializable {
                 data.interestCompoundingPeriodType, data.interestPostingPeriodType, data.interestCalculationType,
                 data.interestCalculationDaysInYearType, data.lockinPeriodFrequency, data.lockinPeriodFrequencyType, data.accountingRule,
                 data.minBalanceForInterestCalculation, data.withHoldTax, data.taxGroupId, data.taxGroup, data.allowWithdrawal,
-                data.dynamicRateEnabled,
-                data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.minDepositTerm, data.maxDepositTerm,
-                data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount, data.depositAmount, data.maxDepositAmount,
-                data.withHoldTaxPostingType, data.charges, charts, data.accountingMappings, data.paymentChannelToFundSourceMappings,
-                data.feeToIncomeAccountMappings, data.penaltyToIncomeAccountMappings, data.currencyOptions,
-                data.interestCompoundingPeriodTypeOptions, data.interestPostingPeriodTypeOptions, data.interestCalculationTypeOptions,
-                data.interestCalculationDaysInYearTypeOptions, data.lockinPeriodFrequencyTypeOptions, data.accountingRuleOptions,
-                data.chargeOptions, data.penaltyOptions, data.paymentTypeOptions, data.accountingMappingOptions, data.taxGroupOptions,
-                data.chartTemplate, data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
+                data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.earlyWithdrawalChargeMode,
+                data.minDepositTerm, data.maxDepositTerm, data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount,
+                data.depositAmount, data.maxDepositAmount, data.withHoldTaxPostingType, data.charges, charts, data.accountingMappings,
+                data.paymentChannelToFundSourceMappings, data.feeToIncomeAccountMappings, data.penaltyToIncomeAccountMappings,
+                data.currencyOptions, data.interestCompoundingPeriodTypeOptions, data.interestPostingPeriodTypeOptions,
+                data.interestCalculationTypeOptions, data.interestCalculationDaysInYearTypeOptions, data.lockinPeriodFrequencyTypeOptions,
+                data.accountingRuleOptions, data.chargeOptions, data.penaltyOptions, data.paymentTypeOptions, data.accountingMappingOptions,
+                data.taxGroupOptions, data.chartTemplate, data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
     }
 
     public static DynamicDepositProductData withCharges(final DynamicDepositProductData data, final Collection<ChargeData> charges) {
@@ -273,15 +276,14 @@ public class DynamicDepositProductData implements Serializable {
                 data.interestCompoundingPeriodType, data.interestPostingPeriodType, data.interestCalculationType,
                 data.interestCalculationDaysInYearType, data.lockinPeriodFrequency, data.lockinPeriodFrequencyType, data.accountingRule,
                 data.minBalanceForInterestCalculation, data.withHoldTax, data.taxGroupId, data.taxGroup, data.allowWithdrawal,
-                data.dynamicRateEnabled,
-                data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.minDepositTerm, data.maxDepositTerm,
-                data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount, data.depositAmount, data.maxDepositAmount,
-                data.withHoldTaxPostingType, charges, data.charts, data.accountingMappings, data.paymentChannelToFundSourceMappings,
-                data.feeToIncomeAccountMappings, data.penaltyToIncomeAccountMappings, data.currencyOptions,
-                data.interestCompoundingPeriodTypeOptions, data.interestPostingPeriodTypeOptions, data.interestCalculationTypeOptions,
-                data.interestCalculationDaysInYearTypeOptions, data.lockinPeriodFrequencyTypeOptions, data.accountingRuleOptions,
-                data.chargeOptions, data.penaltyOptions, data.paymentTypeOptions, data.accountingMappingOptions, data.taxGroupOptions,
-                data.chartTemplate, data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
+                data.dynamicRateEnabled, data.earlyWithdrawalPenaltyEnabled, data.earlyWithdrawalChargeId, data.earlyWithdrawalChargeMode,
+                data.minDepositTerm, data.maxDepositTerm, data.minDepositTermType, data.maxDepositTermType, data.minDepositAmount,
+                data.depositAmount, data.maxDepositAmount, data.withHoldTaxPostingType, charges, data.charts, data.accountingMappings,
+                data.paymentChannelToFundSourceMappings, data.feeToIncomeAccountMappings, data.penaltyToIncomeAccountMappings,
+                data.currencyOptions, data.interestCompoundingPeriodTypeOptions, data.interestPostingPeriodTypeOptions,
+                data.interestCalculationTypeOptions, data.interestCalculationDaysInYearTypeOptions, data.lockinPeriodFrequencyTypeOptions,
+                data.accountingRuleOptions, data.chargeOptions, data.penaltyOptions, data.paymentTypeOptions, data.accountingMappingOptions,
+                data.taxGroupOptions, data.chartTemplate, data.depositTermTypeOptions, data.withHoldTaxPostingTypeOptions);
     }
 
     public Long id() {

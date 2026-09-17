@@ -45,6 +45,7 @@ public final class DynamicDepositApiConstants {
     // product-only early-withdrawal penalty parameters (implementation plan Section 2 / Phase 4)
     public static final String earlyWithdrawalPenaltyEnabledParamName = "earlyWithdrawalPenaltyEnabled";
     public static final String earlyWithdrawalChargeIdParamName = "earlyWithdrawalChargeId";
+    public static final String earlyWithdrawalChargeModeParamName = "earlyWithdrawalChargeMode";
 
     // optional withdraw-command parameter: overrides the account's snapshotted early-withdrawal charge percentage for
     // that single withdrawal only. Allow-listed in core's SavingsAccountConstant (not here) because the shared
@@ -72,9 +73,9 @@ public final class DynamicDepositApiConstants {
             "interestCalculationType", "interestCalculationDaysInYearType", "lockinPeriodFrequency", "lockinPeriodFrequencyType",
             "accountingRule", "charges", "charts", "minBalanceForInterestCalculation", "withHoldTax", "taxGroupId",
             allowWithdrawalParamName, dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName,
-            minDepositTermParamName, maxDepositTermParamName, minDepositTermTypeIdParamName, maxDepositTermTypeIdParamName,
-            inMultiplesOfDepositTermParamName, inMultiplesOfDepositTermTypeIdParamName, minDepositAmountParamName,
-            maxDepositAmountParamName, depositAmountParamName, withHoldTaxPostingTypeIdParamName,
+            earlyWithdrawalChargeModeParamName, minDepositTermParamName, maxDepositTermParamName, minDepositTermTypeIdParamName,
+            maxDepositTermTypeIdParamName, inMultiplesOfDepositTermParamName, inMultiplesOfDepositTermTypeIdParamName,
+            minDepositAmountParamName, maxDepositAmountParamName, depositAmountParamName, withHoldTaxPostingTypeIdParamName,
             SavingProductAccountingParams.SAVINGS_REFERENCE.getValue(), SavingProductAccountingParams.SAVINGS_CONTROL.getValue(),
             SavingProductAccountingParams.TRANSFERS_SUSPENSE.getValue(), SavingProductAccountingParams.INTEREST_ON_SAVINGS.getValue(),
             SavingProductAccountingParams.INCOME_FROM_FEES.getValue(), SavingProductAccountingParams.INCOME_FROM_PENALTIES.getValue(),
@@ -88,14 +89,15 @@ public final class DynamicDepositApiConstants {
             "currency", "interestCompoundingPeriodType", "interestPostingPeriodType", "interestCalculationType",
             "interestCalculationDaysInYearType", "lockinPeriodFrequency", "lockinPeriodFrequencyType", "accountingRule", "charges",
             "charts", "activeChart", "minBalanceForInterestCalculation", "withHoldTax", "taxGroupId", "taxGroup", allowWithdrawalParamName,
-            dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName, minDepositTermParamName,
-            maxDepositTermParamName, minDepositTermTypeIdParamName, maxDepositTermTypeIdParamName, inMultiplesOfDepositTermParamName,
-            inMultiplesOfDepositTermTypeIdParamName, minDepositAmountParamName, maxDepositAmountParamName, depositAmountParamName,
-            "withHoldTaxPostingType", "currencyOptions", "interestCompoundingPeriodTypeOptions", "interestPostingPeriodTypeOptions",
-            "interestCalculationTypeOptions", "interestCalculationDaysInYearTypeOptions", "lockinPeriodFrequencyTypeOptions",
-            "accountingRuleOptions", "chargeOptions", "penaltyOptions", "paymentTypeOptions", "accountingMappingOptions",
-            "accountingMappings", "paymentChannelToFundSourceMappings", "feeToIncomeAccountMappings", "penaltyToIncomeAccountMappings",
-            "taxGroupOptions", "chartTemplate", "depositTermTypeOptions", "withHoldTaxPostingTypeOptions");
+            dynamicRateEnabledParamName, earlyWithdrawalPenaltyEnabledParamName, earlyWithdrawalChargeIdParamName,
+            earlyWithdrawalChargeModeParamName, minDepositTermParamName, maxDepositTermParamName, minDepositTermTypeIdParamName,
+            maxDepositTermTypeIdParamName, inMultiplesOfDepositTermParamName, inMultiplesOfDepositTermTypeIdParamName,
+            minDepositAmountParamName, maxDepositAmountParamName, depositAmountParamName, "withHoldTaxPostingType", "currencyOptions",
+            "interestCompoundingPeriodTypeOptions", "interestPostingPeriodTypeOptions", "interestCalculationTypeOptions",
+            "interestCalculationDaysInYearTypeOptions", "lockinPeriodFrequencyTypeOptions", "accountingRuleOptions", "chargeOptions",
+            "penaltyOptions", "paymentTypeOptions", "accountingMappingOptions", "accountingMappings", "paymentChannelToFundSourceMappings",
+            "feeToIncomeAccountMappings", "penaltyToIncomeAccountMappings", "taxGroupOptions", "chartTemplate", "depositTermTypeOptions",
+            "withHoldTaxPostingTypeOptions");
 
     // account parameters
     public static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS = Set.of("locale", "dateFormat", "clientId", "groupId",

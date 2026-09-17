@@ -23,12 +23,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
+import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import java.util.List;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.junit.jupiter.api.Test;
 
 class DynamicDepositEarlyWithdrawalChargeValidatorTest {
@@ -37,28 +39,32 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void resolvesTheAttachedActivePercentOfInterestPenaltyCharge() {
         final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        final Charge resolved = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge));
+        final Charge resolved = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY);
 
         assertThat(resolved).isSameAs(charge);
     }
 
     @Test
     void returnsNullWhenThePenaltyIsDisabledAndNoChargeIsSelected() {
-        assertThat(DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(false, null, Set.of())).isNull();
+        assertThat(DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(false, null, Set.of(),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY)).isNull();
     }
 
     @Test
     void rejectsAChargeSelectedWhileThePenaltyIsDisabled() {
         final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(false, 7L, Set.of(charge)))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(false, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.allowed.when.disabled"));
     }
 
     @Test
     void rejectsEnablingThePenaltyWithoutSelectingACharge() {
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, null, Set.of()))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, null, Set.of(),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.required"));
     }
@@ -67,7 +73,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void rejectsAChargeThatIsNotAttachedToTheProduct() {
         final Charge attached = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 99L, Set.of(attached)))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 99L, Set.of(attached),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.attached.to.product"));
     }
@@ -76,7 +83,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void rejectsAnInactiveCharge() {
         final Charge charge = charge(7L, false, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge)))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.active"));
     }
@@ -85,7 +93,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void rejectsANonPenaltyCharge() {
         final Charge charge = charge(7L, true, false, ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge)))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.penalty"));
     }
@@ -94,15 +103,37 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void rejectsAChargeThatIsNotPercentOfInterest() {
         final Charge charge = charge(7L, true, true, ChargeCalculationType.FLAT);
 
-        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge)))
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY))
                 .isInstanceOf(PlatformApiDataValidationException.class)
                 .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.percent.of.interest"));
     }
 
     @Test
+    void rejectsCumulativeModeOnAProductThatIsNotConfiguredForNoCompounding() {
+        final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
+
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.CUMULATIVE, SavingsCompoundingInterestPeriodType.MONTHLY))
+                .isInstanceOf(PlatformApiDataValidationException.class).satisfies(exception -> assertThat(exception.toString())
+                        .contains("early.withdrawal.charge.cumulative.mode.requires.no.compounding"));
+    }
+
+    @Test
+    void acceptsCumulativeModeOnANoCompoundingProduct() {
+        final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
+
+        final Charge resolved = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.CUMULATIVE, SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST);
+
+        assertThat(resolved).isSameAs(charge);
+    }
+
+    @Test
     void rejectsAProductThatAlreadyHasMoreThanOneEarlyWithdrawalCharge() {
-        final List<SavingsProductEarlyWithdrawalCharge> rows = List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L),
-                SavingsProductEarlyWithdrawalCharge.createNew(1L, 8L));
+        final List<SavingsProductEarlyWithdrawalCharge> rows = List.of(
+                SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L, EarlyWithdrawalChargeMode.PER_PERIOD),
+                SavingsProductEarlyWithdrawalCharge.createNew(1L, 8L, EarlyWithdrawalChargeMode.PER_PERIOD));
 
         assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(rows))
                 .isInstanceOf(PlatformApiDataValidationException.class)
@@ -112,8 +143,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     @Test
     void acceptsAProductWithZeroOrOneEarlyWithdrawalCharge() {
         DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(List.of());
-        DynamicDepositEarlyWithdrawalChargeValidator
-                .validateAtMostOneActiveCharge(List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L)));
+        DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(
+                List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L, EarlyWithdrawalChargeMode.PER_PERIOD)));
     }
 
     private Charge charge(final Long id, final boolean active, final boolean penalty, final ChargeCalculationType calculationType) {

@@ -19,12 +19,14 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeModeParamName;
 
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProductRepository;
+import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
+import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositProductNotFoundException;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositEarlyWithdrawalChargeValidator;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositProductDataValidator;
@@ -192,14 +194,18 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
                 ? command.longValueOfParameterNamed(earlyWithdrawalChargeIdParamName)
                 : (existingRows.isEmpty() ? null : existingRows.get(0).chargeId());
 
-        final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator
-                .validateAndResolve(product.isEarlyWithdrawalPenaltyEnabled(), requestedChargeId, product.charges());
+        final Integer requestedMode = command.integerValueOfParameterNamed(earlyWithdrawalChargeModeParamName);
+        final EarlyWithdrawalChargeMode mode = EarlyWithdrawalChargeMode.fromInt(requestedMode);
+
+        final Charge resolvedCharge = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(
+                product.isEarlyWithdrawalPenaltyEnabled(), requestedChargeId, product.charges(), mode,
+                product.interestCompoundingPeriodType());
 
         this.earlyWithdrawalChargeRepository.deleteAll(existingRows);
         this.earlyWithdrawalChargeRepository.flush();
         if (resolvedCharge != null) {
             this.earlyWithdrawalChargeRepository
-                    .saveAndFlush(SavingsProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId()));
+                    .saveAndFlush(SavingsProductEarlyWithdrawalCharge.createNew(product.getId(), resolvedCharge.getId(), mode));
         }
     }
 

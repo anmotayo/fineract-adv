@@ -20,7 +20,9 @@ package com.advancly.fineract.portfolio.savings.validator;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeIdParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalChargeModeParamName;
 
+import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +32,7 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 
 /**
  * Product-level validation of a Dynamic Deposit product's early-withdrawal penalty charge selection (implementation
@@ -56,10 +59,16 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
      *            the id of the charge singled out as the early-withdrawal penalty, or {@code null}
      * @param productCharges
      *            the product's charges, i.e. its {@code m_savings_product_charge} rows
+     * @param mode
+     *            how the penalty takes interest back; {@code CUMULATIVE} is only valid on a
+     *            {@code NO_COMPOUNDING_SIMPLE_INTEREST} product (see the check below)
+     * @param compoundingPeriodType
+     *            the product's compounding period type
      * @return the resolved {@link Charge}, or {@code null} when the penalty is disabled and no charge is selected
      */
     public static Charge validateAndResolve(final boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId,
-            final Collection<Charge> productCharges) {
+            final Collection<Charge> productCharges, final EarlyWithdrawalChargeMode mode,
+            final SavingsCompoundingInterestPeriodType compoundingPeriodType) {
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
@@ -111,6 +120,12 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
         if (!ChargeCalculationType.fromInt(selectedCharge.getChargeCalculation()).isPercentageOfInterest()) {
             baseDataValidator.reset().parameter(earlyWithdrawalChargeIdParamName).value(earlyWithdrawalChargeId)
                     .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.not.percent.of.interest");
+            throw new PlatformApiDataValidationException(dataValidationErrors);
+        }
+
+        if (mode.isCumulative() && compoundingPeriodType != SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST) {
+            baseDataValidator.reset().parameter(earlyWithdrawalChargeModeParamName).value(mode.getValue())
+                    .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.cumulative.mode.requires.no.compounding");
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }
 

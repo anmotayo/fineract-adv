@@ -20,4 +20,18 @@
                      newTableName="m_savings_product_early_withdrawal_charge"/>
     </changeSet>
 
+    <changeSet author="advancly" id="2">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="m_savings_product_early_withdrawal_charge"
+                              columnName="early_withdrawal_charge_mode_enum"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="m_savings_product_early_withdrawal_charge">
+            <column name="early_withdrawal_charge_mode_enum" type="SMALLINT" defaultValueNumeric="1">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
 </databaseChangeLog>

@@ -51,17 +51,23 @@ public class SavingsProductEarlyWithdrawalCharge {
     @Column(name = "charge_id", nullable = false)
     private Long chargeId;
 
+    @Column(name = "early_withdrawal_charge_mode_enum", nullable = false)
+    private Integer mode;
+
     protected SavingsProductEarlyWithdrawalCharge() {
         //
     }
 
-    private SavingsProductEarlyWithdrawalCharge(final Long savingsProductId, final Long chargeId) {
+    private SavingsProductEarlyWithdrawalCharge(final Long savingsProductId, final Long chargeId, final Integer mode) {
         this.savingsProductId = savingsProductId;
         this.chargeId = chargeId;
+        this.mode = mode;
     }
 
-    public static SavingsProductEarlyWithdrawalCharge createNew(final Long savingsProductId, final Long chargeId) {
-        return new SavingsProductEarlyWithdrawalCharge(savingsProductId, chargeId);
+    public static SavingsProductEarlyWithdrawalCharge createNew(final Long savingsProductId, final Long chargeId,
+            final EarlyWithdrawalChargeMode mode) {
+        return new SavingsProductEarlyWithdrawalCharge(savingsProductId, chargeId,
+                mode == null ? EarlyWithdrawalChargeMode.PER_PERIOD.getValue() : mode.getValue());
     }
 
     public Long savingsProductId() {
@@ -70,6 +76,10 @@ public class SavingsProductEarlyWithdrawalCharge {
 
     public Long chargeId() {
         return this.chargeId;
+    }
+
+    public EarlyWithdrawalChargeMode mode() {
+        return EarlyWithdrawalChargeMode.fromInt(this.mode);
     }
 
     /**

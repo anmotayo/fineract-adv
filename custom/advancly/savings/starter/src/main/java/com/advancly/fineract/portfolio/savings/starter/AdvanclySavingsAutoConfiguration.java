@@ -19,11 +19,13 @@
 package com.advancly.fineract.portfolio.savings.starter;
 
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
+import org.apache.fineract.accounting.producttoaccountmapping.service.ProductToGLAccountMappingWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.config.FineractProperties;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
+import org.apache.fineract.infrastructure.entityaccess.service.FineractEntityAccessUtil;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.holiday.domain.HolidayRepositoryWrapper;
@@ -47,6 +49,7 @@ import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePla
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
+import org.apache.fineract.portfolio.savings.data.SavingsProductDataValidator;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
@@ -54,10 +57,13 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeReposito
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.domain.SavingsProductAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsProductRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
+import org.apache.fineract.portfolio.savings.service.SavingsProductWritePlatformServiceJpaRepositoryImpl;
 import org.apache.fineract.useradministration.domain.AppUserRepositoryWrapper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -135,5 +141,20 @@ public class AdvanclySavingsAutoConfiguration {
                 depositAccountOnHoldTransactionRepository, entityDatatableChecksWritePlatformService, appuserRepository,
                 standingInstructionRepository, businessEventNotifierService, gsimRepository, savingsAccountInterestPostingService,
                 errorHandler);
+    }
+
+    /**
+     * Creates an instance of the core SavingsProductWritePlatformServiceJpaRepositoryImpl so the custom
+     * AdvanclySavingsProductWritePlatformService can delegate the actual product create/update to the core
+     * implementation before layering on early-withdrawal-charge reconciliation.
+     */
+    @Bean("coreSavingsProductWritePlatformService")
+    public SavingsProductWritePlatformServiceJpaRepositoryImpl coreSavingsProductWritePlatformService(PlatformSecurityContext context,
+            SavingsProductRepository savingProductRepository, SavingsProductDataValidator fromApiJsonDataValidator,
+            SavingsProductAssembler savingsProductAssembler,
+            ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService,
+            FineractEntityAccessUtil fineractEntityAccessUtil) {
+        return new SavingsProductWritePlatformServiceJpaRepositoryImpl(context, savingProductRepository, fromApiJsonDataValidator,
+                savingsProductAssembler, accountMappingWritePlatformService, fineractEntityAccessUtil);
     }
 }

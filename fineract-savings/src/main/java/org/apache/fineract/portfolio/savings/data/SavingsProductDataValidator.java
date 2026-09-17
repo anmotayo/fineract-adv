@@ -110,7 +110,13 @@ public class SavingsProductDataValidator {
             minOverdraftForInterestCalculationParamName, SavingsApiConstants.minRequiredBalanceParamName,
             SavingsApiConstants.enforceMinRequiredBalanceParamName, SavingsApiConstants.maxAllowedLienLimitParamName,
             SavingsApiConstants.lienAllowedParamName, minBalanceForInterestCalculationParamName, withHoldTaxParamName,
-            taxGroupIdParamName));
+            taxGroupIdParamName,
+            // Advancly: early-withdrawal penalty configuration for plain Savings products (custom/advancly). String
+            // literals, not a shared constants class, because fineract-savings must not depend on custom/advancly —
+            // these three values must stay byte-for-byte identical to
+            // com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName
+            // / earlyWithdrawalChargeIdParamName / earlyWithdrawalChargeModeParamName.
+            "earlyWithdrawalPenaltyEnabled", "earlyWithdrawalChargeId", "earlyWithdrawalChargeMode"));
 
     public void validateForCreate(final String json) {
 

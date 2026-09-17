@@ -739,6 +739,19 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return isTaxAdded;
     }
 
+    /**
+     * Withholds tax on {@code amount} exactly as an ordinary interest posting would - same gating
+     * ({@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)}), same {@code TaxUtils} split, same WITHHOLD_TAX
+     * transaction shape - for a caller that has already computed a smaller, capped amount itself (cumulative forfeiture
+     * taxing only the interest that survives forfeiture) rather than relying on postInterest's own automatic
+     * application to the full posted amount.
+     */
+    public void withholdTaxIfApplicable(final BigDecimal amount, final LocalDate date, final boolean backdatedTxnsAllowedTill) {
+        if (isWithHoldTaxApplicable(withHoldTaxPostingType())) {
+            createWithHoldTransaction(amount, date, backdatedTxnsAllowedTill);
+        }
+    }
+
     protected boolean updateWithHoldTransaction(final BigDecimal amount, final SavingsAccountTransaction withholdTransaction) {
         boolean isTaxAdded = false;
         if (this.taxGroup != null && amount.compareTo(BigDecimal.ZERO) > 0) {

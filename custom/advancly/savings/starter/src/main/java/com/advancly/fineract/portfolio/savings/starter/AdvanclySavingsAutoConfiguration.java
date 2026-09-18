@@ -18,6 +18,8 @@
  */
 package com.advancly.fineract.portfolio.savings.starter;
 
+import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPoster;
+import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPosterTask;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.accounting.producttoaccountmapping.service.ProductToGLAccountMappingWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
@@ -61,6 +63,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsProductAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
 import org.apache.fineract.portfolio.savings.service.SavingsProductWritePlatformServiceJpaRepositoryImpl;
@@ -69,7 +72,10 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Scope;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @AutoConfiguration
 @ComponentScan({ "com.advancly.fineract.portfolio.savings", "com.advancly.fineract.portfolio.account" })
@@ -156,5 +162,58 @@ public class AdvanclySavingsAutoConfiguration {
             FineractEntityAccessUtil fineractEntityAccessUtil) {
         return new SavingsProductWritePlatformServiceJpaRepositoryImpl(context, savingProductRepository, fromApiJsonDataValidator,
                 savingsProductAssembler, accountMappingWritePlatformService, fineractEntityAccessUtil);
+    }
+
+    /**
+     * Registers {@link AdvanclySavingsSchedularInterestPoster} as a {@code SavingsSchedularInterestPoster} bean.
+     *
+     * <p>
+     * Note on {@code @ConditionalOnMissingBean}: core's own {@code savingsSchedularInterestPoster()} bean method in
+     * {@code SavingsConfiguration} is guarded by
+     * {@code @ConditionalOnMissingBean(SavingsSchedularInterestPoster.class)}, but {@code SavingsConfiguration} is a
+     * plain, eagerly component-scanned {@code @Configuration} (picked up by
+     * {@code @ComponentScan(basePackages = "org.apache.fineract.**")}), whereas this class is a deferred
+     * {@code @AutoConfiguration}. Spring registers bean definitions from eagerly-scanned configuration classes before
+     * it processes deferred auto-configuration imports, so by the time core's condition is evaluated, this bean does
+     * not exist yet - the condition is satisfied regardless, and core's bean gets registered too. This was verified
+     * empirically (a throwaway {@code ApplicationContextRunner} probe reproducing this exact eager-vs-deferred
+     * relationship showed both beans present). {@code @Primary} is therefore required so that any by-type resolution -
+     * including {@code applicationContext.getBean(...)} - deterministically picks this bean over core's orphaned one,
+     * exactly like every other override in this class ({@code AdvanclySavingsAccountWritePlatformService},
+     * {@code AdvanclySavingsAccountDomainService}, etc.) already does.
+     *
+     * <p>
+     * Task 7 gives this class zero behavior change from core (it just calls {@code super.postInterest()}); Task 8 adds
+     * the actual per-period-charge logic on top of it.
+     */
+    @Bean
+    @Primary
+    @Scope("prototype")
+    public AdvanclySavingsSchedularInterestPoster advanclySavingsSchedularInterestPoster(
+            SavingsAccountWritePlatformService savingsAccountWritePlatformService, JdbcTemplate jdbcTemplate,
+            SavingsAccountReadPlatformService savingsAccountReadPlatformService, PlatformSecurityContext platformSecurityContext) {
+        return new AdvanclySavingsSchedularInterestPoster(savingsAccountWritePlatformService, jdbcTemplate,
+                savingsAccountReadPlatformService, platformSecurityContext);
+    }
+
+    /**
+     * Registers {@link AdvanclySavingsSchedularInterestPosterTask} as a {@code SavingsSchedularInterestPosterTask}
+     * bean, wrapping the {@link AdvanclySavingsSchedularInterestPoster} bean above.
+     *
+     * <p>
+     * {@code @Primary} is required here for the same reason as on the poster bean above: core's own
+     * {@code savingsSchedularInterestPosterTask()} bean in {@code SavingsConfiguration} also ends up registered (its
+     * {@code @ConditionalOnMissingBean} check runs before this deferred auto-configuration exists), so without
+     * {@code @Primary} here, {@code PostInterestForSavingTasklet}'s
+     * {@code applicationContext.getBean(SavingsSchedularInterestPosterTask.class)} would be ambiguous between the two
+     * and throw {@code NoUniqueBeanDefinitionException} the first time the job runs. With {@code @Primary}, that lookup
+     * deterministically resolves to this bean - no change needed to {@code PostInterestForSavingTasklet} itself.
+     */
+    @Bean
+    @Primary
+    @Scope("prototype")
+    public AdvanclySavingsSchedularInterestPosterTask advanclySavingsSchedularInterestPosterTask(
+            AdvanclySavingsSchedularInterestPoster interestPoster) {
+        return new AdvanclySavingsSchedularInterestPosterTask(interestPoster);
     }
 }

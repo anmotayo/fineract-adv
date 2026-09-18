@@ -151,6 +151,78 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
                 BigDecimal.ZERO, new BigDecimal("25.00"), ACCOUNT_ID);
     }
 
+    /**
+     * Review Finding 1 (Critical): {@code recomputedChargeAmount}/{@code cappedInterestBasedChargeAmount} only bound
+     * SIGNIFICANT DIGITS ({@code MathContext(8, ...)}), not decimal places - a non-round percentage against a non-round
+     * gross interest amount (reproduced with gross {@code 57.89}, percentages {@code 33.33}/{@code 16.67}) carries more
+     * precision than USD's 2 decimal places support unless rounded through
+     * {@code InterestBasedChargeMath.roundToCurrency(...)} before becoming a transaction amount or a distribution
+     * basis. Two pending rows (rather than one) so the non-last-row proportional-divide branch of
+     * {@code distributeAcrossRows(...)} is actually exercised, not just the last-row-gets-the-remainder branch a single
+     * row would trivially satisfy.
+     */
+    @Test
+    void chargeAmountAndDistributedRowAmountsAreRoundedToTheCurrencysDecimalPlacesAndSumExactly() throws Exception {
+        final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);
+        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        final SavingsAccountReadPlatformService readPlatformService = mock(SavingsAccountReadPlatformService.class);
+        final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
+        final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
+        final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+
+        stubAuthenticatedUser(securityContext);
+
+        final SavingsAccountTransactionData interestPostingTransaction = buildInterestPostingTransaction(new BigDecimal("57.89"),
+                new BigDecimal("1057.89"));
+        final List<SavingsAccountTransactionData> transactions = new ArrayList<>();
+        transactions.add(interestPostingTransaction);
+
+        final SavingsAccountSummaryData summary = mock(SavingsAccountSummaryData.class);
+        final SavingsAccountData accountData = mock(SavingsAccountData.class);
+        when(accountData.getId()).thenReturn(ACCOUNT_ID);
+        when(accountData.getAccountNo()).thenReturn("000042");
+        when(accountData.getCurrency()).thenReturn(CURRENCY);
+        when(accountData.getSavingsAccountTransactionData()).thenReturn(transactions);
+        when(accountData.getSummary()).thenReturn(summary);
+        when(writePlatformService.postInterest(accountData, false, null, false)).thenReturn(accountData);
+
+        final SavingsAccountInterestCharge pendingRowOne = mock(SavingsAccountInterestCharge.class);
+        when(pendingRowOne.chargePercentage()).thenReturn(new BigDecimal("33.33"));
+        final SavingsAccountInterestCharge pendingRowTwo = mock(SavingsAccountInterestCharge.class);
+        when(pendingRowTwo.chargePercentage()).thenReturn(new BigDecimal("16.67"));
+        when(interestChargeRepository.findPendingByAccountIdUpTo(eq(ACCOUNT_ID), any(LocalDate.class)))
+                .thenReturn(List.of(pendingRowOne, pendingRowTwo));
+
+        final SavingsAccountTransaction postingTransactionEntity = mock(SavingsAccountTransaction.class);
+        final SavingsAccountTransaction chargeTransactionEntity = mock(SavingsAccountTransaction.class);
+        when(savingsAccountTransactionRepository.getReferenceById(any())).thenReturn(postingTransactionEntity, chargeTransactionEntity);
+
+        final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
+                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository);
+        poster.setSavingAccounts(List.of(accountData));
+        poster.setBackdatedTxnsAllowedTill(false);
+
+        poster.postInterest();
+
+        assertThat(transactions).hasSize(2);
+        final BigDecimal transactionAmount = transactions.get(1).getAmount();
+        assertThat(transactionAmount.scale()).as("transaction amount decimal places").isLessThanOrEqualTo(CURRENCY.getDecimalPlaces());
+
+        final ArgumentCaptor<BigDecimal> rowOneAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        final ArgumentCaptor<BigDecimal> rowTwoAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(pendingRowOne).applyAtPosting(any(), rowOneAmountCaptor.capture(), eq(postingTransactionEntity),
+                eq(chargeTransactionEntity));
+        verify(pendingRowTwo).applyAtPosting(any(), rowTwoAmountCaptor.capture(), eq(postingTransactionEntity),
+                eq(chargeTransactionEntity));
+        final BigDecimal rowOneAmount = rowOneAmountCaptor.getValue();
+        final BigDecimal rowTwoAmount = rowTwoAmountCaptor.getValue();
+
+        assertThat(rowOneAmount.scale()).as("row 1 amount decimal places").isLessThanOrEqualTo(CURRENCY.getDecimalPlaces());
+        assertThat(rowTwoAmount.scale()).as("row 2 amount decimal places").isLessThanOrEqualTo(CURRENCY.getDecimalPlaces());
+        assertThat(rowOneAmount.add(rowTwoAmount)).as("row amounts must sum exactly to the (rounded) transaction amount")
+                .isEqualByComparingTo(transactionAmount);
+    }
+
     @Test
     void leavesAnAccountWithNoPendingChargeUnaffected() throws Exception {
         final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);

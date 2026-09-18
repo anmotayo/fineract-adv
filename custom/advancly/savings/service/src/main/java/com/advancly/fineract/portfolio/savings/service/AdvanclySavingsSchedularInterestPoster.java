@@ -27,8 +27,6 @@ import com.advancly.fineract.portfolio.savings.domain.InterestBasedChargeMath;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -210,6 +208,13 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
+        // recomputedChargeAmount/cappedInterestBasedChargeAmount only bound SIGNIFICANT DIGITS (MathContext(8, ...)),
+        // not decimal places, so a non-round percentage against a non-round gross interest amount can carry more
+        // precision than the currency (and the DECIMAL(19,6) columns storing it) should ever show. Round to the
+        // account currency's decimal places before this becomes the transaction amount or the distribution basis -
+        // mirrors how DynamicDepositAccount#applyPendingInterestBasedCharges rounds via Money.of(...) before
+        // treating the result as appliedTotal; both now go through the same InterestBasedChargeMath method.
+        final BigDecimal appliedTotal = InterestBasedChargeMath.roundToCurrency(chargeAmount, savingsAccountData.getCurrency());
 
         final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations
                 .transactionType(SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue());
@@ -224,10 +229,10 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         // test.
         final SavingsAccountTransactionData chargeTransaction = SavingsAccountTransactionData.create(null, transactionType, null,
                 savingsAccountData.getId(), savingsAccountData.getAccountNo(), interestPostingTransaction.getDate(),
-                savingsAccountData.getCurrency(), chargeAmount, null, null, false, interestPostingTransaction.getSubmittedOnDate(), false,
+                savingsAccountData.getCurrency(), appliedTotal, null, null, false, interestPostingTransaction.getSubmittedOnDate(), false,
                 null, null, OffsetDateTime.now());
         chargeTransaction.updateRunningBalance(
-                Money.of(savingsAccountData.getCurrency(), interestPostingTransaction.getRunningBalance()).minus(chargeAmount));
+                Money.of(savingsAccountData.getCurrency(), interestPostingTransaction.getRunningBalance()).minus(appliedTotal));
         chargeTransaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
                 interestPostingTransaction.getEndOfBalanceLocalDate());
 
@@ -240,21 +245,8 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
                     savingsAccountData.getSavingsAccountTransactionData());
         }
 
-        final List<BigDecimal> rowAmounts = new ArrayList<>(pendingRows.size());
-        BigDecimal distributed = BigDecimal.ZERO;
-        for (int i = 0; i < pendingRows.size(); i++) {
-            final BigDecimal rowAmount;
-            if (i == pendingRows.size() - 1) {
-                rowAmount = chargeAmount.subtract(distributed);
-            } else if (recomputedTotal.compareTo(BigDecimal.ZERO) == 0) {
-                rowAmount = BigDecimal.ZERO;
-            } else {
-                rowAmount = recomputedAmounts.get(i).multiply(chargeAmount).divide(recomputedTotal, MathContext.DECIMAL64)
-                        .setScale(savingsAccountData.getCurrency().getDecimalPlaces(), RoundingMode.DOWN);
-            }
-            distributed = distributed.add(rowAmount);
-            rowAmounts.add(rowAmount);
-        }
+        final List<BigDecimal> rowAmounts = InterestBasedChargeMath.distributeAcrossRows(appliedTotal, recomputedAmounts, recomputedTotal,
+                savingsAccountData.getCurrency().getDecimalPlaces());
         return new PendingChargeApplication(interestPostingTransaction, chargeTransaction, pendingRows, rowAmounts);
     }
 

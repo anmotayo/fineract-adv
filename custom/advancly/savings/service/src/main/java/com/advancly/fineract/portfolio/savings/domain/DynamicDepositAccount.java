@@ -31,7 +31,6 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.math.MathContext;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -47,7 +46,6 @@ import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRu
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.Money;
-import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.organisation.staff.domain.Staff;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.client.domain.Client;
@@ -794,13 +792,6 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
     }
 
-    // Private helper for pro-rata distribution of charges. MoneyHelper.getRoundingMode() resolves the CURRENT
-    // tenant's configured rounding mode from a thread-local, so capturing it in a static initialiser would freeze
-    // one tenant's setting for every other tenant.
-    private static MathContext percentageMathContext() {
-        return new MathContext(8, MoneyHelper.getRoundingMode());
-    }
-
     /**
      * Implementation plan Section 10 steps 2, 4, 7 and 8, for one core posting-period boundary:
      *
@@ -904,7 +895,8 @@ public class DynamicDepositAccount extends SavingsAccount {
                 currentWithholdTransactions);
         final BigDecimal withholdingTaxForPeriod = withholdTransaction == null ? BigDecimal.ZERO : withholdTransaction.getAmount();
 
-        final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest, withholdingTaxForPeriod);
+        final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest,
+                withholdingTaxForPeriod);
         if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return false;
         }
@@ -937,28 +929,19 @@ public class DynamicDepositAccount extends SavingsAccount {
         // any rounding remainder and the rows sum to exactly the transaction amount. Without this the posted-charge
         // sum would keep reporting Task 7's provisional figures instead of the money that moved.
         //
-        // Non-last rows are truncated DOWN (RoundingMode.DOWN), never rounded to the nearest per the tenant's default
-        // mode: a default mode that rounds up can push the non-last rows' running sum above appliedTotal, which would
-        // make the last row's appliedTotal.subtract(distributed) go negative - persisting a pending charge row with a
-        // negative charge_amount even though the overall money movement and the row-sum invariant both stay correct.
-        // Truncating down guarantees the non-last rows' running sum never exceeds the exact partial total they
-        // approximate, so the last row's remainder is always in [0, appliedTotal].
+        // Distribution itself is InterestBasedChargeMath.distributeAcrossRows(...) - previously an inline loop here
+        // (and a near-verbatim, already-diverging copy of it in AdvanclySavingsSchedularInterestPoster, which had its
+        // own hardcoded MathContext.DECIMAL64 instead of this class's former tenant-aware percentageMathContext());
+        // both call sites now share one implementation (using that same tenant-aware MathContext internally) so they
+        // cannot drift again. See that method's javadoc for the truncate-down-except-last-row rationale.
         //
         // The closure contribution, when present, is the last element and therefore the one that absorbs the
         // remainder - it has no row of its own to write yet, so its share is handed back to the settlement and
         // becomes the already-applied row completeClosureSettlement(...) writes once the withdrawal exists.
-        BigDecimal distributed = BigDecimal.ZERO;
+        final List<BigDecimal> rowAmounts = InterestBasedChargeMath.distributeAcrossRows(appliedTotal, recomputedAmounts, recomputedTotal,
+                this.currency.getDigitsAfterDecimal());
         for (int i = 0; i < contributionCount; i++) {
-            final BigDecimal rowAmount;
-            if (i == contributionCount - 1) {
-                rowAmount = appliedTotal.subtract(distributed);
-            } else if (recomputedTotal.compareTo(BigDecimal.ZERO) == 0) {
-                rowAmount = BigDecimal.ZERO;
-            } else {
-                rowAmount = recomputedAmounts.get(i).multiply(appliedTotal).divide(recomputedTotal, percentageMathContext())
-                        .setScale(this.currency.getDigitsAfterDecimal(), RoundingMode.DOWN);
-            }
-            distributed = distributed.add(rowAmount);
+            final BigDecimal rowAmount = rowAmounts.get(i);
             if (i < pendingRows.size()) {
                 pendingRows.get(i).applyAtPosting(grossInterest, rowAmount, interestPostingTransaction, chargeTransaction);
             } else {

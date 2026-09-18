@@ -83,6 +83,12 @@ public class DynamicDepositEarlyWithdrawalChargeService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction) {
+        recordIfApplicable(account, withdrawalTransaction, false, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
+            final boolean forceEarlyWithdrawal, final BigDecimal chargePercentageOverride) {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()) {
             return;
         }
@@ -106,7 +112,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
             return;
         }
         final LocalDate withdrawalDate = withdrawalTransaction.getTransactionDate();
-        if (!account.isEarlyWithdrawal(withdrawalDate)) {
+        if (!forceEarlyWithdrawal && !account.isEarlyWithdrawal(withdrawalDate)) {
             return;
         }
 
@@ -120,7 +126,7 @@ public class DynamicDepositEarlyWithdrawalChargeService {
             return;
         }
 
-        final QualifyingCharge qualifying = resolveQualifyingChargeWithPercentage(account);
+        final QualifyingCharge qualifying = resolveQualifyingChargeWithPercentage(account, chargePercentageOverride);
         if (qualifying == null) {
             return;
         }
@@ -160,11 +166,15 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * "which charge, at what percentage" a single answer rather than two that could drift.
      */
     public QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account) {
+        return resolveQualifyingChargeWithPercentage(account, null);
+    }
+
+    public QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account, final BigDecimal chargePercentageOverride) {
         final SavingsAccountCharge qualifyingCharge = resolveQualifyingCharge(account);
         if (qualifyingCharge == null) {
             return null;
         }
-        final BigDecimal percentage = resolvePercentage(account, qualifyingCharge);
+        final BigDecimal percentage = resolvePercentage(account, qualifyingCharge, chargePercentageOverride);
         if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
@@ -223,8 +233,10 @@ public class DynamicDepositEarlyWithdrawalChargeService {
      * product charge percentage" - a {@code SavingsAccountCharge} created from the product definition stores the
      * definition's own amount as its percentage, so the fallback only fires for a charge that genuinely carries none.
      */
-    private BigDecimal resolvePercentage(final SavingsAccount account, final SavingsAccountCharge accountCharge) {
-        final BigDecimal transactionOverride = account.earlyWithdrawalChargePercentageOverride();
+    private BigDecimal resolvePercentage(final SavingsAccount account, final SavingsAccountCharge accountCharge,
+            final BigDecimal chargePercentageOverride) {
+        final BigDecimal transactionOverride = chargePercentageOverride != null ? chargePercentageOverride
+                : account.earlyWithdrawalChargePercentageOverride();
         if (transactionOverride != null) {
             return transactionOverride;
         }

@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -139,7 +140,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, null));
 
-        verify(this.forfeitureService).forfeitIfApplicable(any(SavingsAccount.class), eq(WITHDRAWAL_DATE), eq(false), eq(false));
+        verify(this.forfeitureService).forfeitIfApplicable(any(SavingsAccount.class), eq(WITHDRAWAL_DATE), eq(false), eq(false), isNull());
     }
 
     @Test
@@ -149,7 +150,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, null));
 
-        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean());
+        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -160,7 +161,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, null));
 
-        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean());
+        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -170,7 +171,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, null));
 
-        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean());
+        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -180,7 +181,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, false));
 
-        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean());
+        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
     }
 
     @Test
@@ -190,7 +191,18 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, true));
 
-        verify(this.forfeitureService).forfeitIfApplicable(any(SavingsAccount.class), eq(WITHDRAWAL_DATE), eq(false), eq(false));
+        verify(this.forfeitureService).forfeitIfApplicable(any(SavingsAccount.class), eq(WITHDRAWAL_DATE), eq(false), eq(false), isNull());
+    }
+
+    @Test
+    void plainSavingsCumulativeForfeitureReceivesTheRequestPercentageOverride() {
+        withProductMode(EarlyWithdrawalChargeMode.CUMULATIVE);
+        givenPlainSavingsAccount();
+
+        this.service.withdrawal(SAVINGS_ID, withdrawalCommand(WITHDRAWAL_DATE, true, new BigDecimal("12.5")));
+
+        verify(this.forfeitureService).forfeitIfApplicable(any(SavingsAccount.class), eq(WITHDRAWAL_DATE), eq(false), eq(false),
+                eq(new BigDecimal("12.5")));
     }
 
     @Test
@@ -204,7 +216,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
 
         assertThatThrownBy(() -> this.service.withdrawal(SAVINGS_ID, command)).isInstanceOf(GeneralPlatformDomainRuleException.class);
 
-        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean());
+        verify(this.forfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
         verify(this.delegate, never()).withdrawal(any(), any());
     }
 
@@ -267,6 +279,11 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
      * what this class is really about - all run for real rather than through a stubbed mock.
      */
     private JsonCommand withdrawalCommand(final LocalDate transactionDate, final Boolean applyEarlyWithdrawalCharge) {
+        return withdrawalCommand(transactionDate, applyEarlyWithdrawalCharge, null);
+    }
+
+    private JsonCommand withdrawalCommand(final LocalDate transactionDate, final Boolean applyEarlyWithdrawalCharge,
+            final BigDecimal earlyWithdrawalChargePercentage) {
         final JsonObject payload = new JsonObject();
         payload.addProperty("dateFormat", "dd MMMM yyyy");
         payload.addProperty("locale", "en");
@@ -275,6 +292,9 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
         payload.addProperty("transactionAmount", 100);
         if (applyEarlyWithdrawalCharge != null) {
             payload.addProperty("applyEarlyWithdrawalCharge", applyEarlyWithdrawalCharge);
+        }
+        if (earlyWithdrawalChargePercentage != null) {
+            payload.addProperty("earlyWithdrawalChargePercentage", earlyWithdrawalChargePercentage);
         }
         final String json = payload.toString();
         return JsonCommand.fromExistingCommand(null, json, JsonParser.parseString(json), new FromJsonHelper(), null, null, null, null, null,

@@ -113,8 +113,15 @@ public class CumulativeInterestForfeitureService {
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account, final LocalDate exitDate,
             final boolean backdatedTxnsAllowedTill, final boolean isPrematureClosure) {
-        final DynamicDepositEarlyWithdrawalChargeService.QualifyingCharge qualifying = this.earlyWithdrawalChargeService
-                .resolveQualifyingChargeWithPercentage(account);
+        return forfeitIfApplicable(account, exitDate, backdatedTxnsAllowedTill, isPrematureClosure, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account, final LocalDate exitDate,
+            final boolean backdatedTxnsAllowedTill, final boolean isPrematureClosure, final BigDecimal chargePercentageOverride) {
+        final DynamicDepositEarlyWithdrawalChargeService.QualifyingCharge qualifying = chargePercentageOverride == null
+                ? this.earlyWithdrawalChargeService.resolveQualifyingChargeWithPercentage(account)
+                : this.earlyWithdrawalChargeService.resolveQualifyingChargeWithPercentage(account, chargePercentageOverride);
         if (qualifying == null) {
             return null;
         }

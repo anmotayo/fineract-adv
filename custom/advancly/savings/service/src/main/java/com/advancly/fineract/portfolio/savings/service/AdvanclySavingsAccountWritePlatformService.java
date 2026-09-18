@@ -184,6 +184,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         final LocalDate transactionDate = command.localDateValueOfParameterNamed("transactionDate");
         final BigDecimal transactionAmount = command.bigDecimalValueOfParameterNamed("transactionAmount");
+        final BigDecimal earlyWithdrawalChargePercentageOverride = earlyWithdrawalChargePercentageOverride(command);
 
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
         boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
@@ -210,13 +211,15 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
                         "A backdated withdrawal cannot apply a cumulative early-withdrawal interest forfeiture.", savingsId);
             }
-            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false, false);
+            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false, false,
+                    earlyWithdrawalChargePercentageOverride);
         }
 
         // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
         // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
         if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
-            return delegate.withdrawal(savingsId, command);
+            return delegateWithdrawalWithEarlyWithdrawalChargePercentageOverride(savingsId, command,
+                    earlyWithdrawalChargePercentageOverride);
         }
 
         final Map<String, Object> changes = new LinkedHashMap<>();
@@ -227,7 +230,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
                 paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
 
-        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawal);
+        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawal, earlyWithdrawalChargePercentageOverride);
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -252,6 +255,32 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
      */
     private boolean isEarlyForForfeiture(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command) {
         return account.isEarlyWithdrawal(transactionDate) || command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge");
+    }
+
+    private BigDecimal earlyWithdrawalChargePercentageOverride(final JsonCommand command) {
+        if (!command.parameterExists("earlyWithdrawalChargePercentage")) {
+            return null;
+        }
+        final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage");
+        if (chargePercentageOverride != null && (chargePercentageOverride.compareTo(BigDecimal.ZERO) < 0
+                || chargePercentageOverride.compareTo(BigDecimal.valueOf(100)) > 0)) {
+            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
+                    "earlyWithdrawalChargePercentage must be between 0 and 100.");
+        }
+        return chargePercentageOverride;
+    }
+
+    private CommandProcessingResult delegateWithdrawalWithEarlyWithdrawalChargePercentageOverride(final Long savingsId,
+            final JsonCommand command, final BigDecimal earlyWithdrawalChargePercentageOverride) {
+        if (earlyWithdrawalChargePercentageOverride == null) {
+            return delegate.withdrawal(savingsId, command);
+        }
+        EarlyWithdrawalChargePercentageOverrideContext.set(earlyWithdrawalChargePercentageOverride);
+        try {
+            return delegate.withdrawal(savingsId, command);
+        } finally {
+            EarlyWithdrawalChargePercentageOverrideContext.clear();
+        }
     }
 
     private boolean isCumulativeMode(final SavingsAccount account) {
@@ -280,8 +309,15 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
      */
     void recordPerPeriodChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command,
             final SavingsAccountTransaction withdrawalTransaction) {
+        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawalTransaction,
+                earlyWithdrawalChargePercentageOverride(command));
+    }
+
+    void recordPerPeriodChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command,
+            final SavingsAccountTransaction withdrawalTransaction, final BigDecimal earlyWithdrawalChargePercentageOverride) {
         if (isEarlyForForfeiture(account, transactionDate, command) && isPerPeriodMode(account)) {
-            this.earlyWithdrawalChargeService.recordIfApplicable(account, withdrawalTransaction);
+            this.earlyWithdrawalChargeService.recordIfApplicable(account, withdrawalTransaction,
+                    command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge"), earlyWithdrawalChargePercentageOverride);
         }
     }
 

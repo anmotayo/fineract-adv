@@ -52,7 +52,8 @@ public class AccountTransfersDataValidator {
             AccountDetailConstants.fromAccountIdParamName, AccountDetailConstants.toOfficeIdParamName,
             AccountDetailConstants.toClientIdParamName, AccountDetailConstants.toAccountTypeParamName,
             AccountDetailConstants.toAccountIdParamName, AccountTransfersApiConstants.transferDateParamName,
-            AccountTransfersApiConstants.transferAmountParamName, AccountTransfersApiConstants.transferDescriptionParamName));
+            AccountTransfersApiConstants.transferAmountParamName, AccountTransfersApiConstants.transferDescriptionParamName,
+            "applyEarlyWithdrawalCharge", "earlyWithdrawalChargePercentage"));
 
     @Autowired
     public AccountTransfersDataValidator(final FromJsonHelper fromApiJsonHelper,

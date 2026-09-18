@@ -97,7 +97,7 @@ public final class DynamicDepositApiConstants {
             "interestCalculationDaysInYearTypeOptions", "lockinPeriodFrequencyTypeOptions", "accountingRuleOptions", "chargeOptions",
             "penaltyOptions", "paymentTypeOptions", "accountingMappingOptions", "accountingMappings", "paymentChannelToFundSourceMappings",
             "feeToIncomeAccountMappings", "penaltyToIncomeAccountMappings", "taxGroupOptions", "chartTemplate", "depositTermTypeOptions",
-            "withHoldTaxPostingTypeOptions");
+            "withHoldTaxPostingTypeOptions", "earlyWithdrawalChargeModeOptions");
 
     // account parameters
     public static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS = Set.of("locale", "dateFormat", "clientId", "groupId",

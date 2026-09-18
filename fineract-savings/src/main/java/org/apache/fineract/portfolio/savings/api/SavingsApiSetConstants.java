@@ -40,8 +40,9 @@ public class SavingsApiSetConstants extends SavingsApiConstants {
                     feeOnMonthDayParamName, "currencyOptions", "interestCompoundingPeriodTypeOptions", "interestPostingPeriodTypeOptions",
                     "interestCalculationTypeOptions", "interestCalculationDaysInYearTypeOptions", "lockinPeriodFrequencyTypeOptions",
                     "withdrawalFeeTypeOptions", nominalAnnualInterestRateOverdraftParamName, minOverdraftForInterestCalculationParamName,
-                    withHoldTaxParamName, taxGroupIdParamName, isDormancyTrackingActiveParamName, daysToInactiveParamName,
-                    daysToDormancyParamName, daysToInactiveParamName, accountMappingForPaymentParamName));
+                    withHoldTaxParamName, taxGroupIdParamName, "earlyWithdrawalPenaltyEnabled", "earlyWithdrawalChargeId",
+                    "earlyWithdrawalChargeMode", "earlyWithdrawalChargeModeOptions", isDormancyTrackingActiveParamName,
+                    daysToInactiveParamName, daysToDormancyParamName, daysToInactiveParamName, accountMappingForPaymentParamName));
 
     /**
      * These parameters will match the class level parameters of {@link SavingsAccountData}. Where possible, we try to

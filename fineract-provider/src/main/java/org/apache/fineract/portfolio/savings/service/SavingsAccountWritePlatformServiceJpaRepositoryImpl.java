@@ -373,19 +373,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDate(transactionDate, account);
 
-        // Optional, ignored by every account type except Dynamic Deposit (see
-        // SavingsAccount#setWithdrawalChargePercentageOverride's javadoc): overrides the account's snapshotted
-        // early-withdrawal charge percentage for this single withdrawal only.
-        if (command.parameterExists("earlyWithdrawalChargePercentage")) {
-            final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage");
-            if (chargePercentageOverride != null && (chargePercentageOverride.compareTo(BigDecimal.ZERO) < 0
-                    || chargePercentageOverride.compareTo(BigDecimal.valueOf(100)) > 0)) {
-                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
-                        "earlyWithdrawalChargePercentage must be between 0 and 100.");
-            }
-            account.setWithdrawalChargePercentageOverride(chargePercentageOverride);
-        }
-
         final boolean isAccountTransfer = false;
         final boolean isRegularTransaction = true;
         final boolean isApplyWithdrawFee = true;

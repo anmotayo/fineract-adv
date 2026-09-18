@@ -22,6 +22,7 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator;
+import com.advancly.fineract.portfolio.savings.service.EarlyWithdrawalChargePercentageOverrideContext;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
@@ -139,13 +140,11 @@ public class DynamicDepositAccount extends SavingsAccount {
     private ClosureSettlement closureSettlement;
 
     /**
-     * A per-transaction override of the early-withdrawal charge percentage, set by the write-platform layer just before
-     * it calls {@link #withdraw} when the withdraw command carries an {@code earlyWithdrawalChargePercentage} param,
-     * and cleared immediately after that single withdrawal is recorded. {@code @Transient} for the same reason
-     * {@link #closureSettlement} is: it exists only for the duration of one withdrawal transaction and is never the
-     * account's snapshotted default -
-     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService} uses it in
-     * place of the account charge's own percentage for that withdrawal only.
+     * A per-transaction override of the early-withdrawal charge percentage. It exists only for the duration of one
+     * withdrawal transaction and is never the account's snapshotted default -
+     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService} uses it, or
+     * the request-scoped value carried by {@code EarlyWithdrawalChargePercentageOverrideContext}, in place of the
+     * account charge's own percentage for that withdrawal only.
      */
     @Transient
     private BigDecimal earlyWithdrawalChargePercentageOverride;
@@ -432,7 +431,8 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     @Override
     public BigDecimal earlyWithdrawalChargePercentageOverride() {
-        return this.earlyWithdrawalChargePercentageOverride;
+        return this.earlyWithdrawalChargePercentageOverride != null ? this.earlyWithdrawalChargePercentageOverride
+                : EarlyWithdrawalChargePercentageOverrideContext.get();
     }
 
     @Override

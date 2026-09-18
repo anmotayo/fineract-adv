@@ -19,6 +19,9 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,6 +29,7 @@ import static org.mockito.Mockito.when;
 import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
@@ -52,9 +56,9 @@ class AdvanclySavingsAccountWritePlatformServicePerPeriodRecordingTest {
     private JsonCommand command;
 
     // Constructed with the full real constructor and other collaborators mocked/null where this test's path
-    // (isEarlyForForfeiture -> isPerPeriodMode -> recordIfApplicable) never touches them — see the class's own
-    // existing AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest for the established fixture
-    // pattern this test should follow instead of hand-rolling a second one.
+    // (isEarlyForForfeiture -> isPerPeriodMode -> recordIfApplicable) never touches them. See the class's own existing
+    // AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest for the established fixture pattern this test
+    // should follow instead of hand-rolling a second one.
     @InjectMocks
     private AdvanclySavingsAccountWritePlatformService service;
 
@@ -67,7 +71,23 @@ class AdvanclySavingsAccountWritePlatformServicePerPeriodRecordingTest {
 
         service.recordPerPeriodChargeIfApplicable(account, LocalDate.of(2026, 1, 15), command, withdrawalTransaction);
 
-        verify(earlyWithdrawalChargeService).recordIfApplicable(account, withdrawalTransaction);
+        verify(earlyWithdrawalChargeService).recordIfApplicable(eq(account), eq(withdrawalTransaction), eq(false), isNull());
+    }
+
+    @Test
+    void requestFlagForcesPlainSavingsPerPeriodRecordingAndPassesPercentageOverride() {
+        when(account.productId()).thenReturn(5L);
+        when(account.isEarlyWithdrawal(any(LocalDate.class))).thenReturn(false);
+        when(command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")).thenReturn(true);
+        when(command.parameterExists("earlyWithdrawalChargePercentage")).thenReturn(true);
+        when(command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage")).thenReturn(new BigDecimal("12.5"));
+        when(productEarlyWithdrawalChargeRepository.findBySavingsProductId(5L)).thenReturn(
+                List.of(SavingsProductEarlyWithdrawalCharge.createNew(5L, 3L, EarlyWithdrawalChargeMode.PER_PERIOD)));
+
+        service.recordPerPeriodChargeIfApplicable(account, LocalDate.of(2026, 1, 15), command, withdrawalTransaction);
+
+        verify(earlyWithdrawalChargeService).recordIfApplicable(eq(account), eq(withdrawalTransaction), eq(true),
+                eq(new BigDecimal("12.5")));
     }
 
     @Test
@@ -79,6 +99,6 @@ class AdvanclySavingsAccountWritePlatformServicePerPeriodRecordingTest {
 
         service.recordPerPeriodChargeIfApplicable(account, LocalDate.of(2026, 1, 15), command, withdrawalTransaction);
 
-        verify(earlyWithdrawalChargeService, never()).recordIfApplicable(any(), any());
+        verify(earlyWithdrawalChargeService, never()).recordIfApplicable(any(), any(), anyBoolean(), any());
     }
 }

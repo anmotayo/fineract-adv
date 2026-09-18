@@ -274,22 +274,29 @@ public class SavingsProductsApiResource {
         Collection<ChargeData> penaltyOptions = this.chargeReadPlatformService.retrieveSavingsApplicablePenalties();
         penaltyOptions = CollectionUtils.isEmpty(penaltyOptions) ? null : penaltyOptions;
         final Collection<TaxGroupData> taxGroupOptions = this.taxReadPlatformService.retrieveTaxGroupsForLookUp();
+        final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions = retrieveEarlyWithdrawalChargeModeOptions();
         SavingsProductData savingsProductToReturn = null;
         if (savingsProduct != null) {
             savingsProductToReturn = SavingsProductData.withTemplate(savingsProduct, currencyOptions, interestCompoundingPeriodTypeOptions,
                     interestPostingPeriodTypeOptions, interestCalculationTypeOptions, interestCalculationDaysInYearTypeOptions,
                     lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions, paymentTypeOptions, accountingRuleOptions,
-                    accountingMappingOptions, chargeOptions, penaltyOptions, taxGroupOptions, accountMappingForPayment);
+                    accountingMappingOptions, chargeOptions, penaltyOptions, taxGroupOptions, earlyWithdrawalChargeModeOptions,
+                    accountMappingForPayment);
         } else {
             savingsProductToReturn = SavingsProductData.template(currency, interestCompoundingPeriodType, interestPostingPeriodType,
                     interestCalculationType, interestCalculationDaysInYearType, accountingRule, currencyOptions,
                     interestCompoundingPeriodTypeOptions, interestPostingPeriodTypeOptions, interestCalculationTypeOptions,
                     interestCalculationDaysInYearTypeOptions, lockinPeriodFrequencyTypeOptions, withdrawalFeeTypeOptions,
                     paymentTypeOptions, accountingRuleOptions, accountingMappingOptions, chargeOptions, penaltyOptions, taxGroupOptions,
-                    accountMappingForPayment);
+                    earlyWithdrawalChargeModeOptions, accountMappingForPayment);
         }
 
         return savingsProductToReturn;
+    }
+
+    private Collection<EnumOptionData> retrieveEarlyWithdrawalChargeModeOptions() {
+        return List.of(new EnumOptionData(1L, "savings.earlyWithdrawalChargeMode.perPeriod", "Per Period"),
+                new EnumOptionData(2L, "savings.earlyWithdrawalChargeMode.cumulative", "Cumulative"));
     }
 
     @DELETE

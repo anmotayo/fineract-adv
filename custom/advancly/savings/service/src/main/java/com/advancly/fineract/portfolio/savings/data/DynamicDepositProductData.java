@@ -105,6 +105,9 @@ public class DynamicDepositProductData implements Serializable {
     private final InterestRateChartData chartTemplate;
     private final Collection<EnumOptionData> depositTermTypeOptions;
     private final Collection<EnumOptionData> withHoldTaxPostingTypeOptions;
+    private final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions = List.of(
+            new EnumOptionData(1L, "savings.earlyWithdrawalChargeMode.perPeriod", "Per Period"),
+            new EnumOptionData(2L, "savings.earlyWithdrawalChargeMode.cumulative", "Cumulative"));
 
     public DynamicDepositProductData(final Long id, final String name, final String shortName, final String description,
             final CurrencyData currency, final EnumOptionData interestCompoundingPeriodType, final EnumOptionData interestPostingPeriodType,
@@ -382,6 +385,10 @@ public class DynamicDepositProductData implements Serializable {
 
     public Collection<EnumOptionData> withHoldTaxPostingTypeOptions() {
         return this.withHoldTaxPostingTypeOptions;
+    }
+
+    public Collection<EnumOptionData> earlyWithdrawalChargeModeOptions() {
+        return this.earlyWithdrawalChargeModeOptions;
     }
 
     public boolean hasAccountingEnabled() {

@@ -50,6 +50,7 @@ import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -184,6 +185,42 @@ class DynamicDepositEarlyWithdrawalChargeServiceTest {
 
         assertThat(this.savedRows.get(0).chargePercentage()).isEqualByComparingTo("25");
         assertThat(this.savedRows.get(0).chargeAmount()).isEqualByComparingTo("75");
+    }
+
+    @Test
+    void theRequestPercentageOverrideWinsOverTheAccountAndProductPercentages() {
+        final SavingsAccountCharge override = accountCharge(new BigDecimal("25"));
+        final DynamicDepositAccount account = account(new BigDecimal("500"), new BigDecimal("200"), override);
+
+        this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY), false, new BigDecimal("12.5"));
+
+        assertThat(this.savedRows.get(0).chargePercentage()).isEqualByComparingTo("12.5");
+        assertThat(this.savedRows.get(0).chargeAmount()).isEqualByComparingTo("37.5");
+    }
+
+    @Test
+    void forceEarlyWithdrawalLetsPlainSavingsRecordWithTheRequestPercentage() {
+        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("25"));
+        final SavingsAccount account = mock(SavingsAccount.class);
+        lenient().when(account.getId()).thenReturn(1L);
+        lenient().when(account.productId()).thenReturn(PRODUCT_ID);
+        lenient().when(account.isClosureSettlementInProgress()).thenReturn(false);
+        lenient().when(account.isEarlyWithdrawal(BEFORE_MATURITY)).thenReturn(false);
+        lenient().when(account.charges()).thenReturn(new HashSet<>(Set.of(accountCharge)));
+        lenient().when(account.getTransactions()).thenReturn(List.of());
+        lenient().when(account.getStartInterestCalculationDate()).thenReturn(null);
+        lenient().when(account.accountSubmittedOrActivationDate()).thenReturn(SUBMITTED_ON);
+
+        final SavingsAccountSummary summary = createInstance(SavingsAccountSummary.class);
+        ReflectionTestUtils.setField(summary, "totalInterestEarned", new BigDecimal("500"));
+        ReflectionTestUtils.setField(summary, "totalInterestPosted", new BigDecimal("200"));
+        lenient().when(account.getSummary()).thenReturn(summary);
+
+        this.service.recordIfApplicable(account, withdrawal(BEFORE_MATURITY), true, new BigDecimal("12.5"));
+
+        assertThat(this.savedRows).hasSize(1);
+        assertThat(this.savedRows.get(0).chargePercentage()).isEqualByComparingTo("12.5");
+        assertThat(this.savedRows.get(0).chargeAmount()).isEqualByComparingTo("37.5");
     }
 
     @Test

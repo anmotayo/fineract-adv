@@ -38,6 +38,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrap
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +82,7 @@ public class CumulativeInterestForfeitureService {
     private final NoteRepository noteRepository;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
+    private final JdbcTemplate jdbcTemplate;
 
     // @Lazy breaks a genuine bean cycle: AdvanclySavingsAccountWritePlatformService (@Primary) injects this service to
     // trigger forfeiture, and this service injects it back to force-post interest. Without @Lazy the context fails to
@@ -89,13 +91,14 @@ public class CumulativeInterestForfeitureService {
             final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService,
             @Lazy final SavingsAccountWritePlatformService savingsAccountWritePlatformService, final NoteRepository noteRepository,
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
-            final JournalEntryWritePlatformService journalEntryWritePlatformService) {
+            final JournalEntryWritePlatformService journalEntryWritePlatformService, final JdbcTemplate jdbcTemplate) {
         this.interestChargeRepository = interestChargeRepository;
         this.earlyWithdrawalChargeService = earlyWithdrawalChargeService;
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
         this.noteRepository = noteRepository;
         this.savingsAccountRepository = savingsAccountRepository;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -186,6 +189,7 @@ public class CumulativeInterestForfeitureService {
             // the caller does not journal them a second time.
             account.refreshSummary(backdatedTxnsAllowedTill);
             this.savingsAccountRepository.saveAndFlush(account);
+            refreshDerivedChargeColumns(account.getId());
             postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
         }
 
@@ -245,6 +249,18 @@ public class CumulativeInterestForfeitureService {
         final Map<String, Object> accountingBridgeData = account.deriveAccountingBridgeData(account.getCurrency().getCode(),
                 existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, backdatedTxnsAllowedTill);
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
+    }
+
+    /**
+     * Keeps the Section 5 fast-read columns in sync with the interest-charge table after cumulative forfeiture writes
+     * its already-applied row. The table remains the source of truth; this mirrors the scheduler refresh path.
+     */
+    private void refreshDerivedChargeColumns(final Long accountId) {
+        final BigDecimal pending = this.interestChargeRepository.sumPendingChargeAmount(accountId);
+        final BigDecimal posted = this.interestChargeRepository.sumPostedChargeAmount(accountId);
+        this.jdbcTemplate.update(
+                "update m_savings_account set interest_based_charge_derived = ?, interest_based_charge_posted_derived = ? where id = ?",
+                pending, posted, accountId);
     }
 
     private SavingsAccountTransaction latestInterestPostingOn(final SavingsAccount account, final LocalDate date) {

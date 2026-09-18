@@ -126,6 +126,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -281,7 +282,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // postInterest(account, true, date, false) path production uses, not a stub.
         this.cumulativeInterestForfeitureService = new CumulativeInterestForfeitureService(this.interestChargeRepository,
                 earlyWithdrawalChargeService, this.service, this.noteRepository, this.savingAccountRepositoryWrapper,
-                this.journalEntryWritePlatformService);
+                this.journalEntryWritePlatformService, mock(JdbcTemplate.class));
 
         // Everything handed to the accounting bridge, from every journal-posting call in the flow, so a test can ask
         // what actually reached the ledger rather than assuming.

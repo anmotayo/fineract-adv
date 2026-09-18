@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DynamicDepositAccountDerivedChargeFieldsTest {
 
@@ -40,6 +41,22 @@ class DynamicDepositAccountDerivedChargeFieldsTest {
         account.updateInterestBasedChargeDerived(new BigDecimal("12.50"));
 
         assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo("12.50");
+    }
+
+    @Test
+    void postedDerivedFieldReadsAsZeroBeforeAnythingIsWritten() {
+        final DynamicDepositAccount account = newAccount();
+
+        assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void postedDerivedFieldRoundTripsThePersistedColumnValue() {
+        final DynamicDepositAccount account = newAccount();
+
+        ReflectionTestUtils.setField(account, "interestBasedChargePostedDerived", new BigDecimal("34.75"));
+
+        assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo("34.75");
     }
 
     @Test

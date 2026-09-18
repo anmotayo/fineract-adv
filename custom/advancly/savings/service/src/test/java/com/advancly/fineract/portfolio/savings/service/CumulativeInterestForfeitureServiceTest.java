@@ -51,6 +51,7 @@ import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatform
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class CumulativeInterestForfeitureServiceTest {
 
@@ -65,6 +66,7 @@ class CumulativeInterestForfeitureServiceTest {
     private NoteRepository noteRepository;
     private SavingsAccountRepositoryWrapper savingsAccountRepository;
     private JournalEntryWritePlatformService journalEntryWritePlatformService;
+    private JdbcTemplate jdbcTemplate;
     private CumulativeInterestForfeitureService service;
 
     @BeforeEach
@@ -87,9 +89,10 @@ class CumulativeInterestForfeitureServiceTest {
         this.noteRepository = mock(NoteRepository.class);
         this.savingsAccountRepository = mock(SavingsAccountRepositoryWrapper.class);
         this.journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
+        this.jdbcTemplate = mock(JdbcTemplate.class);
 
         this.service = new CumulativeInterestForfeitureService(this.interestChargeRepository, this.chargeService, this.writePlatformService,
-                this.noteRepository, this.savingsAccountRepository, this.journalEntryWritePlatformService);
+                this.noteRepository, this.savingsAccountRepository, this.journalEntryWritePlatformService, this.jdbcTemplate);
     }
 
     @Test
@@ -156,6 +159,23 @@ class CumulativeInterestForfeitureServiceTest {
         final InOrder inOrder = inOrder(account, this.savingsAccountRepository, this.journalEntryWritePlatformService);
         inOrder.verify(account).refreshSummary(false);
         inOrder.verify(this.savingsAccountRepository).saveAndFlush(account);
+        inOrder.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
+    }
+
+    @Test
+    void derivedInterestChargeColumnsAreRefreshedAfterTheForfeitureRowIsSaved() {
+        final SavingsAccount account = account(new BigDecimal("70"), BigDecimal.ZERO);
+        stubQualifyingCharge(new BigDecimal("100"));
+        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(new BigDecimal("5"));
+        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(1L)).thenReturn(BigDecimal.ZERO, new BigDecimal("70"));
+
+        this.service.forfeitIfApplicable(account, WITHDRAWAL_DATE, false, false);
+
+        final InOrder inOrder = inOrder(this.savingsAccountRepository, this.jdbcTemplate, this.journalEntryWritePlatformService);
+        inOrder.verify(this.savingsAccountRepository).saveAndFlush(account);
+        inOrder.verify(this.jdbcTemplate).update(
+                "update m_savings_account set interest_based_charge_derived = ?, interest_based_charge_posted_derived = ? where id = ?",
+                new BigDecimal("5"), new BigDecimal("70"), 1L);
         inOrder.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
     }
 

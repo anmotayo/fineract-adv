@@ -30,6 +30,7 @@ import java.util.Set;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.junit.jupiter.api.Test;
 
@@ -110,6 +111,16 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     }
 
     @Test
+    void rejectsAChargeThatIsNotAWithdrawalFee() {
+        final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST, ChargeTimeType.SPECIFIED_DUE_DATE);
+
+        assertThatThrownBy(() -> DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
+                EarlyWithdrawalChargeMode.PER_PERIOD, SavingsCompoundingInterestPeriodType.DAILY, "dynamicdepositproduct"))
+                .isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(exception -> assertThat(exception.toString()).contains("early.withdrawal.charge.not.withdrawal.fee"));
+    }
+
+    @Test
     void rejectsCumulativeModeOnAProductThatIsNotConfiguredForNoCompounding() {
         final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
@@ -150,11 +161,17 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     }
 
     private Charge charge(final Long id, final boolean active, final boolean penalty, final ChargeCalculationType calculationType) {
+        return charge(id, active, penalty, calculationType, ChargeTimeType.WITHDRAWAL_FEE);
+    }
+
+    private Charge charge(final Long id, final boolean active, final boolean penalty, final ChargeCalculationType calculationType,
+            final ChargeTimeType chargeTimeType) {
         final Charge charge = mock(Charge.class);
         lenient().when(charge.getId()).thenReturn(id);
         lenient().when(charge.isActive()).thenReturn(active);
         lenient().when(charge.isPenalty()).thenReturn(penalty);
         lenient().when(charge.getChargeCalculation()).thenReturn(calculationType.getValue());
+        lenient().when(charge.getChargeTimeType()).thenReturn(chargeTimeType.getValue());
         return charge;
     }
 }

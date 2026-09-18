@@ -63,6 +63,8 @@ import org.apache.fineract.portfolio.savings.data.DepositAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.useradministration.domain.AppUser;
@@ -99,6 +101,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final DepositAccountAssembler depositAccountAssembler;
     private final DepositAccountDataValidator depositAccountDataValidator;
     private final AccountAssociationsRepository accountAssociationsRepository;
+    private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
+    private final SavingsHelper savingsHelper;
 
     public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositAccountRepository dynamicDepositAccountRepository,
@@ -109,7 +113,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
             final SavingsAccountWritePlatformService savingsAccountWritePlatformService,
             final DepositAccountAssembler depositAccountAssembler, final DepositAccountDataValidator depositAccountDataValidator,
-            final AccountAssociationsRepository accountAssociationsRepository) {
+            final AccountAssociationsRepository accountAssociationsRepository,
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper) {
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -123,6 +128,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         this.depositAccountAssembler = depositAccountAssembler;
         this.depositAccountDataValidator = depositAccountDataValidator;
         this.accountAssociationsRepository = accountAssociationsRepository;
+        this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
+        this.savingsHelper = savingsHelper;
     }
 
     @Transactional
@@ -394,8 +401,10 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     }
 
     private DynamicDepositAccount findAccount(final Long accountId) {
-        return this.dynamicDepositAccountRepository.findById(accountId)
+        final DynamicDepositAccount account = this.dynamicDepositAccountRepository.findById(accountId)
                 .orElseThrow(() -> new DynamicDepositAccountNotFoundException(accountId));
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        return account;
     }
 
     private void checkClientOrGroupActive(final DynamicDepositAccount account) {

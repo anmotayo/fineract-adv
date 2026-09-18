@@ -733,6 +733,10 @@ public final class SavingsEnumerations {
                 optionData = new EnumOptionData(DepositAccountType.CURRENT_DEPOSIT.getValue().longValue(),
                         DepositAccountType.CURRENT_DEPOSIT.getCode(), "Current Deposit");
             break;
+            case DYNAMIC_DEPOSIT:
+                optionData = new EnumOptionData(DepositAccountType.DYNAMIC_DEPOSIT.getValue().longValue(),
+                        DepositAccountType.DYNAMIC_DEPOSIT.getCode(), "Dynamic Deposit");
+            break;
         }
         return optionData;
     }

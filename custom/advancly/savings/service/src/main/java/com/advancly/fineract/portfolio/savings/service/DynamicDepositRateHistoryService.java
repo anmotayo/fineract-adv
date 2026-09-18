@@ -22,6 +22,7 @@ import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateH
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositRateResolutionService.ResolvedRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -171,9 +172,9 @@ public class DynamicDepositRateHistoryService {
             }
             final BigDecimal correctedInvestedAmount = computeInvestedAmountAsOf(account, row.transaction());
             if (account.isDynamicRateEnabled()) {
-                final ResolvedRate rate = this.rateResolutionService.resolve(account.chart(),
-                        account.savingsProduct().nominalAnnualInterestRate(), correctedInvestedAmount, row.transactionDate(),
-                        accountTermAndPreClosure.depositPeriod(), accountTermAndPreClosure.depositPeriodFrequencyType());
+                final ResolvedRate rate = this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account),
+                        correctedInvestedAmount, row.transactionDate(), accountTermAndPreClosure.depositPeriod(),
+                        accountTermAndPreClosure.depositPeriodFrequencyType());
                 row.correct(correctedInvestedAmount, rate.interestRateChartId(), rate.interestRateSlabId(), rate.baseAnnualInterestRate(),
                         rate.annualInterestRate(), rate.source());
             } else {
@@ -204,8 +205,18 @@ public class DynamicDepositRateHistoryService {
     private ResolvedRate resolveRate(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure accountTermAndPreClosure,
             final BigDecimal investedAmount, final LocalDate asOfDate, final long priorRowCount) {
         final BigDecimal nominalAnnualInterestRate = account.savingsProduct().nominalAnnualInterestRate();
-        if (account.isDynamicRateEnabled() || priorRowCount == 0) {
-            return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate, investedAmount, asOfDate,
+        if (priorRowCount == 0) {
+            if (account.getNominalAnnualInterestRate() == null) {
+                return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account), investedAmount, asOfDate,
+                        accountTermAndPreClosure.depositPeriod(), accountTermAndPreClosure.depositPeriodFrequencyType());
+            }
+
+            return new ResolvedRate(account.getNominalAnnualInterestRate(), account.getNominalAnnualInterestRate(),
+                    DynamicDepositRateSource.ACCOUNT_NOMINAL, null, null);
+        }
+
+        if (account.isDynamicRateEnabled()) {
+            return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account), investedAmount, asOfDate,
                     accountTermAndPreClosure.depositPeriod(), accountTermAndPreClosure.depositPeriodFrequencyType());
         }
 
@@ -218,5 +229,10 @@ public class DynamicDepositRateHistoryService {
         // dynamic_rate_enabled = false: carry the last resolved rate forward unchanged (business rule 7).
         return new ResolvedRate(lastRow.resolvedAnnualInterestRate(), lastRow.resolvedAnnualInterestRate(), lastRow.rateSource(),
                 lastRow.interestRateChartId(), lastRow.interestRateSlabId());
+    }
+
+    private BigDecimal nominalAnnualInterestRate(final DynamicDepositAccount account) {
+        return account.getNominalAnnualInterestRate() == null ? account.savingsProduct().nominalAnnualInterestRate()
+                : account.getNominalAnnualInterestRate();
     }
 }

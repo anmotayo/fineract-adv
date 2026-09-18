@@ -28,6 +28,8 @@ import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateH
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
+import com.advancly.fineract.portfolio.savings.testutil.DepositAccountInterestRateChartTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.lang.reflect.Constructor;
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
@@ -82,6 +85,38 @@ class DynamicDepositRateHistoryServiceTest {
             return sorted.isEmpty() ? null : sorted.get(sorted.size() - 1);
         });
         this.service = new DynamicDepositRateHistoryService(this.repository, this.rateResolutionService);
+    }
+
+    @Test
+    void activationResolvesFromChartWhenDynamicRateIsEnabledEvenIfAccountNominalDiffers() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.ZERO, BigDecimal.valueOf(99999), BigDecimal.valueOf(12)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(20.5), BigDecimal.valueOf(2), chart);
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 5, 28),
+                BigDecimal.valueOf(25000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        assertThat(rowFor(activation).resolvedAnnualInterestRate()).isEqualByComparingTo("12");
+        assertThat(rowFor(activation).baseAnnualInterestRate()).isEqualByComparingTo("12");
+        assertThat(rowFor(activation).rateSource()).isEqualTo(DynamicDepositRateSource.INTEREST_RATE_CHART);
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("12");
+    }
+
+    @Test
+    void activationFallsBackToAccountNominalRateWhenNoChartSlabMatches() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.valueOf(100000), null, BigDecimal.valueOf(12)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(20.5), BigDecimal.valueOf(2), chart);
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 5, 28),
+                BigDecimal.valueOf(25000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        assertThat(rowFor(activation).resolvedAnnualInterestRate()).isEqualByComparingTo("20.5");
+        assertThat(rowFor(activation).baseAnnualInterestRate()).isEqualByComparingTo("20.5");
+        assertThat(rowFor(activation).rateSource()).isEqualTo(DynamicDepositRateSource.ACCOUNT_NOMINAL);
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("20.5");
     }
 
     @Test
@@ -175,6 +210,16 @@ class DynamicDepositRateHistoryServiceTest {
     }
 
     private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate) {
+        return buildAccount(dynamicRateEnabled, nominalAnnualInterestRate, nominalAnnualInterestRate, null);
+    }
+
+    private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate,
+            final BigDecimal productNominalAnnualInterestRate) {
+        return buildAccount(dynamicRateEnabled, nominalAnnualInterestRate, productNominalAnnualInterestRate, null);
+    }
+
+    private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate,
+            final BigDecimal productNominalAnnualInterestRate, final DepositAccountInterestRateChart chart) {
         final DynamicDepositAccount newAccount = createInstance(DynamicDepositAccount.class);
         ReflectionTestUtils.setField(newAccount, "id", 1L);
         ReflectionTestUtils.setField(newAccount, "currency", CURRENCY);
@@ -182,8 +227,12 @@ class DynamicDepositRateHistoryServiceTest {
         ReflectionTestUtils.setField(newAccount, "nominalAnnualInterestRate", nominalAnnualInterestRate);
 
         final SavingsProduct product = mock(SavingsProduct.class);
-        lenient().when(product.nominalAnnualInterestRate()).thenReturn(nominalAnnualInterestRate);
+        lenient().when(product.nominalAnnualInterestRate()).thenReturn(productNominalAnnualInterestRate);
         ReflectionTestUtils.setField(newAccount, "product", product);
+        ReflectionTestUtils.setField(newAccount, "chart", chart);
+        if (chart != null) {
+            chart.updateDepositAccountReference(newAccount);
+        }
 
         final DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(false, null, null);
         final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(12, 12, SavingsPeriodFrequencyType.MONTHS,

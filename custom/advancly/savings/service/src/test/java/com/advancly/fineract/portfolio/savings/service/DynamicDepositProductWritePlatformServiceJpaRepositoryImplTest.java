@@ -47,6 +47,7 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
@@ -127,6 +128,7 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
         lenient().when(charge.isActive()).thenReturn(active);
         lenient().when(charge.isPenalty()).thenReturn(penalty);
         lenient().when(charge.getChargeCalculation()).thenReturn(calculationType.getValue());
+        lenient().when(charge.getChargeTimeType()).thenReturn(ChargeTimeType.WITHDRAWAL_FEE.getValue());
         return charge;
     }
 }

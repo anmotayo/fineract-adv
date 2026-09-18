@@ -22,7 +22,6 @@ import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
@@ -63,7 +62,6 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final ConfigurationDomainService configurationDomainService;
-    private final SavingsAccountInterestChargeRepository interestChargeRepository;
 
     @Override
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
@@ -117,9 +115,13 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
 
         BigDecimal pendingInterestBasedCharges = null;
         BigDecimal postedInterestBasedCharges = null;
-        if (account instanceof DynamicDepositAccount) {
-            pendingInterestBasedCharges = this.interestChargeRepository.sumPendingChargeAmount(savingsAccountId);
-            postedInterestBasedCharges = this.interestChargeRepository.sumPostedChargeAmount(savingsAccountId);
+        BigDecimal interestBasedChargeDerived = null;
+        BigDecimal interestBasedChargePostedDerived = null;
+        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
+            interestBasedChargeDerived = dynamicDepositAccount.interestBasedChargeDerived();
+            interestBasedChargePostedDerived = dynamicDepositAccount.interestBasedChargePostedDerived();
+            pendingInterestBasedCharges = interestBasedChargeDerived;
+            postedInterestBasedCharges = interestBasedChargePostedDerived;
         }
 
         final List<InterestCalculationTransactionData> transactions = new ArrayList<>();
@@ -135,14 +137,18 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         // of re-reading it off the summary, so the general derived-totals block below stays "as at today" and isn't
         // silently polluted by the maturity projection.
         final var summary = account.getSummary();
+        final BigDecimal totalInterestPosted = summary.getTotalInterestPosted();
+        final BigDecimal totalWithholdTax = summary.getTotalWithholdTax();
+        final BigDecimal forfeitedAmount = postedInterestBasedCharges;
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
                 interestAsAtToday, interestAtMaturity, maturityAmount, pendingInterestBasedCharges, postedInterestBasedCharges,
-                summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(),
-                interestAsAtToday, summary.getTotalInterestPosted(), summary.getAccountBalance(), summary.getTotalFeeCharge(),
-                summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), summary.getTotalWithholdTax(),
-                summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount);
+                interestBasedChargeDerived, interestBasedChargePostedDerived, forfeitedAmount, summary.getTotalDeposits(),
+                summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(), interestAsAtToday,
+                totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(),
+                summary.getTotalOverdraftInterestDerived(), totalWithholdTax, summary.getInterestPostedTillDate(), transactions,
+                postingPeriods, topUpAmount, withdrawalAmount);
     }
 
     private Money lastClosingBalanceOf(final List<PostingPeriod> periods, final SavingsAccount account) {

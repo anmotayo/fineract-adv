@@ -736,6 +736,10 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         return ChargeTimeType.fromInt(this.chargeTime).isWithdrawalFee();
     }
 
+    public boolean isPercentageOfInterest() {
+        return this.chargeCalculation != null && ChargeCalculationType.fromInt(this.chargeCalculation).isPercentageOfInterest();
+    }
+
     public boolean isOverdraftFee() {
         return ChargeTimeType.fromInt(this.chargeTime).isOverdraftFee();
     }

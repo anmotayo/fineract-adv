@@ -1382,7 +1382,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         BigDecimal result = BigDecimal.ZERO;
         if (isWithdrawalFeeApplicableForTransfer()) {
             for (SavingsAccountCharge charge : this.charges()) {
-                if (charge.isWithdrawalFee() && charge.isActive()) {
+                if (isAutoPayableWithdrawalFee(charge)) {
                     result = result.add(charge.calculateWithdralFeeAmount(transactionAmount), MoneyHelper.getMathContext());
                 }
             }
@@ -1393,7 +1393,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     private void payWithdrawalFee(final BigDecimal transactionAmount, final LocalDate transactionDate, final PaymentDetail paymentDetail,
             final boolean backdatedTxnsAllowedTill, final String refNo) {
         for (SavingsAccountCharge charge : this.charges()) {
-            if (charge.isWithdrawalFee() && charge.isActive()) {
+            if (isAutoPayableWithdrawalFee(charge)) {
 
                 if (charge.getFreeWithdrawalCount() == null) {
                     charge.setFreeWithdrawalCount(0);
@@ -1422,6 +1422,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 }
             }
         }
+    }
+
+    private boolean isAutoPayableWithdrawalFee(final SavingsAccountCharge charge) {
+        return charge.isWithdrawalFee() && charge.isActive() && !charge.isPercentageOfInterest();
     }
 
     private void resetFreeChargeDaysCount(SavingsAccountCharge charge, final BigDecimal transactionAmount, final LocalDate transactionDate,

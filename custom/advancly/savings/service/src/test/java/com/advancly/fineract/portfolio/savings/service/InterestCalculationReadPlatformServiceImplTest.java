@@ -30,7 +30,6 @@ import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import java.math.BigDecimal;
@@ -63,7 +62,6 @@ class InterestCalculationReadPlatformServiceImplTest {
     private PlatformSecurityContext context;
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private ConfigurationDomainService configurationDomainService;
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
     private InterestCalculationReadPlatformServiceImpl service;
 
     @BeforeEach
@@ -75,9 +73,8 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
-        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.configurationDomainService, this.interestChargeRepository);
+                this.configurationDomainService);
     }
 
     private SavingsAccount plainSavingsAccount() {
@@ -213,13 +210,18 @@ class InterestCalculationReadPlatformServiceImplTest {
         final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
         commonStubs(account, DepositAccountType.DYNAMIC_DEPOSIT);
         when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
-        when(this.interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("12"));
-        when(this.interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("34"));
+        when(account.interestBasedChargeDerived()).thenReturn(new BigDecimal("12"));
+        when(account.interestBasedChargePostedDerived()).thenReturn(new BigDecimal("34"));
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
         assertThat(result.pendingInterestBasedCharges()).isEqualByComparingTo("12");
         assertThat(result.postedInterestBasedCharges()).isEqualByComparingTo("34");
+        assertThat(result.interestBasedChargeDerived()).isEqualByComparingTo("12");
+        assertThat(result.interestBasedChargePostedDerived()).isEqualByComparingTo("34");
+        assertThat(result.forfeitedAmount()).isEqualByComparingTo("34");
+        assertThat(result.accountBalance()).isEqualByComparingTo("1000");
+        assertThat(result.totalWithholdTax()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test

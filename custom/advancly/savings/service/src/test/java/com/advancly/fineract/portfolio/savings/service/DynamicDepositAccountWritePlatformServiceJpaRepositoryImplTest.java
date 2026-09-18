@@ -68,6 +68,8 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClos
 import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +116,10 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
     private DepositAccountDataValidator depositAccountDataValidator;
     @Mock
     private AccountAssociationsRepository accountAssociationsRepository;
+    @Mock
+    private SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
+    @Mock
+    private SavingsHelper savingsHelper;
 
     private DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl service;
 
@@ -122,7 +128,8 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
         service = new DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(context, dynamicDepositAccountRepository,
                 dynamicDepositAccountDataValidator, dynamicDepositAccountAssembler, accountNumberGenerator, accountNumberFormatRepository,
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,
-                savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository);
+                savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository,
+                savingsAccountTransactionSummaryWrapper, savingsHelper);
 
         // The modifyApplication tests exercise the real DynamicDepositAccountDataValidator end-to-end, which reaches
         // account.validateNewApplicationState(...) -> DateUtils.isDateInTheFuture(submittedOnDate) ->
@@ -213,7 +220,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 context, dynamicDepositAccountRepository, realValidator, dynamicDepositAccountAssembler, accountNumberGenerator,
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
-                depositAccountDataValidator, accountAssociationsRepository);
+                depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 
@@ -254,7 +261,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 context, dynamicDepositAccountRepository, realValidator, dynamicDepositAccountAssembler, accountNumberGenerator,
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
-                depositAccountDataValidator, accountAssociationsRepository);
+                depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 

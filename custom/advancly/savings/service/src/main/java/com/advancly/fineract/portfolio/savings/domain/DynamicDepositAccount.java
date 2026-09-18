@@ -106,22 +106,22 @@ public class DynamicDepositAccount extends SavingsAccount {
     private DepositAccountInterestRateChart chart;
 
     /**
-     * Implementation plan Section 5. Read-side convenience only: the current calculated/pending interest-based charge
-     * amount not yet consumed by an interest posting. The already-posted total is deliberately NOT mirrored into its
-     * own column here - Dynamic Deposit's early-withdrawal charge is the only penalty this product ever applies, so
-     * that figure is exactly {@code SavingsAccountSummary.totalPenaltyCharge}, and a second column would just be a
-     * duplicate of it that could drift. The spec is explicit that this pending figure is "not used as the source of
-     * truth for posting, reversals, or accounting" - that remains {@code m_savings_account_interest_charge} plus the
-     * linked transactions.
+     * Implementation plan Section 5. Read-side convenience columns only: the current pending interest-based charge
+     * amount not yet consumed by an interest posting, and the posted amount already consumed by interest posting or
+     * cumulative forfeiture. Neither is the source of truth for posting, reversals, or accounting - that remains
+     * {@code m_savings_account_interest_charge} plus the linked transactions.
      *
      * Mapped here, on the subclass, rather than on {@code SavingsAccount}: the hierarchy is
-     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so this becomes one extra
-     * nullable column on {@code m_savings_account} without touching the class every savings and deposit account type
-     * shares. Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves it NULL -
-     * which is why the accessor below normalises NULL to zero.
+     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so these become nullable
+     * columns on {@code m_savings_account} without touching the class every savings and deposit account type shares.
+     * Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves it NULL - which
+     * is why the accessors below normalise NULL to zero.
      */
     @Column(name = "interest_based_charge_derived", scale = 6, precision = 19)
     private BigDecimal interestBasedChargeDerived;
+
+    @Column(name = "interest_based_charge_posted_derived", scale = 6, precision = 19)
+    private BigDecimal interestBasedChargePostedDerived;
 
     /**
      * In-flight state for a premature closure, spanning the three steps closure takes on this instance: what the
@@ -259,6 +259,10 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     public BigDecimal interestBasedChargeDerived() {
         return this.interestBasedChargeDerived == null ? BigDecimal.ZERO : this.interestBasedChargeDerived;
+    }
+
+    public BigDecimal interestBasedChargePostedDerived() {
+        return this.interestBasedChargePostedDerived == null ? BigDecimal.ZERO : this.interestBasedChargePostedDerived;
     }
 
     @Override

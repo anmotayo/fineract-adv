@@ -38,10 +38,14 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
  * schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life (Dynamic
  * Deposit and Recurring Deposit can both add/remove principal after opening).
  *
- * {@code pendingInterestBasedCharges}/{@code postedInterestBasedCharges} are only ever non-null for Dynamic Deposit -
- * the early-withdrawal interest-based charge mechanism doesn't exist for the other three account types. These two
- * figures are always the REAL, already-recorded amounts - a simulated withdrawal is not run through the early
- * withdrawal charge calculation, so they don't reflect what a simulated withdrawal would incur.
+ * {@code interestBasedChargeDerived}/{@code interestBasedChargePostedDerived} are returned from
+ * {@code m_savings_account.interest_based_charge_derived} and
+ * {@code m_savings_account.interest_based_charge_posted_derived}. The older
+ * {@code pendingInterestBasedCharges}/{@code postedInterestBasedCharges} names are kept as aliases of those same
+ * values.
+ *
+ * {@code forfeitedAmount} is the posted interest-charge total under the business name the cumulative forfeiture API
+ * consumers expect.
  */
 public class InterestCalculationData implements Serializable {
 
@@ -61,6 +65,9 @@ public class InterestCalculationData implements Serializable {
 
     private final BigDecimal pendingInterestBasedCharges;
     private final BigDecimal postedInterestBasedCharges;
+    private final BigDecimal interestBasedChargeDerived;
+    private final BigDecimal interestBasedChargePostedDerived;
+    private final BigDecimal forfeitedAmount;
 
     // all-time derived totals, straight off the account's own summary
     private final BigDecimal totalDeposits;
@@ -87,12 +94,14 @@ public class InterestCalculationData implements Serializable {
             final Long groupId, final Long productId, final SavingsAccountStatusEnumData status, final CurrencyData currency,
             final LocalDate maturityDate, final BigDecimal interestAsAtToday, final BigDecimal interestAtMaturity,
             final BigDecimal maturityAmount, final BigDecimal pendingInterestBasedCharges, final BigDecimal postedInterestBasedCharges,
-            final BigDecimal totalDeposits, final BigDecimal totalWithdrawals, final BigDecimal totalWithdrawalFees,
-            final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned, final BigDecimal totalInterestPosted,
-            final BigDecimal accountBalance, final BigDecimal totalFeeCharge, final BigDecimal totalPenaltyCharge,
-            final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax, final LocalDate interestPostedTillDate,
-            final Collection<InterestCalculationTransactionData> transactions, final Collection<PostingPeriodData> postingPeriods,
-            final BigDecimal simulatedTopUpAmount, final BigDecimal simulatedWithdrawalAmount) {
+            final BigDecimal interestBasedChargeDerived, final BigDecimal interestBasedChargePostedDerived,
+            final BigDecimal forfeitedAmount, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
+            final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
+            final BigDecimal totalInterestPosted, final BigDecimal accountBalance, final BigDecimal totalFeeCharge,
+            final BigDecimal totalPenaltyCharge, final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax,
+            final LocalDate interestPostedTillDate, final Collection<InterestCalculationTransactionData> transactions,
+            final Collection<PostingPeriodData> postingPeriods, final BigDecimal simulatedTopUpAmount,
+            final BigDecimal simulatedWithdrawalAmount) {
         this.accountId = accountId;
         this.accountNo = accountNo;
         this.externalId = externalId;
@@ -107,6 +116,9 @@ public class InterestCalculationData implements Serializable {
         this.maturityAmount = maturityAmount;
         this.pendingInterestBasedCharges = pendingInterestBasedCharges;
         this.postedInterestBasedCharges = postedInterestBasedCharges;
+        this.interestBasedChargeDerived = interestBasedChargeDerived;
+        this.interestBasedChargePostedDerived = interestBasedChargePostedDerived;
+        this.forfeitedAmount = forfeitedAmount;
         this.totalDeposits = totalDeposits;
         this.totalWithdrawals = totalWithdrawals;
         this.totalWithdrawalFees = totalWithdrawalFees;
@@ -155,6 +167,30 @@ public class InterestCalculationData implements Serializable {
 
     public BigDecimal postedInterestBasedCharges() {
         return this.postedInterestBasedCharges;
+    }
+
+    public BigDecimal interestBasedChargeDerived() {
+        return this.interestBasedChargeDerived;
+    }
+
+    public BigDecimal interestBasedChargePostedDerived() {
+        return this.interestBasedChargePostedDerived;
+    }
+
+    public BigDecimal forfeitedAmount() {
+        return this.forfeitedAmount;
+    }
+
+    public BigDecimal accountBalance() {
+        return this.accountBalance;
+    }
+
+    public BigDecimal totalInterestPosted() {
+        return this.totalInterestPosted;
+    }
+
+    public BigDecimal totalWithholdTax() {
+        return this.totalWithholdTax;
     }
 
     public Collection<InterestCalculationTransactionData> transactions() {

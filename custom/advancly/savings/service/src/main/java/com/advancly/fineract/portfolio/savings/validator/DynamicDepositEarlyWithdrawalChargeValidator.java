@@ -31,6 +31,7 @@ import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 
 /**
@@ -42,8 +43,8 @@ import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodTyp
  * This does NOT re-check that the calculation type is allowed for the product TYPE - Task 1 of this phase already does
  * that in {@code SavingsProductBaseAssembler#assembleListOfSavingsProductCharges} (commit f51316b8f) and
  * {@code SavingsAccountChargeAssembler#validateChargeAllowedForDepositAccountType} (commit ffbb00218). What it checks
- * is narrower: that the charge singled out as THE early-withdrawal penalty really is an active, penalty,
- * percent-of-interest charge attached to this product.
+ * is narrower: that the charge singled out as THE early-withdrawal penalty really is an active, penalty, withdrawal
+ * fee, percent-of-interest charge attached to this product.
  */
 public final class DynamicDepositEarlyWithdrawalChargeValidator {
 
@@ -120,6 +121,12 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
         if (!ChargeCalculationType.fromInt(selectedCharge.getChargeCalculation()).isPercentageOfInterest()) {
             baseDataValidator.reset().parameter(earlyWithdrawalChargeIdParamName).value(earlyWithdrawalChargeId)
                     .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.not.percent.of.interest");
+            throw new PlatformApiDataValidationException(dataValidationErrors);
+        }
+
+        if (!ChargeTimeType.fromInt(selectedCharge.getChargeTimeType()).isWithdrawalFee()) {
+            baseDataValidator.reset().parameter(earlyWithdrawalChargeIdParamName).value(earlyWithdrawalChargeId)
+                    .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.not.withdrawal.fee");
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }
 

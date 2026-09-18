@@ -33,5 +33,15 @@
         </addColumn>
     </changeSet>
 
+    <changeSet author="fineract" id="2">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="m_savings_account" columnName="interest_based_charge_posted_derived"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="m_savings_account">
+            <column name="interest_based_charge_posted_derived" type="DECIMAL(19, 6)" defaultValueComputed="NULL"/>
+        </addColumn>
+    </changeSet>
 
 </databaseChangeLog>

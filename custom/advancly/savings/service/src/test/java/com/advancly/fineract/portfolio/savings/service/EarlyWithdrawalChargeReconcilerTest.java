@@ -29,6 +29,7 @@ import java.util.List;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,6 +56,7 @@ class EarlyWithdrawalChargeReconcilerTest {
         when(charge.isActive()).thenReturn(true);
         when(charge.isPenalty()).thenReturn(true);
         when(charge.getChargeCalculation()).thenReturn(ChargeCalculationType.PERCENT_OF_INTEREST.getValue());
+        when(charge.getChargeTimeType()).thenReturn(ChargeTimeType.WITHDRAWAL_FEE.getValue());
 
         final EarlyWithdrawalChargeReconciler reconciler = new EarlyWithdrawalChargeReconciler(earlyWithdrawalChargeRepository);
         reconciler.reconcile(1L, command, true, List.of(charge), SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST,

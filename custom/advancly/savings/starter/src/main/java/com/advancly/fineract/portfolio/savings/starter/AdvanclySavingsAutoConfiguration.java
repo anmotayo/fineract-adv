@@ -183,17 +183,21 @@ public class AdvanclySavingsAutoConfiguration {
      * {@code AdvanclySavingsAccountDomainService}, etc.) already does.
      *
      * <p>
-     * Task 7 gives this class zero behavior change from core (it just calls {@code super.postInterest()}); Task 8 adds
-     * the actual per-period-charge logic on top of it.
+     * Task 7 gave this class zero behavior change from core (it just called {@code super.postInterest()}); Task 8 has
+     * since added the actual per-period-charge application logic on top of it (see
+     * {@link AdvanclySavingsSchedularInterestPoster#postInterest()}), which is why its constructor now also takes the
+     * two extra repositories below.
      */
     @Bean
     @Primary
     @Scope("prototype")
     public AdvanclySavingsSchedularInterestPoster advanclySavingsSchedularInterestPoster(
             SavingsAccountWritePlatformService savingsAccountWritePlatformService, JdbcTemplate jdbcTemplate,
-            SavingsAccountReadPlatformService savingsAccountReadPlatformService, PlatformSecurityContext platformSecurityContext) {
+            SavingsAccountReadPlatformService savingsAccountReadPlatformService, PlatformSecurityContext platformSecurityContext,
+            com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository interestChargeRepository,
+            SavingsAccountTransactionRepository savingsAccountTransactionRepository) {
         return new AdvanclySavingsSchedularInterestPoster(savingsAccountWritePlatformService, jdbcTemplate,
-                savingsAccountReadPlatformService, platformSecurityContext);
+                savingsAccountReadPlatformService, platformSecurityContext, interestChargeRepository, savingsAccountTransactionRepository);
     }
 
     /**

@@ -28,6 +28,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -37,6 +38,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
@@ -44,6 +46,8 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
@@ -54,6 +58,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Covers {@link AdvanclySavingsSchedularInterestPoster#postInterest()}'s new per-period-charge application logic (Task
@@ -91,6 +96,10 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
+        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
+        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -120,7 +129,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         when(savingsAccountTransactionRepository.getReferenceById(any())).thenReturn(postingTransactionEntity, chargeTransactionEntity);
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
-                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository);
+                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -169,6 +179,10 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
+        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
+        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -198,7 +212,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         when(savingsAccountTransactionRepository.getReferenceById(any())).thenReturn(postingTransactionEntity, chargeTransactionEntity);
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
-                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository);
+                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -231,6 +246,10 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
+        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
+        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -244,7 +263,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         when(interestChargeRepository.findPendingByAccountIdUpTo(eq(7L), any(LocalDate.class))).thenReturn(Collections.emptyList());
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
-                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository);
+                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -261,6 +281,20 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final AppUser appUser = mock(AppUser.class);
         when(appUser.getId()).thenReturn(1L);
         when(securityContext.authenticatedUser()).thenReturn(appUser);
+    }
+
+    /**
+     * Task 9: {@code postInterest()} now unconditionally calls {@code postDynamicDepositAccountsOnce()} first, which
+     * needs {@code DynamicDepositAccountRepository#findIdsByStatus(...)} stubbed or the account-id-list fetch would NPE
+     * (an unstubbed mock returns {@code null}, not an empty list) - unrelated to what this class actually tests
+     * (plain-Savings per-period-charge application), so kept to a single no-op stub shared by all three tests here.
+     * Whether this stub is ever actually consulted depends on Task 9's static, business-date-keyed claim guard racing
+     * against other tests in this JVM sharing the same (real, unset) business date - either outcome is harmless here.
+     */
+    private static DynamicDepositAccountRepository stubNoActiveDynamicDepositAccounts() {
+        final DynamicDepositAccountRepository dynamicDepositAccountRepository = mock(DynamicDepositAccountRepository.class);
+        when(dynamicDepositAccountRepository.findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue())).thenReturn(List.of());
+        return dynamicDepositAccountRepository;
     }
 
     /**

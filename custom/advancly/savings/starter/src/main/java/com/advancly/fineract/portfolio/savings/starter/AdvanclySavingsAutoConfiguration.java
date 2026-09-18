@@ -186,7 +186,9 @@ public class AdvanclySavingsAutoConfiguration {
      * Task 7 gave this class zero behavior change from core (it just called {@code super.postInterest()}); Task 8 has
      * since added the actual per-period-charge application logic on top of it (see
      * {@link AdvanclySavingsSchedularInterestPoster#postInterest()}), which is why its constructor now also takes the
-     * two extra repositories below.
+     * two extra repositories below. Task 9 has since folded in the Dynamic Deposit scheduled posting previously done by
+     * the now-retired {@code DynamicDepositPostInterestTasklet}, adding the four further dependencies below that it
+     * used to receive directly.
      */
     @Bean
     @Primary
@@ -195,9 +197,13 @@ public class AdvanclySavingsAutoConfiguration {
             SavingsAccountWritePlatformService savingsAccountWritePlatformService, JdbcTemplate jdbcTemplate,
             SavingsAccountReadPlatformService savingsAccountReadPlatformService, PlatformSecurityContext platformSecurityContext,
             com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository interestChargeRepository,
-            SavingsAccountTransactionRepository savingsAccountTransactionRepository) {
+            SavingsAccountTransactionRepository savingsAccountTransactionRepository,
+            com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository dynamicDepositAccountRepository,
+            SavingsAccountAssembler savingsAccountAssembler, org.springframework.transaction.PlatformTransactionManager transactionManager,
+            BusinessEventNotifierService businessEventNotifierService) {
         return new AdvanclySavingsSchedularInterestPoster(savingsAccountWritePlatformService, jdbcTemplate,
-                savingsAccountReadPlatformService, platformSecurityContext, interestChargeRepository, savingsAccountTransactionRepository);
+                savingsAccountReadPlatformService, platformSecurityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
     }
 
     /**

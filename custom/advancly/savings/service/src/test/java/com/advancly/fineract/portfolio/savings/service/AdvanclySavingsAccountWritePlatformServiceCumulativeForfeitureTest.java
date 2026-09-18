@@ -47,6 +47,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
@@ -99,6 +100,7 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
     private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private CumulativeInterestForfeitureService forfeitureService;
     private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
     private AdvanclySavingsAccountWritePlatformService service;
 
     @BeforeEach
@@ -118,13 +120,14 @@ class AdvanclySavingsAccountWritePlatformServiceCumulativeForfeitureTest {
         this.productEarlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
         this.forfeitureService = mock(CumulativeInterestForfeitureService.class);
         this.earlyWithdrawalChargeService = mock(DynamicDepositEarlyWithdrawalChargeService.class);
+        this.productToGLAccountMappingRepository = mock(ProductToGLAccountMappingRepository.class);
 
         final FromJsonHelper fromJsonHelper = new FromJsonHelper();
         this.service = new AdvanclySavingsAccountWritePlatformService(this.context, this.savingsAccountTransactionDataValidator,
                 this.assembler, this.domainService, this.advanclyTransactionRepository, this.paymentDetailWritePlatformService,
                 this.noteRepository, this.gsimRepository, this.delegate, new BulkTransactionDataValidator(fromJsonHelper), fromJsonHelper,
                 this.paymentTypeRepositoryWrapper, this.paymentDetailRepository, this.productEarlyWithdrawalChargeRepository,
-                this.forfeitureService, this.earlyWithdrawalChargeService);
+                this.forfeitureService, this.earlyWithdrawalChargeService, this.productToGLAccountMappingRepository);
 
         lenient().when(this.advanclyTransactionRepository.findLastTransactionDate(SAVINGS_ID)).thenReturn(Optional.empty());
     }

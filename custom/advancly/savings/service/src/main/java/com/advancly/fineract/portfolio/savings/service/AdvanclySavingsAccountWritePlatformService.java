@@ -35,6 +35,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.accounting.common.AccountingConstants.CashAccountsForSavings;
+import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMapping;
+import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -44,6 +47,7 @@ import org.apache.fineract.infrastructure.security.service.PlatformSecurityConte
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.organisation.staff.domain.Staff;
+import org.apache.fineract.portfolio.PortfolioProductType;
 import org.apache.fineract.portfolio.note.domain.Note;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.paymentdetail.PaymentDetailConstants;
@@ -94,6 +98,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private final ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
 
     @Autowired
     public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
@@ -107,7 +112,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
             final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
             final CumulativeInterestForfeitureService cumulativeInterestForfeitureService,
-            final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService) {
+            final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService,
+            final ProductToGLAccountMappingRepository productToGLAccountMappingRepository) {
         this.context = context;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
         this.assembler = assembler;
@@ -124,6 +130,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.productEarlyWithdrawalChargeRepository = productEarlyWithdrawalChargeRepository;
         this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
         this.earlyWithdrawalChargeService = earlyWithdrawalChargeService;
+        this.productToGLAccountMappingRepository = productToGLAccountMappingRepository;
     }
 
     @Transactional
@@ -263,8 +270,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
      * Records the pending {@code SavingsAccountInterestCharge} row a PER_PERIOD-mode early withdrawal needs, so the
      * next interest posting can apply the charge. This is the plain-Savings counterpart to the cumulative-forfeiture
      * branch above: that one force-posts interest before the transaction exists, this one records against the
-     * transaction the O(1) append path just created, so it must run after {@code domainService.handleWithdrawalOptimized}
-     * returns rather than before it.
+     * transaction the O(1) append path just created, so it must run after
+     * {@code domainService.handleWithdrawalOptimized} returns rather than before it.
      *
      * {@link DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable(SavingsAccount, SavingsAccountTransaction)}
      * has nothing Dynamic-Deposit-specific in its signature or logic, so it is equally safe to call here for a plain
@@ -652,6 +659,40 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
     @Override
     public void selectAccountId(SavingsAccountTransactionData accountTransaction, SavingsAccountData savingsAccountData) {
+        if (accountTransaction.isInterestBasedCharge()) {
+            resolvePenaltyIncomeAccounts(accountTransaction, savingsAccountData);
+            return;
+        }
         delegate.selectAccountId(accountTransaction, savingsAccountData);
+    }
+
+    // Only INTEREST_BASED_CHARGE routes through the DTO/batch poster today (see
+    // AdvanclySavingsSchedularInterestPoster) — core's selectAccountId has no branch for it at all, since nothing
+    // ever appended one to a DTO transaction list before this feature. INTEREST_FORFEITURE never reaches this
+    // method: it's written entirely on the entity path (CumulativeInterestForfeitureService), which posts journal
+    // entries through the normal accounting processors, not through this batch pipeline.
+    //
+    // findProductIdAndProductTypeAndFinancialAccountTypeAndChargeId(...) is deliberately NOT used here even though
+    // it looks like the natural fit: it is a hand-written @Query ("mapping.charge.id = :chargeId"), not a Spring
+    // Data derived query, so passing a null charge id does not get rewritten to "IS NULL" - in JPQL/SQL, "x = NULL"
+    // is never true, so it can never match a row. Every existing caller of it (AccountingProcessorHelper, for
+    // loan/savings/share charges) always passes an actual, non-null charge id for a charge-specific override; there
+    // is no null-charge-id precedent anywhere in this codebase. An INTEREST_BASED_CHARGE transaction has no such
+    // charge - it is a system-generated interest-based charge, not tied to any m_charge row - so the mapping we want
+    // is the product's base, no-charge SAVINGS_CONTROL/INCOME_FROM_PENALTIES row (the one
+    // SavingsProductToGLAccountMappingHelper's mergeSavingsToLiabilityAccountMappingChanges/
+    // mergeSavingsToIncomeAccountMappingChanges create without a charge attached). findCoreProductToFinAccountMapping
+    // is exactly that lookup, documented and used everywhere else in core for "paymentType is NULL and charge is
+    // NULL...".
+    private void resolvePenaltyIncomeAccounts(final SavingsAccountTransactionData accountTransaction,
+            final SavingsAccountData savingsAccountData) {
+        final Long productId = savingsAccountData.getProductId();
+        final ProductToGLAccountMapping savingsControlMapping = this.productToGLAccountMappingRepository.findCoreProductToFinAccountMapping(
+                productId, PortfolioProductType.SAVING.getValue(), CashAccountsForSavings.SAVINGS_CONTROL.getValue());
+        final ProductToGLAccountMapping incomeFromPenaltiesMapping = this.productToGLAccountMappingRepository
+                .findCoreProductToFinAccountMapping(productId, PortfolioProductType.SAVING.getValue(),
+                        CashAccountsForSavings.INCOME_FROM_PENALTIES.getValue());
+        accountTransaction.setAccountDebit(savingsControlMapping.getGlAccount().getId());
+        accountTransaction.setAccountCredit(incomeFromPenaltiesMapping.getGlAccount().getId());
     }
 }

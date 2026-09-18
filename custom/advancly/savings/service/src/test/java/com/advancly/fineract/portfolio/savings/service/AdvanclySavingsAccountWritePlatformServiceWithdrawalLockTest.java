@@ -41,6 +41,7 @@ import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -109,6 +110,8 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
     private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     @Mock
     private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    @Mock
+    private ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
 
     private AdvanclySavingsAccountWritePlatformService service;
     private FromJsonHelper fromJsonHelper;
@@ -122,7 +125,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
                 fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, productEarlyWithdrawalChargeRepository,
-                cumulativeInterestForfeitureService, earlyWithdrawalChargeService);
+                cumulativeInterestForfeitureService, earlyWithdrawalChargeService, productToGLAccountMappingRepository);
     }
 
     @Test

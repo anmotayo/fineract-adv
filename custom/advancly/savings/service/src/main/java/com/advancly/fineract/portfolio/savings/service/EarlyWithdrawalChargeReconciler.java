@@ -31,10 +31,10 @@ import org.springframework.stereotype.Component;
 
 /**
  * Applies a product's early-withdrawal penalty charge+mode selection with replace-rather-than-append semantics
- * (implementation plan Section 2) — the primary enforcement of "only one active early-withdrawal charge per
- * product". Shared by Dynamic Deposit's and plain Savings's product write services so the rule has exactly one
- * implementation. The resource name flows from the caller into the shared validator methods, enabling each product
- * type's error responses to name the correct API resource.
+ * (implementation plan Section 2) — the primary enforcement of "only one active early-withdrawal charge per product".
+ * Shared by Dynamic Deposit's and plain Savings's product write services so the rule has exactly one implementation.
+ * The resource name flows from the caller into the shared validator methods, enabling each product type's error
+ * responses to name the correct API resource.
  */
 @Component
 public class EarlyWithdrawalChargeReconciler {

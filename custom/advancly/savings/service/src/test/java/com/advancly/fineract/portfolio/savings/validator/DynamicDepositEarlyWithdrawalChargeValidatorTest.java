@@ -124,7 +124,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
         final Charge charge = charge(7L, true, true, ChargeCalculationType.PERCENT_OF_INTEREST);
 
         final Charge resolved = DynamicDepositEarlyWithdrawalChargeValidator.validateAndResolve(true, 7L, Set.of(charge),
-                EarlyWithdrawalChargeMode.CUMULATIVE, SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST, "dynamicdepositproduct");
+                EarlyWithdrawalChargeMode.CUMULATIVE, SavingsCompoundingInterestPeriodType.NO_COMPOUNDING_SIMPLE_INTEREST,
+                "dynamicdepositproduct");
 
         assertThat(resolved).isSameAs(charge);
     }
@@ -144,7 +145,8 @@ class DynamicDepositEarlyWithdrawalChargeValidatorTest {
     void acceptsAProductWithZeroOrOneEarlyWithdrawalCharge() {
         DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(List.of(), "dynamicdepositproduct");
         DynamicDepositEarlyWithdrawalChargeValidator.validateAtMostOneActiveCharge(
-                List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L, EarlyWithdrawalChargeMode.PER_PERIOD)), "dynamicdepositproduct");
+                List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 7L, EarlyWithdrawalChargeMode.PER_PERIOD)),
+                "dynamicdepositproduct");
     }
 
     private Charge charge(final Long id, final boolean active, final boolean penalty, final ChargeCalculationType calculationType) {

@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
+import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
@@ -55,9 +56,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * run.
  *
  * <p>
- * Each test uses its own, distinct business date so the shared static claim guard (deliberately scoped across the whole
- * JVM, not per-instance - see the poster's javadoc) cannot leak state between test methods regardless of execution
- * order.
+ * Each test uses its own tenant/date key so the shared static claim guard (deliberately scoped across the whole JVM,
+ * not per-instance - see the poster's javadoc) cannot leak state between test methods regardless of execution order.
  */
 class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
 
@@ -68,7 +68,7 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
 
     @Test
     void postsEachActiveDynamicDepositAccountExactlyOncePerRunEvenAcrossMultiplePosterInstances() throws Exception {
-        setBusinessDate(LocalDate.of(2031, 5, 12));
+        setTenantAndBusinessDate("tenant-posts-once", LocalDate.of(2031, 5, 12));
 
         final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);
         final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
@@ -115,7 +115,7 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
      */
     @Test
     void releasesTheClaimWhenFetchingAccountIdsFailsSoThatASameDayRetryAttemptsDynamicDepositAgain() throws Exception {
-        setBusinessDate(LocalDate.of(2031, 5, 13));
+        setTenantAndBusinessDate("tenant-fetch-retry", LocalDate.of(2031, 5, 13));
 
         final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);
         final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
@@ -153,7 +153,66 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
         verify(dynamicDepositAccountRepository, times(2)).findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue());
     }
 
-    private static void setBusinessDate(final LocalDate businessDate) {
+    @Test
+    void isolatesTheOncePerDayClaimByTenant() throws Exception {
+        final LocalDate businessDate = LocalDate.of(2031, 5, 14);
+
+        final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);
+        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        final SavingsAccountReadPlatformService readPlatformService = mock(SavingsAccountReadPlatformService.class);
+        final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
+        final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
+        final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+        final DynamicDepositAccountRepository dynamicDepositAccountRepository = mock(DynamicDepositAccountRepository.class);
+        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
+        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
+
+        when(dynamicDepositAccountRepository.findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue())).thenReturn(List.of(101L))
+                .thenReturn(List.of(202L));
+        final SavingsAccount tenantAAccount = mock(SavingsAccount.class);
+        final SavingsAccount tenantBAccount = mock(SavingsAccount.class);
+        when(savingsAccountAssembler.assembleFrom(101L, false)).thenReturn(tenantAAccount);
+        when(savingsAccountAssembler.assembleFrom(202L, false)).thenReturn(tenantBAccount);
+
+        final AdvanclySavingsSchedularInterestPoster tenantAPoster1 = new AdvanclySavingsSchedularInterestPoster(writePlatformService,
+                jdbcTemplate, readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+        final AdvanclySavingsSchedularInterestPoster tenantAPoster2 = new AdvanclySavingsSchedularInterestPoster(writePlatformService,
+                jdbcTemplate, readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+        final AdvanclySavingsSchedularInterestPoster tenantBPoster1 = new AdvanclySavingsSchedularInterestPoster(writePlatformService,
+                jdbcTemplate, readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+        final AdvanclySavingsSchedularInterestPoster tenantBPoster2 = new AdvanclySavingsSchedularInterestPoster(writePlatformService,
+                jdbcTemplate, readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+
+        tenantAPoster1.setSavingAccounts(Collections.emptyList());
+        tenantAPoster1.setBackdatedTxnsAllowedTill(false);
+        tenantAPoster2.setSavingAccounts(Collections.emptyList());
+        tenantAPoster2.setBackdatedTxnsAllowedTill(false);
+        tenantBPoster1.setSavingAccounts(Collections.emptyList());
+        tenantBPoster1.setBackdatedTxnsAllowedTill(false);
+        tenantBPoster2.setSavingAccounts(Collections.emptyList());
+        tenantBPoster2.setBackdatedTxnsAllowedTill(false);
+
+        setTenantAndBusinessDate("tenant-a", businessDate);
+        tenantAPoster1.postInterest();
+        tenantAPoster2.postInterest();
+
+        setTenantAndBusinessDate("tenant-b", businessDate);
+        tenantBPoster1.postInterest();
+        tenantBPoster2.postInterest();
+
+        verify(dynamicDepositAccountRepository, times(2)).findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue());
+        verify(writePlatformService, times(1)).postInterest(eq(tenantAAccount), eq(false), any(), eq(false));
+        verify(writePlatformService, times(1)).postInterest(eq(tenantBAccount), eq(false), any(), eq(false));
+    }
+
+    private static void setTenantAndBusinessDate(final String tenantIdentifier, final LocalDate businessDate) {
+        ThreadLocalContextUtil.setTenant(FineractPlatformTenant.builder().id(1L).tenantIdentifier(tenantIdentifier).name(tenantIdentifier)
+                .timezoneId("UTC").build());
         final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
         businessDates.put(BusinessDateType.BUSINESS_DATE, businessDate);
         ThreadLocalContextUtil.setBusinessDates(businessDates);

@@ -151,7 +151,8 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
         // accountingRule
         final DynamicDepositProductData data = new DynamicDepositProductData(null, null, null, null, null, null, null, null, null, null,
                 null, null,
-                // minBalanceForInterestCalculation, withHoldTax, taxGroupId, taxGroup, allowWithdrawal, dynamicRateEnabled,
+                // minBalanceForInterestCalculation, withHoldTax, taxGroupId, taxGroup, allowWithdrawal,
+                // dynamicRateEnabled,
                 // earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode
                 null, false, null, null, false, false, false, null, null,
                 // minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType, minDepositAmount,

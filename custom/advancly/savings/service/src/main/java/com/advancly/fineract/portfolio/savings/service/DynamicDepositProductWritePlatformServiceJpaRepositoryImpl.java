@@ -188,8 +188,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
      */
     private void reconcileEarlyWithdrawalChargeSelection(final DynamicDepositProduct product, final JsonCommand command) {
         this.earlyWithdrawalChargeReconciler.reconcile(product.getId(), command, product.isEarlyWithdrawalPenaltyEnabled(),
-                product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName, earlyWithdrawalChargeModeParamName,
-                DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
+                product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName,
+                earlyWithdrawalChargeModeParamName, DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dae) {

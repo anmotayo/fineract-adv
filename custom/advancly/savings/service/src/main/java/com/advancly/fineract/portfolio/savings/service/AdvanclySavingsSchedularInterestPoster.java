@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.accounting.journalentry.domain.JournalEntryType;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
+import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.event.business.domain.savings.SavingsPostInterestBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
@@ -110,14 +111,17 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
     private static final String SAVINGS_TRANSACTION_IDENTIFIER = "S";
 
     /**
-     * Guards Dynamic Deposit scheduled posting (Task 9) so it runs exactly once per business date, no matter how many
-     * {@code AdvanclySavingsSchedularInterestPoster} instances {@code PostInterestForSavingTasklet} creates within a
-     * single run of "Post Interest For Savings" (one per worker thread per batch - see
-     * {@link #postDynamicDepositAccountsOnce()}). Static and keyed by business date rather than by Spring Batch
+     * Guards Dynamic Deposit scheduled posting (Task 9) so it runs exactly once per tenant and business date, no matter
+     * how many {@code AdvanclySavingsSchedularInterestPoster} instances {@code PostInterestForSavingTasklet} creates
+     * within a single run of "Post Interest For Savings" (one per worker thread per batch - see
+     * {@link #postDynamicDepositAccountsOnce()}). Static and keyed by tenant/date rather than by Spring Batch
      * {@code JobExecution} id, because this class is a plain prototype bean running on a worker thread with no access
      * to that id.
      */
-    private static final ConcurrentHashMap<LocalDate, AtomicBoolean> DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<DynamicDepositClaimKey, AtomicBoolean> DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE = new ConcurrentHashMap<>();
+
+    private record DynamicDepositClaimKey(String tenantIdentifier, LocalDate businessDate) {
+    }
 
     // Shadow fields for the superclass's private constructor-injected dependencies (see class javadoc point 2). Named
     // identically to the superclass's own private fields so the nine methods copied verbatim below - which reference
@@ -215,20 +219,22 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
      * posted from this same "Post Interest For Savings" job run, rather than a separate standalone job.
      *
      * <p>
-     * {@link #DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE} is keyed by business date, not by job-execution id, because this class
-     * has no access to Spring Batch's {@code JobExecution} from a plain prototype bean running on a worker thread (see
-     * the design spec's Open Question 1). This guarantees at-most-once per business date across however many poster
-     * instances a single run creates. It does NOT guarantee at-least-once if the job is manually re-triggered later the
-     * same day after a genuine failure - a documented, deliberate tradeoff (favouring "never double-post DD interest"
-     * over "a same-day retry always re-attempts DD"). If the DD loop itself throws while fetching the account id list,
-     * the claim is released so a later same-day retry can attempt it again; a normal, fully successful run leaves the
-     * claim set for the rest of that business date. A per-account failure inside the loop (see
-     * {@link #postDynamicDepositAccounts(LocalDate)}) is handled there and never reaches this method, so it does NOT
-     * release the claim - that is deliberate per-account isolation, not a fetch failure.
+     * {@link #DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE} is keyed by tenant and business date, not by job-execution id, because
+     * this class has no access to Spring Batch's {@code JobExecution} from a plain prototype bean running on a worker
+     * thread (see the design spec's Open Question 1). This guarantees at-most-once per tenant/business date across
+     * however many poster instances a single run creates. It does NOT guarantee at-least-once if the job is manually
+     * re-triggered later the same day after a genuine failure - a documented, deliberate tradeoff (favouring "never
+     * double-post DD interest" over "a same-day retry always re-attempts DD"). If the DD loop itself throws while
+     * fetching the account id list, the claim is released so a later same-day retry can attempt it again; a normal,
+     * fully successful run leaves the claim set for the rest of that tenant's business date. A per-account failure
+     * inside the loop (see {@link #postDynamicDepositAccounts(LocalDate)}) is handled there and never reaches this
+     * method, so it does NOT release the claim - that is deliberate per-account isolation, not a fetch failure.
      */
     private void postDynamicDepositAccountsOnce() {
         final LocalDate today = DateUtils.getBusinessLocalDate();
-        final AtomicBoolean claimed = DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE.computeIfAbsent(today, date -> new AtomicBoolean(false));
+        final String tenantIdentifier = ThreadLocalContextUtil.getTenant().getTenantIdentifier();
+        final DynamicDepositClaimKey claimKey = new DynamicDepositClaimKey(tenantIdentifier, today);
+        final AtomicBoolean claimed = DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE.computeIfAbsent(claimKey, key -> new AtomicBoolean(false));
         if (!claimed.compareAndSet(false, true)) {
             return;
         }

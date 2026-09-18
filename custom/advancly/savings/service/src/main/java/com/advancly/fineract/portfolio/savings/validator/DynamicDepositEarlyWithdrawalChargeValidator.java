@@ -72,8 +72,7 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
             final SavingsCompoundingInterestPeriodType compoundingPeriodType, final String resourceName) {
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
-        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
-                .resource(resourceName);
+        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource(resourceName);
 
         if (!earlyWithdrawalPenaltyEnabled) {
             if (earlyWithdrawalChargeId != null) {
@@ -134,8 +133,8 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
     }
 
     /**
-     * Defensive enforcement of "only one active early-withdrawal charge per product" (Section 2). The
-     * primary enforcement is the singular {@code earlyWithdrawalChargeId} API parameter plus the write service's
+     * Defensive enforcement of "only one active early-withdrawal charge per product" (Section 2). The primary
+     * enforcement is the singular {@code earlyWithdrawalChargeId} API parameter plus the write service's
      * replace-rather-than-append semantics; this rejects a product whose classifier table already holds more than one
      * row, which can only happen if rows were written outside the API.
      *
@@ -144,11 +143,12 @@ public final class DynamicDepositEarlyWithdrawalChargeValidator {
      * @param resourceName
      *            the API resource name used in error responses (allows sharing this validator across product types)
      */
-    public static void validateAtMostOneActiveCharge(final List<SavingsProductEarlyWithdrawalCharge> existingRows, final String resourceName) {
+    public static void validateAtMostOneActiveCharge(final List<SavingsProductEarlyWithdrawalCharge> existingRows,
+            final String resourceName) {
         if (existingRows != null && existingRows.size() > 1) {
             final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
-            new DataValidatorBuilder(dataValidationErrors).resource(resourceName).reset()
-                    .parameter(earlyWithdrawalChargeIdParamName).value(existingRows.size())
+            new DataValidatorBuilder(dataValidationErrors).resource(resourceName).reset().parameter(earlyWithdrawalChargeIdParamName)
+                    .value(existingRows.size())
                     .failWithCodeNoParameterAddedToErrorCode("early.withdrawal.charge.must.be.unique.per.product");
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }

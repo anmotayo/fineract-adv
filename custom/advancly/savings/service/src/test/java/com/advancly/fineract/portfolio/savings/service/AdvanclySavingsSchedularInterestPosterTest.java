@@ -20,32 +20,23 @@ package com.advancly.fineract.portfolio.savings.service;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import java.util.Collections;
-import java.util.List;
-import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 class AdvanclySavingsSchedularInterestPosterTest {
 
     @BeforeEach
     void setUp() {
-        // Also satisfies postInterest()'s new (Task 9) unconditional postDynamicDepositAccountsOnce() call at the top
-        // of the method, which needs a business date - see MoneyHelperInitializer's javadoc.
         MoneyHelperInitializer.initialize();
     }
 
@@ -57,26 +48,18 @@ class AdvanclySavingsSchedularInterestPosterTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
-        final DynamicDepositAccountRepository dynamicDepositAccountRepository = mock(DynamicDepositAccountRepository.class);
-        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
-        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
-        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
-        // Task 9's DD guard is static and keyed by business date, so it may already be claimed by another test in
-        // this JVM sharing the same (MoneyHelperInitializer-provided) business date - in that case this stub simply
-        // goes unconsulted, which is harmless. Either way, no Dynamic Deposit account exists for this test.
-        when(dynamicDepositAccountRepository.findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue())).thenReturn(List.of());
+        final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
+                DynamicDepositScheduledRateHistoryReadPlatformService.class);
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
                 readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+                dynamicRateHistoryReadPlatformService);
         poster.setSavingAccounts(Collections.<SavingsAccountData>emptyList());
         poster.setBackdatedTxnsAllowedTill(false);
 
         poster.postInterest();
 
         verifyNoInteractions(writePlatformService, jdbcTemplate, securityContext, interestChargeRepository,
-                savingsAccountTransactionRepository);
-        // No Dynamic Deposit accounts either, regardless of whether the guard let this call through.
-        verifyNoInteractions(savingsAccountAssembler, businessEventNotifierService);
+                savingsAccountTransactionRepository, dynamicRateHistoryReadPlatformService);
     }
 }

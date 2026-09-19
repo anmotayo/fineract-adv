@@ -149,6 +149,7 @@ public final class SavingsAccountData implements Serializable {
     private transient Long glAccountIdForSavingsControl;
     private transient Long glAccountIdForInterestOnSavings;
     private transient LocalDate maturityDate;
+    private transient List<SavingsAccountDynamicRateData> dynamicRateHistory = new ArrayList<>();
 
     private Long glAccountIdForInterestPayable;
     private Long glAccountIdForOverdraftPorfolio;

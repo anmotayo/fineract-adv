@@ -28,7 +28,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
@@ -38,7 +37,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
+import org.apache.fineract.accounting.glaccount.data.GLAccountData;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
@@ -46,19 +45,19 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+import org.apache.fineract.portfolio.tax.data.TaxComponentData;
+import org.apache.fineract.portfolio.tax.data.TaxGroupData;
+import org.apache.fineract.portfolio.tax.data.TaxGroupMappingsData;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * Covers {@link AdvanclySavingsSchedularInterestPoster#postInterest()}'s new per-period-charge application logic (Task
@@ -96,10 +95,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
-        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
-        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
-        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
-        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
+        final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
+                DynamicDepositScheduledRateHistoryReadPlatformService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -130,7 +127,7 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
                 readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+                dynamicRateHistoryReadPlatformService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -161,6 +158,76 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
                 BigDecimal.ZERO, new BigDecimal("25.00"), ACCOUNT_ID);
     }
 
+    @Test
+    void replacesGrossWithholdingTaxWithTaxOnInterestNetOfAppliedCharge() throws Exception {
+        final SavingsAccountWritePlatformService writePlatformService = mock(SavingsAccountWritePlatformService.class);
+        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        final SavingsAccountReadPlatformService readPlatformService = mock(SavingsAccountReadPlatformService.class);
+        final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
+        final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
+        final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
+        final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
+                DynamicDepositScheduledRateHistoryReadPlatformService.class);
+
+        stubAuthenticatedUser(securityContext);
+
+        final SavingsAccountTransactionData interestPostingTransaction = buildInterestPostingTransaction(new BigDecimal("100.00"),
+                new BigDecimal("1100.00"));
+        final SavingsAccountTransactionData provisionalGrossWithholdingTax = buildWithholdingTaxTransaction(new BigDecimal("10.00"),
+                new BigDecimal("1090.00"));
+        final List<SavingsAccountTransactionData> transactions = new ArrayList<>();
+        transactions.add(interestPostingTransaction);
+        transactions.add(provisionalGrossWithholdingTax);
+
+        final SavingsAccountSummaryData summary = mock(SavingsAccountSummaryData.class);
+        final SavingsAccountData accountData = mock(SavingsAccountData.class);
+        when(accountData.getId()).thenReturn(ACCOUNT_ID);
+        when(accountData.getAccountNo()).thenReturn("000042");
+        when(accountData.getCurrency()).thenReturn(CURRENCY);
+        when(accountData.getSavingsAccountTransactionData()).thenReturn(transactions);
+        when(accountData.getSummary()).thenReturn(summary);
+        when(accountData.getTaxGroup()).thenReturn(tenPercentTaxGroup());
+        when(writePlatformService.postInterest(accountData, false, null, false)).thenReturn(accountData);
+
+        final SavingsAccountInterestCharge pendingRow = mock(SavingsAccountInterestCharge.class);
+        when(pendingRow.chargePercentage()).thenReturn(new BigDecimal("25"));
+        when(interestChargeRepository.findPendingByAccountIdUpTo(eq(ACCOUNT_ID), any(LocalDate.class))).thenReturn(List.of(pendingRow));
+        when(interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
+        when(interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("25.00"));
+
+        final SavingsAccountTransaction postingTransactionEntity = mock(SavingsAccountTransaction.class);
+        final SavingsAccountTransaction chargeTransactionEntity = mock(SavingsAccountTransaction.class);
+        when(savingsAccountTransactionRepository.getReferenceById(any())).thenReturn(postingTransactionEntity, chargeTransactionEntity);
+
+        final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
+                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
+                dynamicRateHistoryReadPlatformService);
+        poster.setSavingAccounts(List.of(accountData));
+        poster.setBackdatedTxnsAllowedTill(false);
+
+        poster.postInterest();
+
+        assertThat(transactions).hasSize(3);
+        assertThat(transactions).doesNotContain(provisionalGrossWithholdingTax);
+
+        final SavingsAccountTransactionData chargeTransaction = transactions.get(1);
+        assertThat(chargeTransaction.isInterestBasedChargeAndNotReversed()).isTrue();
+        assertThat(chargeTransaction.getAmount()).isEqualByComparingTo("25.00");
+        assertThat(chargeTransaction.getRunningBalance()).isEqualByComparingTo("1075.00");
+
+        final SavingsAccountTransactionData netWithholdingTax = transactions.get(2);
+        assertThat(netWithholdingTax.isWithHoldTaxAndNotReversed()).isTrue();
+        assertThat(netWithholdingTax.getAmount()).isEqualByComparingTo("7.50");
+        assertThat(netWithholdingTax.getRunningBalance()).isEqualByComparingTo("1067.50");
+
+        final ArgumentCaptor<BigDecimal> basisCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        final ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(pendingRow).applyAtPosting(basisCaptor.capture(), amountCaptor.capture(), eq(postingTransactionEntity),
+                eq(chargeTransactionEntity));
+        assertThat(basisCaptor.getValue()).isEqualByComparingTo("100.00");
+        assertThat(amountCaptor.getValue()).isEqualByComparingTo("25.00");
+    }
+
     /**
      * Review Finding 1 (Critical): {@code recomputedChargeAmount}/{@code cappedInterestBasedChargeAmount} only bound
      * SIGNIFICANT DIGITS ({@code MathContext(8, ...)}), not decimal places - a non-round percentage against a non-round
@@ -179,10 +246,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
-        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
-        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
-        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
-        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
+        final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
+                DynamicDepositScheduledRateHistoryReadPlatformService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -213,7 +278,7 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
                 readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+                dynamicRateHistoryReadPlatformService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -246,10 +311,8 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
         final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
         final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
-        final DynamicDepositAccountRepository dynamicDepositAccountRepository = stubNoActiveDynamicDepositAccounts();
-        final SavingsAccountAssembler savingsAccountAssembler = mock(SavingsAccountAssembler.class);
-        final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
-        final BusinessEventNotifierService businessEventNotifierService = mock(BusinessEventNotifierService.class);
+        final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
+                DynamicDepositScheduledRateHistoryReadPlatformService.class);
 
         stubAuthenticatedUser(securityContext);
 
@@ -264,7 +327,7 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
                 readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+                dynamicRateHistoryReadPlatformService);
         poster.setSavingAccounts(List.of(accountData));
         poster.setBackdatedTxnsAllowedTill(false);
 
@@ -284,20 +347,6 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
     }
 
     /**
-     * Task 9: {@code postInterest()} now unconditionally calls {@code postDynamicDepositAccountsOnce()} first, which
-     * needs {@code DynamicDepositAccountRepository#findIdsByStatus(...)} stubbed or the account-id-list fetch would NPE
-     * (an unstubbed mock returns {@code null}, not an empty list) - unrelated to what this class actually tests
-     * (plain-Savings per-period-charge application), so kept to a single no-op stub shared by all three tests here.
-     * Whether this stub is ever actually consulted depends on Task 9's static, business-date-keyed claim guard racing
-     * against other tests in this JVM sharing the same (real, unset) business date - either outcome is harmless here.
-     */
-    private static DynamicDepositAccountRepository stubNoActiveDynamicDepositAccounts() {
-        final DynamicDepositAccountRepository dynamicDepositAccountRepository = mock(DynamicDepositAccountRepository.class);
-        when(dynamicDepositAccountRepository.findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue())).thenReturn(List.of());
-        return dynamicDepositAccountRepository;
-    }
-
-    /**
      * A real (non-mocked) interest-posting transaction, built the same way core's own DTO/JDBC posting path builds one
      * ({@code SavingsAccountTransactionData.create(...)} with the overload that populates the transient
      * {@code transactionDate} field - see the production-code note this test's class javadoc references). {@code id} is
@@ -309,5 +358,19 @@ class AdvanclySavingsSchedularInterestPosterChargeApplicationTest {
                 .transactionType(SavingsAccountTransactionType.INTEREST_POSTING.getValue());
         return SavingsAccountTransactionData.create(null, transactionType, null, ACCOUNT_ID, "000042", POSTING_DATE, CURRENCY, amount, null,
                 runningBalance, false, POSTING_DATE, false, null, POSTING_DATE, OffsetDateTime.now());
+    }
+
+    private static SavingsAccountTransactionData buildWithholdingTaxTransaction(final BigDecimal amount, final BigDecimal runningBalance) {
+        final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations
+                .transactionType(SavingsAccountTransactionType.WITHHOLD_TAX.getValue());
+        return SavingsAccountTransactionData.create(null, transactionType, null, ACCOUNT_ID, "000042", POSTING_DATE, CURRENCY, amount, null,
+                runningBalance, false, POSTING_DATE, false, null, POSTING_DATE, OffsetDateTime.now());
+    }
+
+    private static TaxGroupData tenPercentTaxGroup() {
+        final TaxComponentData taxComponent = TaxComponentData.instance(1L, "WHT", new BigDecimal("10"), null,
+                GLAccountData.createFrom(101L), null, GLAccountData.createFrom(202L), POSTING_DATE.minusDays(1), List.of());
+        final TaxGroupMappingsData taxMapping = new TaxGroupMappingsData(1L, taxComponent, POSTING_DATE.minusDays(1), null);
+        return TaxGroupData.instance(1L, "WHT Group", List.of(taxMapping));
     }
 }

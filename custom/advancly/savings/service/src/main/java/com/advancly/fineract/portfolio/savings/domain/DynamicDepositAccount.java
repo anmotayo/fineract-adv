@@ -685,16 +685,16 @@ public class DynamicDepositAccount extends SavingsAccount {
                             addTransaction(newPostingTransaction);
                         }
 
+                        // Phase 4, Section 10 steps 2/4/7/8 - apply the interest-based charge before withholding tax,
+                        // so WHT is calculated on the customer's remaining interest after the charge. Deliberately not
+                        // applied in the correction branch below: core reverses only the posting and withholding
+                        // transactions there, so an already-applied charge transaction and its row links still stand.
+                        final BigDecimal appliedChargeAmount = applyPendingInterestBasedCharges(interestPostingTransactionDate,
+                                interestEarnedToBePostedForPeriod, newPostingTransaction, backdatedTxnsAllowedTill, isClosureBoundary);
                         if (applyWithHoldTax) {
-                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
-                                    backdatedTxnsAllowedTill);
+                            createWithHoldTransaction(taxableInterestAfterCharge(interestEarnedToBePostedForPeriod, appliedChargeAmount),
+                                    interestPostingTransactionDate, backdatedTxnsAllowedTill);
                         }
-                        // Phase 4, Section 10 steps 2/4/7/8 - run AFTER the withholding tax transaction exists, since
-                        // the charge is capped at gross interest minus that tax. Deliberately not applied in the
-                        // correction branch below: core reverses only the posting and withholding transactions there,
-                        // so an already-applied charge transaction and its row links still stand.
-                        applyPendingInterestBasedCharges(interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
-                                newPostingTransaction, backdatedTxnsAllowedTill, isClosureBoundary);
                         recalucateDailyBalanceDetails = true;
                     }
 
@@ -765,8 +765,14 @@ public class DynamicDepositAccount extends SavingsAccount {
                         // transactions, so charges already applied against the old amount still stand and charging
                         // again here would double-charge).
                         final Money alreadyPostedInterest = postingTransaction.getAmount(this.currency);
-                        if (applyPendingInterestBasedCharges(interestPostingTransactionDate, alreadyPostedInterest, postingTransaction,
-                                backdatedTxnsAllowedTill, true)) {
+                        final BigDecimal appliedChargeAmount = applyPendingInterestBasedCharges(interestPostingTransactionDate,
+                                alreadyPostedInterest, postingTransaction, backdatedTxnsAllowedTill, true);
+                        if (appliedChargeAmount.compareTo(BigDecimal.ZERO) > 0) {
+                            reverseWithholdingTaxOn(interestPostingTransactionDate, backdatedTxnsAllowedTill);
+                            if (applyWithHoldTax) {
+                                createWithHoldTransaction(taxableInterestAfterCharge(alreadyPostedInterest, appliedChargeAmount),
+                                        interestPostingTransactionDate, backdatedTxnsAllowedTill);
+                            }
                             // Only when a charge transaction was actually written: it moves the balance, so the
                             // running daily balances have to be rebuilt just as they are after any other posting.
                             recalucateDailyBalanceDetails = true;
@@ -836,17 +842,17 @@ public class DynamicDepositAccount extends SavingsAccount {
      * already existed and needed no correction (the same-day scheduled-job case at a closure boundary) - one
      * implementation of the cap/distribute arithmetic, never two.
      *
-     * @return {@code true} when an interest-based charge transaction was actually written (and the daily balances
-     *         therefore need recalculating), {@code false} when there was nothing to charge.
+     * @return the amount actually written as an interest-based charge transaction, or zero when there was nothing to
+     *         charge.
      */
-    private boolean applyPendingInterestBasedCharges(final LocalDate interestPostingTransactionDate, final Money grossInterestForPeriod,
+    private BigDecimal applyPendingInterestBasedCharges(final LocalDate interestPostingTransactionDate, final Money grossInterestForPeriod,
             final SavingsAccountTransaction interestPostingTransaction, final boolean backdatedTxnsAllowedTill,
             final boolean isClosureBoundary) {
 
         // The closure's own contribution, when this is the boundary the closure ends in and the closure actually
         // incurs a penalty. It is treated as one more contribution alongside the pending rows below - summed with
         // them, capped with them ONCE, and pro-rated with them - rather than charged separately against the full
-        // gross-minus-tax basis, which would double-count the basis those rows are already consuming.
+        // gross-interest basis, which would double-count the basis those rows are already consuming.
         //
         // One-shot guard: core's SavingsAccountDomainServiceJpa#handleWithdrawal can re-enter postInterest(...) a
         // second time for the SAME closure withdrawal (isBeforeLastPostingPeriod(...) is true whenever an interest
@@ -864,7 +870,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         final List<SavingsAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
                 interestPostingTransactionDate);
         if (pendingRows.isEmpty() && closureContribution == null) {
-            return false;
+            return BigDecimal.ZERO;
         }
 
         // Recompute every row's amount from its stored percentage against THIS period's real gross interest - the
@@ -890,19 +896,10 @@ public class DynamicDepositAccount extends SavingsAccount {
             recomputedTotal = recomputedTotal.add(recomputed);
         }
 
-        // Read the withholding tax this same posting just wrote: createWithHoldTransaction(...) returns only a
-        // boolean, so the amount has to come back off the transaction itself via core's own helpers.
-        final List<SavingsAccountTransaction> currentWithholdTransactions = backdatedTxnsAllowedTill
-                ? findWithHoldSavingsTransactionsWithPivotConfig()
-                : findWithHoldTransactions();
-        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
-                currentWithholdTransactions);
-        final BigDecimal withholdingTaxForPeriod = withholdTransaction == null ? BigDecimal.ZERO : withholdTransaction.getAmount();
-
         final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest,
-                withholdingTaxForPeriod);
+                BigDecimal.ZERO);
         if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return false;
+            return BigDecimal.ZERO;
         }
 
         // All pending rows for an account reference the same charge - the product allows only one early-withdrawal
@@ -958,7 +955,22 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
 
         updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-        return true;
+        return appliedTotal;
+    }
+
+    private static BigDecimal taxableInterestAfterCharge(final Money grossInterest, final BigDecimal appliedChargeAmount) {
+        return grossInterest.getAmount().subtract(appliedChargeAmount).max(BigDecimal.ZERO);
+    }
+
+    private void reverseWithholdingTaxOn(final LocalDate interestPostingTransactionDate, final boolean backdatedTxnsAllowedTill) {
+        final List<SavingsAccountTransaction> currentWithholdTransactions = backdatedTxnsAllowedTill
+                ? findWithHoldSavingsTransactionsWithPivotConfig()
+                : findWithHoldTransactions();
+        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
+                currentWithholdTransactions);
+        if (withholdTransaction != null) {
+            withholdTransaction.reverse();
+        }
     }
 
     /**

@@ -206,7 +206,7 @@ public class DynamicDepositRateHistoryService {
             final BigDecimal investedAmount, final LocalDate asOfDate, final long priorRowCount) {
         final BigDecimal nominalAnnualInterestRate = account.savingsProduct().nominalAnnualInterestRate();
         if (priorRowCount == 0) {
-            if (account.getNominalAnnualInterestRate() == null) {
+            if (account.isDynamicRateEnabled() || account.getNominalAnnualInterestRate() == null) {
                 return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account), investedAmount, asOfDate,
                         accountTermAndPreClosure.depositPeriod(), accountTermAndPreClosure.depositPeriodFrequencyType());
             }

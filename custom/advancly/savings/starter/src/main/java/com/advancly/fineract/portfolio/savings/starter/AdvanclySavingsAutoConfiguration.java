@@ -20,6 +20,7 @@ package com.advancly.fineract.portfolio.savings.starter;
 
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPoster;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPosterTask;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositScheduledRateHistoryReadPlatformService;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.accounting.producttoaccountmapping.service.ProductToGLAccountMappingWritePlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
@@ -186,9 +187,8 @@ public class AdvanclySavingsAutoConfiguration {
      * Task 7 gave this class zero behavior change from core (it just called {@code super.postInterest()}); Task 8 has
      * since added the actual per-period-charge application logic on top of it (see
      * {@link AdvanclySavingsSchedularInterestPoster#postInterest()}), which is why its constructor now also takes the
-     * two extra repositories below. Task 9 has since folded in the Dynamic Deposit scheduled posting previously done by
-     * the now-retired {@code DynamicDepositPostInterestTasklet}, adding the four further dependencies below that it
-     * used to receive directly.
+     * two extra repositories below. Dynamic Deposit scheduled posting now also uses the same DTO/JDBC batch path; the
+     * poster only needs a bulk rate-history reader for the current page of accounts.
      */
     @Bean
     @Primary
@@ -198,12 +198,10 @@ public class AdvanclySavingsAutoConfiguration {
             SavingsAccountReadPlatformService savingsAccountReadPlatformService, PlatformSecurityContext platformSecurityContext,
             com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository interestChargeRepository,
             SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository dynamicDepositAccountRepository,
-            SavingsAccountAssembler savingsAccountAssembler, org.springframework.transaction.PlatformTransactionManager transactionManager,
-            BusinessEventNotifierService businessEventNotifierService) {
+            DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService) {
         return new AdvanclySavingsSchedularInterestPoster(savingsAccountWritePlatformService, jdbcTemplate,
                 savingsAccountReadPlatformService, platformSecurityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicDepositAccountRepository, savingsAccountAssembler, transactionManager, businessEventNotifierService);
+                dynamicRateHistoryReadPlatformService);
     }
 
     /**

@@ -23,7 +23,6 @@ import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsCons
 import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsConstants.LAST_MODIFIED_BY_DB_FIELD;
 import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsConstants.LAST_MODIFIED_DATE_DB_FIELD;
 
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.InterestBasedChargeMath;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
 import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
@@ -33,30 +32,26 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.accounting.journalentry.domain.JournalEntryType;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
-import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
-import org.apache.fineract.infrastructure.event.business.domain.savings.SavingsPostInterestBusinessEvent;
-import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountDynamicRateData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
@@ -66,23 +61,15 @@ import org.apache.fineract.portfolio.savings.service.SavingsSchedularInterestPos
 import org.apache.fineract.portfolio.tax.data.TaxComponentData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupMappingsData;
+import org.apache.fineract.portfolio.tax.service.TaxUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Task 8: applies pending per-period early-withdrawal charges (recorded by Task 5) against the interest just posted for
  * a plain-Savings account, in the same batch run that {@code SavingsSchedularInterestPoster} already performs.
- *
- * <p>
- * Task 9: also posts Dynamic Deposit accounts from this same job run - see {@link #postDynamicDepositAccountsOnce()} -
- * folding in what used to be the standalone
- * {@code DynamicDepositPostInterestTasklet}/{@code DynamicDepositPostInterestConfig} job (now retired). This is
- * unrelated to the per-period-charge logic above; it shares only the class and the scheduled trigger.
  *
  * <p>
  * Two access-modifier constraints on the superclass shape this whole class:
@@ -110,19 +97,6 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     private static final String SAVINGS_TRANSACTION_IDENTIFIER = "S";
 
-    /**
-     * Guards Dynamic Deposit scheduled posting (Task 9) so it runs exactly once per tenant and business date, no matter
-     * how many {@code AdvanclySavingsSchedularInterestPoster} instances {@code PostInterestForSavingTasklet} creates
-     * within a single run of "Post Interest For Savings" (one per worker thread per batch - see
-     * {@link #postDynamicDepositAccountsOnce()}). Static and keyed by tenant/date rather than by Spring Batch
-     * {@code JobExecution} id, because this class is a plain prototype bean running on a worker thread with no access
-     * to that id.
-     */
-    private static final ConcurrentHashMap<DynamicDepositClaimKey, AtomicBoolean> DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE = new ConcurrentHashMap<>();
-
-    private record DynamicDepositClaimKey(String tenantIdentifier, LocalDate businessDate) {
-    }
-
     // Shadow fields for the superclass's private constructor-injected dependencies (see class javadoc point 2). Named
     // identically to the superclass's own private fields so the nine methods copied verbatim below - which reference
     // them unqualified or via `this.` - resolve to these without any changes to their bodies.
@@ -133,13 +107,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     private final SavingsAccountInterestChargeRepository interestChargeRepository;
     private final SavingsAccountTransactionRepository savingsAccountTransactionRepository;
-
-    // Task 9: dependencies migrated from the now-retired DynamicDepositPostInterestTasklet, so its scheduled posting
-    // logic can run from this same batch poster instead of a standalone job.
-    private final DynamicDepositAccountRepository dynamicDepositAccountRepository;
-    private final SavingsAccountAssembler savingsAccountAssembler;
-    private final PlatformTransactionManager transactionManager;
-    private final BusinessEventNotifierService businessEventNotifierService;
+    private final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService;
 
     // Shadow fields for the superclass's private, setter-only state (see class javadoc point 1).
     private Collection<SavingsAccountData> savingAccountsShadow = new ArrayList<>();
@@ -149,8 +117,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
             final JdbcTemplate jdbcTemplate, final SavingsAccountReadPlatformService savingsAccountReadPlatformService,
             final PlatformSecurityContext platformSecurityContext, final SavingsAccountInterestChargeRepository interestChargeRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
-            final DynamicDepositAccountRepository dynamicDepositAccountRepository, final SavingsAccountAssembler savingsAccountAssembler,
-            final PlatformTransactionManager transactionManager, final BusinessEventNotifierService businessEventNotifierService) {
+            final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService) {
         super(savingsAccountWritePlatformService, jdbcTemplate, savingsAccountReadPlatformService, platformSecurityContext);
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
         this.jdbcTemplate = jdbcTemplate;
@@ -158,10 +125,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         this.platformSecurityContext = platformSecurityContext;
         this.interestChargeRepository = interestChargeRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
-        this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
-        this.savingsAccountAssembler = savingsAccountAssembler;
-        this.transactionManager = transactionManager;
-        this.businessEventNotifierService = businessEventNotifierService;
+        this.dynamicRateHistoryReadPlatformService = dynamicRateHistoryReadPlatformService;
     }
 
     @Override
@@ -179,10 +143,10 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
     @Override
     @Transactional(isolation = Isolation.READ_UNCOMMITTED, rollbackFor = Exception.class)
     public void postInterest() throws JobExecutionException {
-        postDynamicDepositAccountsOnce();
         if (this.savingAccountsShadow.isEmpty()) {
             return;
         }
+        attachDynamicDepositRateHistory();
         final List<Throwable> errors = new ArrayList<>();
         final List<SavingsAccountData> postedAccounts = new ArrayList<>();
         final List<PendingChargeApplication> pendingApplications = new ArrayList<>();
@@ -214,77 +178,23 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         }
     }
 
-    /**
-     * Task 9: migrated from the now-retired {@code DynamicDepositPostInterestTasklet} so Dynamic Deposit accounts get
-     * posted from this same "Post Interest For Savings" job run, rather than a separate standalone job.
-     *
-     * <p>
-     * {@link #DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE} is keyed by tenant and business date, not by job-execution id, because
-     * this class has no access to Spring Batch's {@code JobExecution} from a plain prototype bean running on a worker
-     * thread (see the design spec's Open Question 1). This guarantees at-most-once per tenant/business date across
-     * however many poster instances a single run creates. It does NOT guarantee at-least-once if the job is manually
-     * re-triggered later the same day after a genuine failure - a documented, deliberate tradeoff (favouring "never
-     * double-post DD interest" over "a same-day retry always re-attempts DD"). If the DD loop itself throws while
-     * fetching the account id list, the claim is released so a later same-day retry can attempt it again; a normal,
-     * fully successful run leaves the claim set for the rest of that tenant's business date. A per-account failure
-     * inside the loop (see {@link #postDynamicDepositAccounts(LocalDate)}) is handled there and never reaches this
-     * method, so it does NOT release the claim - that is deliberate per-account isolation, not a fetch failure.
-     */
-    private void postDynamicDepositAccountsOnce() {
-        final LocalDate today = DateUtils.getBusinessLocalDate();
-        final String tenantIdentifier = ThreadLocalContextUtil.getTenant().getTenantIdentifier();
-        final DynamicDepositClaimKey claimKey = new DynamicDepositClaimKey(tenantIdentifier, today);
-        final AtomicBoolean claimed = DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE.computeIfAbsent(claimKey, key -> new AtomicBoolean(false));
-        if (!claimed.compareAndSet(false, true)) {
+    private void attachDynamicDepositRateHistory() {
+        final List<Long> dynamicDepositAccountIds = this.savingAccountsShadow.stream()
+                .filter(AdvanclySavingsSchedularInterestPoster::isDynamicDeposit).map(SavingsAccountData::getId).toList();
+        if (dynamicDepositAccountIds.isEmpty()) {
             return;
         }
-        try {
-            postDynamicDepositAccounts(today);
-        } catch (final RuntimeException e) {
-            claimed.set(false);
-            throw e;
-        }
-    }
-
-    /**
-     * Deliberately simple (no multi-threaded queueing like the rest of this class's plain-Savings posting) - Dynamic
-     * Deposit is a new, low-volume product type, so a straightforward per-account loop is appropriate here, exactly as
-     * it was in the retired {@code DynamicDepositPostInterestTasklet}.
-     *
-     * <p>
-     * Each account is posted in its own new transaction ({@code PROPAGATION_REQUIRES_NEW}), not inside the
-     * {@code @Transactional} wrapping {@link #postInterest()}. Without this, {@code postInterest}'s per-account failure
-     * below would mark that shared transaction rollback-only, discarding every other Dynamic Deposit posting from this
-     * run too - not just the failed one's. The {@code RuntimeException} catch here is per-account isolation (one bad
-     * account must not stop the others); it is NOT what releases {@link #DYNAMIC_DEPOSIT_CLAIMED_FOR_DATE}'s claim -
-     * that is {@link #postDynamicDepositAccountsOnce()}'s job, for a failure fetching the account id list itself,
-     * before this loop's own isolation even begins.
-     */
-    private void postDynamicDepositAccounts(final LocalDate today) {
-        final List<Long> activeAccountIds = this.dynamicDepositAccountRepository
-                .findIdsByStatus(SavingsAccountStatusType.ACTIVE.getValue());
-        final TransactionTemplate transactionTemplate = new TransactionTemplate(this.transactionManager);
-        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        for (final Long accountId : activeAccountIds) {
-            try {
-                transactionTemplate.executeWithoutResult(status -> postDynamicDepositInterestFor(accountId, today));
-            } catch (final RuntimeException e) {
-                log.error("Dynamic Deposit scheduled interest posting failed for account {}", accountId, e);
+        final Map<Long, List<SavingsAccountDynamicRateData>> rateHistoryByAccountId = this.dynamicRateHistoryReadPlatformService
+                .retrieveByAccountIds(dynamicDepositAccountIds);
+        for (final SavingsAccountData account : this.savingAccountsShadow) {
+            if (isDynamicDeposit(account)) {
+                account.setDynamicRateHistory(rateHistoryByAccountId.getOrDefault(account.getId(), List.of()));
             }
         }
     }
 
-    /**
-     * Accounts are loaded via {@link SavingsAccountAssembler#assembleFrom(Long, boolean)} - not a bare repository
-     * {@code findById} - because {@code assembleFrom} is what calls {@code SavingsAccount#setHelpers(...)}, populating
-     * the {@code @Transient} helper fields that
-     * {@code DynamicDepositAccount#calculateInterestUsing}/{@code postInterest} dereference immediately (see the
-     * retired tasklet's javadoc, preserved here for context).
-     */
-    private void postDynamicDepositInterestFor(final Long accountId, final LocalDate today) {
-        final SavingsAccount account = this.savingsAccountAssembler.assembleFrom(accountId, false);
-        this.savingsAccountWritePlatformService.postInterest(account, false, today, false);
-        this.businessEventNotifierService.notifyPostBusinessEvent(new SavingsPostInterestBusinessEvent(account));
+    private static boolean isDynamicDeposit(final SavingsAccountData savingsAccountData) {
+        return DepositAccountType.fromInt(savingsAccountData.getDepositTypeId()).isDynamicDeposit();
     }
 
     /**
@@ -320,9 +230,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
             recomputedTotal = recomputedTotal.add(recomputed);
         }
 
-        final BigDecimal withholdingTax = findWithholdingTaxOnSameDate(savingsAccountData, interestPostingTransaction.getDate());
-        final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest,
-                withholdingTax);
+        final BigDecimal chargeAmount = recomputedTotal.min(grossInterest).max(BigDecimal.ZERO);
         if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
@@ -354,7 +262,9 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         chargeTransaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
                 interestPostingTransaction.getEndOfBalanceLocalDate());
 
+        reverseOrRemoveWithholdingTaxOnSameDate(savingsAccountData, interestPostingTransaction.getDate());
         savingsAccountData.getSavingsAccountTransactionData().add(chargeTransaction);
+        createWithholdingTaxOnNetInterest(savingsAccountData, interestPostingTransaction, appliedTotal, chargeTransaction);
         if (this.backdatedTxnsAllowedTillShadow) {
             savingsAccountData.getSummary().updateSummaryWithPivotConfig(savingsAccountData.getCurrency(), null, null,
                     savingsAccountData.getSavingsAccountTransactionData());
@@ -421,13 +331,41 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         return latest;
     }
 
-    private static BigDecimal findWithholdingTaxOnSameDate(final SavingsAccountData savingsAccountData, final LocalDate date) {
-        for (final SavingsAccountTransactionData transaction : savingsAccountData.getSavingsAccountTransactionData()) {
-            if (transaction.isWithHoldTaxAndNotReversed() && transaction.getDate().isEqual(date)) {
-                return transaction.getAmount();
+    private static void reverseOrRemoveWithholdingTaxOnSameDate(final SavingsAccountData savingsAccountData, final LocalDate date) {
+        final List<SavingsAccountTransactionData> transactions = savingsAccountData.getSavingsAccountTransactionData();
+        transactions.removeIf(transaction -> transaction.getId() == null && transaction.isWithHoldTaxAndNotReversed()
+                && transaction.getDate().isEqual(date));
+        for (final SavingsAccountTransactionData transaction : transactions) {
+            if (transaction.getId() != null && transaction.isWithHoldTaxAndNotReversed() && transaction.getDate().isEqual(date)) {
+                transaction.reverse();
             }
         }
-        return BigDecimal.ZERO;
+    }
+
+    private static void createWithholdingTaxOnNetInterest(final SavingsAccountData savingsAccountData,
+            final SavingsAccountTransactionData interestPostingTransaction, final BigDecimal appliedChargeAmount,
+            final SavingsAccountTransactionData chargeTransaction) {
+        final BigDecimal taxableInterest = interestPostingTransaction.getAmount().subtract(appliedChargeAmount).max(BigDecimal.ZERO);
+        final TaxGroupData taxGroup = savingsAccountData.getTaxGroup();
+        if (taxGroup == null || taxGroup.getTaxAssociations() == null || taxableInterest.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        final Set<TaxGroupMappingsData> taxAssociations = new HashSet<>(taxGroup.getTaxAssociations());
+        final Map<TaxComponentData, BigDecimal> taxSplit = TaxUtils.splitTaxData(taxableInterest, interestPostingTransaction.getDate(),
+                taxAssociations, taxableInterest.scale());
+        final BigDecimal totalTax = TaxUtils.totalTaxDataAmount(taxSplit);
+        if (totalTax.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        final SavingsAccountTransactionData withholdingTransaction = SavingsAccountTransactionData.withHoldTax(savingsAccountData,
+                interestPostingTransaction.getDate(), Money.of(savingsAccountData.getCurrency(), totalTax), taxSplit);
+        withholdingTransaction
+                .updateRunningBalance(Money.of(savingsAccountData.getCurrency(), chargeTransaction.getRunningBalance()).minus(totalTax));
+        withholdingTransaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
+                interestPostingTransaction.getEndOfBalanceLocalDate());
+        savingsAccountData.getSavingsAccountTransactionData().add(withholdingTransaction);
     }
 
     // ---------------------------------------------------------------------------------------------------------

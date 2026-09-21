@@ -56,6 +56,9 @@ public class SavingsAccountConstant extends SavingsApiConstants {
             // it is allow-listed here instead): overrides the account's snapshotted early-withdrawal charge
             // percentage for this single withdrawal only. See AdvanclyInterestChargeApplicationService.
             "earlyWithdrawalChargePercentage",
+            // "selectedFromDate" / "selectedToDate" - optional custom-period bounds for charge-driven early-withdrawal
+            // interest charge calculation.
+            "selectedFromDate", "selectedToDate",
             // "applyEarlyWithdrawalCharge" - optional. Plain Savings has no maturity date, so Fineract cannot decide
             // for itself whether a withdrawal is "early"; the upstream application signals it here. Ignored unless the
             // product is configured for an early-withdrawal penalty. Allow-listed in core for the same reason as

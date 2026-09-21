@@ -43,4 +43,8 @@ public class AccountTransferRequest implements Serializable {
     private String toClientId;
     private String fromAccountId;
     private String fromOfficeId;
+    private Boolean applyEarlyWithdrawalCharge;
+    private String earlyWithdrawalChargePercentage;
+    private String selectedFromDate;
+    private String selectedToDate;
 }

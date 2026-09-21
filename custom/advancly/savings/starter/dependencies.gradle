@@ -24,6 +24,7 @@ dependencies {
     implementation(project(':fineract-loan'))
     implementation(project(':fineract-provider'))
     implementation(project(':fineract-charge'))
+    implementation(project(':fineract-tax'))
     implementation(project(':fineract-accounting'))
     implementation('org.eclipse.persistence:org.eclipse.persistence.jpa') {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'

@@ -208,6 +208,14 @@ final class SavingsAccountTransactionsApiResourceSwagger {
         public String reasonForBlock;
         @Schema(example = "1")
         public Integer paymentTypeId;
+        @Schema(example = "true")
+        public Boolean applyEarlyWithdrawalCharge;
+        @Schema(example = "30")
+        public BigDecimal earlyWithdrawalChargePercentage;
+        @Schema(example = "06 May 2026")
+        public String selectedFromDate;
+        @Schema(example = "06 July 2026")
+        public String selectedToDate;
     }
 
     @Schema(description = "PostSavingsAccountTransactionsResponse")

@@ -19,7 +19,6 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositProductData;
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositProductNotFoundException;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -152,9 +151,8 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
         final DynamicDepositProductData data = new DynamicDepositProductData(null, null, null, null, null, null, null, null, null, null,
                 null, null,
                 // minBalanceForInterestCalculation, withHoldTax, taxGroupId, taxGroup, allowWithdrawal,
-                // dynamicRateEnabled,
-                // earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode
-                null, false, null, null, false, false, false, null, null,
+                // dynamicRateEnabled
+                null, false, null, null, false, false,
                 // minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType, minDepositAmount,
                 // depositAmount,
                 // maxDepositAmount, withHoldTaxPostingType, charges, charts
@@ -193,9 +191,6 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sp.withhold_tax as withHoldTax, ");
             sqlBuilder.append("tg.id as taxGroupId, tg.name as taxGroupName, ");
             sqlBuilder.append("ddd.allow_withdrawal as allowWithdrawal, ddd.dynamic_rate_enabled as dynamicRateEnabled, ");
-            sqlBuilder.append("ddd.early_withdrawal_penalty_enabled as earlyWithdrawalPenaltyEnabled, ");
-            sqlBuilder.append("ewc.charge_id as earlyWithdrawalChargeId, ");
-            sqlBuilder.append("ewc.early_withdrawal_charge_mode_enum as earlyWithdrawalChargeMode, ");
             sqlBuilder.append("dptp.min_deposit_term as minDepositTerm, dptp.max_deposit_term as maxDepositTerm, ");
             sqlBuilder.append(
                     "dptp.min_deposit_term_type_enum as minDepositTermType, dptp.max_deposit_term_type_enum as maxDepositTermType, ");
@@ -206,7 +201,6 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id ");
             sqlBuilder.append("left join m_deposit_product_dynamic_detail ddd on ddd.savings_product_id = sp.id ");
-            sqlBuilder.append("left join m_savings_product_early_withdrawal_charge ewc on ewc.savings_product_id = sp.id ");
             sqlBuilder.append("left join m_deposit_product_term_and_preclosure dptp on dptp.savings_product_id = sp.id ");
             return sqlBuilder.toString();
         }
@@ -260,11 +254,6 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
 
             final boolean allowWithdrawal = rs.getBoolean("allowWithdrawal");
             final boolean dynamicRateEnabled = rs.getBoolean("dynamicRateEnabled");
-            final boolean earlyWithdrawalPenaltyEnabled = rs.getBoolean("earlyWithdrawalPenaltyEnabled");
-            final Long earlyWithdrawalChargeId = JdbcSupport.getLong(rs, "earlyWithdrawalChargeId");
-            final Integer earlyWithdrawalChargeModeValue = JdbcSupport.getInteger(rs, "earlyWithdrawalChargeMode");
-            final Integer earlyWithdrawalChargeMode = earlyWithdrawalChargeModeValue == null ? null
-                    : EarlyWithdrawalChargeMode.fromInt(earlyWithdrawalChargeModeValue).getValue();
 
             final Integer minDepositTerm = JdbcSupport.getInteger(rs, "minDepositTerm");
             final Integer maxDepositTerm = JdbcSupport.getInteger(rs, "maxDepositTerm");
@@ -290,9 +279,8 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
             return new DynamicDepositProductData(id, name, shortName, description, currency, interestCompoundingPeriodType,
                     interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, lockinPeriodFrequency,
                     lockinPeriodFrequencyType, accountingRuleType, minBalanceForInterestCalculation, withHoldTax, taxGroupId, taxGroup,
-                    allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode,
-                    minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType, minDepositAmount, depositAmount,
-                    maxDepositAmount, withHoldTaxPostingType, null, null);
+                    allowWithdrawal, dynamicRateEnabled, minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                    minDepositAmount, depositAmount, maxDepositAmount, withHoldTaxPostingType, null, null);
         }
     }
 }

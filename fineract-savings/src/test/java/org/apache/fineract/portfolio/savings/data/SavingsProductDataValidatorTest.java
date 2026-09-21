@@ -18,8 +18,9 @@
  */
 package org.apache.fineract.portfolio.savings.data;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.apache.fineract.infrastructure.core.exception.UnsupportedParameterException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,19 +44,13 @@ class SavingsProductDataValidatorTest {
     }
 
     @Test
-    void acceptsEarlyWithdrawalChargeParametersOnCreate() {
+    void rejectsLegacyEarlyWithdrawalChargeParametersOnCreate() {
         final String json = "{" + "\"name\":\"Test Product\",\"shortName\":\"TP\",\"currencyCode\":\"USD\",\"digitsAfterDecimal\":2,"
                 + "\"inMultiplesOf\":1,\"nominalAnnualInterestRate\":5,\"interestCompoundingPeriodType\":1,"
                 + "\"interestPostingPeriodType\":4,\"interestCalculationType\":1,\"interestCalculationDaysInYearType\":365,"
                 + "\"locale\":\"en\",\"monthDayFormat\":\"dd MMM\",\"accountingRule\":1,"
                 + "\"earlyWithdrawalPenaltyEnabled\":true,\"earlyWithdrawalChargeId\":7,\"earlyWithdrawalChargeMode\":2" + "}";
 
-        // validateForCreate throws PlatformApiDataValidationException on any structural/unsupported-parameter
-        // problem before it gets to business-rule checks; not throwing here (for these three parameters
-        // specifically) is exactly what checkForUnsupportedParameters accepting them means. Business-rule
-        // validation of the values themselves belongs to EarlyWithdrawalChargeReconciler/
-        // DynamicDepositEarlyWithdrawalChargeValidator, not this validator, so this test only needs to confirm the
-        // parameters are no longer rejected outright.
-        assertThatCode(() -> validator.validateForCreate(json)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validateForCreate(json)).isInstanceOf(UnsupportedParameterException.class);
     }
 }

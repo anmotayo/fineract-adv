@@ -69,11 +69,13 @@ public class AdvanclyChargeInterestRuleValidator {
             throw new GeneralPlatformDomainRuleException("error.msg.advancly.charge.interest.rule.charge.must.be.penalty",
                     "An early-withdrawal interest charge must be marked as a penalty.", charge.getId());
         }
-        if (!ChargeCalculationType.fromInt(charge.getChargeCalculation()).isPercentageOfInterest()) {
+        final ChargeCalculationType chargeCalculationType = ChargeCalculationType.fromInt(charge.getChargeCalculation());
+        if (chargeCalculationType == null || !chargeCalculationType.isPercentageOfInterest()) {
             throw new GeneralPlatformDomainRuleException("error.msg.advancly.charge.interest.rule.charge.must.be.percent.of.interest",
                     "An early-withdrawal interest charge must use percent-of-interest calculation.", charge.getId());
         }
-        if (!ChargeTimeType.fromInt(charge.getChargeTimeType()).isWithdrawalFee()) {
+        final ChargeTimeType chargeTimeType = ChargeTimeType.fromInt(charge.getChargeTimeType());
+        if (chargeTimeType == null || !chargeTimeType.isWithdrawalFee()) {
             throw new GeneralPlatformDomainRuleException("error.msg.advancly.charge.interest.rule.charge.must.be.withdrawal.related",
                     "An early-withdrawal interest charge must be withdrawal-related.", charge.getId());
         }
@@ -84,15 +86,28 @@ public class AdvanclyChargeInterestRuleValidator {
     }
 
     public void validateProductHasAtMostOneInterestCharge(final SavingsProduct product) {
-        final Set<Long> chargeIds = product.charges() == null ? Set.of()
-                : product.charges().stream().map(Charge::getId).collect(Collectors.toSet());
-        final List<AdvanclyChargeInterestRule> rules = findRules(chargeIds);
+        final Map<Long, Charge> chargesById = productChargesById(product);
+        final List<AdvanclyChargeInterestRule> rules = findRules(chargesById.keySet());
         validateAtMostOneInterestCharge(product.getId(), rules);
+        validateRuleDefinitions(rules);
         validateDailyPostingForCustomPeriod(product.getId(), product.interestPostingPeriodType(), rules);
     }
 
     public void validateProductHasAtMostOneInterestCharge(final Long savingsProductId, final Collection<Long> chargeIds) {
-        validateAtMostOneInterestCharge(savingsProductId, findRules(chargeIds));
+        final List<AdvanclyChargeInterestRule> rules = findRules(chargeIds);
+        validateAtMostOneInterestCharge(savingsProductId, rules);
+        validateRuleDefinitions(rules);
+    }
+
+    public Charge resolveSingleInterestCharge(final SavingsProduct product) {
+        final Map<Long, Charge> chargesById = productChargesById(product);
+        final List<AdvanclyChargeInterestRule> rules = findRules(chargesById.keySet());
+        validateAtMostOneInterestCharge(product == null ? null : product.getId(), rules);
+        validateRuleDefinitions(rules);
+        if (rules.size() != 1) {
+            return null;
+        }
+        return chargesById.get(rules.get(0).chargeId());
     }
 
     public void validateAccountUsesDailyPostingForCustomPeriodInterestCharge(final Long savingsProductId,
@@ -102,6 +117,7 @@ public class AdvanclyChargeInterestRuleValidator {
                         .collect(Collectors.toSet());
         final List<AdvanclyChargeInterestRule> rules = findAccountRules(savingsProductId, chargeIds);
         validateAtMostOneInterestCharge(savingsProductId, rules);
+        validateRuleDefinitions(rules);
         validateDailyPostingForCustomPeriod(savingsProductId, interestPostingPeriodType, rules);
     }
 
@@ -120,6 +136,14 @@ public class AdvanclyChargeInterestRuleValidator {
         return this.chargeInterestRuleRepository.findByChargeIdIn(chargeIds);
     }
 
+    private Map<Long, Charge> productChargesById(final SavingsProduct product) {
+        if (product == null || product.charges() == null) {
+            return Map.of();
+        }
+        return product.charges().stream().filter(charge -> charge != null && charge.getId() != null).collect(
+                Collectors.toMap(Charge::getId, charge -> charge, (first, second) -> first, LinkedHashMap::new));
+    }
+
     private List<AdvanclyChargeInterestRule> findAccountRules(final Long savingsProductId, final Collection<Long> accountChargeIds) {
         final Map<Long, AdvanclyChargeInterestRule> rulesByChargeId = new LinkedHashMap<>();
         for (final AdvanclyChargeInterestRule rule : findRules(accountChargeIds)) {
@@ -129,6 +153,12 @@ public class AdvanclyChargeInterestRuleValidator {
             rulesByChargeId.putIfAbsent(rule.chargeId(), rule);
         }
         return List.copyOf(rulesByChargeId.values());
+    }
+
+    private void validateRuleDefinitions(final List<AdvanclyChargeInterestRule> rules) {
+        for (final AdvanclyChargeInterestRule rule : rules) {
+            validateRule(rule.charge(), rule.interestBasisMode(), rule.customPeriodReapplyPolicy());
+        }
     }
 
     private void validateAtMostOneInterestCharge(final Long savingsProductId, final List<AdvanclyChargeInterestRule> rules) {

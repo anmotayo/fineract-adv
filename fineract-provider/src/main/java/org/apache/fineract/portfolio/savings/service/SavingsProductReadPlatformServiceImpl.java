@@ -126,9 +126,6 @@ public class SavingsProductReadPlatformServiceImpl implements SavingsProductRead
             sqlBuilder.append("sp.accounting_type as accountingType, ");
             sqlBuilder.append("sp.withhold_tax as withHoldTax,");
             sqlBuilder.append("tg.id as taxGroupId, tg.name as taxGroupName, ");
-            sqlBuilder.append("ddd.early_withdrawal_penalty_enabled as earlyWithdrawalPenaltyEnabled, ");
-            sqlBuilder.append("ewc.charge_id as earlyWithdrawalChargeId, ");
-            sqlBuilder.append("ewc.early_withdrawal_charge_mode_enum as earlyWithdrawalChargeMode, ");
             sqlBuilder.append("sp.is_dormancy_tracking_active as isDormancyTrackingActive,");
             sqlBuilder.append("sp.days_to_inactive as daysToInactive,");
             sqlBuilder.append("sp.days_to_dormancy as daysToDormancy,");
@@ -136,8 +133,6 @@ public class SavingsProductReadPlatformServiceImpl implements SavingsProductRead
             sqlBuilder.append("from m_savings_product sp ");
             sqlBuilder.append("join m_currency curr on curr.code = sp.currency_code ");
             sqlBuilder.append("left join m_tax_group tg on tg.id = sp.tax_group_id  ");
-            sqlBuilder.append("left join m_deposit_product_dynamic_detail ddd on ddd.savings_product_id = sp.id ");
-            sqlBuilder.append("left join m_savings_product_early_withdrawal_charge ewc on ewc.savings_product_id = sp.id ");
 
             this.schemaSql = sqlBuilder.toString();
         }
@@ -213,12 +208,6 @@ public class SavingsProductReadPlatformServiceImpl implements SavingsProductRead
                 taxGroupData = TaxGroupData.lookup(taxGroupId, taxGroupName);
             }
 
-            final boolean earlyWithdrawalPenaltyEnabled = rs.getBoolean("earlyWithdrawalPenaltyEnabled");
-            final Long earlyWithdrawalChargeId = JdbcSupport.getLong(rs, "earlyWithdrawalChargeId");
-            final Integer earlyWithdrawalChargeModeValue = JdbcSupport.getInteger(rs, "earlyWithdrawalChargeMode");
-            final Integer earlyWithdrawalChargeMode = earlyWithdrawalChargeModeValue == null ? null
-                    : (earlyWithdrawalChargeModeValue == 2 ? 2 : 1);
-
             final Boolean isDormancyTrackingActive = rs.getBoolean("isDormancyTrackingActive");
             final Long daysToInactive = JdbcSupport.getLong(rs, "daysToInactive");
             final Long daysToDormancy = JdbcSupport.getLong(rs, "daysToDormancy");
@@ -229,8 +218,7 @@ public class SavingsProductReadPlatformServiceImpl implements SavingsProductRead
                     minRequiredOpeningBalance, lockinPeriodFrequency, lockinPeriodFrequencyType, withdrawalFeeForTransfers,
                     accountingRuleType, allowOverdraft, overdraftLimit, minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit,
                     lienAllowed, minBalanceForInterestCalculation, nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation,
-                    withHoldTax, taxGroupData, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat,
-                    earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode);
+                    withHoldTax, taxGroupData, isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat);
         }
     }
 

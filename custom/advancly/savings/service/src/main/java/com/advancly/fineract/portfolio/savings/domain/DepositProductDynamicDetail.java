@@ -20,7 +20,6 @@ package com.advancly.fineract.portfolio.savings.domain;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
-import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -55,8 +54,8 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
     private boolean dynamicRateEnabled;
 
     /**
-     * Dynamic Deposit product-level gate for early-withdrawal interest penalties. When {@code false}, account assembly
-     * does not inherit the product's configured early-withdrawal charge for charge-driven applications.
+     * Legacy product-level flag retained for existing rows. Charge-driven early-withdrawal rules now live on
+     * m_adv_charge_interest_rule and this flag is no longer written from product APIs.
      */
     @Column(name = "early_withdrawal_penalty_enabled", nullable = false)
     private boolean earlyWithdrawalPenaltyEnabled;
@@ -91,12 +90,6 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
             final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(dynamicRateEnabledParamName);
             actualChanges.put(dynamicRateEnabledParamName, newValue);
             this.dynamicRateEnabled = newValue;
-        }
-
-        if (command.isChangeInBooleanParameterNamed(earlyWithdrawalPenaltyEnabledParamName, this.earlyWithdrawalPenaltyEnabled)) {
-            final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(earlyWithdrawalPenaltyEnabledParamName);
-            actualChanges.put(earlyWithdrawalPenaltyEnabledParamName, newValue);
-            this.earlyWithdrawalPenaltyEnabled = newValue;
         }
 
         return actualChanges;

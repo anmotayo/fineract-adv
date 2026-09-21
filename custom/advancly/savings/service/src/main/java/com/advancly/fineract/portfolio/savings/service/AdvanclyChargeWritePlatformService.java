@@ -72,12 +72,14 @@ public class AdvanclyChargeWritePlatformService implements ChargeWritePlatformSe
         final Map<String, Object> changes = new LinkedHashMap<>();
         final boolean interestBasisModePassed = command.parameterExists(ChargesApiConstants.interestBasisModeParamName);
         final boolean customPeriodPolicyPassed = command.parameterExists(ChargesApiConstants.customPeriodReapplyPolicyParamName);
-        if (!interestBasisModePassed && !customPeriodPolicyPassed) {
-            return changes;
-        }
 
         final Charge charge = this.chargeRepository.findById(chargeId).orElseThrow(() -> new ChargeNotFoundException(chargeId));
         final Optional<AdvanclyChargeInterestRule> existingRule = this.chargeInterestRuleRepository.findByChargeId(chargeId);
+        if (!interestBasisModePassed && !customPeriodPolicyPassed) {
+            existingRule.ifPresent(rule -> this.chargeInterestRuleValidator.validateRule(charge, rule.interestBasisMode(),
+                    rule.customPeriodReapplyPolicy()));
+            return changes;
+        }
 
         if (interestBasisModePassed && !command.hasParameterValue(ChargesApiConstants.interestBasisModeParamName)) {
             existingRule.ifPresent(this.chargeInterestRuleRepository::delete);

@@ -63,9 +63,6 @@ public final class SavingsProductData implements Serializable {
     private final BigDecimal minOverdraftForInterestCalculation;
     private final boolean withHoldTax;
     private final TaxGroupData taxGroup;
-    private final Boolean earlyWithdrawalPenaltyEnabled;
-    private final Long earlyWithdrawalChargeId;
-    private final Integer earlyWithdrawalChargeMode;
     private String depositAccountType = null;
     private final String accountMappingForPayment;
 
@@ -93,7 +90,6 @@ public final class SavingsProductData implements Serializable {
     private final Collection<ChargeData> chargeOptions;
     private final Collection<ChargeData> penaltyOptions;
     private final Collection<TaxGroupData> taxGroupOptions;
-    private final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions;
     private final Boolean isDormancyTrackingActive;
     private final Long daysToInactive;
     private final Long daysToDormancy;
@@ -110,7 +106,7 @@ public final class SavingsProductData implements Serializable {
             final Collection<PaymentTypeData> paymentTypeOptions, final Collection<EnumOptionData> accountingRuleOptions,
             final Map<String, List<GLAccountData>> accountingMappingOptions, final Collection<ChargeData> chargeOptions,
             final Collection<ChargeData> penaltyOptions, final Collection<TaxGroupData> taxGroupOptions,
-            final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions, final String accountMappingForPayment) {
+            final String accountMappingForPayment) {
 
         final Long id = null;
         final String name = null;
@@ -137,9 +133,6 @@ public final class SavingsProductData implements Serializable {
         final BigDecimal minOverdraftForInterestCalculation = null;
         final boolean withHoldTax = false;
         final TaxGroupData taxGroup = null;
-        final Boolean earlyWithdrawalPenaltyEnabled = false;
-        final Long earlyWithdrawalChargeId = null;
-        final Integer earlyWithdrawalChargeMode = null;
         final Boolean isDormancyTrackingActive = false;
         final Long daysToInactive = null;
         final Long daysToDormancy = null;
@@ -154,7 +147,6 @@ public final class SavingsProductData implements Serializable {
                 penaltyOptions, feeToIncomeAccountMappings, penaltyToIncomeAccountMappings, allowOverdraft, overdraftLimit,
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup, taxGroupOptions,
-                earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode, earlyWithdrawalChargeModeOptions,
                 isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, accountMappingForPayment);
     }
 
@@ -172,9 +164,8 @@ public final class SavingsProductData implements Serializable {
                 product.minRequiredBalance, product.enforceMinRequiredBalance, product.maxAllowedLienLimit, product.lienAllowed,
                 product.minBalanceForInterestCalculation, product.nominalAnnualInterestRateOverdraft,
                 product.minOverdraftForInterestCalculation, product.withHoldTax, product.taxGroup, product.taxGroupOptions,
-                product.earlyWithdrawalPenaltyEnabled, product.earlyWithdrawalChargeId, product.earlyWithdrawalChargeMode,
-                product.earlyWithdrawalChargeModeOptions, product.isDormancyTrackingActive, product.daysToInactive, product.daysToDormancy,
-                product.daysToEscheat, product.accountMappingForPayment);
+                product.isDormancyTrackingActive, product.daysToInactive, product.daysToDormancy, product.daysToEscheat,
+                product.accountMappingForPayment);
     }
 
     /**
@@ -193,8 +184,7 @@ public final class SavingsProductData implements Serializable {
             final Collection<EnumOptionData> lockinPeriodFrequencyTypeOptions, final Collection<EnumOptionData> withdrawalFeeTypeOptions,
             final Collection<PaymentTypeData> paymentTypeOptions, final Collection<EnumOptionData> accountingRuleOptions,
             final Map<String, List<GLAccountData>> accountingMappingOptions, final Collection<ChargeData> chargeOptions,
-            final Collection<ChargeData> penaltyOptions, Collection<TaxGroupData> taxGroupOptions,
-            final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions, final String accountMappingForPayment) {
+            final Collection<ChargeData> penaltyOptions, Collection<TaxGroupData> taxGroupOptions, final String accountMappingForPayment) {
 
         return new SavingsProductData(existingProduct.id, existingProduct.name, existingProduct.shortName, existingProduct.description,
                 existingProduct.currency, existingProduct.nominalAnnualInterestRate, existingProduct.interestCompoundingPeriodType,
@@ -209,10 +199,8 @@ public final class SavingsProductData implements Serializable {
                 existingProduct.overdraftLimit, existingProduct.minRequiredBalance, existingProduct.enforceMinRequiredBalance,
                 existingProduct.maxAllowedLienLimit, existingProduct.lienAllowed, existingProduct.minBalanceForInterestCalculation,
                 existingProduct.nominalAnnualInterestRateOverdraft, existingProduct.minOverdraftForInterestCalculation,
-                existingProduct.withHoldTax, existingProduct.taxGroup, taxGroupOptions, existingProduct.earlyWithdrawalPenaltyEnabled,
-                existingProduct.earlyWithdrawalChargeId, existingProduct.earlyWithdrawalChargeMode, earlyWithdrawalChargeModeOptions,
-                existingProduct.isDormancyTrackingActive, existingProduct.daysToInactive, existingProduct.daysToDormancy,
-                existingProduct.daysToEscheat, accountMappingForPayment);
+                existingProduct.withHoldTax, existingProduct.taxGroup, taxGroupOptions, existingProduct.isDormancyTrackingActive,
+                existingProduct.daysToInactive, existingProduct.daysToDormancy, existingProduct.daysToEscheat, accountMappingForPayment);
     }
 
     public static SavingsProductData withAccountingDetails(final SavingsProductData existingProduct,
@@ -233,7 +221,6 @@ public final class SavingsProductData implements Serializable {
         final Collection<ChargeData> chargeOptions = null;
         final Collection<ChargeData> penaltyOptions = null;
         final String accountMappingForPayment = null;
-        final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions = existingProduct.earlyWithdrawalChargeModeOptions;
 
         return new SavingsProductData(existingProduct.id, existingProduct.name, existingProduct.shortName, existingProduct.description,
                 existingProduct.currency, existingProduct.nominalAnnualInterestRate, existingProduct.interestCompoundingPeriodType,
@@ -249,10 +236,8 @@ public final class SavingsProductData implements Serializable {
                 existingProduct.lienAllowed, existingProduct.minBalanceForInterestCalculation,
                 existingProduct.nominalAnnualInterestRateOverdraft, existingProduct.minOverdraftForInterestCalculation,
                 existingProduct.withHoldTax, existingProduct.taxGroup, existingProduct.taxGroupOptions,
-                existingProduct.earlyWithdrawalPenaltyEnabled, existingProduct.earlyWithdrawalChargeId,
-                existingProduct.earlyWithdrawalChargeMode, earlyWithdrawalChargeModeOptions, existingProduct.isDormancyTrackingActive,
-                existingProduct.daysToInactive, existingProduct.daysToDormancy, existingProduct.daysToEscheat,
-                existingProduct.accountMappingForPayment);
+                existingProduct.isDormancyTrackingActive, existingProduct.daysToInactive, existingProduct.daysToDormancy,
+                existingProduct.daysToEscheat, existingProduct.accountMappingForPayment);
     }
 
     public static SavingsProductData instance(final Long id, final String name, final String shortName, final String description,
@@ -265,8 +250,7 @@ public final class SavingsProductData implements Serializable {
             final boolean lienAllowed, final BigDecimal minBalanceForInterestCalculation,
             final BigDecimal nominalAnnualInterestRateOverdraft, final BigDecimal minOverdraftForInterestCalculation,
             final boolean withHoldTax, final TaxGroupData taxGroup, final Boolean isDormancyTrackingActive, final Long daysToInactive,
-            final Long daysToDormancy, final Long daysToEscheat, final Boolean earlyWithdrawalPenaltyEnabled,
-            final Long earlyWithdrawalChargeId, final Integer earlyWithdrawalChargeMode) {
+            final Long daysToDormancy, final Long daysToEscheat) {
 
         final Map<String, Object> accountingMappings = null;
         final Collection<PaymentTypeToGLAccountMapper> paymentChannelToFundSourceMappings = null;
@@ -288,7 +272,6 @@ public final class SavingsProductData implements Serializable {
         final Collection<ChargeToGLAccountMapper> penaltyToIncomeAccountMappings = null;
         final Collection<TaxGroupData> taxGroupOptions = null;
         final String accountMappingForPayment = null;
-        final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions = defaultEarlyWithdrawalChargeModeOptions();
 
         return new SavingsProductData(id, name, shortName, description, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, minRequiredOpeningBalance,
@@ -299,7 +282,6 @@ public final class SavingsProductData implements Serializable {
                 penaltyOptions, feeToIncomeAccountMappings, penaltyToIncomeAccountMappings, allowOverdraft, overdraftLimit,
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup, taxGroupOptions,
-                earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode, earlyWithdrawalChargeModeOptions,
                 isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, accountMappingForPayment);
     }
 
@@ -331,9 +313,6 @@ public final class SavingsProductData implements Serializable {
         final BigDecimal minBalanceForInterestCalculation = null;
         final boolean withHoldTax = false;
         final TaxGroupData taxGroup = null;
-        final Boolean earlyWithdrawalPenaltyEnabled = null;
-        final Long earlyWithdrawalChargeId = null;
-        final Integer earlyWithdrawalChargeMode = null;
 
         final Collection<CurrencyData> currencyOptions = null;
         final Collection<EnumOptionData> interestCompoundingPeriodTypeOptions = null;
@@ -356,7 +335,6 @@ public final class SavingsProductData implements Serializable {
         final Long daysToDormancy = null;
         final Long daysToEscheat = null;
         final String accountMappingForPayment = null;
-        final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions = null;
 
         return new SavingsProductData(id, name, shortName, description, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
                 interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType, minRequiredOpeningBalance,
@@ -367,7 +345,6 @@ public final class SavingsProductData implements Serializable {
                 penaltyOptions, feeToIncomeAccountMappings, penaltyToIncomeAccountMappings, allowOverdraft, overdraftLimit,
                 minRequiredBalance, enforceMinRequiredBalance, maxAllowedLienLimit, lienAllowed, minBalanceForInterestCalculation,
                 nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax, taxGroup, taxGroupOptions,
-                earlyWithdrawalPenaltyEnabled, earlyWithdrawalChargeId, earlyWithdrawalChargeMode, earlyWithdrawalChargeModeOptions,
                 isDormancyTrackingActive, daysToInactive, daysToDormancy, daysToEscheat, accountMappingForPayment);
     }
 
@@ -427,10 +404,6 @@ public final class SavingsProductData implements Serializable {
         this.taxGroup = null;
         this.withHoldTax = false;
         this.taxGroupOptions = null;
-        this.earlyWithdrawalPenaltyEnabled = null;
-        this.earlyWithdrawalChargeId = null;
-        this.earlyWithdrawalChargeMode = null;
-        this.earlyWithdrawalChargeModeOptions = null;
         this.isDormancyTrackingActive = null;
         this.daysToInactive = null;
         this.daysToDormancy = null;
@@ -459,9 +432,8 @@ public final class SavingsProductData implements Serializable {
             final BigDecimal maxAllowedLienLimit, final boolean lienAllowed, final BigDecimal minBalanceForInterestCalculation,
             final BigDecimal nominalAnnualInterestRateOverdraft, final BigDecimal minOverdraftForInterestCalculation,
             final boolean withHoldTax, final TaxGroupData taxGroup, final Collection<TaxGroupData> taxGroupOptions,
-            final Boolean earlyWithdrawalPenaltyEnabled, final Long earlyWithdrawalChargeId, final Integer earlyWithdrawalChargeMode,
-            final Collection<EnumOptionData> earlyWithdrawalChargeModeOptions, final Boolean isDormancyTrackingActive,
-            final Long daysToInactive, final Long daysToDormancy, final Long daysToEscheat, final String accountMappingForPayment) {
+            final Boolean isDormancyTrackingActive, final Long daysToInactive, final Long daysToDormancy, final Long daysToEscheat,
+            final String accountMappingForPayment) {
         this.id = id;
         this.name = name;
         this.shortName = shortName;
@@ -516,10 +488,6 @@ public final class SavingsProductData implements Serializable {
         this.taxGroup = taxGroup;
         this.withHoldTax = withHoldTax;
         this.taxGroupOptions = taxGroupOptions;
-        this.earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabled;
-        this.earlyWithdrawalChargeId = earlyWithdrawalChargeId;
-        this.earlyWithdrawalChargeMode = earlyWithdrawalChargeMode;
-        this.earlyWithdrawalChargeModeOptions = earlyWithdrawalChargeModeOptions;
         this.isDormancyTrackingActive = isDormancyTrackingActive;
         this.daysToInactive = daysToInactive;
         this.daysToDormancy = daysToDormancy;
@@ -528,11 +496,11 @@ public final class SavingsProductData implements Serializable {
     }
 
     public boolean hasAccountingEnabled() {
-        return this.accountingRule.getId() > AccountingRuleType.NONE.getValue();
+        return isAccountingRuleSet() && this.accountingRule.getId() > AccountingRuleType.NONE.getValue();
     }
 
     public int accountingRuleTypeId() {
-        return this.accountingRule.getId().intValue();
+        return isAccountingRuleSet() ? this.accountingRule.getId().intValue() : AccountingRuleType.NONE.getValue();
     }
 
     @Override
@@ -621,13 +589,8 @@ public final class SavingsProductData implements Serializable {
         return withdrawalFeeForTransfers;
     }
 
-    private static Collection<EnumOptionData> defaultEarlyWithdrawalChargeModeOptions() {
-        return List.of(new EnumOptionData(1L, "savings.earlyWithdrawalChargeMode.perPeriod", "Per Period"),
-                new EnumOptionData(2L, "savings.earlyWithdrawalChargeMode.cumulative", "Cumulative"));
-    }
-
     public boolean isCashBasedAccountingEnabled() {
-        return AccountingRuleType.CASH_BASED.getValue().toString().equals(this.accountingRule.getValue());
+        return isAccountingRuleType(AccountingRuleType.CASH_BASED);
     }
 
     public boolean isAccrualBasedAccountingEnabled() {
@@ -635,11 +598,19 @@ public final class SavingsProductData implements Serializable {
     }
 
     public boolean isUpfrontAccrualAccounting() {
-        return AccountingRuleType.ACCRUAL_UPFRONT.getValue().toString().equals(this.accountingRule.getValue());
+        return isAccountingRuleType(AccountingRuleType.ACCRUAL_UPFRONT);
     }
 
     public boolean isPeriodicAccrualAccounting() {
-        return AccountingRuleType.ACCRUAL_PERIODIC.getValue().toString().equals(this.accountingRule.getValue());
+        return isAccountingRuleType(AccountingRuleType.ACCRUAL_PERIODIC);
+    }
+
+    private boolean isAccountingRuleType(final AccountingRuleType accountingRuleType) {
+        return isAccountingRuleSet() && this.accountingRule.getId().intValue() == accountingRuleType.getValue();
+    }
+
+    private boolean isAccountingRuleSet() {
+        return this.accountingRule != null && this.accountingRule.getId() != null;
     }
 
 }

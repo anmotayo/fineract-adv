@@ -21,7 +21,6 @@ package com.advancly.fineract.portfolio.savings.domain;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
-import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.earlyWithdrawalPenaltyEnabledParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMaxAmountParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMinAmountParamName;
@@ -139,11 +138,6 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final boolean allowWithdrawal = allowWithdrawalValue == null || allowWithdrawalValue;
         final Boolean dynamicRateEnabledValue = command.booleanObjectValueOfParameterNamed(dynamicRateEnabledParamName);
         final boolean dynamicRateEnabled = dynamicRateEnabledValue != null && dynamicRateEnabledValue;
-        // Defaults to false: an existing product that never sends the flag keeps the pre-Phase-4 behaviour of never
-        // levying an early-withdrawal penalty.
-        final Boolean earlyWithdrawalPenaltyEnabledValue = command
-                .booleanObjectValueOfParameterNamed(earlyWithdrawalPenaltyEnabledParamName);
-        final boolean earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabledValue != null && earlyWithdrawalPenaltyEnabledValue;
 
         final DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(false, null, null);
         final DepositTermDetail depositTermDetail = assembleDepositTermDetail(command);
@@ -161,8 +155,7 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final DynamicDepositProduct product = DynamicDepositProduct.createNew(name, shortName, description, currency, interestRate,
                 interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
                 lockinPeriodFrequency, lockinPeriodFrequencyType, accountingRuleType, charges, productTermAndPreClosure, charts,
-                minBalanceForInterestCalculation, withHoldTax, taxGroup, allowWithdrawal, dynamicRateEnabled,
-                earlyWithdrawalPenaltyEnabled);
+                minBalanceForInterestCalculation, withHoldTax, taxGroup, allowWithdrawal, dynamicRateEnabled, false);
 
         productTermAndPreClosure.updateProductReference(product);
 

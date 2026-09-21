@@ -52,7 +52,6 @@ import com.google.gson.JsonElement;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
@@ -121,7 +120,6 @@ public class DynamicDepositAccountAssembler {
     private final SavingsHelper savingsHelper;
     private final ExternalIdFactory externalIdFactory;
     private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
-    private final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
     private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
 
     public DynamicDepositAccountAssembler(final ClientRepositoryWrapper clientRepository, final GroupRepositoryWrapper groupRepository,
@@ -129,7 +127,6 @@ public class DynamicDepositAccountAssembler {
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
-            final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
             final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.clientRepository = clientRepository;
         this.groupRepository = groupRepository;
@@ -140,7 +137,6 @@ public class DynamicDepositAccountAssembler {
         this.savingsHelper = savingsHelper;
         this.externalIdFactory = externalIdFactory;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
-        this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
         this.chargeInterestRuleValidator = chargeInterestRuleValidator;
     }
 
@@ -315,26 +311,11 @@ public class DynamicDepositAccountAssembler {
     }
 
     /**
-     * The product's selected early-withdrawal penalty charge, or {@code null} when the product has the penalty disabled
-     * or has selected nothing. Reads the classifier table rather than the account request, since the selection is
-     * product configuration.
+     * The product's charge-driven early-withdrawal penalty charge. The  supported configuration is the interest
+     * rule attached to a charge that is itself attached to the product.
      */
     private Charge resolveProductEarlyWithdrawalCharge(final DynamicDepositProduct product) {
-        if (!product.isEarlyWithdrawalPenaltyEnabled()) {
-            return null;
-        }
-        final List<SavingsProductEarlyWithdrawalCharge> selections = this.earlyWithdrawalChargeRepository
-                .findBySavingsProductId(product.getId());
-        if (selections.size() != 1) {
-            return null;
-        }
-        final Long selectedChargeId = selections.get(0).chargeId();
-        for (final Charge charge : product.charges()) {
-            if (selectedChargeId.equals(charge.getId())) {
-                return charge;
-            }
-        }
-        return null;
+        return this.chargeInterestRuleValidator.resolveSingleInterestCharge(product);
     }
 
     /**

@@ -16,17 +16,32 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.portfolio.charge.api;
+package com.advancly.fineract.portfolio.savings.domain;
 
-public final class ChargesApiConstants {
+import java.util.Arrays;
 
-    private ChargesApiConstants() {
+public enum CustomPeriodReapplyPolicy {
 
+    ONCE_PER_SELECTED_PERIOD(1), UNTIL_SELECTED_PERIOD_INTEREST_EXHAUSTED(2);
+
+    private final int value;
+
+    CustomPeriodReapplyPolicy(final int value) {
+        this.value = value;
     }
 
-    public static final String glAccountIdParamName = "incomeAccountId";
-    public static final String taxGroupIdParamName = "taxGroupId";
-    public static final String interestBasisModeParamName = "interestBasisMode";
-    public static final String customPeriodReapplyPolicyParamName = "customPeriodReapplyPolicy";
+    public int getValue() {
+        return this.value;
+    }
 
+    public boolean isOncePerSelectedPeriod() {
+        return this == ONCE_PER_SELECTED_PERIOD;
+    }
+
+    public static CustomPeriodReapplyPolicy fromInt(final Integer value) {
+        if (value == null) {
+            return null;
+        }
+        return Arrays.stream(values()).filter(policy -> policy.value == value).findFirst().orElse(null);
+    }
 }

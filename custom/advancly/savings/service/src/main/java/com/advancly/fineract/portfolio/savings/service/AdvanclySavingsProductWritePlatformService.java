@@ -32,6 +32,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductRepository;
 import org.apache.fineract.portfolio.savings.exception.SavingsProductNotFoundException;
 import org.apache.fineract.portfolio.savings.service.SavingsProductWritePlatformService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -52,16 +53,28 @@ public class AdvanclySavingsProductWritePlatformService implements SavingsProduc
     private final SavingsProductRepository savingsProductRepository;
     private final DepositProductDynamicDetailRepository productDynamicDetailRepository;
     private final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
 
+    @Autowired
     public AdvanclySavingsProductWritePlatformService(
             @Qualifier("coreSavingsProductWritePlatformService") final SavingsProductWritePlatformService delegate,
             final SavingsProductRepository savingsProductRepository,
             final DepositProductDynamicDetailRepository productDynamicDetailRepository,
-            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler) {
+            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.delegate = delegate;
         this.savingsProductRepository = savingsProductRepository;
         this.productDynamicDetailRepository = productDynamicDetailRepository;
         this.earlyWithdrawalChargeReconciler = earlyWithdrawalChargeReconciler;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
+    }
+
+    AdvanclySavingsProductWritePlatformService(
+            @Qualifier("coreSavingsProductWritePlatformService") final SavingsProductWritePlatformService delegate,
+            final SavingsProductRepository savingsProductRepository,
+            final DepositProductDynamicDetailRepository productDynamicDetailRepository,
+            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler) {
+        this(delegate, savingsProductRepository, productDynamicDetailRepository, earlyWithdrawalChargeReconciler, null);
     }
 
     @Transactional
@@ -89,12 +102,15 @@ public class AdvanclySavingsProductWritePlatformService implements SavingsProduc
         final boolean mentionsEarlyWithdrawal = command.parameterExists(earlyWithdrawalPenaltyEnabledParamName)
                 || command.parameterExists(earlyWithdrawalChargeIdParamName) || command.parameterExists(earlyWithdrawalChargeModeParamName);
         final Optional<DepositProductDynamicDetail> existing = this.productDynamicDetailRepository.findByProductId(productId);
+        if (!mentionsEarlyWithdrawal && existing.isEmpty() && this.chargeInterestRuleValidator == null) {
+            return;
+        }
+        final SavingsProduct product = this.savingsProductRepository.findById(productId)
+                .orElseThrow(() -> new SavingsProductNotFoundException(productId));
+        validateChargeDrivenRules(product);
         if (!mentionsEarlyWithdrawal && existing.isEmpty()) {
             return;
         }
-
-        final SavingsProduct product = this.savingsProductRepository.findById(productId)
-                .orElseThrow(() -> new SavingsProductNotFoundException(productId));
 
         final DepositProductDynamicDetail productDetail;
         if (existing.isPresent()) {
@@ -111,5 +127,11 @@ public class AdvanclySavingsProductWritePlatformService implements SavingsProduc
         this.earlyWithdrawalChargeReconciler.reconcile(productId, command, productDetail.isEarlyWithdrawalPenaltyEnabled(),
                 product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName,
                 earlyWithdrawalChargeModeParamName, SavingsApiConstants.SAVINGS_PRODUCT_RESOURCE_NAME);
+    }
+
+    private void validateChargeDrivenRules(final SavingsProduct product) {
+        if (this.chargeInterestRuleValidator != null) {
+            this.chargeInterestRuleValidator.validateProductHasAtMostOneInterestCharge(product);
+        }
     }
 }

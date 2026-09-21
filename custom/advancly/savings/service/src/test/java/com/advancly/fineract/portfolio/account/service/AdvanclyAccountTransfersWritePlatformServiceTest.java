@@ -40,12 +40,8 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTran
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
-import com.advancly.fineract.portfolio.savings.service.CumulativeInterestForfeitureService;
-import com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
@@ -53,7 +49,6 @@ import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactio
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
@@ -127,11 +122,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     @Mock
     private AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
     @Mock
-    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
-    @Mock
-    private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
-    @Mock
-    private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
 
     private AdvanclyAccountTransfersWritePlatformService service;
 
@@ -142,8 +133,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
                 savingsAccountAssembler, coreSavingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
                 loanAccountDomainService, accountTransferDetailRepository, loanReadPlatformService, gsimRepository,
                 configurationDomainService, externalIdFactory, transactionRepository, coreDomainService,
-                coreAccountTransfersWritePlatformService, productEarlyWithdrawalChargeRepository, cumulativeInterestForfeitureService,
-                earlyWithdrawalChargeService);
+                coreAccountTransfersWritePlatformService, interestChargeApplicationService);
     }
 
     @Test
@@ -187,7 +177,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     }
 
     @Test
-    void createSavingsToSavingsRecordsPerPeriodEarlyWithdrawalChargeOnlyForSourceAccount() {
+    void createSavingsToSavingsAppliesEarlyWithdrawalInterestChargeOnlyForSourceAccount() {
         LocalDate transferDate = LocalDate.of(2026, 5, 27);
         BigDecimal amount = BigDecimal.valueOf(1000);
         BigDecimal override = new BigDecimal("12.5");
@@ -202,7 +192,6 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
         AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
-        withProductMode(EarlyWithdrawalChargeMode.PER_PERIOD);
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
         when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
         when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
@@ -222,12 +211,12 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         service.create(command);
 
-        verify(earlyWithdrawalChargeService).recordIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override));
-        verify(cumulativeInterestForfeitureService, never()).forfeitIfApplicable(any(), any(), anyBoolean(), anyBoolean(), any());
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(false));
     }
 
     @Test
-    void createSavingsToSavingsRunsCumulativeForfeitureBeforeSourceWithdrawal() {
+    void createSavingsToSavingsAppliesEarlyWithdrawalInterestChargeAfterSourceWithdrawal() {
         LocalDate transferDate = LocalDate.of(2026, 5, 27);
         BigDecimal amount = BigDecimal.valueOf(1000);
         BigDecimal override = new BigDecimal("12.5");
@@ -242,7 +231,6 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
         AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
-        withProductMode(EarlyWithdrawalChargeMode.CUMULATIVE);
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
         when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
         when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
@@ -262,9 +250,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         service.create(command);
 
-        verify(cumulativeInterestForfeitureService).forfeitIfApplicable(eq(fromAccount), eq(transferDate), eq(false), eq(false),
-                eq(override));
-        verify(earlyWithdrawalChargeService, never()).recordIfApplicable(any(), any(), anyBoolean(), any());
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(false));
     }
 
     @Test
@@ -597,7 +584,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     }
 
     @Test
-    void createTransferOutOfDynamicDepositSetsPercentageOverrideBeforeCoreWithdrawal() {
+    void createTransferOutOfDynamicDepositAppliesInterestChargeAfterCoreWithdrawal() {
         LocalDate transferDate = LocalDate.of(2026, 5, 27);
         BigDecimal amount = BigDecimal.valueOf(1000);
         BigDecimal override = new BigDecimal("12.5");
@@ -612,7 +599,6 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
         AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
 
-        withProductMode(EarlyWithdrawalChargeMode.PER_PERIOD);
         when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
         when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
         when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
@@ -632,10 +618,9 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         service.create(command);
 
-        verify(fromAccount).setWithdrawalChargePercentageOverride(override);
-        verify(fromAccount).setWithdrawalChargePercentageOverride(null);
         verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
-        verify(earlyWithdrawalChargeService, never()).recordIfApplicable(any(), any(), anyBoolean(), any());
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(false));
     }
 
     @Test
@@ -745,11 +730,6 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         when(command.extractLocale()).thenReturn(Locale.ENGLISH);
         when(command.dateFormat()).thenReturn("dd MMMM yyyy");
         return command;
-    }
-
-    private void withProductMode(final EarlyWithdrawalChargeMode mode) {
-        when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(any()))
-                .thenReturn(List.of(SavingsProductEarlyWithdrawalCharge.createNew(1L, 2L, mode)));
     }
 
     private SavingsAccount savingsAccount(Long savingsId, BigDecimal runningBalance) {

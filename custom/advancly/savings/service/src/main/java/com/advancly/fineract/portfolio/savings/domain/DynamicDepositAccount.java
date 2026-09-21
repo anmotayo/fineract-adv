@@ -20,16 +20,13 @@ package com.advancly.fineract.portfolio.savings.domain;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 
-import com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator;
-import com.advancly.fineract.portfolio.savings.service.EarlyWithdrawalChargePercentageOverrideContext;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToOne;
-import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
@@ -65,7 +62,6 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateCh
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargePaidBy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
@@ -105,49 +101,8 @@ public class DynamicDepositAccount extends SavingsAccount {
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "account", orphanRemoval = true)
     private DepositAccountInterestRateChart chart;
 
-    /**
-     * Implementation plan Section 5. Read-side convenience columns only: the current pending interest-based charge
-     * amount not yet consumed by an interest posting, and the posted amount already consumed by interest posting or
-     * cumulative forfeiture. Neither is the source of truth for posting, reversals, or accounting - that remains
-     * {@code m_savings_account_interest_charge} plus the linked transactions.
-     *
-     * Mapped here, on the subclass, rather than on {@code SavingsAccount}: the hierarchy is
-     * {@code InheritanceType.SINGLE_TABLE} (see {@code SavingsAccount}'s class annotations), so these become nullable
-     * columns on {@code m_savings_account} without touching the class every savings and deposit account type shares.
-     * Nullable is therefore mandatory - every existing row, and every non-Dynamic-Deposit row, leaves it NULL - which
-     * is why the accessors below normalise NULL to zero.
-     */
-    @Column(name = "interest_based_charge_derived", scale = 6, precision = 19)
-    private BigDecimal interestBasedChargeDerived;
-
     @Column(name = "interest_based_charge_posted_derived", scale = 6, precision = 19)
     private BigDecimal interestBasedChargePostedDerived;
-
-    /**
-     * In-flight state for a premature closure, spanning the three steps closure takes on this instance: what the
-     * closure's own early-withdrawal penalty is ({@link #prepareClosureSettlement(LocalDate)}), what the period's
-     * single capped interest-based charge actually allocated to it
-     * ({@link #applyPendingInterestBasedCharges(LocalDate, Money, SavingsAccountTransaction, boolean, boolean)}), and
-     * the already-applied row written for it once the closure withdrawal exists
-     * ({@link #completeClosureSettlement(SavingsAccountTransaction)}).
-     *
-     * {@code @Transient} - deliberately never persisted: it lives only for the duration of the single closure
-     * transaction, and its durable output is the {@code m_savings_account_interest_charge} row plus the transactions
-     * written for it. Being non-null is also the signal that suppresses the ordinary early-withdrawal hook for the
-     * settlement withdrawal (see {@link #isClosureSettlementInProgress()}).
-     */
-    @Transient
-    private ClosureSettlement closureSettlement;
-
-    /**
-     * A per-transaction override of the early-withdrawal charge percentage. It exists only for the duration of one
-     * withdrawal transaction and is never the account's snapshotted default -
-     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService} uses it, or
-     * the request-scoped value carried by {@code EarlyWithdrawalChargePercentageOverrideContext}, in place of the
-     * account charge's own percentage for that withdrawal only.
-     */
-    @Transient
-    private BigDecimal earlyWithdrawalChargePercentageOverride;
 
     protected DynamicDepositAccount() {
         //
@@ -257,17 +212,8 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
     }
 
-    public BigDecimal interestBasedChargeDerived() {
-        return this.interestBasedChargeDerived == null ? BigDecimal.ZERO : this.interestBasedChargeDerived;
-    }
-
     public BigDecimal interestBasedChargePostedDerived() {
         return this.interestBasedChargePostedDerived == null ? BigDecimal.ZERO : this.interestBasedChargePostedDerived;
-    }
-
-    @Override
-    public void updateInterestBasedChargeDerived(final BigDecimal amount) {
-        this.interestBasedChargeDerived = amount == null ? BigDecimal.ZERO : amount;
     }
 
     /**
@@ -371,6 +317,30 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
+     * Lets core close-with-withdraw-balance post Dynamic Deposit's final interest. Cumulative early-withdrawal rules
+     * are the exception: the charge-ledger forfeiture service force-posts and forfeits before core reads the balance,
+     * so core must not post the same closing interest a second time.
+     */
+    @Override
+    public boolean beginClosureSettlement(final LocalDate closedDate) {
+        if (!isEarlyWithdrawal(closedDate)) {
+            return true;
+        }
+        final BigDecimal chargePercentageOverride = earlyWithdrawalChargePercentageOverride();
+        if (!DynamicDepositServiceLocator.cumulativeInterestForfeitureService().appliesTo(this, chargePercentageOverride)) {
+            return true;
+        }
+        if (DateUtils.isBefore(closedDate, DateUtils.getBusinessLocalDate())) {
+            throw new GeneralPlatformDomainRuleException(
+                    "error.msg.savings.account.close.backdated.cumulative.early.withdrawal.not.allowed",
+                    "Backdated cumulative early-withdrawal closure is not allowed.");
+        }
+        DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false, true,
+                chargePercentageOverride);
+        return false;
+    }
+
+    /**
      * Lets {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService} keep the account's
      * own rate current between Phase 2 (this class) and the Phase 3 interest engine landing (see implementation plan,
      * Section 8) - {@code SavingsAccount.nominalAnnualInterestRate} is {@code protected}, so a same-hierarchy setter is
@@ -411,32 +381,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         DynamicDepositServiceLocator.rateHistoryService().recordPrincipalChangeEvent(this, transaction,
                 DynamicDepositRateHistoryEventType.WITHDRAWAL);
         DynamicDepositServiceLocator.interestWithdrawalService().recordIfApplicable(this, transaction);
-        // Phase 4: any withdrawal dated before maturity - including the withdrawal the generic core `close` command
-        // issues when withdrawBalance=true, i.e. premature closure - creates a pending early-withdrawal charge row.
-        DynamicDepositServiceLocator.earlyWithdrawalChargeService().recordIfApplicable(this, transaction);
-        // Single-shot: whatever the caller set via #setEarlyWithdrawalChargePercentageOverride applied to this one
-        // withdrawal only (recordIfApplicable above already consumed it) - clear it so it can never leak into a later,
-        // unrelated withdrawal on this same in-memory instance (e.g. a bulk transaction).
-        this.earlyWithdrawalChargePercentageOverride = null;
         return transaction;
-    }
-
-    /**
-     * Sets the per-transaction early-withdrawal charge percentage override for the NEXT withdrawal only - see
-     * {@link #earlyWithdrawalChargePercentageOverride}. {@code null} (the default) means no override: the account's
-     * normal snapshotted charge percentage applies. Overrides the core no-op
-     * {@link org.apache.fineract.portfolio.savings.domain.SavingsAccount#setWithdrawalChargePercentageOverride(BigDecimal)}
-     * extension point, which is how the core write-platform layer reaches this without depending on this class.
-     */
-    @Override
-    public void setWithdrawalChargePercentageOverride(final BigDecimal earlyWithdrawalChargePercentageOverride) {
-        this.earlyWithdrawalChargePercentageOverride = earlyWithdrawalChargePercentageOverride;
-    }
-
-    @Override
-    public BigDecimal earlyWithdrawalChargePercentageOverride() {
-        return this.earlyWithdrawalChargePercentageOverride != null ? this.earlyWithdrawalChargePercentageOverride
-                : EarlyWithdrawalChargePercentageOverrideContext.get();
     }
 
     @Override
@@ -447,16 +392,6 @@ public class DynamicDepositAccount extends SavingsAccount {
         if (transactionToUndo != null) {
             DynamicDepositServiceLocator.rateHistoryService().reverseInvestedAmountForUndo(this, transactionToUndo);
         }
-        // The undone transaction may be an early-withdrawal charge posting or the withdrawal a pending charge row is
-        // linked to; either way the repository query backing this column already excludes reversed rows/links
-        // (see SavingsAccountInterestChargeRepository), so m_savings_account_interest_charge itself stays correct -
-        // but the fast-read derived column on this row is otherwise only refreshed inside
-        // applyPendingInterestBasedCharges(...) and would go stale (too high) until the next early
-        // withdrawal happens to refresh it. Recompute unconditionally rather than only when transactionToUndo is a
-        // charge/withdrawal, since it costs one cheap aggregate query and keeps this correct regardless of which
-        // transaction type was undone.
-        final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
-        updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
     }
 
     /**
@@ -632,8 +567,10 @@ public class DynamicDepositAccount extends SavingsAccount {
             // using PostingPeriod.getPeriodInterval() (public) directly - no positional-index recomputation needed,
             // and therefore no way for a boundary/sub-period count mismatch to silently misattribute interest.
             Money interestEarnedToBePostedForPeriod = Money.zero(this.currency);
+            final List<PostingPeriod> boundarySubPeriods = new ArrayList<>();
             for (final PostingPeriod subPeriod : ratedSubPeriods) {
                 if (coreBoundary.contains(subPeriod.getPeriodInterval().startDate())) {
+                    boundarySubPeriods.add(subPeriod);
                     interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod.plus(subPeriod.getInterestEarned());
                 }
             }
@@ -644,19 +581,6 @@ public class DynamicDepositAccount extends SavingsAccount {
             // too (SavingsAccount.java:911).
             final LocalDate interestPostingTransactionDate = isSavingsInterestPostingAtCurrentPeriodEnd ? coreBoundary.endDate()
                     : coreBoundary.endDate().plusDays(1);
-
-            // A closure settlement in flight contributes its own penalty to exactly one boundary: the one covering
-            // the day before the closure date, i.e. the period the closure ends. Keying it to that day rather than
-            // to the posting transaction's own date keeps it independent of whether the tenant posts at period end
-            // or on the day after (which shifts that date by one), and of any zero-interest trailing boundary that
-            // starts on the closure date itself.
-            //
-            // Determined here, at boundary level, rather than inside the "create a new posting transaction" branch
-            // below: whether this boundary is the closure's must not depend on which of core's three branches the
-            // boundary happens to take, because the closure penalty has to be collected in the "already posted,
-            // nothing to correct" branch too (see that branch).
-            final boolean isClosureBoundary = this.closureSettlement != null
-                    && coreBoundary.contains(this.closureSettlement.closedDate().minusDays(1));
 
             if (!DateUtils.isAfter(interestPostingTransactionDate, interestPostingUpToDate)) {
                 interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);
@@ -685,15 +609,9 @@ public class DynamicDepositAccount extends SavingsAccount {
                             addTransaction(newPostingTransaction);
                         }
 
-                        // Phase 4, Section 10 steps 2/4/7/8 - apply the interest-based charge before withholding tax,
-                        // so WHT is calculated on the customer's remaining interest after the charge. Deliberately not
-                        // applied in the correction branch below: core reverses only the posting and withholding
-                        // transactions there, so an already-applied charge transaction and its row links still stand.
-                        final BigDecimal appliedChargeAmount = applyPendingInterestBasedCharges(interestPostingTransactionDate,
-                                interestEarnedToBePostedForPeriod, newPostingTransaction, backdatedTxnsAllowedTill, isClosureBoundary);
                         if (applyWithHoldTax) {
-                            createWithHoldTransaction(taxableInterestAfterCharge(interestEarnedToBePostedForPeriod, appliedChargeAmount),
-                                    interestPostingTransactionDate, backdatedTxnsAllowedTill);
+                            createWithHoldTransactionAndFind(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
                         }
                         recalucateDailyBalanceDetails = true;
                     }
@@ -739,44 +657,10 @@ public class DynamicDepositAccount extends SavingsAccount {
                             }
                         }
                         if (applyWithHoldTaxForOldTransaction) {
-                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                            createWithHoldTransactionAndFind(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
                                     backdatedTxnsAllowedTill);
                         }
                         recalucateDailyBalanceDetails = true;
-                    } else if (isClosureBoundary && postingTransaction.isInterestPostingAndNotReversed()) {
-                        // "Already posted, and the posted amount is exactly right" - the scheduled interest posting
-                        // job happened to run for this very boundary before the customer closed the account the same
-                        // day. Core creates nothing here, so without this branch the create-a-new-posting branch
-                        // above (the only other place the charge is collected) never runs for the closure boundary
-                        // and a genuinely premature closure would silently forgo its early-withdrawal penalty purely
-                        // because of when the job ran. Run the SAME unified sum-cap-distribute pass instead, against
-                        // the interest that is already on the account, linking the resulting charge to the EXISTING
-                        // posting transaction - no second interest posting transaction is created, because the one
-                        // that is there is correct.
-                        //
-                        // Gross interest is read off that transaction itself rather than from the recomputed
-                        // interestEarnedToBePostedForPeriod. The two are equal by definition here (that equality is
-                        // exactly what correctionRequired == false means), and reading the transaction keeps the
-                        // charge basis tied to the money that actually moved.
-                        //
-                        // Scoped to isClosureBoundary deliberately: an ordinary posting run that finds its boundary
-                        // already posted still does nothing, exactly as before, and the genuine correction branch
-                        // above is untouched (see its comment - core reverses only the posting and withholding
-                        // transactions, so charges already applied against the old amount still stand and charging
-                        // again here would double-charge).
-                        final Money alreadyPostedInterest = postingTransaction.getAmount(this.currency);
-                        final BigDecimal appliedChargeAmount = applyPendingInterestBasedCharges(interestPostingTransactionDate,
-                                alreadyPostedInterest, postingTransaction, backdatedTxnsAllowedTill, true);
-                        if (appliedChargeAmount.compareTo(BigDecimal.ZERO) > 0) {
-                            reverseWithholdingTaxOn(interestPostingTransactionDate, backdatedTxnsAllowedTill);
-                            if (applyWithHoldTax) {
-                                createWithHoldTransaction(taxableInterestAfterCharge(alreadyPostedInterest, appliedChargeAmount),
-                                        interestPostingTransactionDate, backdatedTxnsAllowedTill);
-                            }
-                            // Only when a charge transaction was actually written: it moves the balance, so the
-                            // running daily balances have to be rebuilt just as they are after any other posting.
-                            recalucateDailyBalanceDetails = true;
-                        }
                     }
                 }
             }
@@ -802,381 +686,24 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
     }
 
-    /**
-     * Implementation plan Section 10 steps 2, 4, 7 and 8, for one core posting-period boundary:
-     *
-     * <ol>
-     * <li>take the pending {@code m_savings_account_interest_charge} rows whose interest period ended on or before this
-     * boundary and RECOMPUTE each one's amount from its stored {@code charge_percentage} against this period's real
-     * gross interest - the amount those rows were written with at withdrawal time is provisional and is deliberately
-     * ignored (see Task 7), which is what lets a withdrawal taken before any interest calculation still charge
-     * correctly;</li>
-     * <li>add, when this is the boundary a premature closure ends in, that closure's OWN early-withdrawal penalty as
-     * one further contribution to the same sum - so the cap and the pro-rata below are applied once, over everything
-     * the period charges, and the closure's penalty can never double-count the interest the pending rows already
-     * consume;</li>
-     * <li>write ONE interest-based charge transaction for the period - and, per step 7, none at all when there is
-     * nothing pending and no closure contribution, so posting behaves exactly as it did before Phase 4;</li>
-     * <li>link every consumed row to both the interest posting transaction and that charge transaction;</li>
-     * <li>refresh both derived read columns from the table rather than incrementing them, so they cannot drift.</li>
-     * </ol>
-     *
-     * The transaction is an {@code INTEREST_BASED_CHARGE} built by
-     * {@code SavingsAccountTransaction.interestBasedCharge(...)} - a dedicated debit type, not {@code PAY_CHARGE},
-     * because per the spec (Section 10/11/13) this charge must be funded from interest and must not reduce principal:
-     * it is excluded from the interest-bearing balance in {@code PostingPeriod} the same way {@code WITHHOLD_TAX} is,
-     * so it cannot shrink the compounding base for future periods the way an ordinary {@code PAY_CHARGE} debit would.
-     * It is still linked to the account charge through {@code SavingsAccountChargePaidBy}, exactly as core's own
-     * {@code handleChargeTransactions} does - so accounting and the charge/transaction link behave like every other
-     * savings charge (see the dedicated GL branch in
-     * {@code CashBasedAccountingProcessorForSavings}/{@code AccrualBasedAccountingProcessorForSavings} keyed on
-     * {@code isInterestBasedCharge()}, posting to {@code INCOME_FROM_PENALTIES}). The attributed charge's own
-     * {@code amount_paid_derived}/{@code amount_outstanding_derived} are updated via
-     * {@code SavingsAccountCharge.pay(...)} too, exactly as core's {@code SavingsAccount.payCharge(...)} does before
-     * building that link - without it, {@code SavingsAccount.undoTransaction(Long)}'s symmetric
-     * {@code chargeToUndo.undoPayment(...)} on this transaction being undone would decrement an amount that was never
-     * incremented, driving the charge's paid/outstanding bookkeeping negative.
-     *
-     * Deliberately parameterised by the interest posting transaction to link to and the period's gross interest, so
-     * that {@link #postInterest} can call it both for a posting transaction it has just created and for one that
-     * already existed and needed no correction (the same-day scheduled-job case at a closure boundary) - one
-     * implementation of the cap/distribute arithmetic, never two.
-     *
-     * @return the amount actually written as an interest-based charge transaction, or zero when there was nothing to
-     *         charge.
-     */
-    private BigDecimal applyPendingInterestBasedCharges(final LocalDate interestPostingTransactionDate, final Money grossInterestForPeriod,
-            final SavingsAccountTransaction interestPostingTransaction, final boolean backdatedTxnsAllowedTill,
-            final boolean isClosureBoundary) {
-
-        // The closure's own contribution, when this is the boundary the closure ends in and the closure actually
-        // incurs a penalty. It is treated as one more contribution alongside the pending rows below - summed with
-        // them, capped with them ONCE, and pro-rated with them - rather than charged separately against the full
-        // gross-interest basis, which would double-count the basis those rows are already consuming.
-        //
-        // One-shot guard: core's SavingsAccountDomainServiceJpa#handleWithdrawal can re-enter postInterest(...) a
-        // second time for the SAME closure withdrawal (isBeforeLastPostingPeriod(...) is true whenever an interest
-        // posting transaction already exists dated after the closure date - a backdated closure hitting the
-        // "correction" branch), and closureSettlement stays set for that entire re-entrant call (it is only cleared
-        // afterwards, by completeClosureSettlement(...), by design - see that field's javadoc). Without
-        // !isApplied() here, a second boundary that also contains closedDate - 1 would select and re-apply the
-        // very same contribution again. isApplied() is an explicit flag set once by recordApplied(...) below,
-        // independent of the applied amount's value, so even a zero-amount application correctly marks itself
-        // "already handled" and is never selected a second time.
-        final ClosureSettlement closureContribution = isClosureBoundary && this.closureSettlement != null
-                && this.closureSettlement.hasQualifyingCharge() && !this.closureSettlement.isApplied() ? this.closureSettlement : null;
-
-        final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
-        final List<SavingsAccountInterestCharge> pendingRows = interestChargeRepository.findPendingByAccountIdUpTo(getId(),
-                interestPostingTransactionDate);
-        if (pendingRows.isEmpty() && closureContribution == null) {
-            return BigDecimal.ZERO;
+    private SavingsAccountTransaction createWithHoldTransactionAndFind(final BigDecimal amount, final LocalDate date,
+            final boolean backdatedTxnsAllowedTill) {
+        if (!createWithHoldTransaction(amount, date, backdatedTxnsAllowedTill)) {
+            return null;
         }
+        return findWithHoldTransactionFor(date, backdatedTxnsAllowedTill);
+    }
 
-        // Recompute every row's amount from its stored percentage against THIS period's real gross interest - the
-        // same figure the interest posting transaction was just written with. The provisional charge_amount each row
-        // was created with at withdrawal time is intentionally not read: it was a snapshot of whatever the account
-        // summary happened to report then, which may have been stale or zero.
-        //
-        // The closure contribution, when present, is appended LAST and recomputed by the very same formula from the
-        // percentage resolved at prepareClosureSettlement(...) time - it has no row yet (its withdrawal transaction
-        // does not exist until after this posting), which is the only way it differs from the rows above it.
-        final BigDecimal grossInterest = grossInterestForPeriod.getAmount();
-        final int contributionCount = pendingRows.size() + (closureContribution == null ? 0 : 1);
-        final List<BigDecimal> recomputedAmounts = new ArrayList<>(contributionCount);
-        BigDecimal recomputedTotal = BigDecimal.ZERO;
-        for (final SavingsAccountInterestCharge row : pendingRows) {
-            final BigDecimal recomputed = InterestBasedChargeMath.recomputedChargeAmount(grossInterest, row.chargePercentage());
-            recomputedAmounts.add(recomputed);
-            recomputedTotal = recomputedTotal.add(recomputed);
-        }
-        if (closureContribution != null) {
-            final BigDecimal recomputed = InterestBasedChargeMath.recomputedChargeAmount(grossInterest, closureContribution.percentage());
-            recomputedAmounts.add(recomputed);
-            recomputedTotal = recomputedTotal.add(recomputed);
-        }
-
-        final BigDecimal chargeAmount = InterestBasedChargeMath.cappedInterestBasedChargeAmount(recomputedTotal, grossInterest,
-                BigDecimal.ZERO);
-        if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        // All pending rows for an account reference the same charge - the product allows only one early-withdrawal
-        // charge - so the single transaction is attributed to the oldest row's account charge, or, when the closure's
-        // own contribution is the only one, to the charge that closure resolved (the same one).
-        final SavingsAccountCharge attributedCharge = pendingRows.isEmpty() ? closureContribution.accountCharge()
-                : pendingRows.get(0).savingsAccountCharge();
-        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestBasedCharge(this, office(),
-                interestPostingTransactionDate, Money.of(this.currency, chargeAmount));
-        // The transaction's own amount is the currency-rounded figure Money.of(...) just produced above - NOT the raw
-        // chargeAmount this method computed it from. The rows below must be distributed against THAT rounded figure
-        // (what actually posted, and therefore what SavingsAccountChargePaidBy/accounting move), or the rows would
-        // sum to a value the ledger never saw whenever rounding changes the last digit.
-        final BigDecimal appliedTotal = chargeTransaction.getAmount();
-        // Mirrors SavingsAccount.payCharge(...): core calls SavingsAccountCharge.pay(...) before building the
-        // SavingsAccountChargePaidBy link, so the charge's own paid/outstanding bookkeeping stays symmetric with
-        // undoTransaction(Long)'s undoPayment(...) call on this same transaction.
-        attributedCharge.pay(this.currency, Money.of(this.currency, appliedTotal));
-        chargeTransaction.getSavingsAccountChargesPaid()
-                .add(SavingsAccountChargePaidBy.instance(chargeTransaction, attributedCharge, appliedTotal));
-        if (backdatedTxnsAllowedTill) {
-            addTransactionToExisting(chargeTransaction);
-        } else {
-            addTransaction(chargeTransaction);
-        }
-
-        // Write back what was actually applied, pro-rated across the rows when the cap bit, so the last row absorbs
-        // any rounding remainder and the rows sum to exactly the transaction amount. Without this the posted-charge
-        // sum would keep reporting Task 7's provisional figures instead of the money that moved.
-        //
-        // Distribution itself is InterestBasedChargeMath.distributeAcrossRows(...) - previously an inline loop here
-        // (and a near-verbatim, already-diverging copy of it in AdvanclySavingsSchedularInterestPoster, which had its
-        // own hardcoded MathContext.DECIMAL64 instead of this class's former tenant-aware percentageMathContext());
-        // both call sites now share one implementation (using that same tenant-aware MathContext internally) so they
-        // cannot drift again. See that method's javadoc for the truncate-down-except-last-row rationale.
-        //
-        // The closure contribution, when present, is the last element and therefore the one that absorbs the
-        // remainder - it has no row of its own to write yet, so its share is handed back to the settlement and
-        // becomes the already-applied row completeClosureSettlement(...) writes once the withdrawal exists.
-        final List<BigDecimal> rowAmounts = InterestBasedChargeMath.distributeAcrossRows(appliedTotal, recomputedAmounts, recomputedTotal,
-                this.currency.getDigitsAfterDecimal());
-        for (int i = 0; i < contributionCount; i++) {
-            final BigDecimal rowAmount = rowAmounts.get(i);
-            if (i < pendingRows.size()) {
-                pendingRows.get(i).applyAtPosting(grossInterest, rowAmount, interestPostingTransaction, chargeTransaction);
-            } else {
-                closureContribution.recordApplied(grossInterest, rowAmount, interestPostingTransaction, chargeTransaction);
+    private SavingsAccountTransaction findWithHoldTransactionFor(final LocalDate date, final boolean backdatedTxnsAllowedTill) {
+        final List<SavingsAccountTransaction> transactions = backdatedTxnsAllowedTill ? getSavingsAccountTransactionsWithPivotConfig()
+                : getTransactions();
+        SavingsAccountTransaction found = null;
+        for (final SavingsAccountTransaction transaction : transactions) {
+            if (transaction.isWithHoldTaxAndNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)) {
+                found = transaction;
             }
         }
-        if (!pendingRows.isEmpty()) {
-            interestChargeRepository.saveAll(pendingRows);
-            interestChargeRepository.flush();
-        }
-
-        updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-        return appliedTotal;
-    }
-
-    private static BigDecimal taxableInterestAfterCharge(final Money grossInterest, final BigDecimal appliedChargeAmount) {
-        return grossInterest.getAmount().subtract(appliedChargeAmount).max(BigDecimal.ZERO);
-    }
-
-    private void reverseWithholdingTaxOn(final LocalDate interestPostingTransactionDate, final boolean backdatedTxnsAllowedTill) {
-        final List<SavingsAccountTransaction> currentWithholdTransactions = backdatedTxnsAllowedTill
-                ? findWithHoldSavingsTransactionsWithPivotConfig()
-                : findWithHoldTransactions();
-        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
-                currentWithholdTransactions);
-        if (withholdTransaction != null) {
-            withholdTransaction.reverse();
-        }
-    }
-
-    /**
-     * Premature closure, step 1 of 3 (see {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close}). Called
-     * before the closure's interest posting and before the balance is read, it resolves whether this closure is an
-     * early withdrawal and, if so, which charge at which percentage would penalise it - the same single answer an
-     * ordinary early withdrawal gets, from the same
-     * {@link DynamicDepositEarlyWithdrawalChargeService#resolveQualifyingChargeWithPercentage(DynamicDepositAccount)}.
-     *
-     * Nothing is charged or written here. The percentage is merely remembered so the interest posting that follows can
-     * fold this closure's own contribution into the SAME sum-cap-distribute pass as every other pending charge row for
-     * the period, instead of charging it separately against an uncapped basis and risking a double-count.
-     *
-     * A closure that is not early, or whose product has no qualifying penalty charge, still starts a settlement: the
-     * contribution is simply absent, which is what makes closure at or after maturity behave exactly as it did before
-     * Phase 4 (nothing extra charged, no row written) while still suppressing the withdrawal hook - the settlement
-     * withdrawal must never create a pending row regardless of why there is no charge.
-     */
-    @Override
-    public void prepareClosureSettlement(final LocalDate closedDate) {
-        final DynamicDepositEarlyWithdrawalChargeService chargeService = DynamicDepositServiceLocator.earlyWithdrawalChargeService();
-        // Resolved BEFORE the closure's interest posting runs: afterwards the freshly-written interest posting
-        // transaction would move the open period's start to the day after the closure.
-        final LocalDate interestPeriodStartDate = chargeService.currentPeriodStartDate(this);
-        DynamicDepositEarlyWithdrawalChargeService.QualifyingCharge qualifying = null;
-        if (isEarlyWithdrawal(closedDate)) {
-            qualifying = chargeService.resolveQualifyingChargeWithPercentage(this);
-        }
-        this.closureSettlement = new ClosureSettlement(closedDate, interestPeriodStartDate,
-                qualifying == null ? null : qualifying.accountCharge(), qualifying == null ? null : qualifying.percentage());
-    }
-
-    /**
-     * Routes a premature closure to whichever settlement applies (implementation plan Task 10). Under cumulative
-     * early-withdrawal mode, an early closure is just another early exit - the same forfeiture path a partial
-     * withdrawal uses, which force-posts the closing interest and forfeits it itself, so this returns {@code false} to
-     * tell core not to post interest again. Otherwise (per-period mode, or a closure that is not early - e.g. at or
-     * after maturity) this falls through to the existing {@link #prepareClosureSettlement(LocalDate)}/interest-based-
-     * charge path unchanged, returning {@code true} so core still posts the final period's interest.
-     *
-     * The mode check is resolved fresh from the product's single early-withdrawal-charge selection, exactly as
-     * {@code AdvanclySavingsAccountWritePlatformService#isCumulativeMode} resolves it for the withdrawal trigger - a
-     * product with no selection, or more than one (which validation never allows), is treated as per-period.
-     *
-     * A BACKDATED cumulative closure is rejected outright, mirroring the equivalent guard
-     * {@code AdvanclySavingsAccountWritePlatformService#withdrawal} already applies to a backdated cumulative
-     * withdrawal. The reason is specific and mechanical: the forfeiture service force-posts through the public
-     * {@code SavingsAccountWritePlatformService#postInterest(SavingsAccount, boolean, LocalDate, boolean)}, whose
-     * interest-calculation upper bound is always today's business date (core's own per-period closure path instead
-     * reaches a private overload that takes {@code closedDate} explicitly). On a closure dated before today that bound
-     * would credit interest for every day between the closure date and today - days on which the account, being closed,
-     * earns nothing - and then forfeit a percentage of that inflated figure. Rejecting the closure keeps
-     * {@code closedDate} equal to the business date, which makes the public call's bound exactly the one core's
-     * per-period path passes.
-     */
-    @Override
-    public boolean beginClosureSettlement(final LocalDate closedDate) {
-        if (isCumulativeEarlyWithdrawalMode() && isEarlyWithdrawal(closedDate)) {
-            if (DateUtils.isBefore(closedDate, DateUtils.getBusinessLocalDate())) {
-                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
-                        "A backdated premature closure cannot apply a cumulative early-withdrawal interest forfeiture.", getId());
-            }
-            // Cumulative mode: one path for every early exit, whether a partial withdrawal or a full closure. The
-            // service force-posts the closing interest itself, so core must not post again - hence false.
-            DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false, true);
-            return false;
-        }
-        prepareClosureSettlement(closedDate);
-        return true;
-    }
-
-    private boolean isCumulativeEarlyWithdrawalMode() {
-        final List<SavingsProductEarlyWithdrawalCharge> selections = DynamicDepositServiceLocator.productEarlyWithdrawalChargeRepository()
-                .findBySavingsProductId(productId());
-        return selections.size() == 1 && selections.get(0).mode().isCumulative();
-    }
-
-    /**
-     * True between {@link #prepareClosureSettlement(LocalDate)} and
-     * {@link #completeClosureSettlement(SavingsAccountTransaction)}, i.e. for exactly the one withdrawal premature
-     * closure issues. {@code DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable} reads this to skip that
-     * withdrawal: its penalty is already part of the charge the settlement posted, and the settlement writes the
-     * corresponding row itself - already applied - rather than leaving a pending one behind that nothing would ever
-     * apply on a closed account.
-     */
-    @Override
-    public boolean isClosureSettlementInProgress() {
-        return this.closureSettlement != null;
-    }
-
-    /**
-     * Premature closure, step 3 of 3: the settlement withdrawal now exists (and has a real id), so the closure's own
-     * charge row is written against it - created already applied, since its final basis, amount, interest posting
-     * transaction and charge transaction were all determined by step 2 and nothing further will ever run on this
-     * account.
-     *
-     * Writes nothing when the closure incurred no charge: not an early withdrawal, no qualifying penalty charge, no
-     * interest posted for the final period, or the period's cap left this contribution at zero. A zero-amount "applied"
-     * row would claim a share of a charge transaction it contributed nothing to and would be counted by
-     * {@code sumPostedChargeAmount(...)}, so its absence - not a zero row - is the honest record.
-     */
-    @Override
-    public void completeClosureSettlement(final SavingsAccountTransaction closureWithdrawal) {
-        final ClosureSettlement settlement = this.closureSettlement;
-        // Cleared unconditionally, and before anything below can fail: the settlement is over either way, and leaving
-        // the flag set would silently suppress the early-withdrawal hook for any later withdrawal on this instance.
-        this.closureSettlement = null;
-        if (settlement == null || closureWithdrawal == null || !settlement.hasAppliedAmount()) {
-            return;
-        }
-
-        final var interestChargeRepository = DynamicDepositServiceLocator.interestChargeRepository();
-        interestChargeRepository.saveAndFlush(SavingsAccountInterestCharge.createApplied(this, closureWithdrawal,
-                settlement.accountCharge(), settlement.accountCharge().getCharge(), settlement.interestPeriodStartDate(),
-                settlement.closedDate(), settlement.grossInterestBasis(), settlement.percentage(), settlement.appliedAmount(),
-                settlement.interestPostingTransaction(), settlement.interestChargeTransaction()));
-
-        updateInterestBasedChargeDerived(interestChargeRepository.sumPendingChargeAmount(getId()));
-    }
-
-    /**
-     * See {@link DynamicDepositAccount#closureSettlement}. Mutable only in the one direction the closure sequence
-     * needs: what the period's capped charge allocated to this closure is recorded once, by
-     * {@link DynamicDepositAccount#applyPendingInterestBasedCharges}, between construction and the row being written.
-     */
-    private static final class ClosureSettlement {
-
-        private final LocalDate closedDate;
-        private final LocalDate interestPeriodStartDate;
-        /** Null when this closure incurs no early-withdrawal penalty at all - see {@link #hasQualifyingCharge()}. */
-        private final SavingsAccountCharge accountCharge;
-        private final BigDecimal percentage;
-
-        private BigDecimal grossInterestBasis;
-        private BigDecimal appliedAmount;
-        private SavingsAccountTransaction interestPostingTransaction;
-        private SavingsAccountTransaction interestChargeTransaction;
-        /**
-         * One-shot guard, independent of {@link #appliedAmount}'s value: set {@code true} the moment this contribution
-         * is actually selected and recorded by {@link #recordApplied}, so a later re-entrant posting pass for the SAME
-         * closure (see the caller in {@code applyPendingInterestBasedCharges}) can never select or apply it a second
-         * time - even when the applied amount happened to be zero, which a value-based check (e.g. "amount > 0") would
-         * miss.
-         */
-        private boolean applied;
-
-        private ClosureSettlement(final LocalDate closedDate, final LocalDate interestPeriodStartDate,
-                final SavingsAccountCharge accountCharge, final BigDecimal percentage) {
-            this.closedDate = closedDate;
-            this.interestPeriodStartDate = interestPeriodStartDate;
-            this.accountCharge = accountCharge;
-            this.percentage = percentage;
-        }
-
-        private boolean hasQualifyingCharge() {
-            return this.accountCharge != null && this.percentage != null;
-        }
-
-        private boolean hasAppliedAmount() {
-            return this.appliedAmount != null && this.appliedAmount.compareTo(BigDecimal.ZERO) > 0;
-        }
-
-        private boolean isApplied() {
-            return this.applied;
-        }
-
-        private void recordApplied(final BigDecimal grossInterestBasis, final BigDecimal appliedAmount,
-                final SavingsAccountTransaction interestPostingTransaction, final SavingsAccountTransaction interestChargeTransaction) {
-            this.grossInterestBasis = grossInterestBasis;
-            this.appliedAmount = appliedAmount;
-            this.interestPostingTransaction = interestPostingTransaction;
-            this.interestChargeTransaction = interestChargeTransaction;
-            this.applied = true;
-        }
-
-        private LocalDate closedDate() {
-            return this.closedDate;
-        }
-
-        private LocalDate interestPeriodStartDate() {
-            return this.interestPeriodStartDate;
-        }
-
-        private SavingsAccountCharge accountCharge() {
-            return this.accountCharge;
-        }
-
-        private BigDecimal percentage() {
-            return this.percentage;
-        }
-
-        private BigDecimal grossInterestBasis() {
-            return this.grossInterestBasis;
-        }
-
-        private BigDecimal appliedAmount() {
-            return this.appliedAmount;
-        }
-
-        private SavingsAccountTransaction interestPostingTransaction() {
-            return this.interestPostingTransaction;
-        }
-
-        private SavingsAccountTransaction interestChargeTransaction() {
-            return this.interestChargeTransaction;
-        }
+        return found;
     }
 
     @Override

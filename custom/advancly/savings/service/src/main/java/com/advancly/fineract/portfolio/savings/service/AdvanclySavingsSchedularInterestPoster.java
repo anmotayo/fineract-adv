@@ -23,16 +23,12 @@ import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsCons
 import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsConstants.LAST_MODIFIED_BY_DB_FIELD;
 import static org.apache.fineract.infrastructure.core.domain.AuditableFieldsConstants.LAST_MODIFIED_DATE_DB_FIELD;
 
-import com.advancly.fineract.portfolio.savings.domain.InterestBasedChargeMath;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,33 +39,25 @@ import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
-import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
-import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDynamicRateData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
-import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
-import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.apache.fineract.portfolio.savings.service.SavingsSchedularInterestPoster;
 import org.apache.fineract.portfolio.tax.data.TaxComponentData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupMappingsData;
-import org.apache.fineract.portfolio.tax.service.TaxUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Task 8: applies pending per-period early-withdrawal charges (recorded by Task 5) against the interest just posted for
- * a plain-Savings account, in the same batch run that {@code SavingsSchedularInterestPoster} already performs.
+ * Advancly override for scheduled savings interest posting. It keeps the core DTO/JDBC batch-posting behavior while
+ * attaching Dynamic Deposit scheduled rate history before interest is calculated.
  *
  * <p>
  * Two access-modifier constraints on the superclass shape this whole class:
@@ -105,8 +93,6 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
     private final SavingsAccountReadPlatformService savingsAccountReadPlatformService;
     private final PlatformSecurityContext platformSecurityContext;
 
-    private final SavingsAccountInterestChargeRepository interestChargeRepository;
-    private final SavingsAccountTransactionRepository savingsAccountTransactionRepository;
     private final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService;
 
     // Shadow fields for the superclass's private, setter-only state (see class javadoc point 1).
@@ -115,16 +101,13 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     public AdvanclySavingsSchedularInterestPoster(final SavingsAccountWritePlatformService savingsAccountWritePlatformService,
             final JdbcTemplate jdbcTemplate, final SavingsAccountReadPlatformService savingsAccountReadPlatformService,
-            final PlatformSecurityContext platformSecurityContext, final SavingsAccountInterestChargeRepository interestChargeRepository,
-            final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
+            final PlatformSecurityContext platformSecurityContext,
             final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService) {
         super(savingsAccountWritePlatformService, jdbcTemplate, savingsAccountReadPlatformService, platformSecurityContext);
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
         this.jdbcTemplate = jdbcTemplate;
         this.savingsAccountReadPlatformService = savingsAccountReadPlatformService;
         this.platformSecurityContext = platformSecurityContext;
-        this.interestChargeRepository = interestChargeRepository;
-        this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
         this.dynamicRateHistoryReadPlatformService = dynamicRateHistoryReadPlatformService;
     }
 
@@ -149,15 +132,10 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         attachDynamicDepositRateHistory();
         final List<Throwable> errors = new ArrayList<>();
         final List<SavingsAccountData> postedAccounts = new ArrayList<>();
-        final List<PendingChargeApplication> pendingApplications = new ArrayList<>();
         for (final SavingsAccountData savingsAccountData : this.savingAccountsShadow) {
             try {
                 final SavingsAccountData postedAccountData = this.savingsAccountWritePlatformService.postInterest(savingsAccountData, false,
                         null, this.backdatedTxnsAllowedTillShadow);
-                final PendingChargeApplication application = applyPendingChargeIfAny(postedAccountData);
-                if (application != null) {
-                    pendingApplications.add(application);
-                }
                 postedAccounts.add(postedAccountData);
             } catch (final Exception e) {
                 errors.add(e);
@@ -165,10 +143,9 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         }
         if (errors.isEmpty()) {
             try {
-                batchUpdate(postedAccounts); // this class's own copy (see class javadoc), not the superclass's private
+                batchUpdate(postedAccounts); // this class's own copy (see class javadoc), not the superclass's
+                                             // private
                                              // one
-                linkAppliedCharges(pendingApplications);
-                updateDerivedChargeColumns(pendingApplications);
             } catch (final Exception e) {
                 errors.add(e);
             }
@@ -195,177 +172,6 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     private static boolean isDynamicDeposit(final SavingsAccountData savingsAccountData) {
         return DepositAccountType.fromInt(savingsAccountData.getDepositTypeId()).isDynamicDeposit();
-    }
-
-    /**
-     * Carries what {@link #linkAppliedCharges} needs once {@code batchUpdate} has assigned real database ids to the
-     * DTOs referenced here. {@code batchUpdate} (copied from core in this same class) mutates the exact same
-     * {@code SavingsAccountTransactionData} objects in place via its own {@code setId(...)} call - so
-     * {@code postingTransaction}/{@code chargeTransaction} already carry their real ids the moment {@code batchUpdate}
-     * returns; no second query is needed to learn them.
-     */
-    private record PendingChargeApplication(SavingsAccountTransactionData postingTransaction,
-            SavingsAccountTransactionData chargeTransaction, List<SavingsAccountInterestCharge> pendingRows, List<BigDecimal> rowAmounts) {
-    }
-
-    private PendingChargeApplication applyPendingChargeIfAny(final SavingsAccountData savingsAccountData) {
-        final LocalDate today = DateUtils.getBusinessLocalDate();
-        final List<SavingsAccountInterestCharge> pendingRows = this.interestChargeRepository
-                .findPendingByAccountIdUpTo(savingsAccountData.getId(), today);
-        if (pendingRows.isEmpty()) {
-            return null;
-        }
-
-        final SavingsAccountTransactionData interestPostingTransaction = findLatestInterestPostingTransaction(savingsAccountData);
-        if (interestPostingTransaction == null) {
-            return null;
-        }
-        final BigDecimal grossInterest = interestPostingTransaction.getAmount();
-
-        BigDecimal recomputedTotal = BigDecimal.ZERO;
-        final List<BigDecimal> recomputedAmounts = new ArrayList<>(pendingRows.size());
-        for (final SavingsAccountInterestCharge row : pendingRows) {
-            final BigDecimal recomputed = InterestBasedChargeMath.recomputedChargeAmount(grossInterest, row.chargePercentage());
-            recomputedAmounts.add(recomputed);
-            recomputedTotal = recomputedTotal.add(recomputed);
-        }
-
-        final BigDecimal chargeAmount = recomputedTotal.min(grossInterest).max(BigDecimal.ZERO);
-        if (chargeAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return null;
-        }
-        // recomputedChargeAmount/cappedInterestBasedChargeAmount only bound SIGNIFICANT DIGITS (MathContext(8, ...)),
-        // not decimal places, so a non-round percentage against a non-round gross interest amount can carry more
-        // precision than the currency (and the DECIMAL(19,6) columns storing it) should ever show. Round to the
-        // account currency's decimal places before this becomes the transaction amount or the distribution basis -
-        // mirrors how DynamicDepositAccount#applyPendingInterestBasedCharges rounds via Money.of(...) before
-        // treating the result as appliedTotal; both now go through the same InterestBasedChargeMath method.
-        final BigDecimal appliedTotal = InterestBasedChargeMath.roundToCurrency(chargeAmount, savingsAccountData.getCurrency());
-
-        final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations
-                .transactionType(SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue());
-        // NOTE: uses the create(...) overload that also sets the transient `transactionDate` field (distinct from
-        // the final `date` field) - every other transaction on the account's list (interest posting, accrual,
-        // withhold tax, ...) is built through the `createImport(...)` family, which always populates it, and
-        // `updateCumulativeBalanceAndDates(...)` below unconditionally reads it via `getTransactionDate()`
-        // (`LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate()` throws
-        // `IllegalArgumentException: Dates must not be null to get difference` otherwise). The 22-param overload the
-        // original plan sketch used does not go through `createData(...)` and leaves `transactionDate` null, which
-        // fails immediately on the very next line - confirmed against a real fixture while iterating on this task's
-        // test.
-        final SavingsAccountTransactionData chargeTransaction = SavingsAccountTransactionData.create(null, transactionType, null,
-                savingsAccountData.getId(), savingsAccountData.getAccountNo(), interestPostingTransaction.getDate(),
-                savingsAccountData.getCurrency(), appliedTotal, null, null, false, interestPostingTransaction.getSubmittedOnDate(), false,
-                null, null, OffsetDateTime.now());
-        chargeTransaction.updateRunningBalance(
-                Money.of(savingsAccountData.getCurrency(), interestPostingTransaction.getRunningBalance()).minus(appliedTotal));
-        chargeTransaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
-                interestPostingTransaction.getEndOfBalanceLocalDate());
-
-        reverseOrRemoveWithholdingTaxOnSameDate(savingsAccountData, interestPostingTransaction.getDate());
-        savingsAccountData.getSavingsAccountTransactionData().add(chargeTransaction);
-        createWithholdingTaxOnNetInterest(savingsAccountData, interestPostingTransaction, appliedTotal, chargeTransaction);
-        if (this.backdatedTxnsAllowedTillShadow) {
-            savingsAccountData.getSummary().updateSummaryWithPivotConfig(savingsAccountData.getCurrency(), null, null,
-                    savingsAccountData.getSavingsAccountTransactionData());
-        } else {
-            savingsAccountData.getSummary().updateSummary(savingsAccountData.getCurrency(), null,
-                    savingsAccountData.getSavingsAccountTransactionData());
-        }
-
-        final List<BigDecimal> rowAmounts = InterestBasedChargeMath.distributeAcrossRows(appliedTotal, recomputedAmounts, recomputedTotal,
-                savingsAccountData.getCurrency().getDecimalPlaces());
-        return new PendingChargeApplication(interestPostingTransaction, chargeTransaction, pendingRows, rowAmounts);
-    }
-
-    /**
-     * Runs AFTER {@code batchUpdate(postedAccounts)} has inserted every new transaction - so
-     * {@code application.postingTransaction().getId()}/{@code .chargeTransaction().getId()} are real ids now.
-     * {@code getReferenceById(...)} returns a lazy JPA proxy (no SELECT) - sufficient here because
-     * {@code applyAtPosting(...)} only writes a foreign key onto each row, it never reads a field off either
-     * transaction.
-     */
-    private void linkAppliedCharges(final List<PendingChargeApplication> pendingApplications) {
-        for (final PendingChargeApplication application : pendingApplications) {
-            final SavingsAccountTransaction postingTransaction = this.savingsAccountTransactionRepository
-                    .getReferenceById(application.postingTransaction().getId());
-            final SavingsAccountTransaction chargeTransaction = this.savingsAccountTransactionRepository
-                    .getReferenceById(application.chargeTransaction().getId());
-            final List<SavingsAccountInterestCharge> pendingRows = application.pendingRows();
-            final List<BigDecimal> rowAmounts = application.rowAmounts();
-            for (int i = 0; i < pendingRows.size(); i++) {
-                pendingRows.get(i).applyAtPosting(application.postingTransaction().getAmount(), rowAmounts.get(i), postingTransaction,
-                        chargeTransaction);
-            }
-            this.interestChargeRepository.saveAll(pendingRows);
-        }
-    }
-
-    /**
-     * Implementation plan Section 5 / Section 3.1 step 7 / this plan's own Final Self-Review Notes: the derived columns
-     * on {@code m_savings_account} are read-side conveniences only (the source of truth is
-     * {@code m_savings_account_interest_charge} plus the linked transactions, updated above by
-     * {@link #linkAppliedCharges}) but still need refreshing so they reflect what was just applied.
-     */
-    private void updateDerivedChargeColumns(final List<PendingChargeApplication> pendingApplications) {
-        for (final PendingChargeApplication application : pendingApplications) {
-            final Long accountId = application.postingTransaction().getAccountId();
-            final BigDecimal pending = this.interestChargeRepository.sumPendingChargeAmount(accountId);
-            final BigDecimal posted = this.interestChargeRepository.sumPostedChargeAmount(accountId);
-            this.jdbcTemplate.update(
-                    "update m_savings_account set interest_based_charge_derived = ?, interest_based_charge_posted_derived = ? where id = ?",
-                    pending, posted, accountId);
-        }
-    }
-
-    private static SavingsAccountTransactionData findLatestInterestPostingTransaction(final SavingsAccountData savingsAccountData) {
-        SavingsAccountTransactionData latest = null;
-        for (final SavingsAccountTransactionData transaction : savingsAccountData.getSavingsAccountTransactionData()) {
-            if (!transaction.isInterestPostingAndNotReversed()) {
-                continue;
-            }
-            if (latest == null || transaction.getDate().isAfter(latest.getDate())) {
-                latest = transaction;
-            }
-        }
-        return latest;
-    }
-
-    private static void reverseOrRemoveWithholdingTaxOnSameDate(final SavingsAccountData savingsAccountData, final LocalDate date) {
-        final List<SavingsAccountTransactionData> transactions = savingsAccountData.getSavingsAccountTransactionData();
-        transactions.removeIf(transaction -> transaction.getId() == null && transaction.isWithHoldTaxAndNotReversed()
-                && transaction.getDate().isEqual(date));
-        for (final SavingsAccountTransactionData transaction : transactions) {
-            if (transaction.getId() != null && transaction.isWithHoldTaxAndNotReversed() && transaction.getDate().isEqual(date)) {
-                transaction.reverse();
-            }
-        }
-    }
-
-    private static void createWithholdingTaxOnNetInterest(final SavingsAccountData savingsAccountData,
-            final SavingsAccountTransactionData interestPostingTransaction, final BigDecimal appliedChargeAmount,
-            final SavingsAccountTransactionData chargeTransaction) {
-        final BigDecimal taxableInterest = interestPostingTransaction.getAmount().subtract(appliedChargeAmount).max(BigDecimal.ZERO);
-        final TaxGroupData taxGroup = savingsAccountData.getTaxGroup();
-        if (taxGroup == null || taxGroup.getTaxAssociations() == null || taxableInterest.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-
-        final Set<TaxGroupMappingsData> taxAssociations = new HashSet<>(taxGroup.getTaxAssociations());
-        final Map<TaxComponentData, BigDecimal> taxSplit = TaxUtils.splitTaxData(taxableInterest, interestPostingTransaction.getDate(),
-                taxAssociations, taxableInterest.scale());
-        final BigDecimal totalTax = TaxUtils.totalTaxDataAmount(taxSplit);
-        if (totalTax.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-
-        final SavingsAccountTransactionData withholdingTransaction = SavingsAccountTransactionData.withHoldTax(savingsAccountData,
-                interestPostingTransaction.getDate(), Money.of(savingsAccountData.getCurrency(), totalTax), taxSplit);
-        withholdingTransaction
-                .updateRunningBalance(Money.of(savingsAccountData.getCurrency(), chargeTransaction.getRunningBalance()).minus(totalTax));
-        withholdingTransaction.updateCumulativeBalanceAndDates(MonetaryCurrency.fromCurrencyData(savingsAccountData.getCurrency()),
-                interestPostingTransaction.getEndOfBalanceLocalDate());
-        savingsAccountData.getSavingsAccountTransactionData().add(withholdingTransaction);
     }
 
     // ---------------------------------------------------------------------------------------------------------

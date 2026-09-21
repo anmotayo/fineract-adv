@@ -21,12 +21,10 @@ package com.advancly.fineract.portfolio.savings.service;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import java.util.Collections;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,20 +44,16 @@ class AdvanclySavingsSchedularInterestPosterTest {
         final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final SavingsAccountReadPlatformService readPlatformService = mock(SavingsAccountReadPlatformService.class);
         final PlatformSecurityContext securityContext = mock(PlatformSecurityContext.class);
-        final SavingsAccountInterestChargeRepository interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
-        final SavingsAccountTransactionRepository savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
         final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService = mock(
                 DynamicDepositScheduledRateHistoryReadPlatformService.class);
 
         final AdvanclySavingsSchedularInterestPoster poster = new AdvanclySavingsSchedularInterestPoster(writePlatformService, jdbcTemplate,
-                readPlatformService, securityContext, interestChargeRepository, savingsAccountTransactionRepository,
-                dynamicRateHistoryReadPlatformService);
+                readPlatformService, securityContext, dynamicRateHistoryReadPlatformService);
         poster.setSavingAccounts(Collections.<SavingsAccountData>emptyList());
         poster.setBackdatedTxnsAllowedTill(false);
 
         poster.postInterest();
 
-        verifyNoInteractions(writePlatformService, jdbcTemplate, securityContext, interestChargeRepository,
-                savingsAccountTransactionRepository, dynamicRateHistoryReadPlatformService);
+        verifyNoInteractions(writePlatformService, jdbcTemplate, securityContext, dynamicRateHistoryReadPlatformService);
     }
 }

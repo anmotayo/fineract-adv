@@ -39,12 +39,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Tests the Dynamic-Deposit-only gate on {@link SavingsProductBaseAssembler#assembleListOfSavingsProductCharges} added
- * in Phase 4 (interest-based charges): a charge whose calculation type is {@code PERCENT_OF_INTEREST} may only be
- * attached to a Dynamic Deposit product; attaching it to any other savings product type must fail validation.
- * {@code PERCENT_OF_AMOUNT_AND_INTEREST} is intentionally out of scope for savings charges altogether (it can become
- * principal-based unless capped/carry-forward rules are added) and must be rejected for every savings product type,
- * Dynamic Deposit included.
+ * {@code PERCENT_OF_INTEREST} is a valid savings charge calculation type under the charge-driven early-withdrawal
+ * model. The Advancly charge-rule layer decides whether such a charge has custom interest-basis behavior; this core
+ * assembler only enforces generic savings-charge validity. {@code PERCENT_OF_AMOUNT_AND_INTEREST} remains out of scope
+ * for savings charges altogether (it can become principal-based unless capped/carry-forward rules are added) and must
+ * be rejected for every savings product type, Dynamic Deposit included.
  */
 @ExtendWith(MockitoExtension.class)
 class SavingsProductBaseAssemblerTest {
@@ -81,38 +80,42 @@ class SavingsProductBaseAssemblerTest {
     }
 
     @Test
-    void percentOfInterestPenaltyCharge_onPlainSavingsProduct_isRejected() {
+    void percentOfInterestPenaltyCharge_onPlainSavingsProduct_isAllowed() {
         final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
         when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
-        assertThatThrownBy(
-                () -> assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges", DepositAccountType.SAVINGS_DEPOSIT))
-                .isInstanceOf(ChargeCannotBeAppliedToException.class);
+        final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
+                DepositAccountType.SAVINGS_DEPOSIT);
+
+        assertThat(charges).containsExactly(interestBasedCharge);
     }
 
     @Test
-    void percentOfInterestPenaltyCharge_onFixedDepositProduct_isRejected() {
+    void percentOfInterestPenaltyCharge_onFixedDepositProduct_isAllowed() {
         final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
         when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
-        assertThatThrownBy(
-                () -> assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges", DepositAccountType.FIXED_DEPOSIT))
-                .isInstanceOf(ChargeCannotBeAppliedToException.class);
+        final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
+                DepositAccountType.FIXED_DEPOSIT);
+
+        assertThat(charges).containsExactly(interestBasedCharge);
     }
 
     @Test
-    void percentOfInterestPenaltyCharge_onRecurringDepositProduct_isRejected() {
+    void percentOfInterestPenaltyCharge_onRecurringDepositProduct_isAllowed() {
         final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
         when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
-        assertThatThrownBy(() -> assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
-                DepositAccountType.RECURRING_DEPOSIT)).isInstanceOf(ChargeCannotBeAppliedToException.class);
+        final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
+                DepositAccountType.RECURRING_DEPOSIT);
+
+        assertThat(charges).containsExactly(interestBasedCharge);
     }
 
     @Test

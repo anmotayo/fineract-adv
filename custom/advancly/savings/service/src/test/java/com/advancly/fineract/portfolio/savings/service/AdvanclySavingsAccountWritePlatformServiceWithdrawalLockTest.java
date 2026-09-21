@@ -32,7 +32,6 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTran
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
@@ -105,11 +104,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
     @Mock
     private PaymentDetailRepository paymentDetailRepository;
     @Mock
-    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
-    @Mock
-    private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
-    @Mock
-    private DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     @Mock
     private ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
 
@@ -124,8 +119,8 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         bulkValidator = new BulkTransactionDataValidator(fromJsonHelper);
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
-                fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, productEarlyWithdrawalChargeRepository,
-                cumulativeInterestForfeitureService, earlyWithdrawalChargeService, productToGLAccountMappingRepository);
+                fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, interestChargeApplicationService,
+                productToGLAccountMappingRepository);
     }
 
     @Test

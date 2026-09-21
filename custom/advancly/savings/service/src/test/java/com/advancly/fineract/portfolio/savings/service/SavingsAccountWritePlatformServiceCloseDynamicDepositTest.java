@@ -30,19 +30,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule;
+import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRuleRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail;
-import com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetailRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.InterestBasisMode;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
@@ -50,10 +48,7 @@ import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactio
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,7 +56,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
@@ -210,26 +204,23 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
+    private AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository;
     @Mock
-    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     @Mock
-    private DepositProductDynamicDetailRepository productDynamicDetailRepository;
 
     private SavingsAccountWritePlatformServiceJpaRepositoryImpl service;
     /**
-     * Deliberately REAL, like the early-withdrawal charge service above: the cumulative-mode closure scenarios below
-     * exist to prove that a real forfeiture against a real account really does deduct itself from the balance the
-     * closure then pays out, and really does get its own journal entries - neither of which a mock can show.
+     * Deliberately REAL: the cumulative-mode closure scenarios below exist to prove that a real forfeiture against a
+     * real account really does deduct itself from the balance the closure then pays out, and really does get its own
+     * journal entries - neither of which a mock can show.
      */
     private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private DynamicDepositAccount account;
     private Office office;
 
-    /** Rows that already exist in m_savings_account_interest_charge for the account under test. */
-    private final List<SavingsAccountInterestCharge> existingRows = new ArrayList<>();
-    /** Rows written during the call under test - i.e. the closure's own already-applied row, if any. */
-    private final List<SavingsAccountInterestCharge> newlySavedRows = new ArrayList<>();
+    /** Charge-ledger application rows written during the call under test. */
+    private final List<DepositInterestChargeApplication> savedApplications = new ArrayList<>();
     /** Every withdrawal the (mocked) domain service was asked to make, to prove there is exactly one. */
     private final List<SavingsAccountTransaction> withdrawals = new ArrayList<>();
     /** Every transaction handed to the accounting bridge across all journal-posting calls, in order. */
@@ -240,34 +231,17 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     @BeforeEach
     void setUp() {
         MoneyHelperInitializer.initialize();
-        this.existingRows.clear();
-        this.newlySavedRows.clear();
+        this.savedApplications.clear();
         this.withdrawals.clear();
         this.journalledTransactions.clear();
         this.nextTransactionId = 1000L;
 
-        lenient().when(this.interestChargeRepository.findPendingByAccountIdUpTo(anyLong(), any())).thenAnswer(
-                invocation -> new ArrayList<>(this.existingRows.stream().filter(SavingsAccountInterestCharge::isPending).toList()));
-        lenient().when(this.interestChargeRepository.saveAndFlush(any())).thenAnswer(invocation -> {
-            final SavingsAccountInterestCharge row = invocation.getArgument(0);
-            this.newlySavedRows.add(row);
-            return row;
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(anyLong())).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeApplicationRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            final DepositInterestChargeApplication application = invocation.getArgument(0);
+            this.savedApplications.add(application);
+            return application;
         });
-        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(anyLong()))
-                .thenAnswer(invocation -> allRows().stream().filter(SavingsAccountInterestCharge::isPending)
-                        .map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenAnswer(invocation -> allRows().stream()
-                .filter(row -> !row.isPending()).map(SavingsAccountInterestCharge::chargeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
-
-        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
-                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.PER_PERIOD)));
-        lenient().when(this.productDynamicDetailRepository.findByProductId(PRODUCT_ID))
-                .thenReturn(Optional.of(DepositProductDynamicDetail.createNew(null, true, false, true)));
-
-        // The early-withdrawal charge service is real: the settlement withdrawal must genuinely pass through its
-        // suppression guard rather than through a mock that would record nothing for any reason at all.
-        final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService = new DynamicDepositEarlyWithdrawalChargeService(
-                this.interestChargeRepository, this.productEarlyWithdrawalChargeRepository, this.productDynamicDetailRepository);
 
         this.service = new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer,
                 savingAccountRepositoryWrapper, staffRepository, savingsAccountTransactionRepository, savingAccountAssembler,
@@ -280,8 +254,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
 
         // Real, wired to the very service under test: its force-posting call goes through the same
         // postInterest(account, true, date, false) path production uses, not a stub.
-        this.cumulativeInterestForfeitureService = new CumulativeInterestForfeitureService(this.interestChargeRepository,
-                earlyWithdrawalChargeService, this.service, this.noteRepository, this.savingAccountRepositoryWrapper,
+        this.cumulativeInterestForfeitureService = new CumulativeInterestForfeitureService(this.chargeInterestRuleRepository,
+                this.interestChargeApplicationRepository, this.service, this.noteRepository, this.savingAccountRepositoryWrapper,
                 this.journalEntryWritePlatformService, mock(JdbcTemplate.class));
 
         // Everything handed to the accounting bridge, from every journal-posting call in the flow, so a test can ask
@@ -299,119 +273,12 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // the same pattern).
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
-        lenient().when(applicationContext.getBean(SavingsAccountInterestChargeRepository.class)).thenReturn(this.interestChargeRepository);
-        lenient().when(applicationContext.getBean(DynamicDepositEarlyWithdrawalChargeService.class))
-                .thenReturn(earlyWithdrawalChargeService);
-        // Task 10: DynamicDepositAccount#beginClosureSettlement resolves both of these through the locator to decide
-        // whether a premature closure routes through cumulative forfeiture instead of the per-period settlement this
-        // whole test class exercises. The product is stubbed PER_PERIOD above, so every scenario here keeps taking
-        // the existing settlement path unchanged and never invokes the forfeiture service - except the two cumulative
-        // scenarios at the end, which override the product stub to CUMULATIVE precisely to exercise the other branch.
-        lenient().when(applicationContext.getBean(SavingsProductEarlyWithdrawalChargeRepository.class))
-                .thenReturn(this.productEarlyWithdrawalChargeRepository);
         lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
                 .thenReturn(this.cumulativeInterestForfeitureService);
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
     }
 
-    // Scenario 1: one pending charge from an earlier early withdrawal, plus the closure's own contribution - two
-    // contributions in the same period, capped once, paid by one charge transaction, settled by one withdrawal.
-    @Test
-    void aPendingChargeAndTheClosuresOwnContributionAreCappedTogetherAndSettledByOneWithdrawal() {
-        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
-        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-        // An earlier early withdrawal in this same period left this behind at 40%.
-        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
-
-        final CommandProcessingResult result = this.service.close(1L, closeCommandFor(1L, true));
-
-        assertThat(result).isNotNull();
-        assertThat(this.account.isClosed()).isTrue();
-
-        final BigDecimal grossInterest = singleInterestPosting().getAmount();
-        assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
-
-        // 40% + 60% = 100% of gross interest: the whole interest is charged, and not a cent more.
-        final SavingsAccountTransaction chargeTransaction = singleChargeTransaction();
-        assertThat(chargeTransaction.getAmount()).isEqualByComparingTo(grossInterest);
-        assertThat(chargeTransaction.getTransactionDate()).isEqualTo(CLOSED_DATE);
-
-        // Both contributions were finalized: the pre-existing row here and now, the closure's own row created
-        // already-applied against the settlement withdrawal.
-        assertThat(earlierRow.isPending()).isFalse();
-        assertThat(earlierRow.interestChargeTransaction()).isSameAs(chargeTransaction);
-        assertThat(this.newlySavedRows).hasSize(1);
-        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
-        assertThat(closureRow.isPending()).isFalse();
-        assertThat(closureRow.chargePercentage()).isEqualByComparingTo("60");
-        assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
-        assertThat(closureRow.interestPostingTransaction()).isSameAs(singleInterestPosting());
-        assertThat(closureRow.withdrawalTransaction()).isSameAs(this.withdrawals.get(0));
-
-        // The actual 40/60 split, not just its sum: recomputedChargeAmount(...)'s formula applied to each
-        // contribution's own percentage, pro-rated against what the charge transaction actually moved (its total may
-        // differ from the sum of the two contributions' raw recomputed amounts by a rounding cent, which is why the
-        // pro-rata step, not the raw percentages, is what must be replicated here). Asserting only the SUM (as this
-        // test previously did) would still pass for a wrong 0/100 or 50/50 split as long as the two shares added up
-        // to the charge transaction's total - these assertions pin down each row's own amount.
-        final MathContext pctMc = new MathContext(8, MoneyHelper.getRoundingMode());
-        final BigDecimal recomputedEarlierShare = grossInterest.multiply(new BigDecimal("40")).divide(BigDecimal.valueOf(100), pctMc);
-        final BigDecimal recomputedClosureShare = grossInterest.multiply(new BigDecimal("60")).divide(BigDecimal.valueOf(100), pctMc);
-        final BigDecimal recomputedTotal = recomputedEarlierShare.add(recomputedClosureShare);
-        final BigDecimal appliedTotal = chargeTransaction.getAmount();
-        final BigDecimal expectedEarlierRowAmount = recomputedEarlierShare.multiply(appliedTotal).divide(recomputedTotal, pctMc)
-                .setScale(CURRENCY.getDigitsAfterDecimal(), RoundingMode.DOWN);
-        final BigDecimal expectedClosureRowAmount = appliedTotal.subtract(expectedEarlierRowAmount);
-
-        assertThat(earlierRow.chargeAmount()).isEqualByComparingTo(expectedEarlierRowAmount);
-        assertThat(closureRow.chargeAmount()).isEqualByComparingTo(expectedClosureRowAmount);
-        // Sanity bound so a degenerate 0/100 (or any other wrong split) cannot slip past even if the hand-replicated
-        // formula above were somehow also wrong: the smaller (40%) share must be a genuine, non-trivial fraction of
-        // the total, clearly less than the larger (60%) share.
-        assertThat(expectedEarlierRowAmount).isGreaterThan(BigDecimal.ZERO);
-        assertThat(expectedClosureRowAmount).isGreaterThan(expectedEarlierRowAmount);
-
-        assertThat(earlierRow.chargeAmount().add(closureRow.chargeAmount())).isEqualByComparingTo(chargeTransaction.getAmount());
-
-        // Exactly ONE withdrawal, for the whole final balance, leaving exactly zero.
-        assertThat(this.withdrawals).hasSize(1);
-        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
-        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-
-        assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-    }
-
-    // Scenario 2: three pending charges at 60% each plus a 60% closure contribution - 240% uncapped. The aggregate cap
-    // must limit the lot to the interest actually posted, so principal is never touched.
-    @Test
-    void severalPendingChargesPlusTheClosureAreCappedInAggregateSoPrincipalIsNeverTouched() {
-        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
-        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-        final SavingsAccountInterestCharge row1 = pendingRow(accountCharge, new BigDecimal("60"));
-        final SavingsAccountInterestCharge row2 = pendingRow(accountCharge, new BigDecimal("60"));
-        final SavingsAccountInterestCharge row3 = pendingRow(accountCharge, new BigDecimal("60"));
-
-        this.service.close(1L, closeCommandFor(1L, true));
-
-        final BigDecimal grossInterest = singleInterestPosting().getAmount();
-        final SavingsAccountTransaction chargeTransaction = singleChargeTransaction();
-        // 4 x 60% = 240% of gross, capped at gross (no withholding tax here) - never more.
-        assertThat(chargeTransaction.getAmount()).isEqualByComparingTo(grossInterest);
-
-        assertThat(this.newlySavedRows).hasSize(1);
-        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
-        assertThat(List.of(row1, row2, row3).stream().allMatch(row -> !row.isPending())).isTrue();
-        // The four shares sum to exactly what the single charge transaction moved - no more, no less.
-        assertThat(row1.chargeAmount().add(row2.chargeAmount()).add(row3.chargeAmount()).add(closureRow.chargeAmount()))
-                .isEqualByComparingTo(chargeTransaction.getAmount());
-
-        // Principal is intact: the single withdrawal pays out exactly the opening balance (interest in, charge out).
-        assertThat(this.withdrawals).hasSize(1);
-        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
-        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-    }
-
-    // Scenario 3: closure at/after maturity is not an early withdrawal - no charge at all, exactly as closure behaved
+    // Scenario 1: closure at/after maturity is not an early withdrawal - no charge at all, exactly as closure behaved
     // before this feature existed.
     @Test
     void closingAtOrAfterMaturityChargesNothingAndStillSettlesToZero() {
@@ -427,7 +294,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final BigDecimal grossInterest = singleInterestPosting(MATURITY_BEFORE_CLOSURE).getAmount();
         assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
         assertThat(payChargeTransactions()).isEmpty();
-        assertThat(this.newlySavedRows).isEmpty();
+        assertThat(this.savedApplications).isEmpty();
 
         // One withdrawal, for principal plus the whole (uncharged) interest, and nothing left over.
         assertThat(this.withdrawals).hasSize(1);
@@ -435,12 +302,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Scenario 4: the product has the early-withdrawal penalty switched off - same outcome as closing at maturity,
-    // even though the closure date itself is well before maturity.
+    // Scenario 2: no charge-driven rule configured - same outcome as closing at maturity, even though the closure date
+    // itself is well before maturity.
     @Test
-    void closingEarlyOnAProductWithThePenaltyDisabledChargesNothing() {
-        lenient().when(this.productDynamicDetailRepository.findByProductId(PRODUCT_ID))
-                .thenReturn(Optional.of(DepositProductDynamicDetail.createNew(null, true, false, false)));
+    void closingEarlyWithoutAChargeDrivenRuleChargesNothing() {
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
 
         this.service.close(1L, closeCommandFor(1L, true));
@@ -449,13 +314,13 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.isEarlyWithdrawal(CLOSED_DATE)).isTrue();
         final BigDecimal grossInterest = singleInterestPosting().getAmount();
         assertThat(payChargeTransactions()).isEmpty();
-        assertThat(this.newlySavedRows).isEmpty();
+        assertThat(this.savedApplications).isEmpty();
         assertThat(this.withdrawals).hasSize(1);
         assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(grossInterest));
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Scenario 5: regression guard - a plain savings account closes exactly as it always did.
+    // Scenario 3: regression guard - a plain savings account closes exactly as it always did.
     @Test
     void closingAPlainSavingsAccountWithWithdrawBalanceNeverPostsExtraInterest() {
         // Even with withdrawBalance=true and a positive balance - the exact condition that makes a Dynamic Deposit
@@ -493,200 +358,9 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 any(), eq(false));
         verifyNoInteractions(this.configurationDomainService);
         verify(this.savingsAccountTransactionRepository, never()).save(any());
-        verifyNoInteractions(this.interestChargeRepository);
     }
 
-    // Regression test (review finding): closureSettlement stays set (non-null) for the entire duration of close()'s
-    // withdrawal call - by design, since DynamicDepositEarlyWithdrawalChargeService's suppression guard depends on it
-    // staying set through any re-entrant posting the withdrawal triggers, and it is only ever cleared afterwards by
-    // completeClosureSettlement(...). But core's SavingsAccountDomainServiceJpa#handleWithdrawal can itself RE-ENTER
-    // account.postInterest(...) a second time while still inside that same withdrawal call, whenever
-    // isBeforeLastPostingPeriod(...) is true - i.e. a backdated closure whose period already has an interest posting
-    // transaction dated after the closure date. Before this fix, applyPendingInterestBasedCharges(...)'s closure-
-    // contribution SELECTION had no guard against being handed the SAME (still non-null, still "qualifying") closure
-    // settlement a second time, so a second boundary that also covers closedDate - 1 would select it again -
-    // double-charging the closure penalty and overwriting ClosureSettlement#recordApplied(...)'s previously recorded
-    // amount/transactions with whatever the second (wrong) application computed.
-    //
-    // Faithfully reproducing core's exact re-entrancy trigger through the full close()/handleWithdrawal path would
-    // require this Mockito-only, no-JPA test harness to reverse-engineer SavingsHelper#determineInterestPostingPeriods'
-    // manual-posting-date bookkeeping (which core's own comment notes only ACCIDENTALLY prevents this in some
-    // isSavingsInterestPostingAtCurrentPeriodEnd configurations and not others) - fragile and indirect. Instead this
-    // test drives applyPendingInterestBasedCharges(...) itself - the exact method the guard lives in - directly,
-    // twice in a row, against the SAME ClosureSettlement instance prepareClosureSettlement(...) built (nothing here
-    // ever calls completeClosureSettlement(...), so it is never cleared between the two calls - precisely the
-    // window core's re-entrant call would also see), each time as isClosureBoundary=true exactly as a boundary
-    // covering closedDate - 1 would be. This is the "more targeted unit test that directly proves the guard's
-    // SELECTION logic itself" the review allowed as an alternative to a full end-to-end reproduction.
-    @Test
-    void aSecondAttemptToApplyTheSameClosureContributionIsANoOp() throws Exception {
-        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
-        this.account = buildAccount(MATURITY_AFTER_CLOSURE, accountCharge);
-
-        // Step 1 of the real closure sequence: resolves and remembers the qualifying 60% charge, exactly as
-        // SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...) does before its own interest posting.
-        this.account.prepareClosureSettlement(CLOSED_DATE);
-        assertThat(this.account.isClosureSettlementInProgress()).isTrue();
-
-        final Method applyPendingInterestBasedCharges = DynamicDepositAccount.class.getDeclaredMethod("applyPendingInterestBasedCharges",
-                LocalDate.class, Money.class, SavingsAccountTransaction.class, boolean.class, boolean.class);
-        applyPendingInterestBasedCharges.setAccessible(true);
-
-        // First application - the real one, as the closure boundary's own interest posting would trigger it.
-        final SavingsAccountTransaction firstPosting = new SavingsAccountTransactionTestBuilder().withId(700L)
-                .withSavingsAccount(this.account).withType(SavingsAccountTransactionType.INTEREST_POSTING)
-                .withDate(CLOSED_DATE.minusDays(1)).withAmount(new BigDecimal("100.00")).build();
-        this.account.getTransactions().add(firstPosting);
-        applyPendingInterestBasedCharges.invoke(this.account, CLOSED_DATE, Money.of(CURRENCY, new BigDecimal("100.00")), firstPosting,
-                false, true);
-
-        final List<SavingsAccountTransaction> afterFirstCall = payChargeTransactions();
-        assertThat(afterFirstCall).hasSize(1);
-        final SavingsAccountTransaction chargeTransactionAfterFirstCall = afterFirstCall.get(0);
-        assertThat(chargeTransactionAfterFirstCall.getAmount()).isEqualByComparingTo("60.00");
-
-        // Second application - simulating core's re-entrant postInterest(...) landing on another boundary that also
-        // contains closedDate - 1, with closureSettlement still the very same, still-non-null instance (nothing has
-        // called completeClosureSettlement(...) yet). Without the one-shot applied guard this recomputes the
-        // closure's 60% against a DIFFERENT gross figure (50.00) and posts a SECOND PAY_CHARGE transaction, silently
-        // overwriting the settlement's previously recorded amount/transactions.
-        final SavingsAccountTransaction secondPosting = new SavingsAccountTransactionTestBuilder().withId(701L)
-                .withSavingsAccount(this.account).withType(SavingsAccountTransactionType.INTEREST_POSTING)
-                .withDate(CLOSED_DATE.minusDays(1)).withAmount(new BigDecimal("50.00")).build();
-        this.account.getTransactions().add(secondPosting);
-        applyPendingInterestBasedCharges.invoke(this.account, CLOSED_DATE, Money.of(CURRENCY, new BigDecimal("50.00")), secondPosting,
-                false, true);
-
-        // Exactly ONE PAY_CHARGE transaction - not two - and it is the very same transaction from the first call, not
-        // a second one that replaced or sat alongside it.
-        final List<SavingsAccountTransaction> afterSecondCall = payChargeTransactions();
-        assertThat(afterSecondCall).hasSize(1);
-        assertThat(afterSecondCall.get(0)).isSameAs(chargeTransactionAfterFirstCall);
-        assertThat(afterSecondCall.get(0).getAmount()).isEqualByComparingTo("60.00");
-    }
-
-    // Scenario 6 (same-day scheduled posting): the interest for the closure boundary was ALREADY posted - correctly -
-    // before the customer closed the account, e.g. because the scheduled interest posting job happened to run earlier
-    // that same day. Core's postInterest(...) then takes its "a posting transaction already exists" branch for that
-    // boundary and creates nothing, so before this fix applyPendingInterestBasedCharges(...) - which only ran inside
-    // the "create a NEW posting transaction" branch - never ran for the closure boundary at all, and a genuinely
-    // premature closure silently forwent its early-withdrawal penalty purely because of when the job happened to run.
-    // The penalty must still be collected, against the interest that is already there, and linked to that EXISTING
-    // posting transaction.
-    @Test
-    void aClosureWhoseInterestWasAlreadyPostedThatSameDayStillCollectsTheEarlyWithdrawalCharge() {
-        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
-        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-
-        // The scheduled posting run that got there first: the exact same posting call close()'s settlement makes
-        // (postInterestUpTo(account, true, closedDate, false, closedDate)), but with NO closure settlement in
-        // progress - i.e. an ordinary interest posting for this boundary. It writes the boundary's one correct,
-        // non-reversed INTEREST_POSTING transaction dated CLOSED_DATE, exactly the state the bug is about. Deriving
-        // it from the production posting code rather than hand-building a transaction with a guessed amount is what
-        // makes "and its amount is correct" true by construction, so close() below genuinely reaches the
-        // already-posted branch and not the correction branch.
-        final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
-        this.account.postInterest(mc, CLOSED_DATE, false, false, 1, CLOSED_DATE, false, false);
-        final SavingsAccountTransaction preExistingPosting = singleInterestPosting();
-        final BigDecimal grossInterest = preExistingPosting.getAmount();
-        assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
-        // Nothing was charged by that run - there was nothing pending yet and no closure in flight.
-        assertThat(payChargeTransactions()).isEmpty();
-
-        // ... and only afterwards the customer takes an early withdrawal (leaving a 40% pending row) and closes.
-        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
-
-        this.service.close(1L, closeCommandFor(1L, true));
-
-        assertThat(this.account.isClosed()).isTrue();
-
-        // No SECOND interest posting transaction: the one that was already there was correct, so it stands, and the
-        // charge below is linked to it.
-        final SavingsAccountTransaction postingAfterClosure = singleInterestPosting();
-        assertThat(postingAfterClosure).isSameAs(preExistingPosting);
-        assertThat(postingAfterClosure.getAmount()).isEqualByComparingTo(grossInterest);
-
-        // The charge was calculated and applied all the same: 40% pending + 60% closure = 100% of the gross interest
-        // already on the account, capped once and paid by ONE charge transaction.
-        final SavingsAccountTransaction chargeTransaction = singleChargeTransaction();
-        assertThat(chargeTransaction.getAmount()).isEqualByComparingTo(grossInterest);
-        assertThat(chargeTransaction.getTransactionDate()).isEqualTo(CLOSED_DATE);
-
-        assertThat(earlierRow.isPending()).isFalse();
-        assertThat(earlierRow.interestChargeTransaction()).isSameAs(chargeTransaction);
-        assertThat(earlierRow.interestPostingTransaction()).isSameAs(preExistingPosting);
-
-        assertThat(this.newlySavedRows).hasSize(1);
-        final SavingsAccountInterestCharge closureRow = this.newlySavedRows.get(0);
-        assertThat(closureRow.isPending()).isFalse();
-        assertThat(closureRow.chargePercentage()).isEqualByComparingTo("60");
-        assertThat(closureRow.interestChargeTransaction()).isSameAs(chargeTransaction);
-        // The link that this fix is really about: the closure's row points at the PRE-EXISTING posting transaction.
-        assertThat(closureRow.interestPostingTransaction()).isSameAs(preExistingPosting);
-        assertThat(closureRow.withdrawalTransaction()).isSameAs(this.withdrawals.get(0));
-
-        // Correctly distributed, not just correctly totalled - the same 40/60 pro-rata the create-new path produces.
-        final MathContext pctMc = new MathContext(8, MoneyHelper.getRoundingMode());
-        final BigDecimal recomputedEarlierShare = grossInterest.multiply(new BigDecimal("40")).divide(BigDecimal.valueOf(100), pctMc);
-        final BigDecimal recomputedClosureShare = grossInterest.multiply(new BigDecimal("60")).divide(BigDecimal.valueOf(100), pctMc);
-        final BigDecimal appliedTotal = chargeTransaction.getAmount();
-        final BigDecimal expectedEarlierRowAmount = recomputedEarlierShare.multiply(appliedTotal)
-                .divide(recomputedEarlierShare.add(recomputedClosureShare), pctMc)
-                .setScale(CURRENCY.getDigitsAfterDecimal(), RoundingMode.DOWN);
-        final BigDecimal expectedClosureRowAmount = appliedTotal.subtract(expectedEarlierRowAmount);
-        assertThat(earlierRow.chargeAmount()).isEqualByComparingTo(expectedEarlierRowAmount);
-        assertThat(closureRow.chargeAmount()).isEqualByComparingTo(expectedClosureRowAmount);
-        assertThat(expectedEarlierRowAmount).isGreaterThan(BigDecimal.ZERO);
-        assertThat(expectedClosureRowAmount).isGreaterThan(expectedEarlierRowAmount);
-
-        // Still exactly ONE withdrawal, and the account still lands on exactly zero: the interest posted earlier that
-        // day went in, the whole of it came back out as the charge, so the payout is the untouched principal.
-        assertThat(this.withdrawals).hasSize(1);
-        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
-        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-
-        assertThat(this.account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-    }
-
-    // Scenario 7 (deliberate scope boundary): when the posting transaction that already exists for the closure
-    // boundary has the WRONG amount, core reverses it and reposts - a genuine correction, not the "already posted,
-    // nothing to correct" case above. Task 8's original decision not to charge during corrections stands unchanged
-    // there (core reverses only the posting and withholding transactions, so whatever was already charged against the
-    // old amount in an earlier run still stands, and charging again here would double-charge). This test pins that
-    // behaviour down so the new already-posted path above cannot silently grow into the correction branch.
-    @Test
-    void aGenuineCorrectionAtTheClosureBoundaryStillChargesNothing() {
-        final SavingsAccountCharge accountCharge = accountCharge(new BigDecimal("60"));
-        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge);
-        final SavingsAccountInterestCharge earlierRow = pendingRow(accountCharge, new BigDecimal("40"));
-
-        // An interest posting transaction dated the closure boundary whose amount is nowhere near what the period
-        // actually earned - so postInterest(...) must reverse and repost it rather than leave it standing.
-        final SavingsAccountTransaction wrongPosting = new SavingsAccountTransactionTestBuilder().withId(800L)
-                .withSavingsAccount(this.account).withOffice(this.office).withType(SavingsAccountTransactionType.INTEREST_POSTING)
-                .withDate(CLOSED_DATE).withAmount(new BigDecimal("99.00")).build();
-        this.account.getTransactions().add(wrongPosting);
-
-        this.service.close(1L, closeCommandFor(1L, true));
-
-        assertThat(this.account.isClosed()).isTrue();
-        // It really was the correction branch: the wrong transaction is reversed and a different one now stands.
-        assertThat(wrongPosting.isReversed()).isTrue();
-        final SavingsAccountTransaction repostedInterest = singleInterestPosting();
-        assertThat(repostedInterest).isNotSameAs(wrongPosting);
-
-        // Unchanged prior behaviour: nothing charged, the pending row stays pending, no closure row written.
-        assertThat(payChargeTransactions()).isEmpty();
-        assertThat(this.newlySavedRows).isEmpty();
-        assertThat(earlierRow.isPending()).isTrue();
-
-        // And the closure still settles to exactly zero in one withdrawal.
-        assertThat(this.withdrawals).hasSize(1);
-        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(repostedInterest.getAmount()));
-        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-    }
-
-    // Scenario 8 (final-review findings C1/C2/C3): every other scenario in this file stubs the product PER_PERIOD, so
+    // Scenario 4 (final-review findings C1/C2/C3): every other scenario in this file avoids the cumulative rule, so
     // none of them ever reaches beginClosureSettlement's cumulative branch. These last two do - and they run the REAL
     // CumulativeInterestForfeitureService against this real account, not a mock, which is what makes them able to
     // observe the three things a mocked forfeiture service structurally cannot:
@@ -733,15 +407,14 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // (c) Exactly zero left behind, which is core's own close() invariant.
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
-        // The already-applied row is written so a later reversal/report can see what was taken, and the per-period
-        // hook wrote nothing at all for the settlement withdrawal.
-        assertThat(this.newlySavedRows).hasSize(1);
-        assertThat(this.newlySavedRows.get(0).isPending()).isFalse();
-        assertThat(this.newlySavedRows.get(0).chargeAmount()).isEqualByComparingTo(forfeiture.getAmount());
+        // The application-ledger row is written so a later reversal/report can see what was taken.
+        assertThat(this.savedApplications).hasSize(1);
+        assertThat(this.savedApplications.get(0).interestBasisMode()).isEqualTo(InterestBasisMode.CUMULATIVE);
+        assertThat(this.savedApplications.get(0).appliedAmount()).isEqualByComparingTo(forfeiture.getAmount());
     }
 
     @Test
-    void aPartialCumulativeClosureTaxesOnlyTheSurvivingInterestAndJournalsThatTaxToo() {
+    void aPartialCumulativeClosureTaxesPostedInterestNormallyAndForfeitsNetInterest() {
         withBusinessDateOn(CLOSED_DATE);
         cumulativeProduct();
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
@@ -754,13 +427,13 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final SavingsAccountTransaction forfeiture = singleForfeitureTransaction();
         final SavingsAccountTransaction tax = singleWithholdTaxTransaction();
 
-        // 50% of the gross is taken back; tax is 10% of what survived that, never of the gross - the whole point of
-        // deferring it past the forced posting.
-        assertThat(forfeiture.getAmount()).isEqualByComparingTo(grossInterest.multiply(new BigDecimal("0.5")));
-        final BigDecimal survivingInterest = grossInterest.subtract(forfeiture.getAmount());
+        // The forced posting keeps the account's real WHT configuration, so tax is computed by the normal posting
+        // flow. The cumulative forfeiture then charges 50% of the posted interest net of that WHT.
         assertThat(tax.getAmount()).isEqualByComparingTo(
-                survivingInterest.multiply(new BigDecimal("0.1")).setScale(survivingInterest.scale(), MoneyHelper.getRoundingMode()));
-        assertThat(tax.getAmount()).isLessThan(grossInterest.multiply(new BigDecimal("0.1")));
+                grossInterest.multiply(new BigDecimal("0.1")).setScale(tax.getAmount().scale(), MoneyHelper.getRoundingMode()));
+        final BigDecimal netInterest = grossInterest.subtract(tax.getAmount());
+        assertThat(forfeiture.getAmount()).isEqualByComparingTo(
+                netInterest.multiply(new BigDecimal("0.5")).setScale(forfeiture.getAmount().scale(), MoneyHelper.getRoundingMode()));
 
         // Principal plus whatever interest survived both, paid out in one withdrawal, leaving exactly zero.
         assertThat(this.withdrawals).hasSize(1);
@@ -788,7 +461,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
 
         assertThat(this.account.isClosed()).isFalse();
         assertThat(this.withdrawals).isEmpty();
-        assertThat(this.newlySavedRows).isEmpty();
+        assertThat(this.savedApplications).isEmpty();
         assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList())
                 .isEmpty();
     }
@@ -809,12 +482,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     }
 
     // === fixtures ===
-
-    private List<SavingsAccountInterestCharge> allRows() {
-        final List<SavingsAccountInterestCharge> rows = new ArrayList<>(this.existingRows);
-        rows.addAll(this.newlySavedRows);
-        return rows;
-    }
 
     private SavingsAccountTransaction singleInterestPosting() {
         return singleInterestPosting(CLOSED_DATE);
@@ -863,8 +530,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     }
 
     private void cumulativeProduct() {
-        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
-                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.CUMULATIVE)));
+        final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
+        lenient().when(rule.chargeId()).thenReturn(CHARGE_ID);
+        lenient().when(rule.isCumulative()).thenReturn(true);
+        lenient().when(this.chargeInterestRuleRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(List.of(rule));
     }
 
     /**
@@ -914,16 +583,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.account.setWithHoldTax(true);
     }
 
-    private SavingsAccountTransaction singleChargeTransaction() {
-        final List<SavingsAccountTransaction> chargeTransactions = payChargeTransactions();
-        assertThat(chargeTransactions).hasSize(1);
-        return chargeTransactions.get(0);
-    }
-
     /**
      * Builds the Dynamic Deposit account under test and stubs everything close() needs, including a domain service that
-     * behaves like the real one: it withdraws whatever amount close() asks for, runs the same early-withdrawal hook the
-     * real withdrawal path runs, and leaves a real, dated, id-bearing withdrawal transaction behind.
+     * behaves like the real one: it withdraws whatever amount close() asks for and leaves a real, dated, id-bearing
+     * withdrawal transaction behind.
      */
     private void prepareDynamicDepositClosure(final LocalDate maturityDate, final SavingsAccountCharge... charges) {
         this.account = buildAccount(maturityDate, charges);
@@ -957,23 +620,9 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                     this.account.addTransaction(withdrawal);
                     final BigDecimal balanceBefore = this.account.getSummary().getAccountBalance();
                     ReflectionTestUtils.setField(this.account.getSummary(), "accountBalance", balanceBefore.subtract(amount));
-                    // Mirrors DynamicDepositAccount#withdraw, which the real core domain service reaches: every
-                    // withdrawal offers itself to the early-withdrawal charge hook. The settlement withdrawal must be
-                    // turned away by it - that is precisely what this test exercises.
-                    DynamicDepositServiceLocator.earlyWithdrawalChargeService().recordIfApplicable(this.account, withdrawal);
                     this.withdrawals.add(withdrawal);
                     return withdrawal;
                 });
-    }
-
-    private SavingsAccountInterestCharge pendingRow(final SavingsAccountCharge accountCharge, final BigDecimal percentage) {
-        final SavingsAccountTransaction earlierWithdrawal = new SavingsAccountTransactionTestBuilder()
-                .withId(500L + this.existingRows.size()).withSavingsAccount(this.account).withType(SavingsAccountTransactionType.WITHDRAWAL)
-                .withDate(ACTIVATION_DATE.plusDays(5)).withAmount(BigDecimal.ZERO).build();
-        final SavingsAccountInterestCharge row = SavingsAccountInterestCharge.createNew(this.account, earlierWithdrawal, accountCharge,
-                accountCharge.getCharge(), ACTIVATION_DATE, ACTIVATION_DATE.plusDays(5), BigDecimal.ZERO, percentage, BigDecimal.ZERO);
-        this.existingRows.add(row);
-        return row;
     }
 
     private SavingsAccountCharge accountCharge(final BigDecimal percentage) {

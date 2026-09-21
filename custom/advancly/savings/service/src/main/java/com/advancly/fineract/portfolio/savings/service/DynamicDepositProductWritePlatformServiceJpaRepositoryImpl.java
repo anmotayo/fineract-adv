@@ -66,6 +66,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     private final InterestRateChartAssembler chartAssembler;
     private final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
     private final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
 
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
@@ -74,7 +75,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
             final InterestRateChartAssembler chartAssembler,
             final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService,
-            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler) {
+            final EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.context = context;
         this.dynamicDepositProductRepository = dynamicDepositProductRepository;
         this.fromApiJsonDataValidator = fromApiJsonDataValidator;
@@ -83,6 +85,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
         this.chartAssembler = chartAssembler;
         this.accountMappingWritePlatformService = accountMappingWritePlatformService;
         this.earlyWithdrawalChargeReconciler = earlyWithdrawalChargeReconciler;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
     }
 
     @Transactional
@@ -93,6 +96,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             this.fromApiJsonDataValidator.validateForCreate(command.json());
 
             final DynamicDepositProduct product = this.dynamicDepositProductAssembler.assembleDynamicDepositProduct(command);
+            validateChargeDrivenRules(product);
 
             this.dynamicDepositProductRepository.saveAndFlush(product);
             this.accountMappingWritePlatformService.createSavingProductToGLAccountMapping(product.getId(), command,
@@ -136,6 +140,8 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
             if (changes.containsKey(SavingsApiConstants.taxGroupIdParamName)) {
                 product.setTaxGroup(this.dynamicDepositProductAssembler.assembleTaxGroup(command));
             }
+
+            validateChargeDrivenRules(product);
 
             final boolean accountingTypeChanged = changes.containsKey(SavingsApiConstants.accountingRuleParamName);
             final Map<String, Object> accountingMappingChanges = this.accountMappingWritePlatformService
@@ -190,6 +196,10 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
         this.earlyWithdrawalChargeReconciler.reconcile(product.getId(), command, product.isEarlyWithdrawalPenaltyEnabled(),
                 product.charges(), product.interestCompoundingPeriodType(), earlyWithdrawalChargeIdParamName,
                 earlyWithdrawalChargeModeParamName, DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME);
+    }
+
+    private void validateChargeDrivenRules(final DynamicDepositProduct product) {
+        this.chargeInterestRuleValidator.validateProductHasAtMostOneInterestCharge(product);
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dae) {

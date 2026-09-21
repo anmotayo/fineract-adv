@@ -18,17 +18,23 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule;
+import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRuleRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
+import com.advancly.fineract.portfolio.savings.domain.InterestBasisMode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
 import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
 import org.apache.fineract.portfolio.note.domain.Note;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
@@ -52,10 +58,8 @@ import org.springframework.transaction.annotation.Transactional;
  * saveAndFlush and writes journal entries, which would be re-entrant if invoked from inside a withdrawal already in
  * progress. Premature closure establishes the same shape at the same layer.
  *
- * Withholding tax on the forced posting is deferred: the automatic tax step inside postInterest is suppressed for that
- * one call, and applied afterward only to whatever of the newly posted stub survives forfeiture (forfeiture is treated
- * as consuming the newest interest first) - not to its gross amount. At 100% forfeiture the stub is entirely consumed
- * and nothing is taxed; tax on interest from periods before this one was already settled when it posted.
+ * Forced interest posting runs with the account's real withholding-tax configuration intact. If interest has already
+ * posted on the forced posting date, this service reuses that posting instead of posting again.
  *
  * This service owns the summary refresh and the GL journal entries for everything it writes, because neither its
  * withdrawal caller nor its closure caller can do either for it:
@@ -76,8 +80,8 @@ public class CumulativeInterestForfeitureService {
 
     private static final DateTimeFormatter NOTE_DATE = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH);
 
-    private final SavingsAccountInterestChargeRepository interestChargeRepository;
-    private final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository;
+    private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     private final NoteRepository noteRepository;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
@@ -87,18 +91,22 @@ public class CumulativeInterestForfeitureService {
     // @Lazy breaks a genuine bean cycle: AdvanclySavingsAccountWritePlatformService (@Primary) injects this service to
     // trigger forfeiture, and this service injects it back to force-post interest. Without @Lazy the context fails to
     // start with a circular-reference error. The proxy resolves on first use, long after startup.
-    public CumulativeInterestForfeitureService(final SavingsAccountInterestChargeRepository interestChargeRepository,
-            final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService,
+    public CumulativeInterestForfeitureService(final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository,
+            final DepositInterestChargeApplicationRepository interestChargeApplicationRepository,
             @Lazy final SavingsAccountWritePlatformService savingsAccountWritePlatformService, final NoteRepository noteRepository,
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final JournalEntryWritePlatformService journalEntryWritePlatformService, final JdbcTemplate jdbcTemplate) {
-        this.interestChargeRepository = interestChargeRepository;
-        this.earlyWithdrawalChargeService = earlyWithdrawalChargeService;
+        this.chargeInterestRuleRepository = chargeInterestRuleRepository;
+        this.interestChargeApplicationRepository = interestChargeApplicationRepository;
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
         this.noteRepository = noteRepository;
         this.savingsAccountRepository = savingsAccountRepository;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public boolean appliesTo(final SavingsAccount account, final BigDecimal chargePercentageOverride) {
+        return resolveQualifyingChargeWithPercentage(account, chargePercentageOverride) != null;
     }
 
     /**
@@ -116,15 +124,20 @@ public class CumulativeInterestForfeitureService {
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account, final LocalDate exitDate,
             final boolean backdatedTxnsAllowedTill, final boolean isPrematureClosure) {
-        return forfeitIfApplicable(account, exitDate, backdatedTxnsAllowedTill, isPrematureClosure, null);
+        return forfeitIfApplicable(account, null, exitDate, backdatedTxnsAllowedTill, isPrematureClosure, null);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account, final LocalDate exitDate,
             final boolean backdatedTxnsAllowedTill, final boolean isPrematureClosure, final BigDecimal chargePercentageOverride) {
-        final DynamicDepositEarlyWithdrawalChargeService.QualifyingCharge qualifying = chargePercentageOverride == null
-                ? this.earlyWithdrawalChargeService.resolveQualifyingChargeWithPercentage(account)
-                : this.earlyWithdrawalChargeService.resolveQualifyingChargeWithPercentage(account, chargePercentageOverride);
+        return forfeitIfApplicable(account, null, exitDate, backdatedTxnsAllowedTill, isPrematureClosure, chargePercentageOverride);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account,
+            final SavingsAccountTransaction withdrawalTransaction, final LocalDate exitDate, final boolean backdatedTxnsAllowedTill,
+            final boolean isPrematureClosure, final BigDecimal chargePercentageOverride) {
+        final QualifyingCharge qualifying = resolveQualifyingChargeWithPercentage(account, chargePercentageOverride);
         if (qualifying == null) {
             return null;
         }
@@ -134,17 +147,16 @@ public class CumulativeInterestForfeitureService {
         // as a genuine posting-period boundary, so the next scheduled run posts only the increment instead of
         // re-posting the whole period on top of this one.
         //
-        // withHoldTax is suppressed for this one call and restored immediately after - postInterest's automatic tax
-        // step has no way to be told "wait to see how much of this survives forfeiture first", so it is turned off
-        // here and applied manually, below, only to the survivor. The account's real tax configuration is unchanged.
         final LocalDate forcedPostingDate = forcedPostingDate(account, exitDate, isPrematureClosure);
-        final boolean accountWithHoldTax = account.withHoldTax();
-        account.setWithHoldTax(false);
-        this.savingsAccountWritePlatformService.postInterest(account, true, forcedPostingDate, backdatedTxnsAllowedTill);
-        account.setWithHoldTax(accountWithHoldTax);
+        SavingsAccountTransaction interestPostingOnForcedDate = latestInterestPostingOn(account, forcedPostingDate);
+        if (interestPostingOnForcedDate == null) {
+            this.savingsAccountWritePlatformService.postInterest(account, true, forcedPostingDate, backdatedTxnsAllowedTill);
+            interestPostingOnForcedDate = latestInterestPostingOn(account, forcedPostingDate);
+            noteOn(account, interestPostingOnForcedDate, "Interest accrued on pro rata basis from period start to day before withdrawal");
+        }
 
         // Snapshotted HERE - after the forced posting (which journals and flushes everything it wrote itself) and
-        // before this method writes anything of its own - so that the forfeiture and deferred-tax transactions below
+        // before this method writes anything of its own - so that the forfeiture transaction below
         // are the only ones this method's own journal-posting step at the end treats as new. See the class javadoc for
         // why the caller's later snapshot cannot do this job.
         final Set<Long> existingTransactionIds = new HashSet<>(
@@ -153,32 +165,16 @@ public class CumulativeInterestForfeitureService {
                 backdatedTxnsAllowedTill ? account.findCurrentReversedTransactionIdsWithPivotDateConfig()
                         : account.findExistingReversedTransactionIds());
 
-        final SavingsAccountTransaction newlyPostedStub = latestInterestPostingOn(account, forcedPostingDate);
-        noteOn(account, newlyPostedStub, "Interest accrued on pro rata basis from period start to day before withdrawal");
-
-        final BigDecimal alreadyForfeited = this.interestChargeRepository.sumPostedChargeAmount(account.getId());
+        final BigDecimal alreadyForfeited = sumActiveAppliedAmount(account.getId());
         final BigDecimal amount = CumulativeForfeitureCalculator.forfeitureAmount(account.getSummary().getTotalInterestPosted(),
                 account.getSummary().getTotalWithholdTax(), alreadyForfeited, qualifying.percentage());
 
         boolean wroteAnything = false;
 
-        // Forfeiture is treated as consuming the newest interest first - it's the interest this same withdrawal just
-        // force-posted, so whatever of that stub ISN'T swallowed by the forfeiture is what actually reaches the
-        // customer, and only that is taxable. Runs regardless of whether anything was forfeited at all (amount may
-        // be zero, in which case the whole stub survives and is taxed exactly as an ordinary posting would).
-        if (newlyPostedStub != null && accountWithHoldTax) {
-            final BigDecimal newlyPostedStubAmount = newlyPostedStub.getAmount();
-            final BigDecimal forfeitFromNewStub = amount.min(newlyPostedStubAmount);
-            final BigDecimal taxableSurvivor = newlyPostedStubAmount.subtract(forfeitFromNewStub);
-            if (taxableSurvivor.compareTo(BigDecimal.ZERO) > 0) {
-                account.withholdTaxIfApplicable(taxableSurvivor, forcedPostingDate, backdatedTxnsAllowedTill);
-                wroteAnything = true;
-            }
-        }
-
         SavingsAccountTransaction forfeiture = null;
         if (amount.compareTo(BigDecimal.ZERO) > 0) {
-            forfeiture = writeForfeiture(account, qualifying, exitDate, amount, backdatedTxnsAllowedTill);
+            forfeiture = writeForfeiture(account, withdrawalTransaction, qualifying, exitDate, amount, alreadyForfeited,
+                    backdatedTxnsAllowedTill);
             wroteAnything = true;
         }
 
@@ -189,7 +185,7 @@ public class CumulativeInterestForfeitureService {
             // the caller does not journal them a second time.
             account.refreshSummary(backdatedTxnsAllowedTill);
             this.savingsAccountRepository.saveAndFlush(account);
-            refreshDerivedChargeColumns(account.getId());
+            refreshPostedDerivedChargeColumn(account.getId());
             postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
         }
 
@@ -216,8 +212,8 @@ public class CumulativeInterestForfeitureService {
         return isPrematureClosure ? account.interestPostingTransactionDateForClosure(exitDate) : exitDate.minusDays(1);
     }
 
-    private SavingsAccountTransaction writeForfeiture(final SavingsAccount account,
-            final DynamicDepositEarlyWithdrawalChargeService.QualifyingCharge qualifying, final LocalDate exitDate, final BigDecimal amount,
+    private SavingsAccountTransaction writeForfeiture(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
+            final QualifyingCharge qualifying, final LocalDate exitDate, final BigDecimal amount, final BigDecimal alreadyForfeited,
             final boolean backdatedTxnsAllowedTill) {
         final SavingsAccountCharge accountCharge = qualifying.accountCharge();
         final SavingsAccountTransaction forfeiture = SavingsAccountTransaction.interestForfeiture(account, account.office(), exitDate,
@@ -235,9 +231,11 @@ public class CumulativeInterestForfeitureService {
         }
         noteOn(account, forfeiture, "Interest forfeiture due to early withdrawal on " + exitDate.format(NOTE_DATE));
 
-        this.interestChargeRepository.saveAndFlush(SavingsAccountInterestCharge.createApplied(account, forfeiture, accountCharge,
-                accountCharge.getCharge(), this.earlyWithdrawalChargeService.currentPeriodStartDate(account), exitDate,
-                account.getSummary().getTotalInterestPosted(), qualifying.percentage(), appliedAmount, null, forfeiture));
+        final SavingsAccountTransaction effectiveWithdrawalTransaction = withdrawalTransaction == null ? forfeiture : withdrawalTransaction;
+        final BigDecimal originalBasisAmount = forfeitableBasis(account);
+        this.interestChargeApplicationRepository.saveAndFlush(DepositInterestChargeApplication.createNew(account, accountCharge.getCharge(),
+                effectiveWithdrawalTransaction, forfeiture, exitDate, selectedFromDate(account, exitDate), exitDate,
+                InterestBasisMode.CUMULATIVE, null, qualifying.percentage(), originalBasisAmount, alreadyForfeited, appliedAmount));
 
         return forfeiture;
     }
@@ -252,15 +250,30 @@ public class CumulativeInterestForfeitureService {
     }
 
     /**
-     * Keeps the Section 5 fast-read columns in sync with the interest-charge table after cumulative forfeiture writes
-     * its already-applied row. The table remains the source of truth; this mirrors the scheduler refresh path.
+     * Keeps the posted reporting column in sync with the charge-application ledger after cumulative forfeiture writes
+     * its already-applied row.
      */
-    private void refreshDerivedChargeColumns(final Long accountId) {
-        final BigDecimal pending = this.interestChargeRepository.sumPendingChargeAmount(accountId);
-        final BigDecimal posted = this.interestChargeRepository.sumPostedChargeAmount(accountId);
-        this.jdbcTemplate.update(
-                "update m_savings_account set interest_based_charge_derived = ?, interest_based_charge_posted_derived = ? where id = ?",
-                pending, posted, accountId);
+    private void refreshPostedDerivedChargeColumn(final Long accountId) {
+        final BigDecimal posted = sumActiveAppliedAmount(accountId);
+        this.jdbcTemplate.update("update m_savings_account set interest_based_charge_posted_derived = ? where id = ?", posted, accountId);
+    }
+
+    private BigDecimal sumActiveAppliedAmount(final Long accountId) {
+        final BigDecimal amount = this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId);
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private BigDecimal forfeitableBasis(final SavingsAccount account) {
+        final BigDecimal postedInterest = account.getSummary().getTotalInterestPosted() == null ? BigDecimal.ZERO
+                : account.getSummary().getTotalInterestPosted();
+        final BigDecimal withholdingTax = account.getSummary().getTotalWithholdTax() == null ? BigDecimal.ZERO
+                : account.getSummary().getTotalWithholdTax();
+        return postedInterest.subtract(withholdingTax).max(BigDecimal.ZERO);
+    }
+
+    private LocalDate selectedFromDate(final SavingsAccount account, final LocalDate exitDate) {
+        final LocalDate startInterestCalculationDate = account.getStartInterestCalculationDate();
+        return startInterestCalculationDate != null ? startInterestCalculationDate : exitDate;
     }
 
     private SavingsAccountTransaction latestInterestPostingOn(final SavingsAccount account, final LocalDate date) {
@@ -278,5 +291,60 @@ public class CumulativeInterestForfeitureService {
             return;
         }
         this.noteRepository.save(Note.savingsTransactionNote(account, transaction, text));
+    }
+
+    private QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account,
+            final BigDecimal chargePercentageOverride) {
+        final List<AdvanclyChargeInterestRule> rules = this.chargeInterestRuleRepository.findBySavingsProductId(account.productId());
+        if (rules.size() != 1 || !rules.get(0).isCumulative()) {
+            return null;
+        }
+        final SavingsAccountCharge accountCharge = resolveAccountCharge(account, rules.get(0).chargeId());
+        if (accountCharge == null) {
+            return null;
+        }
+        final BigDecimal percentage = resolvePercentage(account, accountCharge, chargePercentageOverride);
+        if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        return new QualifyingCharge(accountCharge, percentage);
+    }
+
+    private SavingsAccountCharge resolveAccountCharge(final SavingsAccount account, final Long chargeId) {
+        for (final SavingsAccountCharge accountCharge : account.charges()) {
+            final Charge definition = accountCharge.getCharge();
+            if (definition == null || !chargeId.equals(definition.getId())) {
+                continue;
+            }
+            if (!accountCharge.isActive()) {
+                continue;
+            }
+            if (!accountCharge.isPenaltyCharge() && !definition.isPenalty()) {
+                continue;
+            }
+            if (definition.getChargeCalculation() == null
+                    || !ChargeCalculationType.fromInt(definition.getChargeCalculation()).isPercentageOfInterest()) {
+                continue;
+            }
+            return accountCharge;
+        }
+        return null;
+    }
+
+    private BigDecimal resolvePercentage(final SavingsAccount account, final SavingsAccountCharge accountCharge,
+            final BigDecimal chargePercentageOverride) {
+        final BigDecimal transactionOverride = chargePercentageOverride != null ? chargePercentageOverride
+                : account.earlyWithdrawalChargePercentageOverride();
+        if (transactionOverride != null) {
+            return transactionOverride;
+        }
+        final BigDecimal accountPercentage = accountCharge.getPercentage();
+        if (accountPercentage != null && accountPercentage.compareTo(BigDecimal.ZERO) > 0) {
+            return accountPercentage;
+        }
+        return accountCharge.getCharge().getAmount();
+    }
+
+    private record QualifyingCharge(SavingsAccountCharge accountCharge, BigDecimal percentage) {
     }
 }

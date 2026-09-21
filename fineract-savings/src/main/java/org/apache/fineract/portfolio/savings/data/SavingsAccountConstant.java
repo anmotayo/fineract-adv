@@ -54,7 +54,7 @@ public class SavingsAccountConstant extends SavingsApiConstants {
             // "earlyWithdrawalChargePercentage" - optional, ignored by every account type except Dynamic Deposit (the
             // custom advancly module has no compile-time visibility of this core validator to add its own param, so
             // it is allow-listed here instead): overrides the account's snapshotted early-withdrawal charge
-            // percentage for this single withdrawal only. See DynamicDepositEarlyWithdrawalChargeService.
+            // percentage for this single withdrawal only. See AdvanclyInterestChargeApplicationService.
             "earlyWithdrawalChargePercentage",
             // "applyEarlyWithdrawalCharge" - optional. Plain Savings has no maturity date, so Fineract cannot decide
             // for itself whether a withdrawal is "early"; the upstream application signals it here. Ignored unless the

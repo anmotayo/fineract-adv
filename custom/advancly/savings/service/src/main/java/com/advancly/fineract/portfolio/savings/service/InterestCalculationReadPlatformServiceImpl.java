@@ -21,6 +21,7 @@ package com.advancly.fineract.portfolio.savings.service;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -62,6 +63,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final ConfigurationDomainService configurationDomainService;
+    private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
 
     @Override
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
@@ -113,14 +115,11 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     periodInterest.getAmount()));
         }
 
-        BigDecimal pendingInterestBasedCharges = null;
         BigDecimal postedInterestBasedCharges = null;
-        BigDecimal interestBasedChargeDerived = null;
         BigDecimal interestBasedChargePostedDerived = null;
-        if (account instanceof DynamicDepositAccount dynamicDepositAccount) {
-            interestBasedChargeDerived = dynamicDepositAccount.interestBasedChargeDerived();
-            interestBasedChargePostedDerived = dynamicDepositAccount.interestBasedChargePostedDerived();
-            pendingInterestBasedCharges = interestBasedChargeDerived;
+        if (account instanceof DynamicDepositAccount) {
+            interestBasedChargePostedDerived = defaultToZero(
+                    this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(account.getId()));
             postedInterestBasedCharges = interestBasedChargePostedDerived;
         }
 
@@ -143,12 +142,15 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
-                interestAsAtToday, interestAtMaturity, maturityAmount, pendingInterestBasedCharges, postedInterestBasedCharges,
-                interestBasedChargeDerived, interestBasedChargePostedDerived, forfeitedAmount, summary.getTotalDeposits(),
-                summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(), interestAsAtToday,
-                totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(),
-                summary.getTotalOverdraftInterestDerived(), totalWithholdTax, summary.getInterestPostedTillDate(), transactions,
-                postingPeriods, topUpAmount, withdrawalAmount);
+                interestAsAtToday, interestAtMaturity, maturityAmount, postedInterestBasedCharges, interestBasedChargePostedDerived,
+                forfeitedAmount, summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(),
+                summary.getTotalAnnualFees(), interestAsAtToday, totalInterestPosted, summary.getAccountBalance(),
+                summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,
+                summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount);
+    }
+
+    private static BigDecimal defaultToZero(final BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private Money lastClosingBalanceOf(final List<PostingPeriod> periods, final SavingsAccount account) {

@@ -28,22 +28,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 class DynamicDepositAccountDerivedChargeFieldsTest {
 
     @Test
-    void derivedFieldReadsAsZeroBeforeAnythingIsWritten() {
-        final DynamicDepositAccount account = newAccount();
-
-        assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
-    }
-
-    @Test
-    void derivedFieldRoundTripsTheValueWrittenToIt() {
-        final DynamicDepositAccount account = newAccount();
-
-        account.updateInterestBasedChargeDerived(new BigDecimal("12.50"));
-
-        assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo("12.50");
-    }
-
-    @Test
     void postedDerivedFieldReadsAsZeroBeforeAnythingIsWritten() {
         final DynamicDepositAccount account = newAccount();
 
@@ -57,16 +41,6 @@ class DynamicDepositAccountDerivedChargeFieldsTest {
         ReflectionTestUtils.setField(account, "interestBasedChargePostedDerived", new BigDecimal("34.75"));
 
         assertThat(account.interestBasedChargePostedDerived()).isEqualByComparingTo("34.75");
-    }
-
-    @Test
-    void writingNullIsTreatedAsZeroSoTheColumnNeverGoesBackToNull() {
-        final DynamicDepositAccount account = newAccount();
-        account.updateInterestBasedChargeDerived(new BigDecimal("12.50"));
-
-        account.updateInterestBasedChargeDerived(null);
-
-        assertThat(account.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private DynamicDepositAccount newAccount() {

@@ -84,11 +84,6 @@ public class SavingsProductBaseAssembler {
                                     charge.getId());
                         }
 
-                        if (!depositAccountType.isDynamicDeposit() && calculationType.isPercentageOfInterest()) {
-                            final String errorMessage = "Charge with identifier " + charge.getId()
-                                    + " uses an interest-based calculation type and can only be applied to a Dynamic Deposit product.";
-                            throw new ChargeCannotBeAppliedToException("savings.product.not.dynamic.deposit", errorMessage, charge.getId());
-                        }
                         charges.add(charge);
                     }
                 }

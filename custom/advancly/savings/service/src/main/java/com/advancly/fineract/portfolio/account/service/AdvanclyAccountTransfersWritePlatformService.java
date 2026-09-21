@@ -18,6 +18,10 @@
  */
 package com.advancly.fineract.portfolio.account.service;
 
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.APPLY_EARLY_WITHDRAWAL_CHARGE;
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.SELECTED_FROM_DATE;
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.SELECTED_TO_DATE;
 import static org.apache.fineract.portfolio.account.AccountDetailConstants.fromAccountIdParamName;
 import static org.apache.fineract.portfolio.account.AccountDetailConstants.fromAccountTypeParamName;
 import static org.apache.fineract.portfolio.account.AccountDetailConstants.toAccountIdParamName;
@@ -28,16 +32,12 @@ import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConst
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
-import com.advancly.fineract.portfolio.savings.service.CumulativeInterestForfeitureService;
-import com.advancly.fineract.portfolio.savings.service.DynamicDepositEarlyWithdrawalChargeService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -87,8 +87,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Primary
 public class AdvanclyAccountTransfersWritePlatformService implements AccountTransfersWritePlatformService {
 
-    private static final String APPLY_EARLY_WITHDRAWAL_CHARGE_PARAM_NAME = "applyEarlyWithdrawalCharge";
-    private static final String EARLY_WITHDRAWAL_CHARGE_PERCENTAGE_PARAM_NAME = "earlyWithdrawalChargePercentage";
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     private final AccountTransfersDataValidator accountTransfersDataValidator;
@@ -108,9 +106,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     private final SavingsAccountDomainService coreDomainService;
     @Qualifier("coreAccountTransfersWritePlatformService")
     private final AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
-    private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
-    private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
-    private final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
 
     @Transactional
     @Override
@@ -278,8 +274,6 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
                     "Transfer is not allowed from this account while withdrawals are disabled for it.", account.getId());
         }
         final PaymentDetail paymentDetail = null;
-        applyCumulativeEarlyWithdrawalChargeIfApplicable(account, transactionDate, transactionBooleanValues, appendPath,
-                earlyWithdrawalChargeRequest);
 
         final SavingsAccountTransaction withdrawal;
         // See the equivalent check in postOptimizedDeposit(...) above.
@@ -289,78 +283,31 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
                     transactionBooleanValues.isApplyWithdrawFee(), lastRunningBalance, account.getCurrency(),
                     assembled.getLastNonReversedTransaction(), transactionBooleanValues.isAccountTransfer());
         } else {
-            account.setWithdrawalChargePercentageOverride(earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage());
-            try {
-                withdrawal = coreDomainService.handleWithdrawal(account, fmt, transactionDate, transactionAmount, paymentDetail,
-                        transactionBooleanValues, backdatedTxnsAllowedTill);
-            } finally {
-                account.setWithdrawalChargePercentageOverride(null);
-            }
+            withdrawal = coreDomainService.handleWithdrawal(account, fmt, transactionDate, transactionAmount, paymentDetail,
+                    transactionBooleanValues, backdatedTxnsAllowedTill);
         }
 
-        recordPerPeriodEarlyWithdrawalChargeIfApplicable(account, transactionDate, transactionBooleanValues, withdrawal,
-                earlyWithdrawalChargeRequest);
+        if (!transactionBooleanValues.isInterestTransfer()) {
+            this.interestChargeApplicationService.applyIfApplicable(account, withdrawal,
+                    earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge(),
+                    earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage(), earlyWithdrawalChargeRequest.selectedFromDate(),
+                    earlyWithdrawalChargeRequest.selectedToDate(), backdatedTxnsAllowedTill);
+        }
         return withdrawal;
     }
 
-    private void applyCumulativeEarlyWithdrawalChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate,
-            final SavingsTransactionBooleanValues transactionBooleanValues, final boolean appendPath,
-            final EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest) {
-        if (!isEarlyWithdrawalChargeApplicable(account, transactionDate, transactionBooleanValues, earlyWithdrawalChargeRequest)
-                || !isCumulativeMode(account)) {
-            return;
-        }
-        if (!appendPath) {
-            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
-                    "A backdated transfer cannot apply a cumulative early-withdrawal interest forfeiture.", account.getId());
-        }
-        this.cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false, false,
-                earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage());
-    }
-
-    private void recordPerPeriodEarlyWithdrawalChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate,
-            final SavingsTransactionBooleanValues transactionBooleanValues, final SavingsAccountTransaction withdrawal,
-            final EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest) {
-        if (!account.depositAccountType().isSavingsDeposit()
-                || !isEarlyWithdrawalChargeApplicable(account, transactionDate, transactionBooleanValues, earlyWithdrawalChargeRequest)
-                || !isPerPeriodMode(account)) {
-            return;
-        }
-        this.earlyWithdrawalChargeService.recordIfApplicable(account, withdrawal, earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge(),
-                earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage());
-    }
-
-    private boolean isEarlyWithdrawalChargeApplicable(final SavingsAccount account, final LocalDate transactionDate,
-            final SavingsTransactionBooleanValues transactionBooleanValues,
-            final EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest) {
-        return !transactionBooleanValues.isInterestTransfer()
-                && (account.isEarlyWithdrawal(transactionDate) || earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge());
-    }
-
-    private boolean isCumulativeMode(final SavingsAccount account) {
-        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
-                .findBySavingsProductId(account.productId());
-        return selections.size() == 1 && selections.get(0).mode().isCumulative();
-    }
-
-    private boolean isPerPeriodMode(final SavingsAccount account) {
-        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
-                .findBySavingsProductId(account.productId());
-        return selections.size() == 1 && selections.get(0).mode().isPerPeriod();
-    }
-
     private EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest(final JsonCommand command) {
-        final boolean applyEarlyWithdrawalCharge = command.booleanPrimitiveValueOfParameterNamed(APPLY_EARLY_WITHDRAWAL_CHARGE_PARAM_NAME);
-        if (!command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE_PARAM_NAME)) {
-            return new EarlyWithdrawalTransferChargeRequest(applyEarlyWithdrawalCharge, null);
-        }
-        final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE_PARAM_NAME);
+        final boolean applyEarlyWithdrawalCharge = command.booleanPrimitiveValueOfParameterNamed(APPLY_EARLY_WITHDRAWAL_CHARGE);
+        final BigDecimal chargePercentageOverride = command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
+                ? command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
+                : null;
         if (chargePercentageOverride != null
                 && (chargePercentageOverride.compareTo(BigDecimal.ZERO) < 0 || chargePercentageOverride.compareTo(ONE_HUNDRED) > 0)) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
                     "earlyWithdrawalChargePercentage must be between 0 and 100.");
         }
-        return new EarlyWithdrawalTransferChargeRequest(applyEarlyWithdrawalCharge, chargePercentageOverride);
+        return new EarlyWithdrawalTransferChargeRequest(applyEarlyWithdrawalCharge, chargePercentageOverride,
+                command.localDateValueOfParameterNamed(SELECTED_FROM_DATE), command.localDateValueOfParameterNamed(SELECTED_TO_DATE));
     }
 
     private boolean isSavingsToSavingsAccountTransfer(final PortfolioAccountType fromAccountType,
@@ -653,10 +600,11 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         }
     }
 
-    private record EarlyWithdrawalTransferChargeRequest(boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage) {
+    private record EarlyWithdrawalTransferChargeRequest(boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage,
+            LocalDate selectedFromDate, LocalDate selectedToDate) {
 
         private static EarlyWithdrawalTransferChargeRequest none() {
-            return new EarlyWithdrawalTransferChargeRequest(false, null);
+            return new EarlyWithdrawalTransferChargeRequest(false, null, null, null);
         }
     }
 }

@@ -27,7 +27,7 @@ import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummar
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.math.BigDecimal;
@@ -66,7 +66,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
     @Mock
     private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     @Mock
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
+    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     @Mock
     private DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
     @Mock
@@ -81,7 +81,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         MoneyHelperInitializer.initialize();
         this.service = new DynamicDepositAccountReadPlatformServiceImpl(this.context, this.jdbcTemplate,
                 this.dynamicDepositProductReadPlatformService, this.savingsAccountRepository, this.interestWithdrawalRepository,
-                this.rateHistoryRepository, this.interestChargeRepository, this.accountChartReadPlatformService);
+                this.rateHistoryRepository, this.interestChargeApplicationRepository, this.accountChartReadPlatformService);
         lenient().when(this.savingsAccountRepository.findOneWithNotFoundDetection(eq(ACCOUNT_ID), eq(DepositAccountType.DYNAMIC_DEPOSIT)))
                 .thenReturn(this.account);
         lenient().when(this.account.getSummary()).thenReturn(this.summary);
@@ -138,14 +138,13 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
         when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
         when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("30"));
-        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(new BigDecimal("12"));
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID))
+                .thenReturn(new BigDecimal("30"));
 
         final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
         assertThat(summary.interestBasedCharges()).isEqualByComparingTo("30");
         assertThat(summary.interestBasedChargePostedDerived()).isEqualByComparingTo("30");
-        assertThat(summary.interestBasedChargeDerived()).isEqualByComparingTo("12");
         // 500 posted - 50 withholding tax - 30 interest-based charge
         assertThat(summary.netInterest()).isEqualByComparingTo("420");
     }
@@ -155,8 +154,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
         when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
         when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
-        lenient().when(this.interestChargeRepository.sumPendingChargeAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
 
         final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
 

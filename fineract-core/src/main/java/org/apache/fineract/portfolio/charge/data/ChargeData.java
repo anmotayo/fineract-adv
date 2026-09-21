@@ -71,6 +71,8 @@ public final class ChargeData implements Comparable<ChargeData>, Serializable {
     private final EnumOptionData feeFrequency;
     private final GLAccountData incomeOrLiabilityAccount;
     private final TaxGroupData taxGroup;
+    private final EnumOptionData interestBasisMode;
+    private final EnumOptionData customPeriodReapplyPolicy;
 
     // template attributes
     private final Collection<CurrencyData> currencyOptions;
@@ -92,6 +94,8 @@ public final class ChargeData implements Comparable<ChargeData>, Serializable {
 
     private final Map<String, List<GLAccountData>> incomeOrLiabilityAccountOptions;
     private final Collection<TaxGroupData> taxGroupOptions;
+    private final List<EnumOptionData> interestBasisModeOptions;
+    private final List<EnumOptionData> customPeriodReapplyPolicyOptions;
 
     private final String accountMappingForChargeConfig;
     private final List<GLAccountData> expenseAccountOptions;
@@ -111,6 +115,8 @@ public final class ChargeData implements Comparable<ChargeData>, Serializable {
                 .feeFrequencyOptions(template.getFeeFrequencyOptions())
                 .incomeOrLiabilityAccountOptions(template.getIncomeOrLiabilityAccountOptions())
                 .taxGroupOptions(template.getTaxGroupOptions())
+                .interestBasisModeOptions(template.getInterestBasisModeOptions())
+                .customPeriodReapplyPolicyOptions(template.getCustomPeriodReapplyPolicyOptions())
                 .shareChargeCalculationTypeOptions(template.getShareChargeCalculationTypeOptions())
                 .shareChargeTimeTypeOptions(template.getShareChargeTimeTypeOptions())
                 .accountMappingForChargeConfig(template.getAccountMappingForChargeConfig())

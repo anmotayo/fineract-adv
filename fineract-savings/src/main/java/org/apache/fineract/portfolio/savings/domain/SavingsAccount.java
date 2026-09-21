@@ -2960,14 +2960,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     /**
-     * Records the account's current pending interest-based charge total on the fast-read derived column, for account
-     * types that carry one. A no-op for every other type: the value is simply discarded.
-     */
-    public void updateInterestBasedChargeDerived(final BigDecimal amount) {
-        // no-op by default - see javadoc.
-    }
-
-    /**
      * Whether a withdrawal on this date is early by the account's OWN terms. Only an account type with a maturity date
      * can answer this - Dynamic Deposit compares against {@code maturityDate()}. Plain Savings has no maturity date and
      * so is never early by its own terms: for it, earliness is asserted by the caller on the withdrawal request, and

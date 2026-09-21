@@ -110,10 +110,9 @@ public class AdvanclySavingsAccountInterestPostingService extends SavingsAccount
 
         for (final LocalDateInterval coreBoundary : corePostingPeriodIntervals) {
             Money interestEarnedToBePostedForPeriod = Money.zero(savingsAccountData.getCurrency());
-            for (final PostingPeriod subPeriod : ratedSubPeriods) {
-                if (coreBoundary.contains(subPeriod.getPeriodInterval().startDate())) {
-                    interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod.plus(subPeriod.getInterestEarned());
-                }
+            final List<PostingPeriod> boundarySubPeriods = subPeriodsWithin(coreBoundary, ratedSubPeriods);
+            for (final PostingPeriod subPeriod : boundarySubPeriods) {
+                interestEarnedToBePostedForPeriod = interestEarnedToBePostedForPeriod.plus(subPeriod.getInterestEarned());
             }
             final boolean isUserPosting = postedAsOnDates.contains(coreBoundary.endDate().plusDays(1));
             final LocalDate interestPostingTransactionDate = isSavingsInterestPostingAtCurrentPeriodEnd ? coreBoundary.endDate()
@@ -281,6 +280,10 @@ public class AdvanclySavingsAccountInterestPostingService extends SavingsAccount
         return allPostingPeriods;
     }
 
+    private List<PostingPeriod> subPeriodsWithin(final LocalDateInterval coreBoundary, final List<PostingPeriod> ratedSubPeriods) {
+        return ratedSubPeriods.stream().filter(subPeriod -> coreBoundary.contains(subPeriod.getPeriodInterval().startDate())).toList();
+    }
+
     private Money openingStartingBalance(final SavingsAccountData savingsAccountData) {
         if (!savingsAccountData.hasStartInterestCalculationDate()) {
             return Money.zero(savingsAccountData.getCurrency());
@@ -320,8 +323,8 @@ public class AdvanclySavingsAccountInterestPostingService extends SavingsAccount
         return withholdTransactions;
     }
 
-    private boolean createWithHoldTransaction(final BigDecimal amount, final LocalDate date, final SavingsAccountData savingsAccountData) {
-        boolean isTaxAdded = false;
+    private SavingsAccountTransactionData createWithHoldTransaction(final BigDecimal amount, final LocalDate date,
+            final SavingsAccountData savingsAccountData) {
         if (savingsAccountData.getTaxGroup() != null && savingsAccountData.getTaxGroup().getTaxAssociations() != null
                 && amount.compareTo(BigDecimal.ZERO) > 0) {
             final Map<TaxComponentData, BigDecimal> taxSplit = TaxUtils.splitTaxData(amount, date,
@@ -331,10 +334,10 @@ public class AdvanclySavingsAccountInterestPostingService extends SavingsAccount
                 final SavingsAccountTransactionData withholdTransaction = SavingsAccountTransactionData.withHoldTax(savingsAccountData,
                         date, Money.of(savingsAccountData.getCurrency(), totalTax), taxSplit);
                 savingsAccountData.getSavingsAccountTransactionData().add(withholdTransaction);
-                isTaxAdded = true;
+                return withholdTransaction;
             }
         }
-        return isTaxAdded;
+        return null;
     }
 
     private boolean isWithHoldTaxApplicableForInterestPosting(final SavingsAccountData savingsAccountData) {

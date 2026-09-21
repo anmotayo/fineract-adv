@@ -68,6 +68,7 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
     private InterestRateChartAssembler chartAssembler;
     private ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService;
     private EarlyWithdrawalChargeReconciler earlyWithdrawalChargeReconciler;
+    private AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
     private DynamicDepositProductWritePlatformServiceJpaRepositoryImpl service;
 
     @BeforeEach
@@ -82,13 +83,15 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
         this.chartAssembler = mock(InterestRateChartAssembler.class);
         this.accountMappingWritePlatformService = mock(ProductToGLAccountMappingWritePlatformService.class);
         this.earlyWithdrawalChargeReconciler = new EarlyWithdrawalChargeReconciler(this.earlyWithdrawalChargeRepository);
+        this.chargeInterestRuleValidator = mock(AdvanclyChargeInterestRuleValidator.class);
 
         lenient().when(this.accountMappingWritePlatformService.updateSavingsProductToGLAccountMapping(any(), any(), anyBoolean(), anyInt(),
                 eq(DepositAccountType.DYNAMIC_DEPOSIT))).thenReturn(new HashMap<>());
 
         this.service = new DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(this.context, this.dynamicDepositProductRepository,
                 this.fromApiJsonDataValidator, this.dynamicDepositProductAssembler, this.earlyWithdrawalChargeRepository,
-                this.chartAssembler, this.accountMappingWritePlatformService, this.earlyWithdrawalChargeReconciler);
+                this.chartAssembler, this.accountMappingWritePlatformService, this.earlyWithdrawalChargeReconciler,
+                this.chargeInterestRuleValidator);
     }
 
     @Test
@@ -116,6 +119,7 @@ class DynamicDepositProductWritePlatformServiceJpaRepositoryImplTest {
 
         this.service.update(PRODUCT_ID, command);
 
+        verify(this.chargeInterestRuleValidator).validateProductHasAtMostOneInterestCharge(product);
         final ArgumentCaptor<SavingsProductEarlyWithdrawalCharge> captor = ArgumentCaptor
                 .forClass(SavingsProductEarlyWithdrawalCharge.class);
         verify(this.earlyWithdrawalChargeRepository).saveAndFlush(captor.capture());

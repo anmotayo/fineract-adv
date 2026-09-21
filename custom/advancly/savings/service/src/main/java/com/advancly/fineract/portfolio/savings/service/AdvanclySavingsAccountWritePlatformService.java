@@ -18,19 +18,18 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
+
 import com.advancly.fineract.portfolio.savings.data.BulkTransactionDataValidator;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -56,7 +55,6 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepositor
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -95,9 +93,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final FromJsonHelper fromApiJsonHelper;
     private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
     private final PaymentDetailRepository paymentDetailRepository;
-    private final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
-    private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
-    private final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService;
+    private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     private final ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
 
     @Autowired
@@ -110,9 +106,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             @Qualifier("coreSavingsAccountWritePlatformService") final SavingsAccountWritePlatformService delegate,
             final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
             final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
-            final SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository,
-            final CumulativeInterestForfeitureService cumulativeInterestForfeitureService,
-            final DynamicDepositEarlyWithdrawalChargeService earlyWithdrawalChargeService,
+            final AdvanclyInterestChargeApplicationService interestChargeApplicationService,
             final ProductToGLAccountMappingRepository productToGLAccountMappingRepository) {
         this.context = context;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
@@ -127,9 +121,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.fromApiJsonHelper = fromApiJsonHelper;
         this.paymentTypeRepositoryWrapper = paymentTypeRepositoryWrapper;
         this.paymentDetailRepository = paymentDetailRepository;
-        this.productEarlyWithdrawalChargeRepository = productEarlyWithdrawalChargeRepository;
-        this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
-        this.earlyWithdrawalChargeService = earlyWithdrawalChargeService;
+        this.interestChargeApplicationService = interestChargeApplicationService;
         this.productToGLAccountMappingRepository = productToGLAccountMappingRepository;
     }
 
@@ -184,7 +176,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         final LocalDate transactionDate = command.localDateValueOfParameterNamed("transactionDate");
         final BigDecimal transactionAmount = command.bigDecimalValueOfParameterNamed("transactionAmount");
-        final BigDecimal earlyWithdrawalChargePercentageOverride = earlyWithdrawalChargePercentageOverride(command);
 
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
         boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
@@ -202,24 +193,12 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                     "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
         }
 
-        // Single insertion point for both account types: this class is @Primary, so plain-Savings withdrawals (core
-        // savings API) and Dynamic Deposit withdrawals (WithdrawalDynamicDepositAccountCommandHandler, which injects
-        // the interface) both arrive here before the routing decision below. Cumulative forfeiture must run at this
-        // layer because it force-posts interest, which would be re-entrant from inside an entity-level hook.
-        if (isEarlyForForfeiture(account, transactionDate, command) && isCumulativeMode(account)) {
-            if (isBackdated) {
-                throw new GeneralPlatformDomainRuleException("error.msg.savings.account.cumulative.forfeiture.backdated.not.supported",
-                        "A backdated withdrawal cannot apply a cumulative early-withdrawal interest forfeiture.", savingsId);
-            }
-            cumulativeInterestForfeitureService.forfeitIfApplicable(account, transactionDate, false, false,
-                    earlyWithdrawalChargePercentageOverride);
-        }
-
         // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
         // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
         if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
-            return delegateWithdrawalWithEarlyWithdrawalChargePercentageOverride(savingsId, command,
-                    earlyWithdrawalChargePercentageOverride);
+            final CommandProcessingResult result = delegate.withdrawal(savingsId, command);
+            applyInterestChargeIfApplicable(savingsId, result, command, isBackdated);
+            return result;
         }
 
         final Map<String, Object> changes = new LinkedHashMap<>();
@@ -230,7 +209,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
                 paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
 
-        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawal, earlyWithdrawalChargePercentageOverride);
+        this.interestChargeApplicationService.applyIfApplicable(account, withdrawal, command, false);
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -239,85 +218,30 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
     }
 
-    /**
-     * Earliness comes from whichever source the account type has. Dynamic Deposit answers from its own maturity date,
-     * exactly as it always has, so its behaviour does not depend on the caller passing a flag. Plain Savings has no
-     * maturity date, so the upstream application - which owns the withdrawal-window rules - asserts it on the request.
-     *
-     * The {@code applyEarlyWithdrawalCharge} half of this matters when either {@link #isCumulativeMode(SavingsAccount)}
-     * or {@link #isPerPeriodMode(SavingsAccount)} is also true, and both read
-     * {@code m_savings_product_early_withdrawal_charge}. That table's rows were originally written by the Dynamic
-     * Deposit product API alone, which is why an earlier version of this comment described the flag as unreachable in
-     * practice for plain Savings; the plain-Savings product write path now reconciles the same table too (see
-     * {@code EarlyWithdrawalChargeReconciler}), so a plain Savings product can carry a row in either mode and the flag
-     * is reachable for it. PER_PERIOD mode's withdrawal-time effect - recording the pending
-     * {@code SavingsAccountInterestCharge} row - is wired via {@link #recordPerPeriodChargeIfApplicable}, below.
-     */
-    private boolean isEarlyForForfeiture(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command) {
-        return account.isEarlyWithdrawal(transactionDate) || command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge");
+    private void applyInterestChargeIfApplicable(final Long savingsId, final CommandProcessingResult result, final JsonCommand command,
+            final boolean backdatedTxnsAllowedTill) {
+        validateEarlyWithdrawalChargePercentageOverride(command);
+        final Long transactionId = result.getResourceId();
+        if (transactionId == null) {
+            return;
+        }
+        final SavingsAccountTransaction withdrawal = this.advanclyTransactionRepository.findById(transactionId).orElse(null);
+        if (withdrawal == null || withdrawal.getSavingsAccount() == null || !savingsId.equals(withdrawal.getSavingsAccount().getId())) {
+            return;
+        }
+        this.interestChargeApplicationService.applyIfApplicable(withdrawal.getSavingsAccount(), withdrawal, command,
+                backdatedTxnsAllowedTill);
     }
 
-    private BigDecimal earlyWithdrawalChargePercentageOverride(final JsonCommand command) {
-        if (!command.parameterExists("earlyWithdrawalChargePercentage")) {
-            return null;
+    private void validateEarlyWithdrawalChargePercentageOverride(final JsonCommand command) {
+        if (!command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)) {
+            return;
         }
-        final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage");
+        final BigDecimal chargePercentageOverride = command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE);
         if (chargePercentageOverride != null && (chargePercentageOverride.compareTo(BigDecimal.ZERO) < 0
                 || chargePercentageOverride.compareTo(BigDecimal.valueOf(100)) > 0)) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
                     "earlyWithdrawalChargePercentage must be between 0 and 100.");
-        }
-        return chargePercentageOverride;
-    }
-
-    private CommandProcessingResult delegateWithdrawalWithEarlyWithdrawalChargePercentageOverride(final Long savingsId,
-            final JsonCommand command, final BigDecimal earlyWithdrawalChargePercentageOverride) {
-        if (earlyWithdrawalChargePercentageOverride == null) {
-            return delegate.withdrawal(savingsId, command);
-        }
-        EarlyWithdrawalChargePercentageOverrideContext.set(earlyWithdrawalChargePercentageOverride);
-        try {
-            return delegate.withdrawal(savingsId, command);
-        } finally {
-            EarlyWithdrawalChargePercentageOverrideContext.clear();
-        }
-    }
-
-    private boolean isCumulativeMode(final SavingsAccount account) {
-        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
-                .findBySavingsProductId(account.productId());
-        return selections.size() == 1 && selections.get(0).mode().isCumulative();
-    }
-
-    private boolean isPerPeriodMode(final SavingsAccount account) {
-        final List<SavingsProductEarlyWithdrawalCharge> selections = this.productEarlyWithdrawalChargeRepository
-                .findBySavingsProductId(account.productId());
-        return selections.size() == 1 && selections.get(0).mode().isPerPeriod();
-    }
-
-    /**
-     * Records the pending {@code SavingsAccountInterestCharge} row a PER_PERIOD-mode early withdrawal needs, so the
-     * next interest posting can apply the charge. This is the plain-Savings counterpart to the cumulative-forfeiture
-     * branch above: that one force-posts interest before the transaction exists, this one records against the
-     * transaction the O(1) append path just created, so it must run after
-     * {@code domainService.handleWithdrawalOptimized} returns rather than before it.
-     *
-     * {@link DynamicDepositEarlyWithdrawalChargeService#recordIfApplicable(SavingsAccount, SavingsAccountTransaction)}
-     * has nothing Dynamic-Deposit-specific in its signature or logic, so it is equally safe to call here for a plain
-     * Savings account; the entity-level {@code DynamicDepositAccount#withdraw} hook that already calls it never runs on
-     * this optimized append path, which is exactly the gap this method closes.
-     */
-    void recordPerPeriodChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command,
-            final SavingsAccountTransaction withdrawalTransaction) {
-        recordPerPeriodChargeIfApplicable(account, transactionDate, command, withdrawalTransaction,
-                earlyWithdrawalChargePercentageOverride(command));
-    }
-
-    void recordPerPeriodChargeIfApplicable(final SavingsAccount account, final LocalDate transactionDate, final JsonCommand command,
-            final SavingsAccountTransaction withdrawalTransaction, final BigDecimal earlyWithdrawalChargePercentageOverride) {
-        if (isEarlyForForfeiture(account, transactionDate, command) && isPerPeriodMode(account)) {
-            this.earlyWithdrawalChargeService.recordIfApplicable(account, withdrawalTransaction,
-                    command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge"), earlyWithdrawalChargePercentageOverride);
         }
     }
 
@@ -498,35 +422,12 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return delegate.adjustSavingsTransaction(savingsId, transactionId, command);
     }
 
-    // @Transactional added for consistency with deposit(...)/withdrawal(...) above, and as defensive insurance for
-    // CumulativeInterestForfeitureService.forfeitIfApplicable's Propagation.MANDATORY requirement - not because it is
-    // strictly necessary given the current call graph. Every real caller of close() (CloseSavingsAccountCommandHandler
-    // /PrematureCloseDynamicDepositAccountCommandHandler/CloseDynamicDepositAccountCommandHandler) is itself
-    // @Transactional and invokes this synchronously, so a transaction is already ambient by the time this method
-    // runs - exactly why deposit(...)/withdrawal(...)'s own @Transactional here is already redundant for the same
-    // reason. Keeping it anyway is still the right, low-risk choice: it makes this method safe to call from anywhere,
-    // present or future, without relying on every caller happening to already be transactional.
+    // @Transactional is retained for consistency with deposit(...)/withdrawal(...); close command handlers already call
+    // this synchronously inside a transaction, but keeping the boundary here makes the delegate path safe from future
+    // callers too.
     @Transactional
     @Override
     public CommandProcessingResult close(final Long savingsId, final JsonCommand command) {
-        final AssembledSavingsAccount assembled = this.assembler.assembleForAppendPath(savingsId);
-        final SavingsAccount account = assembled.getAccount();
-
-        // Dynamic Deposit routes its own closure through DynamicDepositAccount#beginClosureSettlement, which core
-        // invokes on the close path below - forfeiting here as well would take the interest twice. Plain Savings has
-        // no subclass to override that hook, so its cumulative forfeiture is triggered here instead, before core
-        // reads the balance.
-        //
-        // This plain-Savings branch is reachable today: isCumulativeMode(...) can be true for a plain Savings product,
-        // since its product write path now reconciles m_savings_product_early_withdrawal_charge too rather than that
-        // table being Dynamic-Deposit-only. See #isEarlyForForfeiture's javadoc for the full reasoning. It still lacks
-        // the backdated-closure guard DynamicDepositAccount#beginClosureSettlement has - that gap is separate,
-        // unaddressed follow-up work, not something this comment claims is already covered.
-        if (!account.depositAccountType().isDynamicDeposit() && isCumulativeMode(account)
-                && command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")) {
-            this.cumulativeInterestForfeitureService.forfeitIfApplicable(account,
-                    command.localDateValueOfParameterNamed(SavingsApiConstants.closedOnDateParamName), false, true);
-        }
         return delegate.close(savingsId, command);
     }
 
@@ -702,12 +603,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         delegate.selectAccountId(accountTransaction, savingsAccountData);
     }
 
-    // Only INTEREST_BASED_CHARGE routes through the DTO/batch poster today (see
-    // AdvanclySavingsSchedularInterestPoster) — core's selectAccountId has no branch for it at all, since nothing
-    // ever appended one to a DTO transaction list before this feature. INTEREST_FORFEITURE never reaches this
-    // method: it's written entirely on the entity path (CumulativeInterestForfeitureService), which posts journal
-    // entries through the normal accounting processors, not through this batch pipeline.
-    //
+    // Core's selectAccountId has no branch for INTEREST_BASED_CHARGE, so the custom savings batch pipeline resolves it
+    // against the product's base savings-control/penalty-income mapping here.
     // findProductIdAndProductTypeAndFinancialAccountTypeAndChargeId(...) is deliberately NOT used here even though
     // it looks like the natural fit: it is a hand-written @Query ("mapping.charge.id = :chargeId"), not a Spring
     // Data derived query, so passing a null charge id does not get rewritten to "IS NULL" - in JPQL/SQL, "x = NULL"
@@ -731,4 +628,5 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         accountTransaction.setAccountDebit(savingsControlMapping.getGlAccount().getId());
         accountTransaction.setAccountCredit(incomeFromPenaltiesMapping.getGlAccount().getId());
     }
+
 }

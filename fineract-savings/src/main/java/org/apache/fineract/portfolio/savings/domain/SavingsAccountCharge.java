@@ -292,8 +292,8 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 // `amount` and `amount_outstanding_derived` are NOT NULL columns - so they are zero, not null.
                 // Leaving `amount` null also made the constructor's own determineIfFullyPaid() ->
                 // calculateOutstanding() dereference throw. There is no amount until an interest period is posted;
-                // the Dynamic Deposit early-withdrawal mechanism tracks the real figures in
-                // m_savings_account_interest_charge and never consults these fields.
+                // Advancly's interest-charge application ledger tracks the real figures and never consults these
+                // fields.
                 this.percentage = chargeAmount;
                 this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;

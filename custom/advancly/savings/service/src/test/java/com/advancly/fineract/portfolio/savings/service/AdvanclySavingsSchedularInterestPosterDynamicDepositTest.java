@@ -31,7 +31,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -44,7 +43,6 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDynamicRateData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.useradministration.domain.AppUser;
@@ -64,8 +62,6 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
     private JdbcTemplate jdbcTemplate;
     private SavingsAccountReadPlatformService readPlatformService;
     private PlatformSecurityContext securityContext;
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
-    private SavingsAccountTransactionRepository savingsAccountTransactionRepository;
     private DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService;
 
     @BeforeEach
@@ -75,8 +71,6 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
         this.jdbcTemplate = mock(JdbcTemplate.class);
         this.readPlatformService = mock(SavingsAccountReadPlatformService.class);
         this.securityContext = mock(PlatformSecurityContext.class);
-        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
-        this.savingsAccountTransactionRepository = mock(SavingsAccountTransactionRepository.class);
         this.dynamicRateHistoryReadPlatformService = mock(DynamicDepositScheduledRateHistoryReadPlatformService.class);
         stubAuthenticatedUser();
     }
@@ -137,8 +131,7 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
 
     private AdvanclySavingsSchedularInterestPoster newPoster() {
         return new AdvanclySavingsSchedularInterestPoster(this.writePlatformService, this.jdbcTemplate, this.readPlatformService,
-                this.securityContext, this.interestChargeRepository, this.savingsAccountTransactionRepository,
-                this.dynamicRateHistoryReadPlatformService);
+                this.securityContext, this.dynamicRateHistoryReadPlatformService);
     }
 
     private SavingsAccountData accountData(final Long accountId, final DepositAccountType depositAccountType) {
@@ -152,7 +145,6 @@ class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
 
     private void stubPostedWithoutNewTransactions(final SavingsAccountData accountData) {
         when(this.writePlatformService.postInterest(accountData, false, null, false)).thenReturn(accountData);
-        when(this.interestChargeRepository.findPendingByAccountIdUpTo(eq(accountData.getId()), any(LocalDate.class))).thenReturn(List.of());
     }
 
     private void stubAuthenticatedUser() {

@@ -28,7 +28,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
@@ -74,8 +74,6 @@ class AdvanclySavingsAccountDomainServiceTest {
     private JournalEntryWritePlatformService journalEntryWritePlatformService;
     @Mock
     private DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
-    @Mock
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
 
     private AdvanclySavingsAccountDomainService domainService;
     private MonetaryCurrency currency;
@@ -86,7 +84,7 @@ class AdvanclySavingsAccountDomainServiceTest {
         currency = new MonetaryCurrency("USD", 2, null);
         domainService = new AdvanclySavingsAccountDomainService(savingsAccountRepository, savingsAccountTransactionRepository,
                 businessEventNotifierService, transactionHelper, coreDomainService, journalEntryWritePlatformService,
-                dynamicDepositRateHistoryService, interestChargeRepository);
+                dynamicDepositRateHistoryService);
     }
 
     @Test
@@ -144,26 +142,20 @@ class AdvanclySavingsAccountDomainServiceTest {
     // coverage.
 
     @Test
-    void aReversalOnADynamicDepositAccountRefreshesTheDerivedInterestBasedChargeColumn() {
+    void aReversalOnADynamicDepositAccountRecordsRateHistoryEvent() {
         final SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
                 .withRunningBalanceOnPivotDate(BigDecimal.valueOf(1000)).build();
         final DynamicDepositAccount dynamicDepositAccount = buildDynamicDepositAccount(summary);
-        // Simulates the stale state Task 7's review found: a previous early-withdrawal charge posting left the
-        // fast-read derived column non-zero, and the withdrawal/charge that produced it is now being reversed.
-        dynamicDepositAccount.updateInterestBasedChargeDerived(BigDecimal.valueOf(12));
 
         final SavingsAccountTransaction originalWithdrawal = mock(SavingsAccountTransaction.class);
         final SavingsAccountTransaction reversalTransaction = mock(SavingsAccountTransaction.class);
         lenient().when(coreDomainService.handleReversal(eq(dynamicDepositAccount),
                 eq(java.util.Collections.singletonList(originalWithdrawal)), eq(false))).thenReturn(reversalTransaction);
 
-        // m_savings_account_interest_charge itself is already correct post-reversal (its queries exclude rows linked
-        // to a reversed transaction) - the repository stub below simulates what it now reports.
-        lenient().when(interestChargeRepository.sumPendingChargeAmount(1L)).thenReturn(BigDecimal.ZERO);
-
         domainService.handleReversal(dynamicDepositAccount, java.util.Collections.singletonList(originalWithdrawal), false);
 
-        assertThat(dynamicDepositAccount.interestBasedChargeDerived()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(dynamicDepositRateHistoryService).recordPrincipalChangeEvent(dynamicDepositAccount, reversalTransaction,
+                DynamicDepositRateHistoryEventType.REVERSAL);
     }
 
     /**

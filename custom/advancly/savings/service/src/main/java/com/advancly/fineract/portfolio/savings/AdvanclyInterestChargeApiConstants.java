@@ -16,17 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.portfolio.charge.api;
+package com.advancly.fineract.portfolio.savings;
 
-public final class ChargesApiConstants {
+public final class AdvanclyInterestChargeApiConstants {
 
-    private ChargesApiConstants() {
+    public static final String APPLY_EARLY_WITHDRAWAL_CHARGE = "applyEarlyWithdrawalCharge";
+    public static final String EARLY_WITHDRAWAL_CHARGE_PERCENTAGE = "earlyWithdrawalChargePercentage";
+    public static final String SELECTED_FROM_DATE = "selectedFromDate";
+    public static final String SELECTED_TO_DATE = "selectedToDate";
 
-    }
-
-    public static final String glAccountIdParamName = "incomeAccountId";
-    public static final String taxGroupIdParamName = "taxGroupId";
-    public static final String interestBasisModeParamName = "interestBasisMode";
-    public static final String customPeriodReapplyPolicyParamName = "customPeriodReapplyPolicy";
-
+    private AdvanclyInterestChargeApiConstants() {}
 }

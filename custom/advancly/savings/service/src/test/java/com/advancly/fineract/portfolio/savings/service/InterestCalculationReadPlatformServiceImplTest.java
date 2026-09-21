@@ -29,6 +29,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
@@ -62,6 +63,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     private PlatformSecurityContext context;
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private ConfigurationDomainService configurationDomainService;
+    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private InterestCalculationReadPlatformServiceImpl service;
 
     @BeforeEach
@@ -73,8 +75,9 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
+        this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.configurationDomainService);
+                this.configurationDomainService, this.interestChargeApplicationRepository);
     }
 
     private SavingsAccount plainSavingsAccount() {
@@ -143,7 +146,6 @@ class InterestCalculationReadPlatformServiceImplTest {
         assertThat(result.maturityAmount()).isNull();
         assertThat(result.interestAsAtToday()).isEqualByComparingTo("5.00");
         assertThat(result.postingPeriods()).hasSize(1);
-        assertThat(result.pendingInterestBasedCharges()).isNull();
         assertThat(result.postedInterestBasedCharges()).isNull();
         // Only one calculateInterestUsing call for an account with no maturity date.
         verify(account, org.mockito.Mockito.times(1)).calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(),
@@ -206,18 +208,15 @@ class InterestCalculationReadPlatformServiceImplTest {
     }
 
     @Test
-    void interestBasedChargeTotalsAreOnlyPopulatedForDynamicDepositAccounts() {
+    void interestBasedChargeTotalsAreReadFromApplicationLedgerForDynamicDepositAccounts() {
         final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
         commonStubs(account, DepositAccountType.DYNAMIC_DEPOSIT);
         when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
-        when(account.interestBasedChargeDerived()).thenReturn(new BigDecimal("12"));
-        when(account.interestBasedChargePostedDerived()).thenReturn(new BigDecimal("34"));
+        when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID)).thenReturn(new BigDecimal("34"));
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
-        assertThat(result.pendingInterestBasedCharges()).isEqualByComparingTo("12");
         assertThat(result.postedInterestBasedCharges()).isEqualByComparingTo("34");
-        assertThat(result.interestBasedChargeDerived()).isEqualByComparingTo("12");
         assertThat(result.interestBasedChargePostedDerived()).isEqualByComparingTo("34");
         assertThat(result.forfeitedAmount()).isEqualByComparingTo("34");
         assertThat(result.accountBalance()).isEqualByComparingTo("1000");

@@ -103,6 +103,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final AccountAssociationsRepository accountAssociationsRepository;
     private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
     private final SavingsHelper savingsHelper;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
 
     public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositAccountRepository dynamicDepositAccountRepository,
@@ -114,7 +115,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final SavingsAccountWritePlatformService savingsAccountWritePlatformService,
             final DepositAccountAssembler depositAccountAssembler, final DepositAccountDataValidator depositAccountDataValidator,
             final AccountAssociationsRepository accountAssociationsRepository,
-            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper) {
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -130,6 +132,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         this.accountAssociationsRepository = accountAssociationsRepository;
         this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
         this.savingsHelper = savingsHelper;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
     }
 
     @Transactional
@@ -190,6 +193,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final Map<String, Object> changes = new LinkedHashMap<>(20);
             account.modifyApplication(command, changes);
             account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+            this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
 
             // --- linked-account association sync (mirrors modifyFDApplication's linked-account update block) ---
             // Validation only runs in the two branches below where linkAccountId is null (mirroring FD's own

@@ -46,6 +46,7 @@ import static org.apache.fineract.portfolio.savings.SavingsApiConstants.submitte
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.withHoldTaxParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.withdrawalFeeForTransfersParamName;
 
+import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeInterestRuleValidator;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDataValidator;
 import com.google.gson.JsonElement;
 import java.math.BigDecimal;
@@ -121,13 +122,15 @@ public class DynamicDepositAccountAssembler {
     private final ExternalIdFactory externalIdFactory;
     private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
     private final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
 
     public DynamicDepositAccountAssembler(final ClientRepositoryWrapper clientRepository, final GroupRepositoryWrapper groupRepository,
             final StaffRepositoryWrapper staffRepository, final DynamicDepositProductRepository dynamicDepositProductRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
-            final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository) {
+            final SavingsProductEarlyWithdrawalChargeRepository earlyWithdrawalChargeRepository,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.clientRepository = clientRepository;
         this.groupRepository = groupRepository;
         this.staffRepository = staffRepository;
@@ -138,6 +141,7 @@ public class DynamicDepositAccountAssembler {
         this.externalIdFactory = externalIdFactory;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
         this.earlyWithdrawalChargeRepository = earlyWithdrawalChargeRepository;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
     }
 
     public DynamicDepositAccount assembleFrom(final JsonCommand command) {
@@ -217,6 +221,8 @@ public class DynamicDepositAccountAssembler {
         final Set<SavingsAccountCharge> charges = withEarlyWithdrawalCharge(new HashSet<>(this.savingsAccountChargeAssembler
                 .fromParsedJson(element, product.currency().getCode(), DepositAccountType.DYNAMIC_DEPOSIT)),
                 resolveProductEarlyWithdrawalCharge(product));
+        this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(product.getId(), charges,
+                interestPostingPeriodType);
 
         boolean withHoldTax = product.withHoldTax();
         if (command.parameterExists(withHoldTaxParamName)) {
@@ -340,7 +346,7 @@ public class DynamicDepositAccountAssembler {
      * Only this one charge is inherited. Dynamic Deposit deliberately does not use core's
      * {@code SavingsAccountChargeAssembler#fromSavingsProduct}, which would pull in every product charge and change
      * long-standing behaviour for this product type; the early-withdrawal charge has to be attached because
-     * {@code m_savings_account_interest_charge.savings_account_charge_id} is NOT NULL.
+     * charge-driven interest penalties resolve the account-level charge and percentage from the account itself.
      *
      * Static (and visible to tests) so the merge rule can be exercised without a Spring context.
      */

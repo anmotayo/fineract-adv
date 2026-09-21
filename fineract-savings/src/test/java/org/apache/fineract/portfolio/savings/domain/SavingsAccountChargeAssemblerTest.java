@@ -31,12 +31,9 @@ import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.junit.jupiter.api.Test;
 
 /**
- * Tests {@link SavingsAccountChargeAssembler#validateChargeAllowedForDepositAccountType(Charge, DepositAccountType)} -
- * the account-level counterpart to the Dynamic-Deposit-only gate on
- * {@link SavingsProductBaseAssembler#assembleListOfSavingsProductCharges}. A charge attached directly to an account
- * (rather than via its product) bypasses the product-level gate entirely, so this rule closes that gap: a
- * {@code PERCENT_OF_INTEREST} charge may only be attached to a Dynamic Deposit account, and
- * {@code PERCENT_OF_AMOUNT_AND_INTEREST} is rejected for every savings account type, Dynamic Deposit included.
+ * Tests {@link SavingsAccountChargeAssembler#validateChargeAllowedForDepositAccountType(Charge, DepositAccountType)}.
+ * {@code PERCENT_OF_INTEREST} is allowed for savings account charges under the charge-driven early-withdrawal model;
+ * {@code PERCENT_OF_AMOUNT_AND_INTEREST} remains rejected for every savings account type, Dynamic Deposit included.
  */
 class SavingsAccountChargeAssemblerTest {
 
@@ -52,21 +49,21 @@ class SavingsAccountChargeAssemblerTest {
     }
 
     @Test
-    void percentOfInterestPenaltyCharge_onPlainSavingsAccount_isRejected() {
+    void percentOfInterestPenaltyCharge_onPlainSavingsAccount_isAllowed() {
         final Charge charge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(
+        assertThatCode(
                 () -> SavingsAccountChargeAssembler.validateChargeAllowedForDepositAccountType(charge, DepositAccountType.SAVINGS_DEPOSIT))
-                .isInstanceOf(ChargeCannotBeAppliedToException.class);
+                .doesNotThrowAnyException();
     }
 
     @Test
-    void percentOfInterestPenaltyCharge_onFixedDepositAccount_isRejected() {
+    void percentOfInterestPenaltyCharge_onFixedDepositAccount_isAllowed() {
         final Charge charge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
 
-        assertThatThrownBy(
+        assertThatCode(
                 () -> SavingsAccountChargeAssembler.validateChargeAllowedForDepositAccountType(charge, DepositAccountType.FIXED_DEPOSIT))
-                .isInstanceOf(ChargeCannotBeAppliedToException.class);
+                .doesNotThrowAnyException();
     }
 
     @Test

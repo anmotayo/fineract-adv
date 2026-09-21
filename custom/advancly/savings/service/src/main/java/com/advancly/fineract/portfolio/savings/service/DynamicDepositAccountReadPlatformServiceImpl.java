@@ -24,7 +24,7 @@ import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateH
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositAccountNotFoundException;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -68,7 +68,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository;
     private final DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
-    private final SavingsAccountInterestChargeRepository interestChargeRepository;
+    private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
 
     public DynamicDepositAccountReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
@@ -76,7 +76,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository,
             final DepositAccountDynamicRateHistoryRepository rateHistoryRepository,
-            final SavingsAccountInterestChargeRepository interestChargeRepository,
+            final DepositInterestChargeApplicationRepository interestChargeApplicationRepository,
             final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService) {
         this.context = context;
         this.jdbcTemplate = jdbcTemplate;
@@ -84,7 +84,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         this.savingsAccountRepository = savingsAccountRepository;
         this.interestWithdrawalRepository = interestWithdrawalRepository;
         this.rateHistoryRepository = rateHistoryRepository;
-        this.interestChargeRepository = interestChargeRepository;
+        this.interestChargeApplicationRepository = interestChargeApplicationRepository;
         this.accountChartReadPlatformService = accountChartReadPlatformService;
     }
 
@@ -126,11 +126,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         // The current period's unposted accrual: total earned to date minus what has already been posted.
         final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
-        // Section 5 keeps m_savings_account_interest_charge as the source of truth, so all three figures are read
-        // from it rather than from m_savings_account's derived columns - which are returned alongside, so any drift
-        // between the two shows up directly in the API response.
-        final BigDecimal interestBasedChargePostedDerived = defaultToZero(this.interestChargeRepository.sumPostedChargeAmount(accountId));
-        final BigDecimal interestBasedChargeDerived = defaultToZero(this.interestChargeRepository.sumPendingChargeAmount(accountId));
+        final BigDecimal interestBasedChargePostedDerived = defaultToZero(
+                this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId));
         final BigDecimal interestBasedCharges = interestBasedChargePostedDerived;
         // Phase 5 (Transfers And Withdrawal Lock) owns this field; it stays zero for now.
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
@@ -148,8 +145,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             interestWithdrawn = interestWithdrawn.add(withdrawal.withdrawnInterestAmount());
         }
 
-        // Life-to-date scope, consistent with withholdingTax and interestBasedCharges (both life-to-date, read from
-        // m_savings_account_interest_charge) - not totalInterestForPeriod, which is the current unposted accrual.
+        // Life-to-date scope, consistent with withholdingTax and interestBasedCharges (both life-to-date; charges are
+        // read from the application ledger) - not totalInterestForPeriod, which is the current unposted accrual.
         // Phase 5's Transfer Interest To Savings Job computes its own period-scoped net interest directly from
         // per-transaction data and does not read this DTO, so this field is a reporting convenience only; a correct
         // per-period WHT figure isn't computable this phase anyway since WHT is only known once a period is actually
@@ -164,8 +161,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
                 .toList();
 
         return new DynamicDepositInterestSummaryData(grossInterestEarnedAsAtToday, interestPosted, totalInterestForPeriod,
-                interestWithdrawn, withholdingTax, interestBasedCharges, interestBasedChargeDerived, interestBasedChargePostedDerived,
-                netInterest, interestTransferredToSavings, effectiveRateIntervals);
+                interestWithdrawn, withholdingTax, interestBasedCharges, interestBasedChargePostedDerived, netInterest,
+                interestTransferredToSavings, effectiveRateIntervals);
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {
@@ -178,15 +175,15 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         final Collection<com.advancly.fineract.portfolio.savings.data.DynamicDepositProductData> productOptions = this.dynamicDepositProductReadPlatformService
                 .retrieveAll();
         // id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId, savingsProductName,
-        // fieldOfficerId,
-        // status, currency, nominalAnnualInterestRate, interestCompoundingPeriodType, interestPostingPeriodType,
+        // fieldOfficerId, status, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
+        // interestPostingPeriodType,
         // interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod,
         // depositPeriodFrequencyType,
         // expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate
         final DynamicDepositAccountData data = new DynamicDepositAccountData(null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                // allowWithdrawal, dynamicRateEnabled, transferInterestToSavings, interestBasedChargeDerived
-                false, false, false, null);
+                // allowWithdrawal, dynamicRateEnabled, transferInterestToSavings
+                false, false, false);
         return DynamicDepositAccountData.withTemplateOptions(data, productOptions);
     }
 
@@ -227,7 +224,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sa.submittedon_date as submittedOnDate, sa.approvedon_date as approvedOnDate, ");
             sqlBuilder.append("sa.activatedon_date as activatedOnDate, ");
             sqlBuilder.append("ddd.allow_withdrawal as allowWithdrawal, ddd.dynamic_rate_enabled as dynamicRateEnabled, ");
-            sqlBuilder.append("sa.interest_based_charge_derived as interestBasedChargeDerived, ");
             sqlBuilder.append("dptp.min_deposit_term as minDepositTerm, dptp.max_deposit_term as maxDepositTerm, ");
             sqlBuilder.append("dptp.min_deposit_amount as minDepositAmount, dptp.max_deposit_amount as maxDepositAmount, ");
             sqlBuilder.append("dat.withhold_tax_posting_type_enum as withHoldTaxPostingType ");
@@ -306,8 +302,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
 
             final boolean allowWithdrawal = rs.getBoolean("allowWithdrawal");
             final boolean dynamicRateEnabled = rs.getBoolean("dynamicRateEnabled");
-            // Nullable for every row that predates Phase 4 and for every non-Dynamic-Deposit account, so normalise.
-            final BigDecimal interestBasedChargeDerived = defaultToZero(rs.getBigDecimal("interestBasedChargeDerived"));
             final BigDecimal totalDeposits = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalDeposits");
             final BigDecimal totalWithdrawals = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithdrawals");
             final BigDecimal totalWithdrawalFees = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithdrawalFees");
@@ -333,13 +327,14 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
                 withHoldTaxPostingType = SavingsEnumerations.withHoldTaxPostingType(withHoldTaxPostingTypeValue);
             }
 
-            return DynamicDepositAccountData.withRangeAndPostingType(new DynamicDepositAccountData(id, accountNo, externalId, clientId,
-                    clientName, groupId, groupName, savingsProductId, savingsProductName, fieldOfficerId, status, timeline, currency,
-                    nominalAnnualInterestRate, interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType,
-                    interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType, expectedFirstDepositOnDate,
-                    maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate, allowWithdrawal, dynamicRateEnabled,
-                    transferInterestToSavings, linkAccountId, interestBasedChargeDerived, summary), minDepositTerm, maxDepositTerm,
-                    minDepositAmount, maxDepositAmount, withHoldTaxPostingType);
+            return DynamicDepositAccountData.withRangeAndPostingType(
+                    new DynamicDepositAccountData(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId,
+                            savingsProductName, fieldOfficerId, status, timeline, currency, nominalAnnualInterestRate,
+                            interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType,
+                            interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType,
+                            expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate,
+                            allowWithdrawal, dynamicRateEnabled, transferInterestToSavings, linkAccountId, summary),
+                    minDepositTerm, maxDepositTerm, minDepositAmount, maxDepositAmount, withHoldTaxPostingType);
         }
     }
 }

@@ -25,11 +25,8 @@ import static org.mockito.Mockito.mock;
 
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.EarlyWithdrawalChargeMode;
-import com.advancly.fineract.portfolio.savings.domain.SavingsAccountInterestChargeRepository;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge;
-import com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalChargeRepository;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.lang.reflect.Constructor;
@@ -51,13 +48,11 @@ class DynamicDepositInterestWithdrawalServiceTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
     private static final Long PRODUCT_ID = 42L;
-    private static final Long CHARGE_ID = 7L;
 
     private final List<DepositAccountInterestWithdrawal> savedRows = new ArrayList<>();
     private final Map<Long, BigDecimal> alreadyWithdrawnByPostingTxnId = new HashMap<>();
     private DepositAccountInterestWithdrawalRepository repository;
-    private SavingsAccountInterestChargeRepository interestChargeRepository;
-    private SavingsProductEarlyWithdrawalChargeRepository productEarlyWithdrawalChargeRepository;
+    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private DynamicDepositInterestWithdrawalService service;
     private DynamicDepositAccount account;
 
@@ -75,24 +70,18 @@ class DynamicDepositInterestWithdrawalServiceTest {
         lenient().when(this.repository.sumWithdrawnInterestForPostingTransaction(anyLong()))
                 .thenAnswer(invocation -> this.alreadyWithdrawnByPostingTxnId.getOrDefault(invocation.getArgument(0), BigDecimal.ZERO));
 
-        this.interestChargeRepository = mock(SavingsAccountInterestChargeRepository.class);
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenReturn(BigDecimal.ZERO);
-        this.productEarlyWithdrawalChargeRepository = mock(SavingsProductEarlyWithdrawalChargeRepository.class);
-        // No early-withdrawal charge selection at all by default, so every pre-existing scenario keeps its exact
-        // behaviour; the cumulative scenarios below opt in explicitly.
-        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(anyLong())).thenReturn(List.of());
+        this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(anyLong())).thenReturn(BigDecimal.ZERO);
 
-        this.service = new DynamicDepositInterestWithdrawalService(this.repository, this.interestChargeRepository,
-                this.productEarlyWithdrawalChargeRepository);
+        this.service = new DynamicDepositInterestWithdrawalService(this.repository, this.interestChargeApplicationRepository);
     }
 
     @Test
-    void interestAlreadyForfeitedUnderCumulativeModeIsNeverAlsoReportedAsWithdrawn() {
-        // The withdrawal that triggers a 100% forfeiture: the forfeiture has already run at the write-platform layer
-        // by the time this hook sees the withdrawal, so the whole 50 of posted interest is gone from the balance and
-        // this 20 can only be principal.
+    void interestAlreadyChargedIsNeverAlsoReportedAsWithdrawn() {
+        // The whole 50 of posted interest has already been taken back through the charge application ledger, so this
+        // 20 can only be principal.
         this.account = mockAccountWithTransactions();
-        cumulativeProductWithForfeitedInterest(BigDecimal.valueOf(50));
+        appliedInterestCharge(BigDecimal.valueOf(50));
         addTransaction(interestPosting(10L, LocalDate.of(2026, 1, 31), BigDecimal.valueOf(50)));
         final SavingsAccountTransaction withdrawal = withdrawal(11L, LocalDate.of(2026, 2, 1), BigDecimal.valueOf(20));
 
@@ -102,11 +91,11 @@ class DynamicDepositInterestWithdrawalServiceTest {
     }
 
     @Test
-    void onlyTheInterestThatSurvivedAPartialForfeitureStaysAttributableToAWithdrawal() {
-        // 80 posted across two periods, 50 of it forfeited - so only 30 can ever be attributed, and the forfeiture is
+    void onlyTheInterestThatSurvivedPartialChargesStaysAttributableToAWithdrawal() {
+        // 80 posted across two periods, 50 already charged - so only 30 can ever be attributed, and the charge is
         // consumed oldest-first, exactly as attribution itself is.
         this.account = mockAccountWithTransactions();
-        cumulativeProductWithForfeitedInterest(BigDecimal.valueOf(50));
+        appliedInterestCharge(BigDecimal.valueOf(50));
         addTransaction(interestPosting(10L, LocalDate.of(2026, 1, 31), BigDecimal.valueOf(30)));
         final SavingsAccountTransaction secondPosting = interestPosting(12L, LocalDate.of(2026, 2, 28), BigDecimal.valueOf(50));
         addTransaction(secondPosting);
@@ -120,27 +109,20 @@ class DynamicDepositInterestWithdrawalServiceTest {
     }
 
     @Test
-    void aPerPeriodProductsAttributionIsUntouchedEvenWhenChargesHaveBeenPosted() {
-        // sumPostedChargeAmount is non-zero here too, but a PER_PERIOD product must keep the behaviour it shipped
-        // with: the deduction above is deliberately scoped to cumulative mode only.
+    void customPeriodChargeApplicationsAreAlsoExcludedFromWithdrawnInterest() {
         this.account = mockAccountWithTransactions();
-        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
-                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.PER_PERIOD)));
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenReturn(BigDecimal.valueOf(50));
+        appliedInterestCharge(BigDecimal.valueOf(50));
         final SavingsAccountTransaction posting = interestPosting(10L, LocalDate.of(2026, 1, 31), BigDecimal.valueOf(50));
         addTransaction(posting);
         final SavingsAccountTransaction withdrawal = withdrawal(11L, LocalDate.of(2026, 2, 1), BigDecimal.valueOf(20));
 
         this.service.recordIfApplicable(this.account, withdrawal);
 
-        assertThat(this.savedRows).hasSize(1);
-        assertThat(this.savedRows.get(0).withdrawnInterestAmount()).isEqualByComparingTo("20");
+        assertThat(this.savedRows).isEmpty();
     }
 
-    private void cumulativeProductWithForfeitedInterest(final BigDecimal forfeited) {
-        lenient().when(this.productEarlyWithdrawalChargeRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(
-                List.of(SavingsProductEarlyWithdrawalCharge.createNew(PRODUCT_ID, CHARGE_ID, EarlyWithdrawalChargeMode.CUMULATIVE)));
-        lenient().when(this.interestChargeRepository.sumPostedChargeAmount(anyLong())).thenReturn(forfeited);
+    private void appliedInterestCharge(final BigDecimal amount) {
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(anyLong())).thenReturn(amount);
     }
 
     @Test

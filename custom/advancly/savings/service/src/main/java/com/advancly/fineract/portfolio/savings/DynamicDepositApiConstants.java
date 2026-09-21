@@ -49,8 +49,7 @@ public final class DynamicDepositApiConstants {
 
     // optional withdraw-command parameter: overrides the account's snapshotted early-withdrawal charge percentage for
     // that single withdrawal only. Allow-listed in core's SavingsAccountConstant (not here) because the shared
-    // SavingsAccountTransactionDataValidator gates the withdraw payload before this module is ever consulted - see
-    // DynamicDepositEarlyWithdrawalChargeService#resolvePercentage.
+    // SavingsAccountTransactionDataValidator gates the withdraw payload before this module is ever consulted.
     public static final String earlyWithdrawalChargePercentageParamName = "earlyWithdrawalChargePercentage";
 
     // term / amount / withholding-tax-posting-type parameters, reused verbatim from the core Deposits API so JSON
@@ -114,7 +113,6 @@ public final class DynamicDepositApiConstants {
             "interestCalculationType", "interestCalculationDaysInYearType", depositAmountParamName, "depositPeriod",
             "depositPeriodFrequencyType", "expectedFirstDepositOnDate", "maturityAmount", "maturityDate", "submittedOnDate",
             "approvedOnDate", "activatedOnDate", "transferInterestToSavings", linkedAccountParamName, "linkedAccount", "summary",
-            "transactions", "charges", allowWithdrawalParamName, dynamicRateEnabledParamName, "interestBasedChargeDerived",
-            minDepositTermParamName, maxDepositTermParamName, minDepositAmountParamName, maxDepositAmountParamName,
-            "withHoldTaxPostingType", "chart");
+            "transactions", "charges", allowWithdrawalParamName, dynamicRateEnabledParamName, minDepositTermParamName,
+            maxDepositTermParamName, minDepositAmountParamName, maxDepositAmountParamName, "withHoldTaxPostingType", "chart");
 }

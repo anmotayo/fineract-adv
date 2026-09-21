@@ -16,17 +16,36 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.fineract.portfolio.charge.api;
+package com.advancly.fineract.portfolio.savings.domain;
 
-public final class ChargesApiConstants {
+import java.util.Arrays;
 
-    private ChargesApiConstants() {
+public enum InterestBasisMode {
 
+    CUMULATIVE(1), CUSTOM_PERIOD(2);
+
+    private final int value;
+
+    InterestBasisMode(final int value) {
+        this.value = value;
     }
 
-    public static final String glAccountIdParamName = "incomeAccountId";
-    public static final String taxGroupIdParamName = "taxGroupId";
-    public static final String interestBasisModeParamName = "interestBasisMode";
-    public static final String customPeriodReapplyPolicyParamName = "customPeriodReapplyPolicy";
+    public int getValue() {
+        return this.value;
+    }
 
+    public boolean isCumulative() {
+        return this == CUMULATIVE;
+    }
+
+    public boolean isCustomPeriod() {
+        return this == CUSTOM_PERIOD;
+    }
+
+    public static InterestBasisMode fromInt(final Integer value) {
+        if (value == null) {
+            return null;
+        }
+        return Arrays.stream(values()).filter(mode -> mode.value == value).findFirst().orElse(null);
+    }
 }

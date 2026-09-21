@@ -169,12 +169,8 @@ public class SavingsAccountChargeAssembler {
     }
 
     /**
-     * Mirrors the Dynamic-Deposit-only gate added to {@code SavingsProductBaseAssembler} at the product level: a charge
-     * attached directly to an account (either as part of the account application's own {@code charges} array, or via
-     * the standalone "add charge to an account" endpoint) bypasses that product-level check entirely, so the same rule
-     * is enforced again here, at the point where the charge is actually being resolved and attached to a specific
-     * account. Static so it can be reused from {@link org.apache.fineract.portfolio.savings.service} write-service
-     * classes that resolve the {@link Charge} themselves rather than going through
+     * Static so it can be reused from {@link org.apache.fineract.portfolio.savings.service} write-service classes that
+     * resolve the {@link Charge} themselves rather than going through
      * {@link #fromParsedJson(JsonElement, String, DepositAccountType)}.
      */
     public static void validateChargeAllowedForDepositAccountType(final Charge charge, final DepositAccountType depositAccountType) {
@@ -189,11 +185,6 @@ public class SavingsAccountChargeAssembler {
             throw new ChargeCannotBeAppliedToException("savings.account.calculation.type.unsupported", errorMessage, charge.getId());
         }
 
-        if (!depositAccountType.isDynamicDeposit() && calculationType.isPercentageOfInterest()) {
-            final String errorMessage = "Charge with identifier " + charge.getId()
-                    + " uses an interest-based calculation type and can only be applied to a Dynamic Deposit account.";
-            throw new ChargeCannotBeAppliedToException("savings.account.not.dynamic.deposit", errorMessage, charge.getId());
-        }
     }
 
     private void validateSavingsCharges(final Set<SavingsAccountCharge> charges, final String productCurrencyCode) {

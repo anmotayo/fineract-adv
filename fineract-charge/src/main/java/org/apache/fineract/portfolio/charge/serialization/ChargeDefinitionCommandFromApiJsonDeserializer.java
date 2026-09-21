@@ -80,7 +80,8 @@ public final class ChargeDefinitionCommandFromApiJsonDeserializer {
             CURRENCY_OPTIONS, CHARGE_APPLIES_TO, CHARGE_TIME_TYPE, CHARGE_CALCULATION_TYPE, CHARGE_CALCULATION_TYPE_OPTIONS, PENALTY,
             ACTIVE, CHARGE_PAYMENT_MODE, FEE_ON_MONTH_DAY, FEE_INTERVAL, MONTH_DAY_FORMAT, MIN_CAP, MAX_CAP, FEE_FREQUENCY,
             ENABLE_FREE_WITHDRAWAL_CHARGE, FREE_WITHDRAWAL_FREQUENCY, RESTART_COUNT_FREQUENCY, COUNT_FREQUENCY_TYPE, PAYMENT_TYPE_ID,
-            ENABLE_PAYMENT_TYPE, ChargesApiConstants.glAccountIdParamName, ChargesApiConstants.taxGroupIdParamName));
+            ENABLE_PAYMENT_TYPE, ChargesApiConstants.glAccountIdParamName, ChargesApiConstants.taxGroupIdParamName,
+            ChargesApiConstants.interestBasisModeParamName, ChargesApiConstants.customPeriodReapplyPolicyParamName));
     private final FromJsonHelper fromApiJsonHelper;
 
     @Autowired
@@ -290,6 +291,8 @@ public final class ChargeDefinitionCommandFromApiJsonDeserializer {
             baseDataValidator.reset().parameter(ChargesApiConstants.taxGroupIdParamName).value(taxGroupId).notNull().longGreaterThanZero();
         }
 
+        validateInterestChargeRule(baseDataValidator, element);
+
         throwExceptionIfValidationWarningsExist(dataValidationErrors);
     }
 
@@ -453,7 +456,32 @@ public final class ChargeDefinitionCommandFromApiJsonDeserializer {
             baseDataValidator.reset().parameter(ChargesApiConstants.taxGroupIdParamName).value(taxGroupId).notNull().longGreaterThanZero();
         }
 
+        validateInterestChargeRule(baseDataValidator, element);
+
         throwExceptionIfValidationWarningsExist(dataValidationErrors);
+    }
+
+    private void validateInterestChargeRule(final DataValidatorBuilder baseDataValidator, final JsonElement element) {
+        if (this.fromApiJsonHelper.parameterHasValue(ChargesApiConstants.interestBasisModeParamName, element)) {
+            final Integer interestBasisMode = this.fromApiJsonHelper
+                    .extractIntegerSansLocaleNamed(ChargesApiConstants.interestBasisModeParamName, element);
+            baseDataValidator.reset().parameter(ChargesApiConstants.interestBasisModeParamName).value(interestBasisMode)
+                    .isOneOfTheseValues(1, 2);
+
+            if (Integer.valueOf(2).equals(interestBasisMode)) {
+                final Integer customPeriodReapplyPolicy = this.fromApiJsonHelper
+                        .extractIntegerSansLocaleNamed(ChargesApiConstants.customPeriodReapplyPolicyParamName, element);
+                baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName)
+                        .value(customPeriodReapplyPolicy).notNull().isOneOfTheseValues(1, 2);
+            }
+        }
+
+        if (this.fromApiJsonHelper.parameterHasValue(ChargesApiConstants.customPeriodReapplyPolicyParamName, element)) {
+            final Integer customPeriodReapplyPolicy = this.fromApiJsonHelper
+                    .extractIntegerSansLocaleNamed(ChargesApiConstants.customPeriodReapplyPolicyParamName, element);
+            baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName)
+                    .value(customPeriodReapplyPolicy).isOneOfTheseValues(1, 2);
+        }
     }
 
     public void validateChargeTimeNCalculationType(Integer chargeTimeType, Integer chargeCalculationType) {

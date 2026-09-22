@@ -69,12 +69,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="2">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_account_dynamic_rate_history"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_account_dynamic_rate_history_account"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_account_dynamic_rate_history'
+                       AND CONSTRAINT_NAME = 'FK_deposit_account_dynamic_rate_history_account'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_account_dynamic_rate_history"
@@ -83,12 +87,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="3">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_account_dynamic_rate_history"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_account_dynamic_rate_history_transaction"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_account_dynamic_rate_history'
+                       AND CONSTRAINT_NAME = 'FK_deposit_account_dynamic_rate_history_transaction'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_account_transaction_id" baseTableName="m_deposit_account_dynamic_rate_history"

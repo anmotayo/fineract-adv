@@ -28,12 +28,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="2">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_adv_charge_interest_rule"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_adv_charge_interest_rule_charge"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_adv_charge_interest_rule'
+                       AND CONSTRAINT_NAME = 'FK_adv_charge_interest_rule_charge'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_adv_charge_interest_rule"
@@ -145,12 +149,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="6">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_interest_charge_application"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_interest_charge_app_account"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_account'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_interest_charge_application"
@@ -159,12 +167,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="7">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_interest_charge_application"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_interest_charge_app_charge"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_charge'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_deposit_interest_charge_application"
@@ -173,12 +185,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="8">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_interest_charge_application"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_interest_charge_app_withdrawal_txn"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_withdrawal_txn'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_deposit_interest_charge_application"
@@ -187,12 +203,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="9">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_interest_charge_application"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_interest_charge_app_charge_txn"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_charge_txn'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_deposit_interest_charge_application"
@@ -201,12 +221,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="10">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_interest_charge_application"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_interest_charge_app_correction"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_correction'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_deposit_interest_charge_application"

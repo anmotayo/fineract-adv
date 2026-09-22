@@ -24,12 +24,26 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
     <changeSet id="1" author="fineract" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_portfolio_command_source" columnName="processing_result_enum"/>
+            <not>
+                <columnExists tableName="m_portfolio_command_source" columnName="status"/>
+            </not>
+        </preConditions>
         <renameColumn newColumnName="status"
                        oldColumnName="processing_result_enum"
                        tableName="m_portfolio_command_source"/>
     </changeSet>
 
     <changeSet id="2" author="fineract" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_portfolio_command_source" columnName="processing_result_enum"/>
+            <not>
+                <columnExists tableName="m_portfolio_command_source" columnName="status"/>
+            </not>
+        </preConditions>
         <renameColumn newColumnName="status"
                       oldColumnName="processing_result_enum"
                       tableName="m_portfolio_command_source"
@@ -37,6 +51,12 @@
     </changeSet>
 
     <changeSet id="3" author="fineract">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="m_portfolio_command_source" columnName="result"/>
+            </not>
+        </preConditions>
         <addColumn tableName="m_portfolio_command_source">
             <column name="result" type="TEXT"/>
         </addColumn>

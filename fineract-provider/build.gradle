@@ -235,14 +235,18 @@ file("${rootDir}/custom/advancly").eachDir { categoryDir ->
     }
 }
 
-// Load ACME event modules (required: DB has AcmeLoanExternalEvent in m_external_event_configuration)
-//file("${rootDir}/custom/acme/event").eachDir { moduleDir ->
-//    if ('build' != moduleDir.name) {
-//        dependencies {
-//            customModules project(":custom:acme:event:${moduleDir.name}")
-//        }
-//    }
-//}
+// Load ACME custom modules
+file("${rootDir}/custom/acme").eachDir { categoryDir ->
+    if ('build' != categoryDir.name) {
+        file("${rootDir}/custom/acme/${categoryDir.name}").eachDir { moduleDir ->
+            if ('build' != moduleDir.name) {
+                dependencies {
+                    customModules project(":custom:acme:${categoryDir.name}:${moduleDir.name}")
+                }
+            }
+        }
+    }
+}
 
 bootRun {
     jvmArgs = [

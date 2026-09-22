@@ -57,12 +57,16 @@
     <!-- Composite FK to m_savings_product_charge(savings_product_id, charge_id): the database itself guarantees the -->
     <!-- selected charge is attached to the product, so the Java validation can never be bypassed by a direct write. -->
     <changeSet author="advancly" id="3">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_product_early_withdrawal_charge"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_product_early_withdrawal_charge_product_charge"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_product_early_withdrawal_charge'
+                       AND CONSTRAINT_NAME = 'FK_deposit_product_early_withdrawal_charge_product_charge'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_product_id,charge_id"

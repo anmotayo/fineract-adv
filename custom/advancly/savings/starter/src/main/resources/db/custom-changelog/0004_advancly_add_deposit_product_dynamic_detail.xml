@@ -52,12 +52,16 @@
     </changeSet>
 
     <changeSet author="advancly" id="2">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <tableExists tableName="m_deposit_product_dynamic_detail"/>
-                <not>
-                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_product_dynamic_detail_savings_product"/>
-                </not>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_deposit_product_dynamic_detail'
+                       AND CONSTRAINT_NAME = 'FK_deposit_product_dynamic_detail_savings_product'
+                </sqlCheck>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_product_id" baseTableName="m_deposit_product_dynamic_detail"

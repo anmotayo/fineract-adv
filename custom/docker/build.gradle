@@ -34,7 +34,7 @@ jib {
     }
 
     to {
-        image = 'fineract-custom'
+        image = 'fineract'
         tags = [
             "${project.version}",
             'latest'

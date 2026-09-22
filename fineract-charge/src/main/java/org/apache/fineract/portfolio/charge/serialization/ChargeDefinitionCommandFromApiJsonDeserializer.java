@@ -471,16 +471,16 @@ public final class ChargeDefinitionCommandFromApiJsonDeserializer {
             if (Integer.valueOf(2).equals(interestBasisMode)) {
                 final Integer customPeriodReapplyPolicy = this.fromApiJsonHelper
                         .extractIntegerSansLocaleNamed(ChargesApiConstants.customPeriodReapplyPolicyParamName, element);
-                baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName)
-                        .value(customPeriodReapplyPolicy).notNull().isOneOfTheseValues(1, 2);
+                baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName).value(customPeriodReapplyPolicy)
+                        .notNull().isOneOfTheseValues(1, 2);
             }
         }
 
         if (this.fromApiJsonHelper.parameterHasValue(ChargesApiConstants.customPeriodReapplyPolicyParamName, element)) {
             final Integer customPeriodReapplyPolicy = this.fromApiJsonHelper
                     .extractIntegerSansLocaleNamed(ChargesApiConstants.customPeriodReapplyPolicyParamName, element);
-            baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName)
-                    .value(customPeriodReapplyPolicy).isOneOfTheseValues(1, 2);
+            baseDataValidator.reset().parameter(ChargesApiConstants.customPeriodReapplyPolicyParamName).value(customPeriodReapplyPolicy)
+                    .isOneOfTheseValues(1, 2);
         }
     }
 

@@ -34,17 +34,17 @@ import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
  * recompute/cap/round/distribute arithmetic for both code paths, extracted so they can never drift apart.
  *
  * <p>
- * {@code recomputedChargeAmount}/{@code cappedInterestBasedChargeAmount} only bound SIGNIFICANT DIGITS
+ * {@code recomputedChargeAmount}/{@code cappedInterestChargeAmount} only bound SIGNIFICANT DIGITS
  * ({@code MathContext(8, ...)}), not decimal places - a non-round percentage against a non-round gross interest amount
  * can therefore carry more precision than the account currency (and the {@code DECIMAL(19,6)} columns storing it)
  * should ever show. Every caller MUST round the capped amount through {@link #roundToCurrency} before treating it as a
  * transaction amount or as the {@code appliedTotal} basis for {@link #distributeAcrossRows}.
  */
-public final class InterestBasedChargeMath {
+public final class InterestChargeMath {
 
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100L);
 
-    private InterestBasedChargeMath() {}
+    private InterestChargeMath() {}
 
     // NOT a static constant: MoneyHelper.getRoundingMode() resolves the CURRENT tenant's configured rounding mode
     // from a thread-local, so capturing it in a static initialiser would either fail at class-load time or freeze
@@ -56,7 +56,7 @@ public final class InterestBasedChargeMath {
     /**
      * One contribution's amount, recomputed from its stored/resolved percentage against the period's real gross
      * interest. Clamped to [0, gross] per contribution; the authoritative cap on the SUM of several contributions is
-     * {@link #cappedInterestBasedChargeAmount(BigDecimal, BigDecimal, BigDecimal)}.
+     * {@link #cappedInterestChargeAmount(BigDecimal, BigDecimal, BigDecimal)}.
      */
     public static BigDecimal recomputedChargeAmount(final BigDecimal grossInterest, final BigDecimal chargePercentage) {
         return grossInterest.multiply(chargePercentage).divide(ONE_HUNDRED, percentageMathContext()).min(grossInterest)
@@ -64,12 +64,11 @@ public final class InterestBasedChargeMath {
     }
 
     /**
-     * The authoritative cap on a period's interest-based charge: gross interest has just been credited and withholding
-     * tax just debited, so capping the charge at their difference guarantees the whole posting's net effect on the
-     * balance is {@code gross - wht - charge >= 0} — the charge always comes out of interest and never reaches
-     * principal.
+     * The authoritative cap on a period's interest charge: gross interest has just been credited and withholding tax
+     * just debited, so capping the charge at their difference guarantees the whole posting's net effect on the balance
+     * is {@code gross - wht - charge >= 0} — the charge always comes out of interest and never reaches principal.
      */
-    public static BigDecimal cappedInterestBasedChargeAmount(final BigDecimal recomputedTotal, final BigDecimal grossInterestForPeriod,
+    public static BigDecimal cappedInterestChargeAmount(final BigDecimal recomputedTotal, final BigDecimal grossInterestForPeriod,
             final BigDecimal withholdingTaxForPeriod) {
         final BigDecimal available = grossInterestForPeriod.subtract(withholdingTaxForPeriod).max(BigDecimal.ZERO);
         return recomputedTotal.min(available).max(BigDecimal.ZERO);
@@ -78,7 +77,7 @@ public final class InterestBasedChargeMath {
     /**
      * Rounds a raw capped charge amount down to the account currency's actual decimal places, via the same
      * {@code Money.of(...)} construction every other monetary amount in this codebase is rounded through. Callers must
-     * apply this to {@link #cappedInterestBasedChargeAmount}'s result before it becomes a transaction amount or the
+     * apply this to {@link #cappedInterestChargeAmount}'s result before it becomes a transaction amount or the
      * {@code appliedTotal} passed to {@link #distributeAcrossRows} - see this class's javadoc.
      */
     public static BigDecimal roundToCurrency(final BigDecimal amount, final CurrencyData currency) {

@@ -2821,7 +2821,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
      * BEFORE the account balance is read and withdrawn. A deposit type whose charges are derived from interest (today:
      * Dynamic Deposit, see {@code DynamicDepositAccount}) uses it to work out - and remember for
      * {@link #completeClosureSettlement(SavingsAccountTransaction)} - what the closure itself contributes to that
-     * period's interest-based charge, so the final interest posting that follows can collect it together with any other
+     * period's interest charge, so the final interest posting that follows can collect it together with any other
      * pending charge from the same period, and the single withdrawal below it pays out the true final balance.
      *
      * A no-op for every other account type: an account that settles nothing at closure simply ignores both hooks, and
@@ -2919,14 +2919,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
      * own last step - and picking the same branch on the same flag.
      *
      * For a caller that adds transactions of its own AFTER a posting call has already run (and therefore after that
-     * call's refresh): cumulative early-withdrawal forfeiture force-posts interest, then writes its INTEREST_FORFEITURE
+     * call's refresh): cumulative early-withdrawal forfeiture force-posts interest, then writes its INTEREST_CHARGE
      * transaction and the deferred withholding tax on top. {@code addTransaction(...)} alone never touches the summary,
      * so without this the very next read of {@code getSummary().getAccountBalance()} - which is exactly what a
      * premature closure does to decide how much to pay out - would still report the balance from before the forfeiture.
      *
      * Note the {@code backdatedTxnsAllowedTill == true} branch is core's own pivot-configuration refresh, which
      * recomputes the balance from the pivot running balance plus deposits/interest minus withdrawals, withholding tax
-     * and overdraft interest - it does NOT re-apply charge debits (the same is already true of INTEREST_BASED_CHARGE).
+     * and overdraft interest - it does NOT re-apply charge debits (the same is already true of INTEREST_CHARGE).
      * Cumulative forfeiture passes {@code false} from both of its callers, so it always takes the full-recompute
      * branch, which does subtract them.
      */
@@ -4096,6 +4096,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     public void accrualsForSavingsReverse(SavingsAccountTransactionDTO transactionDTO, final boolean backdatedTxnsAllowedTill) {
         List<SavingsAccountTransaction> accountTransactionsSorted = null;
+
+        if (this.accruedTillDate != null && !DateUtils.isAfter(transactionDTO.getTransactionDate(), this.accruedTillDate)) {
+            this.accruedTillDate = DateUtils.isAfter(transactionDTO.getTransactionDate(), getStartInterestCalculationDate())
+                    ? transactionDTO.getTransactionDate().minusDays(1)
+                    : null;
+        }
 
         if (backdatedTxnsAllowedTill) {
             accountTransactionsSorted = retrieveSortedTransactions();

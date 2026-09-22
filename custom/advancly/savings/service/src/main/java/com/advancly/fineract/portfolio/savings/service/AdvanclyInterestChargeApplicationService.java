@@ -28,7 +28,7 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule
 import com.advancly.fineract.portfolio.savings.domain.CustomPeriodReapplyPolicy;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
-import com.advancly.fineract.portfolio.savings.domain.InterestBasedChargeMath;
+import com.advancly.fineract.portfolio.savings.domain.InterestChargeMath;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -49,6 +49,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrap
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,13 +67,14 @@ public class AdvanclyInterestChargeApplicationService {
     private final SavingsAccountTransactionHelper transactionHelper;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
+    private final JdbcTemplate jdbcTemplate;
 
     public AdvanclyInterestChargeApplicationService(final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository,
             final DepositInterestChargeApplicationRepository applicationRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             final SavingsAccountRepositoryWrapper savingsAccountRepository, final SavingsAccountTransactionHelper transactionHelper,
             final JournalEntryWritePlatformService journalEntryWritePlatformService,
-            @Lazy final CumulativeInterestForfeitureService cumulativeInterestForfeitureService) {
+            @Lazy final CumulativeInterestForfeitureService cumulativeInterestForfeitureService, final JdbcTemplate jdbcTemplate) {
         this.chargeInterestRuleRepository = chargeInterestRuleRepository;
         this.applicationRepository = applicationRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -80,6 +82,7 @@ public class AdvanclyInterestChargeApplicationService {
         this.transactionHelper = transactionHelper;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public boolean hasChargeDrivenRule(final SavingsAccount account) {
@@ -154,8 +157,8 @@ public class AdvanclyInterestChargeApplicationService {
         if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
-        final BigDecimal baseCharge = selectedNetInterestAmount.multiply(percentage).divide(ONE_HUNDRED, MATH_CONTEXT).max(BigDecimal.ZERO);
-        final BigDecimal roundedAmount = InterestBasedChargeMath.roundToCurrency(baseCharge.min(remaining), account.getCurrency());
+        final BigDecimal baseCharge = remaining.multiply(percentage).divide(ONE_HUNDRED, MATH_CONTEXT).max(BigDecimal.ZERO);
+        final BigDecimal roundedAmount = InterestChargeMath.roundToCurrency(baseCharge.min(remaining), account.getCurrency());
         if (roundedAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
@@ -170,6 +173,7 @@ public class AdvanclyInterestChargeApplicationService {
                 rule.interestBasisMode(), rule.customPeriodReapplyPolicy(), percentage, selectedNetInterestAmount, alreadyApplied,
                 roundedAmount);
         this.applicationRepository.saveAndFlush(application);
+        refreshPostedDerivedChargeColumn(account.getId());
 
         this.savingsAccountRepository.saveAndFlush(account);
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
@@ -179,7 +183,7 @@ public class AdvanclyInterestChargeApplicationService {
     private SavingsAccountTransaction writeChargeTransaction(final SavingsAccount account,
             final SavingsAccountTransaction withdrawalTransaction, final SavingsAccountCharge accountCharge,
             final LocalDate transactionDate, final BigDecimal roundedAmount, final boolean backdatedTxnsAllowedTill) {
-        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestBasedCharge(account, account.office(),
+        final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestCharge(account, account.office(),
                 transactionDate, Money.of(account.getCurrency(), roundedAmount));
         accountCharge.pay(account.getCurrency(), Money.of(account.getCurrency(), chargeTransaction.getAmount()));
         chargeTransaction.getSavingsAccountChargesPaid()
@@ -202,6 +206,11 @@ public class AdvanclyInterestChargeApplicationService {
         final Map<String, Object> accountingBridgeData = account.deriveAccountingBridgeData(account.getCurrency().getCode(),
                 existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, backdatedTxnsAllowedTill);
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
+    }
+
+    private void refreshPostedDerivedChargeColumn(final Long accountId) {
+        final BigDecimal posted = amountOrZero(this.applicationRepository.sumActiveAppliedAmountForAccount(accountId));
+        this.jdbcTemplate.update("update m_savings_account set total_interest_charge_derived = ? where id = ?", posted, accountId);
     }
 
     private BigDecimal selectedPostedNetInterest(final SavingsAccount account, final LocalDate selectedFromDate,

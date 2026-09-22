@@ -33,7 +33,7 @@ public interface DepositInterestChargeApplicationRepository extends JpaRepositor
             @Param("fromDate") LocalDate fromDate, @Param("toDate") LocalDate toDate);
 
     @Query("select coalesce(sum(app.appliedAmount), 0) from DepositInterestChargeApplication app " + "where app.account.id = :accountId "
-            + "and app.charge.id = :chargeId " + "and app.selectedFromDate = :fromDate " + "and app.selectedToDate = :toDate "
+            + "and app.charge.id = :chargeId " + "and app.selectedFromDate = :fromDate " + "and app.selectedToDate >= :toDate "
             + "and app.withdrawalTransaction.reversed = false " + "and app.interestChargeTransaction.reversed = false")
     BigDecimal sumActiveAppliedAmountForSelectedPeriod(@Param("accountId") Long accountId, @Param("chargeId") Long chargeId,
             @Param("fromDate") LocalDate fromDate, @Param("toDate") LocalDate toDate);

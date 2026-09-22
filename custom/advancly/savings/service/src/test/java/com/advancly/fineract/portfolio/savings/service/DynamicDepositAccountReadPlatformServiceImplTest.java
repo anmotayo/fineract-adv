@@ -125,7 +125,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
 
         final DynamicDepositInterestSummaryData summaryData = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
-        // netInterest = interestPosted - withholdingTax - interestBasedCharges (interestBasedCharges is always zero
+        // netInterest = interestPosted - withholdingTax - interestCharges (interestCharges is always zero
         // this phase), not the current unposted accrual (totalInterestForPeriod = 120 - 100 = 20, which would make
         // netInterest negative here and is the defect this test guards against).
         final BigDecimal netInterest = (BigDecimal) ReflectionTestUtils.getField(summaryData, "netInterest");
@@ -134,7 +134,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
     }
 
     @Test
-    void interestBasedChargesReportsThePostedTotalAndIsSubtractedFromNetInterest() {
+    void interestChargesReportsThePostedTotalAndIsSubtractedFromNetInterest() {
         when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
         when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
         when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
@@ -143,14 +143,14 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
 
         final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
-        assertThat(summary.interestBasedCharges()).isEqualByComparingTo("30");
-        assertThat(summary.interestBasedChargePostedDerived()).isEqualByComparingTo("30");
-        // 500 posted - 50 withholding tax - 30 interest-based charge
+        assertThat(summary.interestCharges()).isEqualByComparingTo("30");
+        assertThat(summary.totalInterestChargeDerived()).isEqualByComparingTo("30");
+        // 500 posted - 50 withholding tax - 30 interest charge
         assertThat(summary.netInterest()).isEqualByComparingTo("420");
     }
 
     @Test
-    void interestBasedChargesIsZeroWhenNoChargeHasEverBeenApplied() {
+    void interestChargesIsZeroWhenNoChargeHasEverBeenApplied() {
         when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
         when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
         when(this.interestWithdrawalRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
@@ -158,7 +158,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
 
         final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
-        assertThat(summary.interestBasedCharges()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(summary.interestCharges()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(summary.netInterest()).isEqualByComparingTo("450");
     }
 

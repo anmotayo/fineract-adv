@@ -130,8 +130,8 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
         }
 
         final List<Long> chargeIds = charges.stream().map(ChargeData::getId).toList();
-        final Map<Long, AdvanclyChargeInterestRule> rulesByChargeId = this.chargeInterestRuleRepository.findByChargeIdIn(chargeIds)
-                .stream().collect(Collectors.toMap(AdvanclyChargeInterestRule::chargeId, Function.identity()));
+        final Map<Long, AdvanclyChargeInterestRule> rulesByChargeId = this.chargeInterestRuleRepository.findByChargeIdIn(chargeIds).stream()
+                .collect(Collectors.toMap(AdvanclyChargeInterestRule::chargeId, Function.identity()));
 
         return charges.stream().map(charge -> enrichCharge(charge, Optional.ofNullable(rulesByChargeId.get(charge.getId())))).toList();
     }
@@ -145,8 +145,9 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
 
     private ChargeData enrichCharge(final ChargeData charge, final Optional<AdvanclyChargeInterestRule> rule) {
         final var builder = charge.toBuilder();
-        rule.ifPresentOrElse(chargeInterestRule -> builder.interestBasisMode(toEnumOptionData(chargeInterestRule.interestBasisMode()))
-                .customPeriodReapplyPolicy(toEnumOptionData(chargeInterestRule.customPeriodReapplyPolicy())),
+        rule.ifPresentOrElse(
+                chargeInterestRule -> builder.interestBasisMode(toEnumOptionData(chargeInterestRule.interestBasisMode()))
+                        .customPeriodReapplyPolicy(toEnumOptionData(chargeInterestRule.customPeriodReapplyPolicy())),
                 () -> builder.interestBasisMode(null).customPeriodReapplyPolicy(null));
         return builder.build();
     }
@@ -171,8 +172,7 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
         }
         return switch (mode) {
             case CUMULATIVE -> new EnumOptionData((long) mode.getValue(), "advancly.interestBasisMode.cumulative", "Cumulative");
-            case CUSTOM_PERIOD -> new EnumOptionData((long) mode.getValue(), "advancly.interestBasisMode.customPeriod",
-                    "Custom Period");
+            case CUSTOM_PERIOD -> new EnumOptionData((long) mode.getValue(), "advancly.interestBasisMode.customPeriod", "Custom Period");
         };
     }
 
@@ -184,8 +184,7 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
             case ONCE_PER_SELECTED_PERIOD -> new EnumOptionData((long) policy.getValue(),
                     "advancly.customPeriodReapplyPolicy.oncePerSelectedPeriod", "Once Per Selected Period");
             case UNTIL_SELECTED_PERIOD_INTEREST_EXHAUSTED -> new EnumOptionData((long) policy.getValue(),
-                    "advancly.customPeriodReapplyPolicy.untilSelectedPeriodInterestExhausted",
-                    "Until Selected Period Interest Exhausted");
+                    "advancly.customPeriodReapplyPolicy.untilSelectedPeriodInterestExhausted", "Until Selected Period Interest Exhausted");
         };
     }
 }

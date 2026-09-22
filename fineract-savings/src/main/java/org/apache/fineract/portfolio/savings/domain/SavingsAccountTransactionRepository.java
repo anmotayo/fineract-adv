@@ -58,7 +58,7 @@ public interface SavingsAccountTransactionRepository
     // Excludes interest posting (3), accrual (10), overdraft interest (17), and withhold tax (18) so that
     // the pivot balance only reflects principal transactions — required for No Compounding / Simple Interest products
     // where previously posted interest should not contribute to the opening balance for interest calculation.
-    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf not in (3, 10, 17, 18)")
+    @Query("select sat from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId and sat.dateOf < :transactionDate and sat.reversed=false and sat.reversalTransaction = false and sat.typeOf not in (3, 10, 17, 18, 100)")
     List<SavingsAccountTransaction> findNonInterestContributingTransactionsBeforeDate(@Param("savingsId") Long savingsId,
             @Param("transactionDate") LocalDate transactionDate, Pageable pageable);
 

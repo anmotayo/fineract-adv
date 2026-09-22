@@ -50,9 +50,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Cumulative early-withdrawal interest forfeiture: an early withdrawal takes back all the interest the account has
- * earned since inception, computed and charged immediately rather than deferred to the next interest posting the way
- * per-period mode is.
+ * Cumulative early-withdrawal interest forfeiture: an early withdrawal takes back the configured percentage of net
+ * interest still available in the account, computed and charged immediately rather than deferred to the next interest
+ * posting the way per-period mode is.
  *
  * Runs at the write-platform layer, not from an entity hook, because it force-posts interest - and that posting does
  * saveAndFlush and writes journal entries, which would be re-entrant if invoked from inside a withdrawal already in
@@ -216,7 +216,7 @@ public class CumulativeInterestForfeitureService {
             final QualifyingCharge qualifying, final LocalDate exitDate, final BigDecimal amount, final BigDecimal alreadyForfeited,
             final boolean backdatedTxnsAllowedTill) {
         final SavingsAccountCharge accountCharge = qualifying.accountCharge();
-        final SavingsAccountTransaction forfeiture = SavingsAccountTransaction.interestForfeiture(account, account.office(), exitDate,
+        final SavingsAccountTransaction forfeiture = SavingsAccountTransaction.interestCharge(account, account.office(), exitDate,
                 Money.of(account.getCurrency(), amount));
         final BigDecimal appliedAmount = forfeiture.getAmount();
 
@@ -255,7 +255,7 @@ public class CumulativeInterestForfeitureService {
      */
     private void refreshPostedDerivedChargeColumn(final Long accountId) {
         final BigDecimal posted = sumActiveAppliedAmount(accountId);
-        this.jdbcTemplate.update("update m_savings_account set interest_based_charge_posted_derived = ? where id = ?", posted, accountId);
+        this.jdbcTemplate.update("update m_savings_account set total_interest_charge_derived = ? where id = ?", posted, accountId);
     }
 
     private BigDecimal sumActiveAppliedAmount(final Long accountId) {

@@ -596,22 +596,22 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
     @Override
     public void selectAccountId(SavingsAccountTransactionData accountTransaction, SavingsAccountData savingsAccountData) {
-        if (accountTransaction.isInterestBasedCharge()) {
+        if (accountTransaction.isInterestCharge()) {
             resolvePenaltyIncomeAccounts(accountTransaction, savingsAccountData);
             return;
         }
         delegate.selectAccountId(accountTransaction, savingsAccountData);
     }
 
-    // Core's selectAccountId has no branch for INTEREST_BASED_CHARGE, so the custom savings batch pipeline resolves it
+    // Core's selectAccountId has no branch for INTEREST_CHARGE, so the custom savings batch pipeline resolves it
     // against the product's base savings-control/penalty-income mapping here.
     // findProductIdAndProductTypeAndFinancialAccountTypeAndChargeId(...) is deliberately NOT used here even though
     // it looks like the natural fit: it is a hand-written @Query ("mapping.charge.id = :chargeId"), not a Spring
     // Data derived query, so passing a null charge id does not get rewritten to "IS NULL" - in JPQL/SQL, "x = NULL"
     // is never true, so it can never match a row. Every existing caller of it (AccountingProcessorHelper, for
     // loan/savings/share charges) always passes an actual, non-null charge id for a charge-specific override; there
-    // is no null-charge-id precedent anywhere in this codebase. An INTEREST_BASED_CHARGE transaction has no such
-    // charge - it is a system-generated interest-based charge, not tied to any m_charge row - so the mapping we want
+    // is no null-charge-id precedent anywhere in this codebase. An INTEREST_CHARGE transaction has no such
+    // charge - it is a system-generated interest charge, not tied to any m_charge row - so the mapping we want
     // is the product's base, no-charge SAVINGS_CONTROL/INCOME_FROM_PENALTIES row (the one
     // SavingsProductToGLAccountMappingHelper's mergeSavingsToLiabilityAccountMappingChanges/
     // mergeSavingsToIncomeAccountMappingChanges create without a charge attached). findCoreProductToFinAccountMapping

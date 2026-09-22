@@ -50,6 +50,7 @@ public class SavingsAccountSummaryData implements Serializable {
     private BigDecimal accountBalance;
     private BigDecimal totalFeeCharge;
     private BigDecimal totalPenaltyCharge;
+    private BigDecimal totalInterestCharge;
     private BigDecimal totalOverdraftInterestDerived;
     private BigDecimal totalWithholdTax;
     private BigDecimal interestNotPosted;
@@ -163,16 +164,11 @@ public class SavingsAccountSummaryData implements Serializable {
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
                 break;
-                case INTEREST_BASED_CHARGE:
-                    if (transaction.isInterestBasedChargeAndNotReversed()) {
-                        // interest-based charges are always penalty-flagged charges (see eligibility gate); bucket
+                case INTEREST_CHARGE:
+                    if (transaction.isInterestChargeAndNotReversed()) {
+                        // interest charges are always penalty-flagged charges (see eligibility gate); bucket
                         // with other penalty charges rather than introducing a dedicated summary column.
-                        this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
-                        this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
-                    }
-                break;
-                case INTEREST_FORFEITURE:
-                    if (transaction.isInterestForfeitureAndNotReversed()) {
+                        this.totalInterestCharge = Money.of(currency, this.totalInterestCharge).plus(transactionAmount).getAmount();
                         this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
@@ -276,6 +272,7 @@ public class SavingsAccountSummaryData implements Serializable {
         this.totalAnnualFees = wrapper.calculateTotalAnnualFees(currency, transactions);
         this.totalFeeCharge = wrapper.calculateTotalFeesCharge(currency, transactions);
         this.totalPenaltyCharge = wrapper.calculateTotalPenaltyCharge(currency, transactions);
+        this.totalInterestCharge = wrapper.calculateTotalInterestCharge(currency, transactions);
         this.totalFeeCharge = wrapper.calculateTotalFeesChargeWaived(currency, transactions);
         this.totalPenaltyCharge = wrapper.calculateTotalPenaltyChargeWaived(currency, transactions);
         this.totalOverdraftInterestDerived = wrapper.calculateTotalOverdraftInterest(currency, transactions);
@@ -295,6 +292,10 @@ public class SavingsAccountSummaryData implements Serializable {
 
     public void setInterestPostedTillDate(final LocalDate date) {
         this.interestPostedTillDate = date;
+    }
+
+    public void setTotalInterestCharge(final BigDecimal totalInterestCharge) {
+        this.totalInterestCharge = totalInterestCharge;
     }
 
 }

@@ -428,7 +428,7 @@ public class SavingsAccountAssembler {
             if (account.hasStartInterestCalculationDate()) {
                 for (int i = account.getSavingsAccountTransactionData().size() - 1; i >= 0; i--) {
                     SavingsAccountTransactionData savingsAccountTransaction = account.getSavingsAccountTransactionData().get(i);
-                    // Exclude interest posting, accrual, overdraft interest, withhold tax, interest-based charges and
+                    // Exclude interest posting, accrual, overdraft interest, withhold tax, interest charges and
                     // interest forfeitures so that the pivot balance only reflects principal transactions — required
                     // for No Compounding / Simple Interest
                     if (savingsAccountTransaction.getTransactionDate().isBefore(account.getStartInterestCalculationDate())
@@ -437,8 +437,7 @@ public class SavingsAccountAssembler {
                             && !savingsAccountTransaction.isInterestPostingAndNotReversed()
                             && !savingsAccountTransaction.isOverdraftInterestAndNotReversed()
                             && !savingsAccountTransaction.isWithHoldTaxAndNotReversed()
-                            && !savingsAccountTransaction.isInterestBasedChargeAndNotReversed()
-                            && !savingsAccountTransaction.isInterestForfeitureAndNotReversed()) {
+                            && !savingsAccountTransaction.isInterestChargeAndNotReversed()) {
                         account.getSummary().setRunningBalanceOnPivotDate(savingsAccountTransaction.getRunningBalance());
                         account.setLastSavingsAccountTransaction(savingsAccountTransaction);
                         break;

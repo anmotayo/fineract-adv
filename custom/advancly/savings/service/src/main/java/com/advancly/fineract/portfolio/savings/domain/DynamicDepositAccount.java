@@ -101,8 +101,8 @@ public class DynamicDepositAccount extends SavingsAccount {
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "account", orphanRemoval = true)
     private DepositAccountInterestRateChart chart;
 
-    @Column(name = "interest_based_charge_posted_derived", scale = 6, precision = 19)
-    private BigDecimal interestBasedChargePostedDerived;
+    @Column(name = "total_interest_charge_derived", scale = 6, precision = 19)
+    private BigDecimal totalInterestChargeDerived;
 
     protected DynamicDepositAccount() {
         //
@@ -172,7 +172,7 @@ public class DynamicDepositAccount extends SavingsAccount {
     /**
      * Without this override, {@code depositAccountType()} would fall through to the {@code SavingsAccount} base
      * implementation, which is hard-coded to {@code SAVINGS_DEPOSIT} - mirrors the equivalent overrides on
-     * {@code FixedDepositAccount}/{@code RecurringDepositAccount}. Core code (e.g. the interest-based-charge gate in
+     * {@code FixedDepositAccount}/{@code RecurringDepositAccount}. Core code (e.g. the interest-charge gate in
      * {@code SavingsAccountChargeAssembler}/{@code SavingsAccountWritePlatformServiceJpaRepositoryImpl}) relies on this
      * to tell a Dynamic Deposit account apart from a plain savings account without depending on this custom-module
      * class directly.
@@ -212,8 +212,8 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
     }
 
-    public BigDecimal interestBasedChargePostedDerived() {
-        return this.interestBasedChargePostedDerived == null ? BigDecimal.ZERO : this.interestBasedChargePostedDerived;
+    public BigDecimal totalInterestChargeDerived() {
+        return this.totalInterestChargeDerived == null ? BigDecimal.ZERO : this.totalInterestChargeDerived;
     }
 
     /**

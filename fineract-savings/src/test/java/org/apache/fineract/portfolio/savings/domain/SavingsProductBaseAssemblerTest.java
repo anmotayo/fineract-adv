@@ -68,54 +68,54 @@ class SavingsProductBaseAssemblerTest {
 
     @Test
     void percentOfInterestPenaltyCharge_onDynamicDepositProduct_isAllowed() {
-        final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
-        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
+        final Charge interestCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
+        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
         final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
                 DepositAccountType.DYNAMIC_DEPOSIT);
 
-        assertThat(charges).containsExactly(interestBasedCharge);
+        assertThat(charges).containsExactly(interestCharge);
     }
 
     @Test
     void percentOfInterestPenaltyCharge_onPlainSavingsProduct_isAllowed() {
-        final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
-        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
+        final Charge interestCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
+        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
         final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
                 DepositAccountType.SAVINGS_DEPOSIT);
 
-        assertThat(charges).containsExactly(interestBasedCharge);
+        assertThat(charges).containsExactly(interestCharge);
     }
 
     @Test
     void percentOfInterestPenaltyCharge_onFixedDepositProduct_isAllowed() {
-        final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
-        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
+        final Charge interestCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
+        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
         final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
                 DepositAccountType.FIXED_DEPOSIT);
 
-        assertThat(charges).containsExactly(interestBasedCharge);
+        assertThat(charges).containsExactly(interestCharge);
     }
 
     @Test
     void percentOfInterestPenaltyCharge_onRecurringDepositProduct_isAllowed() {
-        final Charge interestBasedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
-        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestBasedCharge);
+        final Charge interestCharge = mockCharge(ChargeCalculationType.PERCENT_OF_INTEREST);
+        when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(interestCharge);
 
         final JsonCommand command = commandWithChargeId(CHARGE_ID);
 
         final Set<Charge> charges = assembler.assembleListOfSavingsProductCharges(command, CURRENCY_CODE, "charges",
                 DepositAccountType.RECURRING_DEPOSIT);
 
-        assertThat(charges).containsExactly(interestBasedCharge);
+        assertThat(charges).containsExactly(interestCharge);
     }
 
     @Test
@@ -160,7 +160,7 @@ class SavingsProductBaseAssemblerTest {
     private Charge mockCharge(final ChargeCalculationType calculationType) {
         final Charge charge = org.mockito.Mockito.mock(Charge.class);
         // getId() and getChargeCalculation() are only reached on some code paths (error-message construction, and
-        // the interest-based check is short-circuited away entirely for Dynamic Deposit) - stub leniently so every
+        // the interest-charge check is short-circuited away entirely for Dynamic Deposit) - stub leniently so every
         // test can share this helper without tripping Mockito's strict-stub checks.
         org.mockito.Mockito.lenient().when(charge.getId()).thenReturn(CHARGE_ID);
         when(charge.isSavingsCharge()).thenReturn(true);

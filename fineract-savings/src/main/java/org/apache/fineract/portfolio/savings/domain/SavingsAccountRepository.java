@@ -89,7 +89,7 @@ public interface SavingsAccountRepository extends JpaRepository<SavingsAccount, 
               AND (savings.nominalAnnualInterestRate IS NOT NULL AND savings.nominalAnnualInterestRate > 0)
               AND msp.accountingRule = :accountingRule
               AND ( savings.closedOnDate <= :tillDate OR savings.closedOnDate IS NULL)
-              AND ( savings.accruedTillDate <= :tillDate OR savings.accruedTillDate IS NULL )
+              AND ( savings.accruedTillDate < :tillDate OR savings.accruedTillDate IS NULL )
             ORDER BY savings.id
             """)
     List<SavingsAccrualData> findAccrualData(@Param("tillDate") LocalDate tillDate, @Param("savingsId") Long savingsId,

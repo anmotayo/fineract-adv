@@ -65,8 +65,7 @@ public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implemen
     public DynamicDepositProductWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositProductRepository dynamicDepositProductRepository,
             final DynamicDepositProductDataValidator fromApiJsonDataValidator,
-            final DynamicDepositProductAssembler dynamicDepositProductAssembler,
-            final InterestRateChartAssembler chartAssembler,
+            final DynamicDepositProductAssembler dynamicDepositProductAssembler, final InterestRateChartAssembler chartAssembler,
             final ProductToGLAccountMappingWritePlatformService accountMappingWritePlatformService,
             final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
         this.context = context;

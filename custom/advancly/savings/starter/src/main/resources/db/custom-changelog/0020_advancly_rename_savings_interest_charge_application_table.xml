@@ -20,10 +20,20 @@
 
 -->
 <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
-  <!-- Sequence is starting from 2000 to make it easier to move existing liquibase changesets here -->
-  <include file="parts/2001_add_savings_accrual_job.xml" relativeToChangelogFile="true" />
-  <include file="parts/2002_add_savings_accrual_permission.xml" relativeToChangelogFile="true" />
-  <include file="parts/2003_add_accrued_till_date_to_savings_account.xml" relativeToChangelogFile="true" />
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet author="advancly" id="1">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <not>
+                    <tableExists tableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <renameTable oldTableName="m_deposit_interest_charge_application"
+                     newTableName="m_savings_interest_charge_application"/>
+    </changeSet>
+
 </databaseChangeLog>

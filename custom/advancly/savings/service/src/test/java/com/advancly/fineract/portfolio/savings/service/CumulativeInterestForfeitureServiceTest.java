@@ -136,7 +136,7 @@ class CumulativeInterestForfeitureServiceTest {
 
         assertThat(forfeiture).isNotNull();
         assertThat(forfeiture.getAmount(CURRENCY).getAmount()).isEqualByComparingTo("70");
-        assertThat(forfeiture.isInterestForfeiture()).isTrue();
+        assertThat(forfeiture.isInterestCharge()).isTrue();
         assertThat(forfeiture.getTransactionDate()).isEqualTo(WITHDRAWAL_DATE);
     }
 
@@ -180,7 +180,7 @@ class CumulativeInterestForfeitureServiceTest {
 
         final InOrder inOrder = inOrder(this.savingsAccountRepository, this.jdbcTemplate, this.journalEntryWritePlatformService);
         inOrder.verify(this.savingsAccountRepository).saveAndFlush(account);
-        inOrder.verify(this.jdbcTemplate).update("update m_savings_account set interest_based_charge_posted_derived = ? where id = ?",
+        inOrder.verify(this.jdbcTemplate).update("update m_savings_account set total_interest_charge_derived = ? where id = ?",
                 new BigDecimal("70"), 1L);
         inOrder.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
     }

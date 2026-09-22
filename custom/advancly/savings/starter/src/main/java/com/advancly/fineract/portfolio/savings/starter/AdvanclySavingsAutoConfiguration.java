@@ -18,6 +18,10 @@
  */
 package com.advancly.fineract.portfolio.savings.starter;
 
+import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRuleRepository;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeInterestRuleValidator;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeReadPlatformService;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeWritePlatformService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPoster;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPosterTask;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositScheduledRateHistoryReadPlatformService;
@@ -37,8 +41,8 @@ import org.apache.fineract.infrastructure.entityaccess.service.FineractEntityAcc
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.holiday.domain.HolidayRepositoryWrapper;
-import org.apache.fineract.organisation.monetary.service.CurrencyReadPlatformService;
 import org.apache.fineract.organisation.monetary.domain.ApplicationCurrencyRepositoryWrapper;
+import org.apache.fineract.organisation.monetary.service.CurrencyReadPlatformService;
 import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
 import org.apache.fineract.organisation.workingdays.domain.WorkingDaysRepositoryWrapper;
 import org.apache.fineract.portfolio.account.data.AccountTransfersDataValidator;
@@ -50,8 +54,8 @@ import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlat
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
 import org.apache.fineract.portfolio.account.service.AccountTransfersReadPlatformService;
 import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformServiceImpl;
-import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepository;
+import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.charge.serialization.ChargeDefinitionCommandFromApiJsonDeserializer;
 import org.apache.fineract.portfolio.charge.service.ChargeDropdownReadPlatformService;
 import org.apache.fineract.portfolio.charge.service.ChargeReadPlatformService;
@@ -73,10 +77,6 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeDataValida
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsProductDataValidator;
-import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRuleRepository;
-import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeInterestRuleValidator;
-import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeReadPlatformService;
-import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeWritePlatformService;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountOnHoldTransactionRepository;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
@@ -99,9 +99,9 @@ import org.apache.fineract.portfolio.savings.service.SavingsProductWritePlatform
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 import org.apache.fineract.portfolio.tax.service.TaxReadPlatformService;
 import org.apache.fineract.useradministration.domain.AppUserRepositoryWrapper;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Primary;

@@ -31,7 +31,9 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.accounting.common.AccountingRuleType;
 import org.apache.fineract.accounting.glaccount.data.GLAccountData;
@@ -52,6 +54,7 @@ import org.apache.fineract.portfolio.group.data.GroupGeneralData;
 import org.apache.fineract.portfolio.paymentdetail.data.PaymentDetailData;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
@@ -123,6 +126,14 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
         this.paginationHelper = paginationHelper;
         this.savingAccountMapperForInterestPosting = new SavingAccountMapperForInterestPosting();
         this.savingAccountAssembler = savingAccountAssembler;
+    }
+
+    private static void appendTotalInterestChargeSubquery(final StringBuilder sqlBuilder) {
+        sqlBuilder.append("(select COALESCE(sum(sat_ibc.amount), 0) ");
+        sqlBuilder.append("from m_savings_account_transaction sat_ibc ");
+        sqlBuilder.append("where sat_ibc.savings_account_id = sa.id and sat_ibc.transaction_type_enum = ");
+        sqlBuilder.append(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
+        sqlBuilder.append(" and sat_ibc.is_reversed = false and sat_ibc.is_reversal = false) as totalInterestCharge, ");
     }
 
     @Override
@@ -303,6 +314,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
+            appendTotalInterestChargeSubquery(sqlBuilder);
             sqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation,");
             sqlBuilder.append("sa.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sa.enforce_min_required_balance as enforceMinRequiredBalance, ");
@@ -395,7 +407,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             HashMap<String, Long> transMap = new HashMap<>();
             HashMap<String, Long> taxDetails = new HashMap<>();
             HashMap<String, String> coreTaxDetails = new HashMap<>();
-            HashMap<String, Long> chargeDetails = new HashMap<>();
+            Set<Long> chargePaidDetails = new HashSet<>();
             SavingsAccountTransactionData savingsAccountTransactionData = null;
             SavingsAccountData savingsAccountData = null;
             int count = 0;
@@ -408,7 +420,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                 final Long coreTaxComponentId = JdbcSupport.getLongDefaultToNullIfZero(rs, "coreTaxComponentId");
                 final Long taxGroupMappingId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxGroupMappingId");
                 final String accountNo = rs.getString("accountNo");
-                final Long chargeId = rs.getLong("chargeId");
+                final Long chargeId = JdbcSupport.getLongDefaultToNullIfZero(rs, "chargeId");
                 final Long taxGroupId = JdbcSupport.getLongDefaultToNullIfZero(rs, "taxGroupId");
 
                 if (!savingsMap.containsValue(id)) {
@@ -530,6 +542,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                             totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                             totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, interestNotPosted,
                             lastInterestCalculationDate, availableBalance, interestPostedTillDate);
+                    summary.setTotalInterestCharge(JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestCharge"));
                     summary.setPrevInterestPostedTillDate(interestPostedTillDate);
 
                     final boolean withHoldTax = rs.getBoolean("withHoldTax");
@@ -658,24 +671,23 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     savingsAccountData.setSavingsAccountTransactionData(savingsAccountTransactionData);
                 }
 
-                if (chargeId != null && !chargeDetails.containsValue(chargeId)) {
+                final Long chargesPaidById = JdbcSupport.getLongDefaultToNullIfZero(rs, "chargesPaidById");
+                if (chargesPaidById != null && !chargePaidDetails.contains(chargesPaidById)) {
                     final boolean isPenalty = rs.getBoolean("isPenaltyCharge");
                     final BigDecimal chargeAmount = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "chargeAmount");
-                    final Integer chargesTimeType = rs.getInt("chargeTimeType");
-                    final EnumOptionData enumOptionDataForChargesTimeType = new EnumOptionData(chargesTimeType.longValue(), null, null);
+                    final Integer chargesTimeType = JdbcSupport.getInteger(rs, "chargeTimeType");
+                    final EnumOptionData enumOptionDataForChargesTimeType = chargesTimeType == null ? null
+                            : new EnumOptionData(chargesTimeType.longValue(), null, null);
                     final SavingsAccountChargeData savingsAccountChargeData = new SavingsAccountChargeData(chargeId, chargeAmount,
                             enumOptionDataForChargesTimeType, isPenalty);
 
-                    final Long chargesPaidById = rs.getLong("chargesPaidById");
                     final BigDecimal chargesPaid = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "paidByAmount");
                     final SavingsAccountChargesPaidByData savingsAccountChargesPaidByData = new SavingsAccountChargesPaidByData(
                             chargesPaidById, chargesPaid);
                     savingsAccountChargesPaidByData.setSavingsAccountChargeData(savingsAccountChargeData);
-                    if (savingsAccountChargesPaidByData != null) {
-                        savingsAccountTransactionData.setChargesPaidByData(savingsAccountChargesPaidByData);
-                    }
+                    savingsAccountTransactionData.setChargesPaidByData(savingsAccountChargesPaidByData);
 
-                    chargeDetails.put("id", chargeId);
+                    chargePaidDetails.add(chargesPaidById);
                 }
 
                 if (taxDetailId != null && !taxDetails.containsValue(taxDetailId)) {
@@ -801,6 +813,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
+            appendTotalInterestChargeSubquery(sqlBuilder);
             sqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation,");
             sqlBuilder.append("sa.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sa.enforce_min_required_balance as enforceMinRequiredBalance, ");
@@ -1029,6 +1042,7 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                     totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, interestNotPosted, lastInterestCalculationDate,
                     availableBalance, interestPostedTillDate);
+            summary.setTotalInterestCharge(JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestCharge"));
 
             final boolean withHoldTax = rs.getBoolean("withHoldTax");
             final Long taxGroupId = JdbcSupport.getLong(rs, "taxGroupId");
@@ -1181,7 +1195,10 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     + "pd.receipt_number as receiptNumber, pd.bank_number as bankNumber,pd.routing_code as routingCode, "
                     + "sa.currency_code as currencyCode, sa.currency_digits as currencyDigits, sa.currency_multiplesof as inMultiplesOf, "
                     + "curr.name as currencyName, curr.internationalized_name_code as currencyNameCode, "
-                    + "curr.display_symbol as currencyDisplaySymbol, pt.value as paymentTypeName, " + "tr.is_manual as postInterestAsOn ";
+                    + "curr.display_symbol as currencyDisplaySymbol, pt.value as paymentTypeName, "
+                    + "msacpb.amount as paidByAmount, msacpb.id as chargesPaidById, "
+                    + "msac.id as chargeId, msac.amount as chargeAmount, msac.charge_time_enum as chargeTimeType, "
+                    + "msac.is_penalty as isPenaltyCharge, " + "tr.is_manual as postInterestAsOn ";
         }
 
         protected static String buildFrom() {
@@ -1191,7 +1208,9 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     + "left join m_account_transfer_transaction totran on totran.to_savings_transaction_id = tr.id "
                     + "left join m_payment_detail pd on tr.payment_detail_id = pd.id "
                     + "left join m_payment_type pt on pd.payment_type_id = pt.id left join m_appuser au on au.id= tr." + CREATED_BY_DB_FIELD
-                    + " left join m_note nt ON nt.savings_account_transaction_id=tr.id ";
+                    + " left join m_note nt ON nt.savings_account_transaction_id=tr.id "
+                    + "left join m_savings_account_charge_paid_by msacpb on msacpb.savings_account_transaction_id = tr.id "
+                    + "left join m_savings_account_charge msac on msac.id = msacpb.savings_account_charge_id ";
         }
 
         public String schema() {
@@ -1276,10 +1295,33 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             }
             final String submittedByUsername = rs.getString("submittedByUsername");
             final String note = rs.getString("transactionNote");
-            return SavingsAccountTransactionData.create(id, transactionType, paymentDetailData, savingsId, accountNo, date, currency,
-                    amount, outstandingChargeAmount, runningBalance, reversed, transfer, submittedOnDate, postInterestAsOn,
-                    submittedByUsername, note, isReversal, originalTransactionId, lienTransaction, releaseTransactionId, reasonForBlock,
-                    createdOnUtc);
+            final SavingsAccountTransactionData transactionData = SavingsAccountTransactionData.create(id, transactionType,
+                    paymentDetailData, savingsId, accountNo, date, currency, amount, outstandingChargeAmount, runningBalance, reversed,
+                    transfer, submittedOnDate, postInterestAsOn, submittedByUsername, note, isReversal, originalTransactionId,
+                    lienTransaction, releaseTransactionId, reasonForBlock, createdOnUtc);
+            addChargesPaidByData(rs, transactionData);
+            return transactionData;
+        }
+
+        private void addChargesPaidByData(final ResultSet rs, final SavingsAccountTransactionData transactionData) throws SQLException {
+            final Long chargesPaidById = JdbcSupport.getLongDefaultToNullIfZero(rs, "chargesPaidById");
+            if (chargesPaidById == null) {
+                return;
+            }
+
+            final Long chargeId = JdbcSupport.getLongDefaultToNullIfZero(rs, "chargeId");
+            final BigDecimal chargeAmount = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "chargeAmount");
+            final Integer chargesTimeType = JdbcSupport.getInteger(rs, "chargeTimeType");
+            final EnumOptionData enumOptionDataForChargesTimeType = chargesTimeType == null ? null
+                    : new EnumOptionData(chargesTimeType.longValue(), null, null);
+            final boolean isPenalty = rs.getBoolean("isPenaltyCharge");
+            final SavingsAccountChargeData savingsAccountChargeData = new SavingsAccountChargeData(chargeId, chargeAmount,
+                    enumOptionDataForChargesTimeType, isPenalty);
+            final BigDecimal chargesPaid = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "paidByAmount");
+            final SavingsAccountChargesPaidByData savingsAccountChargesPaidByData = new SavingsAccountChargesPaidByData(chargesPaidById,
+                    chargesPaid);
+            savingsAccountChargesPaidByData.setSavingsAccountChargeData(savingsAccountChargeData);
+            transactionData.setChargesPaidByData(savingsAccountChargesPaidByData);
         }
     }
 

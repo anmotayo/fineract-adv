@@ -81,7 +81,7 @@ class SavingsAccountWithdrawalFeeTest {
     }
 
     @Test
-    void excludesDynamicDepositInterestBasedWithdrawalFeeFromAutoWithdrawalFeeCalculation() {
+    void excludesDynamicDepositInterestChargeWithdrawalFeeFromAutoWithdrawalFeeCalculation() {
         final SavingsAccount account = account(DepositAccountType.DYNAMIC_DEPOSIT,
                 withdrawalCharge(BigDecimal.valueOf(18L), ChargeCalculationType.PERCENT_OF_INTEREST));
 
@@ -89,7 +89,7 @@ class SavingsAccountWithdrawalFeeTest {
     }
 
     @Test
-    void excludesPlainSavingsInterestBasedEarlyWithdrawalFeeFromAutoWithdrawalFeeCalculation() {
+    void excludesPlainSavingsInterestChargeEarlyWithdrawalFeeFromAutoWithdrawalFeeCalculation() {
         final SavingsAccount account = account(DepositAccountType.SAVINGS_DEPOSIT,
                 withdrawalCharge(BigDecimal.valueOf(18L), ChargeCalculationType.PERCENT_OF_INTEREST));
 
@@ -97,31 +97,29 @@ class SavingsAccountWithdrawalFeeTest {
     }
 
     @Test
-    void withdrawDoesNotCreateGenericWithdrawalFeeForDynamicDepositInterestBasedCharge() {
-        final SavingsAccountCharge interestBasedCharge = withdrawalCharge(BigDecimal.valueOf(18L),
-                ChargeCalculationType.PERCENT_OF_INTEREST);
-        final SavingsAccount account = account(DepositAccountType.DYNAMIC_DEPOSIT, interestBasedCharge);
+    void withdrawDoesNotCreateGenericWithdrawalFeeForDynamicDepositInterestCharge() {
+        final SavingsAccountCharge interestCharge = withdrawalCharge(BigDecimal.valueOf(18L), ChargeCalculationType.PERCENT_OF_INTEREST);
+        final SavingsAccount account = account(DepositAccountType.DYNAMIC_DEPOSIT, interestCharge);
 
         account.withdraw(new SavingsAccountTransactionDTO(DateTimeFormatter.ISO_LOCAL_DATE, WITHDRAWAL_DATE, BigDecimal.valueOf(100L), null,
                 1L, DepositAccountType.DYNAMIC_DEPOSIT.getValue()), true, false, 0L, null);
 
         assertThat(account.getTransactions()).hasSize(1);
         assertThat(account.getTransactions()).noneMatch(SavingsAccountTransaction::isWithdrawalFee);
-        assertThat(interestBasedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(interestCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    void withdrawDoesNotCreateGenericWithdrawalFeeForPlainSavingsInterestBasedEarlyWithdrawalCharge() {
-        final SavingsAccountCharge interestBasedCharge = withdrawalCharge(BigDecimal.valueOf(18L),
-                ChargeCalculationType.PERCENT_OF_INTEREST);
-        final SavingsAccount account = account(DepositAccountType.SAVINGS_DEPOSIT, interestBasedCharge);
+    void withdrawDoesNotCreateGenericWithdrawalFeeForPlainSavingsInterestChargeEarlyWithdrawalCharge() {
+        final SavingsAccountCharge interestCharge = withdrawalCharge(BigDecimal.valueOf(18L), ChargeCalculationType.PERCENT_OF_INTEREST);
+        final SavingsAccount account = account(DepositAccountType.SAVINGS_DEPOSIT, interestCharge);
 
         account.withdraw(new SavingsAccountTransactionDTO(DateTimeFormatter.ISO_LOCAL_DATE, WITHDRAWAL_DATE, BigDecimal.valueOf(100L), null,
                 1L, DepositAccountType.SAVINGS_DEPOSIT.getValue()), true, false, 0L, null);
 
         assertThat(account.getTransactions()).hasSize(1);
         assertThat(account.getTransactions()).noneMatch(SavingsAccountTransaction::isWithdrawalFee);
-        assertThat(interestBasedCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(interestCharge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test

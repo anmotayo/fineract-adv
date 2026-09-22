@@ -980,7 +980,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             //
             // Ordering is the whole point: prepareClosureSettlement(...) tells the account a closure withdrawal dated
             // closedDate is coming, so the posting immediately below folds that closure's own penalty into the SAME
-            // capped, pro-rated interest-based charge it writes for the period's other pending rows - one charge
+            // capped, pro-rated interest charge it writes for the period's other pending rows - one charge
             // transaction, capped once, in one pass. Only then is the balance read, so the single withdrawal that
             // follows pays out principal plus interest net of withholding tax and that charge - exactly zero left
             // behind for account.close(...)'s own "results.in.balance.not.zero" check.
@@ -1021,7 +1021,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
             }
 
             // Read AFTER the settlement above: for a Dynamic Deposit account this now includes the final interest
-            // posting, its withholding tax and its interest-based charge, so this single withdrawal is the complete
+            // posting, its withholding tax and its interest charge, so this single withdrawal is the complete
             // customer payout. For every other account type nothing has changed - the two hooks are no-ops and this
             // is the same balance as before.
             final BigDecimal transactionAmount = account.getSummary().getAccountBalance();

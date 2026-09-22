@@ -50,8 +50,7 @@ class AdvanclyChargeWritePlatformServiceTest {
         final Charge charge = mock(Charge.class);
         final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
 
-        when(delegate.updateCharge(chargeId, command))
-                .thenReturn(new CommandProcessingResultBuilder().withEntityId(chargeId).build());
+        when(delegate.updateCharge(chargeId, command)).thenReturn(new CommandProcessingResultBuilder().withEntityId(chargeId).build());
         when(command.parameterExists(ChargesApiConstants.interestBasisModeParamName)).thenReturn(false);
         when(command.parameterExists(ChargesApiConstants.customPeriodReapplyPolicyParamName)).thenReturn(false);
         when(chargeRepository.findById(chargeId)).thenReturn(Optional.of(charge));

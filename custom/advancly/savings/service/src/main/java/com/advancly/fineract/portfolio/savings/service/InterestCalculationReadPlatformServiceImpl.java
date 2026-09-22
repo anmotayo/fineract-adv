@@ -115,12 +115,12 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     periodInterest.getAmount()));
         }
 
-        BigDecimal postedInterestBasedCharges = null;
-        BigDecimal interestBasedChargePostedDerived = null;
+        BigDecimal postedInterestCharges = null;
+        BigDecimal totalInterestChargeDerived = null;
         if (account instanceof DynamicDepositAccount) {
-            interestBasedChargePostedDerived = defaultToZero(
+            totalInterestChargeDerived = defaultToZero(
                     this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(account.getId()));
-            postedInterestBasedCharges = interestBasedChargePostedDerived;
+            postedInterestCharges = totalInterestChargeDerived;
         }
 
         final List<InterestCalculationTransactionData> transactions = new ArrayList<>();
@@ -138,14 +138,14 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final var summary = account.getSummary();
         final BigDecimal totalInterestPosted = summary.getTotalInterestPosted();
         final BigDecimal totalWithholdTax = summary.getTotalWithholdTax();
-        final BigDecimal forfeitedAmount = postedInterestBasedCharges;
+        final BigDecimal forfeitedAmount = postedInterestCharges;
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
-                interestAsAtToday, interestAtMaturity, maturityAmount, postedInterestBasedCharges, interestBasedChargePostedDerived,
-                forfeitedAmount, summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(),
-                summary.getTotalAnnualFees(), interestAsAtToday, totalInterestPosted, summary.getAccountBalance(),
-                summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,
+                interestAsAtToday, interestAtMaturity, maturityAmount, postedInterestCharges, totalInterestChargeDerived, forfeitedAmount,
+                summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(),
+                interestAsAtToday, totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(),
+                summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,
                 summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount);
     }
 

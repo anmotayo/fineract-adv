@@ -23,13 +23,12 @@ import java.math.MathContext;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 
 /**
- * The cumulative early-withdrawal forfeiture amount: how much of the interest an account has earned since inception is
- * taken back by this withdrawal.
+ * The cumulative early-withdrawal forfeiture amount: how much of the net, un-forfeited interest still sitting in the
+ * account is taken back by this withdrawal.
  *
- * The percentage targets a proportion of LIFETIME posted interest, and each withdrawal tops the account up to that
- * target - it is not applied to the remaining un-forfeited balance. Applying it to the remainder would compound the
- * percentage across repeat withdrawals: at 50%, a second withdrawal would take (200-50)*50% = 75, bringing the lifetime
- * total to 125 of 200 posted, i.e. 62.5% rather than the configured 50%.
+ * The percentage applies to the remaining available interest at the time of the withdrawal. Prior forfeitures are
+ * removed from the basis first, so a later withdrawal only charges against the interest balance that remains plus any
+ * new interest posted since the earlier withdrawal.
  *
  * The basis is net of withholding tax because tax has already debited part of the posted interest from the balance (see
  * SavingsAccountSummary's WITHHOLD_TAX case), so the customer only ever received gross minus tax. Forfeiting the gross
@@ -58,8 +57,8 @@ public final class CumulativeForfeitureCalculator {
         if (stillAvailable.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
-        final BigDecimal target = basis.multiply(zeroIfNull(percentage)).divide(ONE_HUNDRED, percentageMathContext());
-        return target.subtract(forfeited).max(BigDecimal.ZERO).min(stillAvailable);
+        return stillAvailable.multiply(zeroIfNull(percentage)).divide(ONE_HUNDRED, percentageMathContext()).max(BigDecimal.ZERO)
+                .min(stillAvailable);
     }
 
     private static BigDecimal zeroIfNull(final BigDecimal value) {

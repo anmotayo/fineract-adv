@@ -93,8 +93,7 @@ public class AdvanclyChargeWritePlatformService implements ChargeWritePlatformSe
             return changes;
         }
 
-        final CustomPeriodReapplyPolicy customPeriodReapplyPolicy = customPeriodReapplyPolicy(command, existingRule,
-                interestBasisMode);
+        final CustomPeriodReapplyPolicy customPeriodReapplyPolicy = customPeriodReapplyPolicy(command, existingRule, interestBasisMode);
         this.chargeInterestRuleValidator.validateRule(charge, interestBasisMode, customPeriodReapplyPolicy);
 
         final AdvanclyChargeInterestRule rule = existingRule

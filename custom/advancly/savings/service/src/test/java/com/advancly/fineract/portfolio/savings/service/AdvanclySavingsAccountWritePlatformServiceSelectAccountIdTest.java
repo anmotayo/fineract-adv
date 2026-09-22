@@ -61,9 +61,9 @@ class AdvanclySavingsAccountWritePlatformServiceSelectAccountIdTest {
     private AdvanclySavingsAccountWritePlatformService service;
 
     @Test
-    void resolvesPenaltyIncomeAccountsForAnInterestBasedCharge() {
+    void resolvesPenaltyIncomeAccountsForAnInterestCharge() {
         final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations
-                .transactionType(SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue());
+                .transactionType(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
         final SavingsAccountTransactionData transactionData = SavingsAccountTransactionData.create(null, transactionType, null, 1L,
                 "000001", LocalDate.of(2026, 1, 31), null, BigDecimal.TEN, null, null, false, null, LocalDate.of(2026, 1, 31), false, null,
                 null, null, null, null, null, null, OffsetDateTime.now());

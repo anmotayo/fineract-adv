@@ -217,28 +217,26 @@ class DynamicDepositAccountInterestTest {
     }
 
     @Test
-    void postingWritesNoInterestBasedChargeTransactionWhenNothingIsPending() {
+    void postingWritesNoInterestChargeTransactionWhenNothingIsPending() {
         this.account = buildAccount();
         stubSingleRateHistoryForJanuary();
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
-        assertThat(this.account.getTransactions()).noneMatch(SavingsAccountTransaction::isInterestBasedCharge);
+        assertThat(this.account.getTransactions()).noneMatch(SavingsAccountTransaction::isInterestCharge);
     }
 
     @Test
-    void anInterestForfeitureDoesNotShrinkTheInterestBearingBalanceAnyMoreThanAnInterestBasedChargeDoesUnderNoCompounding() {
-        final BigDecimal interestAfterForfeiture = interestOverFebruaryWith(SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue());
-        final BigDecimal interestAfterInterestBasedCharge = interestOverFebruaryWith(
-                SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue());
+    void anInterestChargeDoesNotShrinkTheInterestBearingBalanceUnderNoCompounding() {
+        final BigDecimal interestAfterInterestCharge = interestOverFebruary(true);
+        final BigDecimal interestWithoutInterestCharge = interestOverFebruary(false);
 
-        // Both debit 500 on Feb 1. Under no-compounding there is no separate accumulator for a forfeiture debit to
-        // net against (see Task 4's header) - it must be excluded from the walk exactly like INTEREST_BASED_CHARGE,
-        // or the base drops below the customer's true remaining principal by the full forfeited amount.
-        assertThat(interestAfterForfeiture).isEqualByComparingTo(interestAfterInterestBasedCharge);
+        // Under no-compounding an interest charge is not a principal-changing withdrawal, so it must be excluded from
+        // the interest-bearing-balance walk.
+        assertThat(interestAfterInterestCharge).isEqualByComparingTo(interestWithoutInterestCharge);
     }
 
-    private BigDecimal interestOverFebruaryWith(final Integer debitTransactionType) {
+    private BigDecimal interestOverFebruary(final boolean addInterestCharge) {
         this.account = buildAccount(); // buildAccount() already defaults interestCompoundingPeriodType to 8
                                        // (NO_COMPOUNDING_SIMPLE_INTEREST), which this assertion is specific to.
 
@@ -248,9 +246,11 @@ class DynamicDepositAccountInterestTest {
                         DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
                         BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART)));
 
-        this.account.addTransaction(new SavingsAccountTransactionTestBuilder().withId(2L).withSavingsAccount(this.account)
-                .withType(SavingsAccountTransactionType.fromInt(debitTransactionType)).withDate(LocalDate.of(2026, 2, 1))
-                .withAmount(BigDecimal.valueOf(500)).build());
+        if (addInterestCharge) {
+            this.account.addTransaction(new SavingsAccountTransactionTestBuilder().withId(2L).withSavingsAccount(this.account)
+                    .withType(SavingsAccountTransactionType.INTEREST_CHARGE).withDate(LocalDate.of(2026, 2, 1))
+                    .withAmount(BigDecimal.valueOf(500)).build());
+        }
 
         this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
 

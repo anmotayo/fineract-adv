@@ -50,8 +50,7 @@ public class SavingsAccountTransactionEnumData implements Serializable {
     private final boolean amountHold;
     private final boolean amountRelease;
     private final boolean accrual;
-    private final boolean interestBasedCharge;
-    private final boolean interestForfeiture;
+    private final boolean interestCharge;
 
     public SavingsAccountTransactionEnumData(final Long id, final String code, final String value) {
         this.id = id;
@@ -77,8 +76,7 @@ public class SavingsAccountTransactionEnumData implements Serializable {
         this.escheat = Long.valueOf(SavingsAccountTransactionType.ESCHEAT.getValue()).equals(this.id);
         this.amountHold = Long.valueOf(SavingsAccountTransactionType.AMOUNT_HOLD.getValue()).equals(this.id);
         this.amountRelease = Long.valueOf(SavingsAccountTransactionType.AMOUNT_RELEASE.getValue()).equals(this.id);
-        this.interestBasedCharge = Long.valueOf(SavingsAccountTransactionType.INTEREST_BASED_CHARGE.getValue()).equals(this.id);
-        this.interestForfeiture = Long.valueOf(SavingsAccountTransactionType.INTEREST_FORFEITURE.getValue()).equals(this.id);
+        this.interestCharge = transactionType != null && transactionType.isInterestCharge();
     }
 
     public boolean isIncomeFromInterest() {
@@ -94,7 +92,8 @@ public class SavingsAccountTransactionEnumData implements Serializable {
     }
 
     public boolean isChargeTransaction() {
-        return feeDeduction;
+        final SavingsAccountTransactionType transactionType = getTransactionTypeEnum();
+        return transactionType != null && transactionType.isChargeTransaction();
     }
 
     public boolean isAnnualFee() {

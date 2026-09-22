@@ -125,9 +125,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * Phase 4 closure collection, unified design: closing a Dynamic Deposit account with {@code withdrawBalance=true} must
- * settle the final period first - posting the interest, any withholding tax, and ONE capped interest-based charge that
- * covers both the charges still pending from earlier withdrawals in that period AND the penalty this very closure
- * incurs - and only then withdraw the resulting balance in exactly ONE transaction, leaving precisely zero behind for
+ * settle the final period first - posting the interest, any withholding tax, and ONE capped interest charge that covers
+ * both the charges still pending from earlier withdrawals in that period AND the penalty this very closure incurs - and
+ * only then withdraw the resulting balance in exactly ONE transaction, leaving precisely zero behind for
  * {@code SavingsAccount#close(...)}'s own {@code results.in.balance.not.zero} check.
  *
  * The early-withdrawal charge service is deliberately REAL here (only its repositories are mocked), so that the
@@ -365,7 +365,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     // CumulativeInterestForfeitureService against this real account, not a mock, which is what makes them able to
     // observe the three things a mocked forfeiture service structurally cannot:
     // (a) the account balance the closure reads to size its payout really is net of the forfeiture (it is not, unless
-    // SavingsAccountTransactionSummaryWrapper counts INTEREST_FORFEITURE and the service refreshes the summary
+    // SavingsAccountTransactionSummaryWrapper counts INTEREST_CHARGE and the service refreshes the summary
     // afterwards), (b) the forfeiture transaction really reaches the accounting bridge (it does not, if it is written
     // before the caller takes its "already existing transaction ids" snapshot and nobody journals it here), and
     // (c) the closure still settles to exactly zero.
@@ -386,7 +386,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final BigDecimal grossInterest = singleInterestPosting().getAmount();
         assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
 
-        // ...and all of it forfeited, as one INTEREST_FORFEITURE transaction - not a per-period charge.
+        // ...and all of it charged, as one INTEREST_CHARGE transaction - not a per-period charge.
         final SavingsAccountTransaction forfeiture = singleForfeitureTransaction();
         assertThat(forfeiture.getAmount()).isEqualByComparingTo(grossInterest);
         assertThat(forfeiture.getTransactionDate()).isEqualTo(CLOSED_DATE);
@@ -400,8 +400,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         // (b) Both the forced posting and the forfeiture reached the accounting bridge, each exactly once, carrying
         // the ids the flush assigned them - the forfeiture is what regressed here, the posting is the control.
         assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_POSTING)).hasSize(1);
-        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_FORFEITURE)).hasSize(1);
-        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_FORFEITURE).get(0).get("id")).isEqualTo(forfeiture.getId());
+        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE)).hasSize(1);
+        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE).get(0).get("id")).isEqualTo(forfeiture.getId());
         assertThat(forfeiture.getId()).isNotNull();
 
         // (c) Exactly zero left behind, which is core's own close() invariant.
@@ -443,7 +443,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
 
         // Both of the transactions this service writes after the forced posting are journalled here, since nothing
         // downstream would ever classify them as new again.
-        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_FORFEITURE)).hasSize(1);
+        assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.WITHHOLD_TAX).get(0).get("id")).isEqualTo(tax.getId());
     }
@@ -505,12 +505,12 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     }
 
     private List<SavingsAccountTransaction> payChargeTransactions() {
-        return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestBasedCharge).toList();
+        return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isPayCharge).toList();
     }
 
     private SavingsAccountTransaction singleForfeitureTransaction() {
         final List<SavingsAccountTransaction> forfeitures = this.account.getTransactions().stream()
-                .filter(SavingsAccountTransaction::isInterestForfeitureAndNotReversed).toList();
+                .filter(SavingsAccountTransaction::isInterestChargeAndNotReversed).toList();
         assertThat(forfeitures).hasSize(1);
         return forfeitures.get(0);
     }

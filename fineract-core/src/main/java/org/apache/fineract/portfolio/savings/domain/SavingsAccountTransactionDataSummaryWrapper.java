@@ -105,8 +105,18 @@ public final class SavingsAccountTransactionDataSummaryWrapper {
     public BigDecimal calculateTotalPenaltyCharge(final CurrencyData currency, final List<SavingsAccountTransactionData> transactions) {
         Money total = Money.zero(currency);
         for (final SavingsAccountTransactionData transaction : transactions) {
-            if ((transaction.isPenaltyChargeAndNotReversed() || transaction.isInterestBasedChargeAndNotReversed()
-                    || transaction.isInterestForfeitureAndNotReversed()) && !transaction.isReversalTransaction()) {
+            if ((transaction.isPenaltyChargeAndNotReversed() || transaction.isInterestChargeAndNotReversed())
+                    && !transaction.isReversalTransaction()) {
+                total = total.plus(transaction.getAmount());
+            }
+        }
+        return total.getAmountDefaultedToNullIfZero();
+    }
+
+    public BigDecimal calculateTotalInterestCharge(final CurrencyData currency, final List<SavingsAccountTransactionData> transactions) {
+        Money total = Money.zero(currency);
+        for (final SavingsAccountTransactionData transaction : transactions) {
+            if (transaction.isInterestChargeAndNotReversed() && !transaction.isReversalTransaction()) {
                 total = total.plus(transaction.getAmount());
             }
         }

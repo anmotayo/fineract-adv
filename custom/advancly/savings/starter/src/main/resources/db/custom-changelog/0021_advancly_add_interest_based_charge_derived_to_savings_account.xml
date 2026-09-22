@@ -21,6 +21,7 @@
 -->
 <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   logicalFilePath="db/changelog/tenant/module/savings/parts/parts/2004_add_interest_based_charge_derived_to_savings_account.xml"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
     <changeSet author="fineract" id="1">
         <preConditions onFail="MARK_RAN">

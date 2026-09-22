@@ -311,8 +311,8 @@ public class DynamicDepositAccountAssembler {
     }
 
     /**
-     * The product's charge-driven early-withdrawal penalty charge. The  supported configuration is the interest
-     * rule attached to a charge that is itself attached to the product.
+     * The product's charge-driven early-withdrawal penalty charge. The supported configuration is the interest rule
+     * attached to a charge that is itself attached to the product.
      */
     private Charge resolveProductEarlyWithdrawalCharge(final DynamicDepositProduct product) {
         return this.chargeInterestRuleValidator.resolveSingleInterestCharge(product);

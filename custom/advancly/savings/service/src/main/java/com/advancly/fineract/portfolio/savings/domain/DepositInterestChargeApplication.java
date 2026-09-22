@@ -33,7 +33,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 
 @Entity
-@Table(name = "m_deposit_interest_charge_application")
+@Table(name = "m_savings_interest_charge_application")
 public class DepositInterestChargeApplication extends AbstractAuditableWithUTCDateTimeCustom<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

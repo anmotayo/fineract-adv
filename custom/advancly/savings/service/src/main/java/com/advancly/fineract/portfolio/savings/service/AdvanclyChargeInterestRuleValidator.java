@@ -140,8 +140,8 @@ public class AdvanclyChargeInterestRuleValidator {
         if (product == null || product.charges() == null) {
             return Map.of();
         }
-        return product.charges().stream().filter(charge -> charge != null && charge.getId() != null).collect(
-                Collectors.toMap(Charge::getId, charge -> charge, (first, second) -> first, LinkedHashMap::new));
+        return product.charges().stream().filter(charge -> charge != null && charge.getId() != null)
+                .collect(Collectors.toMap(Charge::getId, charge -> charge, (first, second) -> first, LinkedHashMap::new));
     }
 
     private List<AdvanclyChargeInterestRule> findAccountRules(final Long savingsProductId, final Collection<Long> accountChargeIds) {

@@ -91,6 +91,7 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargesPaidByData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.exception.DepositAccountNotFoundException;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
@@ -131,6 +132,14 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
     private final DropdownReadPlatformService dropdownReadPlatformService;
     private final CalendarReadPlatformService calendarReadPlatformService;
     private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
+
+    private static void appendTotalInterestChargeSubquery(final StringBuilder sqlBuilder) {
+        sqlBuilder.append("(select COALESCE(sum(sat_ibc.amount), 0) ");
+        sqlBuilder.append("from m_savings_account_transaction sat_ibc ");
+        sqlBuilder.append("where sat_ibc.savings_account_id = sa.id and sat_ibc.transaction_type_enum = ");
+        sqlBuilder.append(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
+        sqlBuilder.append(" and sat_ibc.is_reversed = false and sat_ibc.is_reversal = false) as totalInterestCharge, ");
+    }
 
     @Override
     public Collection<DepositAccountData> retrieveAll(final DepositAccountType depositAccountType,
@@ -605,6 +614,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String ACCOUNT_BALANCE = "accountBalance";
         public static final String TOTAL_FEE_CHARGE = "totalFeeCharge";
         public static final String TOTAL_PENALTY_CHARGE = "totalPenaltyCharge";
+        public static final String TOTAL_INTEREST_CHARGE = "totalInterestCharge";
         public static final String TOTAL_WITHHOLD_TAX = "totalWithholdTax";
         public static final String INTEREST_POSTED_TILL_DATE = "interestPostedTillDate";
         public static final String WITH_HOLD_TAX = "withHoldTax";
@@ -662,6 +672,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             selectFieldsSqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             selectFieldsSqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             selectFieldsSqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
+            appendTotalInterestChargeSubquery(selectFieldsSqlBuilder);
             selectFieldsSqlBuilder.append("sa.total_withhold_tax_derived as totalWithholdTax,");
             selectFieldsSqlBuilder.append("sa.deposit_type_enum as depositTypeId, ");
             selectFieldsSqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation, ");
@@ -805,6 +816,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final BigDecimal accountBalance = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, ACCOUNT_BALANCE);
             final BigDecimal totalFeeCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_FEE_CHARGE);
             final BigDecimal totalPenaltyCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_PENALTY_CHARGE);
+            final BigDecimal totalInterestCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_INTEREST_CHARGE);
             final BigDecimal totalWithholdTax = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_WITHHOLD_TAX);
             final BigDecimal totalOverdraftInterestDerived = null;
             final LocalDate interestPostedTillDate = JdbcSupport.getLocalDate(rs, INTEREST_POSTED_TILL_DATE);
@@ -822,6 +834,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                     totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, null, null, availableBalance,
                     interestPostedTillDate);
+            summary.setTotalInterestCharge(totalInterestCharge);
 
             return DepositAccountData.instance(id, accountNo, externalId, groupId, groupName, clientId, clientName, productId, productName,
                     fieldOfficerId, fieldOfficerName, status, timeline, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
@@ -1118,6 +1131,12 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String SUBMITTED_BY_USERNAME = "submittedByUsername";
         public static final String SUBMITTED_ON_DATE = "submittedOnDate";
         public static final String CREATED_ON_UTC = "createdOnUtc";
+        public static final String CHARGES_PAID_BY_ID = "chargesPaidById";
+        public static final String PAID_BY_AMOUNT = "paidByAmount";
+        public static final String CHARGE_ID = "chargeId";
+        public static final String CHARGE_AMOUNT = "chargeAmount";
+        public static final String CHARGE_TIME_TYPE = "chargeTimeType";
+        public static final String IS_PENALTY_CHARGE = "isPenaltyCharge";
         private final String schemaSql;
 
         SavingsAccountTransactionsMapper() {
@@ -1142,7 +1161,10 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     "sa.currency_code as currencyCode, sa.currency_digits as currencyDigits, sa.currency_multiplesof as inMultiplesOf, ");
             sqlBuilder.append("curr.name as currencyName, curr.internationalized_name_code as currencyNameCode, ");
             sqlBuilder.append("curr.display_symbol as currencyDisplaySymbol, ");
-            sqlBuilder.append("pt.value as paymentTypeName ");
+            sqlBuilder.append("pt.value as paymentTypeName, ");
+            sqlBuilder.append("msacpb.amount as paidByAmount, msacpb.id as chargesPaidById, ");
+            sqlBuilder.append(
+                    "msac.id as chargeId, msac.amount as chargeAmount, msac.charge_time_enum as chargeTimeType, msac.is_penalty as isPenaltyCharge ");
             sqlBuilder.append("from m_savings_account sa ");
             sqlBuilder.append("join m_savings_account_transaction tr on tr.savings_account_id = sa.id ");
             sqlBuilder.append("join m_currency curr on curr.code = sa.currency_code ");
@@ -1150,7 +1172,9 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             sqlBuilder.append("left join m_account_transfer_transaction totran on totran.to_savings_transaction_id = tr.id ");
             sqlBuilder.append("left join m_payment_detail pd on tr.payment_detail_id = pd.id ");
             sqlBuilder.append("left join m_payment_type pt on pd.payment_type_id = pt.id ");
-            sqlBuilder.append("left join m_appuser au on au.id = tr." + CREATED_BY_DB_FIELD);
+            sqlBuilder.append("left join m_appuser au on au.id = tr." + CREATED_BY_DB_FIELD + " ");
+            sqlBuilder.append("left join m_savings_account_charge_paid_by msacpb on msacpb.savings_account_transaction_id = tr.id ");
+            sqlBuilder.append("left join m_savings_account_charge msac on msac.id = msacpb.savings_account_charge_id ");
             this.schemaSql = sqlBuilder.toString();
         }
 
@@ -1223,9 +1247,32 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final boolean postInterestAsOn = false;
             final String submittedByUsername = rs.getString(SUBMITTED_BY_USERNAME);
             final String note = null;
-            return SavingsAccountTransactionData.create(id, transactionType, paymentDetailData, savingsId, accountNo, date, currency,
-                    amount, outstandingChargeAmount, runningBalance, reversed, transfer, postInterestAsOn, submittedByUsername, note,
-                    submittedOnDate, createdOnUtc);
+            final SavingsAccountTransactionData transactionData = SavingsAccountTransactionData.create(id, transactionType,
+                    paymentDetailData, savingsId, accountNo, date, currency, amount, outstandingChargeAmount, runningBalance, reversed,
+                    transfer, postInterestAsOn, submittedByUsername, note, submittedOnDate, createdOnUtc);
+            addChargesPaidByData(rs, transactionData);
+            return transactionData;
+        }
+
+        private void addChargesPaidByData(final ResultSet rs, final SavingsAccountTransactionData transactionData) throws SQLException {
+            final Long chargesPaidById = JdbcSupport.getLongDefaultToNullIfZero(rs, CHARGES_PAID_BY_ID);
+            if (chargesPaidById == null) {
+                return;
+            }
+
+            final Long chargeId = JdbcSupport.getLongDefaultToNullIfZero(rs, CHARGE_ID);
+            final BigDecimal chargeAmount = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, CHARGE_AMOUNT);
+            final Integer chargesTimeType = JdbcSupport.getInteger(rs, CHARGE_TIME_TYPE);
+            final EnumOptionData enumOptionDataForChargesTimeType = chargesTimeType == null ? null
+                    : new EnumOptionData(chargesTimeType.longValue(), null, null);
+            final boolean isPenalty = rs.getBoolean(IS_PENALTY_CHARGE);
+            final SavingsAccountChargeData savingsAccountChargeData = new SavingsAccountChargeData(chargeId, chargeAmount,
+                    enumOptionDataForChargesTimeType, isPenalty);
+            final BigDecimal chargesPaid = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, PAID_BY_AMOUNT);
+            final SavingsAccountChargesPaidByData savingsAccountChargesPaidByData = new SavingsAccountChargesPaidByData(chargesPaidById,
+                    chargesPaid);
+            savingsAccountChargesPaidByData.setSavingsAccountChargeData(savingsAccountChargeData);
+            transactionData.setChargesPaidByData(savingsAccountChargesPaidByData);
         }
     }
 

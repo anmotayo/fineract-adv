@@ -32,8 +32,8 @@ import java.util.List;
  * {@code interestTransferredToSavings} is always {@link BigDecimal#ZERO} this phase; Phase 5 of the implementation plan
  * (Transfers And Withdrawal Lock) is responsible for populating it.
  *
- * {@code interestBasedCharges} is the life-to-date total actually applied through the charge-application ledger and is
- * on the same life-to-date footing as {@code interestPosted} and {@code withholdingTax}.
+ * {@code interestCharges} is the life-to-date total actually applied through the charge-application ledger and is on
+ * the same life-to-date footing as {@code interestPosted} and {@code withholdingTax}.
  */
 public class DynamicDepositInterestSummaryData {
 
@@ -42,23 +42,23 @@ public class DynamicDepositInterestSummaryData {
     private final BigDecimal totalInterestForPeriod;
     private final BigDecimal interestWithdrawn;
     private final BigDecimal withholdingTax;
-    private final BigDecimal interestBasedCharges;
-    private final BigDecimal interestBasedChargePostedDerived;
+    private final BigDecimal interestCharges;
+    private final BigDecimal totalInterestChargeDerived;
     private final BigDecimal netInterest;
     private final BigDecimal interestTransferredToSavings;
     private final List<RateIntervalData> effectiveRateIntervals;
 
     public DynamicDepositInterestSummaryData(final BigDecimal grossInterestEarnedAsAtToday, final BigDecimal interestPosted,
             final BigDecimal totalInterestForPeriod, final BigDecimal interestWithdrawn, final BigDecimal withholdingTax,
-            final BigDecimal interestBasedCharges, final BigDecimal interestBasedChargePostedDerived, final BigDecimal netInterest,
+            final BigDecimal interestCharges, final BigDecimal totalInterestChargeDerived, final BigDecimal netInterest,
             final BigDecimal interestTransferredToSavings, final List<RateIntervalData> effectiveRateIntervals) {
         this.grossInterestEarnedAsAtToday = grossInterestEarnedAsAtToday;
         this.interestPosted = interestPosted;
         this.totalInterestForPeriod = totalInterestForPeriod;
         this.interestWithdrawn = interestWithdrawn;
         this.withholdingTax = withholdingTax;
-        this.interestBasedCharges = interestBasedCharges;
-        this.interestBasedChargePostedDerived = interestBasedChargePostedDerived;
+        this.interestCharges = interestCharges;
+        this.totalInterestChargeDerived = totalInterestChargeDerived;
         this.netInterest = netInterest;
         this.interestTransferredToSavings = interestTransferredToSavings;
         this.effectiveRateIntervals = effectiveRateIntervals;
@@ -84,12 +84,12 @@ public class DynamicDepositInterestSummaryData {
         return this.withholdingTax;
     }
 
-    public BigDecimal interestBasedCharges() {
-        return this.interestBasedCharges;
+    public BigDecimal interestCharges() {
+        return this.interestCharges;
     }
 
-    public BigDecimal interestBasedChargePostedDerived() {
-        return this.interestBasedChargePostedDerived;
+    public BigDecimal totalInterestChargeDerived() {
+        return this.totalInterestChargeDerived;
     }
 
     public BigDecimal netInterest() {

@@ -50,16 +50,24 @@ class CumulativeForfeitureCalculatorTest {
     }
 
     @Test
-    void aPartialPercentageTargetsAProportionOfLifetimeInterestRatherThanCompoundingAcrossWithdrawals() {
+    void aPartialPercentageTargetsTheRemainingAvailableInterestAcrossWithdrawals() {
         // W1: 50% of 100 posted = 50.
         final BigDecimal first = CumulativeForfeitureCalculator.forfeitureAmount(new BigDecimal("100"), BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("50"));
         assertThat(first).isEqualByComparingTo("50");
 
-        // W2: target is 50% of 200 lifetime = 100; 50 already taken -> 50 more, NOT (200-50)*50% = 75.
+        // W2: 200 lifetime posted - 50 already taken = 150 still available; 50% of the remainder is 75.
         final BigDecimal second = CumulativeForfeitureCalculator.forfeitureAmount(new BigDecimal("200"), BigDecimal.ZERO,
                 new BigDecimal("50"), new BigDecimal("50"));
-        assertThat(second).isEqualByComparingTo("50");
+        assertThat(second).isEqualByComparingTo("75");
+    }
+
+    @Test
+    void laterWithdrawalUsesTheBalanceAfterPriorForfeitureAndNewAccrual() {
+        final BigDecimal forfeit = CumulativeForfeitureCalculator.forfeitureAmount(new BigDecimal("200"), BigDecimal.ZERO,
+                new BigDecimal("80"), new BigDecimal("80"));
+
+        assertThat(forfeit).isEqualByComparingTo("96");
     }
 
     @Test

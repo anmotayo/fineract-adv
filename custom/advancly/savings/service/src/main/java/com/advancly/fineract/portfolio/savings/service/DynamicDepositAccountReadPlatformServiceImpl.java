@@ -37,6 +37,7 @@ import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.DepositAccountInterestRateChartData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
@@ -70,6 +71,14 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     private final DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
+
+    private static void appendTotalInterestChargeSubquery(final StringBuilder sqlBuilder) {
+        sqlBuilder.append("(select COALESCE(sum(sat_ibc.amount), 0) ");
+        sqlBuilder.append("from m_savings_account_transaction sat_ibc ");
+        sqlBuilder.append("where sat_ibc.savings_account_id = sa.id and sat_ibc.transaction_type_enum = ");
+        sqlBuilder.append(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
+        sqlBuilder.append(" and sat_ibc.is_reversed = false and sat_ibc.is_reversal = false) as totalInterestCharge, ");
+    }
 
     public DynamicDepositAccountReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
             final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService,
@@ -126,9 +135,9 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         // The current period's unposted accrual: total earned to date minus what has already been posted.
         final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
-        final BigDecimal interestBasedChargePostedDerived = defaultToZero(
+        final BigDecimal totalInterestChargeDerived = defaultToZero(
                 this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId));
-        final BigDecimal interestBasedCharges = interestBasedChargePostedDerived;
+        final BigDecimal interestCharges = totalInterestChargeDerived;
         // Phase 5 (Transfers And Withdrawal Lock) owns this field; it stays zero for now.
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
 
@@ -145,13 +154,13 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             interestWithdrawn = interestWithdrawn.add(withdrawal.withdrawnInterestAmount());
         }
 
-        // Life-to-date scope, consistent with withholdingTax and interestBasedCharges (both life-to-date; charges are
+        // Life-to-date scope, consistent with withholdingTax and interestCharges (both life-to-date; charges are
         // read from the application ledger) - not totalInterestForPeriod, which is the current unposted accrual.
         // Phase 5's Transfer Interest To Savings Job computes its own period-scoped net interest directly from
         // per-transaction data and does not read this DTO, so this field is a reporting convenience only; a correct
         // per-period WHT figure isn't computable this phase anyway since WHT is only known once a period is actually
         // posted.
-        final BigDecimal netInterest = interestPosted.subtract(withholdingTax).subtract(interestBasedCharges);
+        final BigDecimal netInterest = interestPosted.subtract(withholdingTax).subtract(interestCharges);
 
         final List<DepositAccountDynamicRateHistory> rateHistoryRows = this.rateHistoryRepository
                 .findByAccountIdOrderByTransactionDateAscIdAsc(accountId);
@@ -161,8 +170,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
                 .toList();
 
         return new DynamicDepositInterestSummaryData(grossInterestEarnedAsAtToday, interestPosted, totalInterestForPeriod,
-                interestWithdrawn, withholdingTax, interestBasedCharges, interestBasedChargePostedDerived, netInterest,
-                interestTransferredToSavings, effectiveRateIntervals);
+                interestWithdrawn, withholdingTax, interestCharges, totalInterestChargeDerived, netInterest, interestTransferredToSavings,
+                effectiveRateIntervals);
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {
@@ -213,6 +222,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
+            appendTotalInterestChargeSubquery(sqlBuilder);
             sqlBuilder.append("sa.total_withhold_tax_derived as totalWithholdTax, ");
             sqlBuilder.append("sa.interest_posted_till_date as interestPostedTillDate, ");
             sqlBuilder.append("dat.deposit_amount as depositAmount, dat.deposit_period as depositPeriod, ");
@@ -311,11 +321,13 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             final BigDecimal accountBalance = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "accountBalance");
             final BigDecimal totalFeeCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalFeeCharge");
             final BigDecimal totalPenaltyCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalPenaltyCharge");
+            final BigDecimal totalInterestCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestCharge");
             final BigDecimal totalWithholdTax = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalWithholdTax");
             final LocalDate interestPostedTillDate = JdbcSupport.getLocalDate(rs, "interestPostedTillDate");
             final SavingsAccountSummaryData summary = new SavingsAccountSummaryData(currency, totalDeposits, totalWithdrawals,
                     totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                     totalPenaltyCharge, null, totalWithholdTax, null, null, null, interestPostedTillDate);
+            summary.setTotalInterestCharge(totalInterestCharge);
 
             final Integer minDepositTerm = JdbcSupport.getInteger(rs, "minDepositTerm");
             final Integer maxDepositTerm = JdbcSupport.getInteger(rs, "maxDepositTerm");

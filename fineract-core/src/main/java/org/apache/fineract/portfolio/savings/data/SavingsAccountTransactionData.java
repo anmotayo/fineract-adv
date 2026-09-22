@@ -546,7 +546,7 @@ public class SavingsAccountTransactionData implements Serializable {
 
     public boolean isFeeCharge() {
         final SavingsAccountChargesPaidByData chargePaidBy = getSavingsAccountChargePaidBy();
-        return isPayCharge() && chargePaidBy != null && chargePaidBy.isFeeCharge();
+        return isChargeTransaction() && chargePaidBy != null && chargePaidBy.isFeeCharge();
     }
 
     public void setChargesPaidByData(final SavingsAccountChargesPaidByData savingsAccountChargesPaidByData) {
@@ -563,7 +563,7 @@ public class SavingsAccountTransactionData implements Serializable {
 
     public boolean isPenaltyCharge() {
         final SavingsAccountChargesPaidByData chargePaidBy = getSavingsAccountChargePaidBy();
-        return isPayCharge() && chargePaidBy != null && chargePaidBy.isPenaltyCharge();
+        return isChargeTransaction() && chargePaidBy != null && chargePaidBy.isPenaltyCharge();
     }
 
     public boolean isWaiveFeeChargeAndNotReversed() {
@@ -675,20 +675,12 @@ public class SavingsAccountTransactionData implements Serializable {
         return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isWithHoldTax();
     }
 
-    public boolean isInterestBasedChargeAndNotReversed() {
-        return isInterestBasedCharge() && isNotReversed();
+    public boolean isInterestChargeAndNotReversed() {
+        return isInterestCharge() && isNotReversed();
     }
 
-    public boolean isInterestBasedCharge() {
-        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isInterestBasedCharge();
-    }
-
-    public boolean isInterestForfeitureAndNotReversed() {
-        return isInterestForfeiture() && isNotReversed();
-    }
-
-    public boolean isInterestForfeiture() {
-        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isInterestForfeiture();
+    public boolean isInterestCharge() {
+        return SavingsAccountTransactionType.fromInt(this.transactionType.getId().intValue()).isInterestCharge();
     }
 
     public boolean isAccrual() {

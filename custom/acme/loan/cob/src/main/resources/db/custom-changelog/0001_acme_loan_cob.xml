@@ -23,6 +23,10 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
     <changeSet author="acme" id="1">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM m_batch_business_steps WHERE job_name = 'LOAN_CLOSE_OF_BUSINESS' AND step_name = 'ACME_LOAN_NOOP'</sqlCheck>
+        </preConditions>
         <insert tableName="m_batch_business_steps">
             <column name="job_name" value="LOAN_CLOSE_OF_BUSINESS"/>
             <column name="step_name" value="ACME_LOAN_NOOP"/>

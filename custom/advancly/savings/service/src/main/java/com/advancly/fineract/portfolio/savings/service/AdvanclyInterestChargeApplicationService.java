@@ -213,8 +213,10 @@ public class AdvanclyInterestChargeApplicationService {
         this.jdbcTemplate.update("update m_savings_account set total_interest_charge_derived = ? where id = ?", posted, accountId);
     }
 
-    private BigDecimal selectedPostedNetInterest(final SavingsAccount account, final LocalDate selectedFromDate,
-            final LocalDate selectedToDate) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same basis.
+     */
+    BigDecimal selectedPostedNetInterest(final SavingsAccount account, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
         BigDecimal postedInterest = BigDecimal.ZERO;
         BigDecimal withholdingTax = BigDecimal.ZERO;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
@@ -236,7 +238,8 @@ public class AdvanclyInterestChargeApplicationService {
         return transactionDate != null && !transactionDate.isBefore(selectedFromDate) && !transactionDate.isAfter(selectedToDate);
     }
 
-    private void validateDailyPostingPeriod(final SavingsAccount account) {
+    /** Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same rule. */
+    void validateDailyPostingPeriod(final SavingsAccount account) {
         if (SavingsPostingInterestPeriodType.fromInt(account.getInterestPostingPeriodType()) != SavingsPostingInterestPeriodType.DAILY) {
             throw new GeneralPlatformDomainRuleException(
                     "error.msg.advancly.savings.account.custom.period.early.withdrawal.interest.charge.requires.daily.posting",
@@ -258,7 +261,10 @@ public class AdvanclyInterestChargeApplicationService {
         return selectedFromDate(account, transactionDate, command.localDateValueOfParameterNamed(SELECTED_FROM_DATE), rule);
     }
 
-    private LocalDate selectedFromDate(final SavingsAccount account, final LocalDate transactionDate, final LocalDate selectedFromDate,
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same default.
+     */
+    LocalDate selectedFromDate(final SavingsAccount account, final LocalDate transactionDate, final LocalDate selectedFromDate,
             final AdvanclyChargeInterestRule rule) {
         if (rule.isCumulative()) {
             return account.getStartInterestCalculationDate() == null ? transactionDate : account.getStartInterestCalculationDate();
@@ -274,8 +280,10 @@ public class AdvanclyInterestChargeApplicationService {
         return selectedToDate(transactionDate, command.localDateValueOfParameterNamed(SELECTED_TO_DATE), rule);
     }
 
-    private LocalDate selectedToDate(final LocalDate transactionDate, final LocalDate selectedToDate,
-            final AdvanclyChargeInterestRule rule) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same default.
+     */
+    LocalDate selectedToDate(final LocalDate transactionDate, final LocalDate selectedToDate, final AdvanclyChargeInterestRule rule) {
         if (rule.isCumulative()) {
             return transactionDate;
         }
@@ -292,7 +300,11 @@ public class AdvanclyInterestChargeApplicationService {
                 : null, accountCharge);
     }
 
-    private BigDecimal resolvePercentage(final BigDecimal percentageOverride, final SavingsAccountCharge accountCharge) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same
+     * resolution.
+     */
+    BigDecimal resolvePercentage(final BigDecimal percentageOverride, final SavingsAccountCharge accountCharge) {
         if (percentageOverride != null) {
             return percentageOverride;
         }
@@ -303,7 +315,11 @@ public class AdvanclyInterestChargeApplicationService {
         return accountCharge.getCharge().getAmount();
     }
 
-    private void validatePercentageOverride(final BigDecimal percentageOverride) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same
+     * validation.
+     */
+    void validatePercentageOverride(final BigDecimal percentageOverride) {
         if (percentageOverride != null
                 && (percentageOverride.compareTo(BigDecimal.ZERO) < 0 || percentageOverride.compareTo(ONE_HUNDRED) > 0)) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.early.withdrawal.charge.percentage.invalid",
@@ -311,12 +327,18 @@ public class AdvanclyInterestChargeApplicationService {
         }
     }
 
-    private AdvanclyChargeInterestRule resolveSingleRule(final SavingsAccount account) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same lookup.
+     */
+    AdvanclyChargeInterestRule resolveSingleRule(final SavingsAccount account) {
         final List<AdvanclyChargeInterestRule> rules = this.chargeInterestRuleRepository.findBySavingsProductId(account.productId());
         return rules.size() == 1 ? rules.get(0) : null;
     }
 
-    private SavingsAccountCharge resolveAccountCharge(final SavingsAccount account, final Long chargeId) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same lookup.
+     */
+    SavingsAccountCharge resolveAccountCharge(final SavingsAccount account, final Long chargeId) {
         for (final SavingsAccountCharge accountCharge : account.charges()) {
             if (accountCharge.getCharge() == null || !chargeId.equals(accountCharge.getCharge().getId())) {
                 continue;

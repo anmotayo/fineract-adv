@@ -16,15 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package com.advancly.fineract.portfolio.savings;
+package com.advancly.fineract.portfolio.savings.service;
 
-public final class AdvanclyInterestChargeApiConstants {
+import com.advancly.fineract.portfolio.savings.data.EarlyWithdrawalChargeData;
+import org.apache.fineract.infrastructure.core.api.JsonQuery;
 
-    public static final String APPLY_EARLY_WITHDRAWAL_CHARGE = "applyEarlyWithdrawalCharge";
-    public static final String EARLY_WITHDRAWAL_CHARGE_PERCENTAGE = "earlyWithdrawalChargePercentage";
-    public static final String SELECTED_FROM_DATE = "selectedFromDate";
-    public static final String SELECTED_TO_DATE = "selectedToDate";
-    public static final String WITHDRAWAL_DATE = "withdrawalDate";
+/** Backs {@code POST /savingsaccounts/{accountId}/earlywithdrawalcharge}. Never persists anything. */
+public interface EarlyWithdrawalChargeReadPlatformService {
 
-    private AdvanclyInterestChargeApiConstants() {}
+    EarlyWithdrawalChargeData calculate(Long savingsAccountId, JsonQuery query);
 }

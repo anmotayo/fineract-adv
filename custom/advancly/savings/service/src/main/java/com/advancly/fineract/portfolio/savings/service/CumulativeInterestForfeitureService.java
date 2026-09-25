@@ -208,7 +208,10 @@ public class CumulativeInterestForfeitureService {
      * guarantee. A closure is unaffected by that concern because its own settlement withdrawal is issued afterwards by
      * core, from the already-refreshed balance, exactly as the per-period closure path does.
      */
-    private LocalDate forcedPostingDate(final SavingsAccount account, final LocalDate exitDate, final boolean isPrematureClosure) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same cutoff.
+     */
+    LocalDate forcedPostingDate(final SavingsAccount account, final LocalDate exitDate, final boolean isPrematureClosure) {
         return isPrematureClosure ? account.interestPostingTransactionDateForClosure(exitDate) : exitDate.minusDays(1);
     }
 
@@ -258,7 +261,10 @@ public class CumulativeInterestForfeitureService {
         this.jdbcTemplate.update("update m_savings_account set total_interest_charge_derived = ? where id = ?", posted, accountId);
     }
 
-    private BigDecimal sumActiveAppliedAmount(final Long accountId) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same basis.
+     */
+    BigDecimal sumActiveAppliedAmount(final Long accountId) {
         final BigDecimal amount = this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId);
         return amount == null ? BigDecimal.ZERO : amount;
     }
@@ -276,7 +282,10 @@ public class CumulativeInterestForfeitureService {
         return startInterestCalculationDate != null ? startInterestCalculationDate : exitDate;
     }
 
-    private SavingsAccountTransaction latestInterestPostingOn(final SavingsAccount account, final LocalDate date) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same check.
+     */
+    SavingsAccountTransaction latestInterestPostingOn(final SavingsAccount account, final LocalDate date) {
         SavingsAccountTransaction found = null;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             if (transaction.isInterestPostingAndNotReversed() && date.equals(transaction.getTransactionDate())) {
@@ -293,8 +302,10 @@ public class CumulativeInterestForfeitureService {
         this.noteRepository.save(Note.savingsTransactionNote(account, transaction, text));
     }
 
-    private QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account,
-            final BigDecimal chargePercentageOverride) {
+    /**
+     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same charge.
+     */
+    QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account, final BigDecimal chargePercentageOverride) {
         final List<AdvanclyChargeInterestRule> rules = this.chargeInterestRuleRepository.findBySavingsProductId(account.productId());
         if (rules.size() != 1 || !rules.get(0).isCumulative()) {
             return null;
@@ -345,6 +356,6 @@ public class CumulativeInterestForfeitureService {
         return accountCharge.getCharge().getAmount();
     }
 
-    private record QualifyingCharge(SavingsAccountCharge accountCharge, BigDecimal percentage) {
+    record QualifyingCharge(SavingsAccountCharge accountCharge, BigDecimal percentage) {
     }
 }

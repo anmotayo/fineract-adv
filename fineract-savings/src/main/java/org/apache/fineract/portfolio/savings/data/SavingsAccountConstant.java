@@ -63,7 +63,14 @@ public class SavingsAccountConstant extends SavingsApiConstants {
             // for itself whether a withdrawal is "early"; the upstream application signals it here. Ignored unless the
             // product is configured for an early-withdrawal penalty. Allow-listed in core for the same reason as
             // earlyWithdrawalChargePercentage: the custom advancly module cannot see this validator.
-            "applyEarlyWithdrawalCharge"));
+            "applyEarlyWithdrawalCharge",
+            // "type" - "deposit"/"withdrawal". Not a core deposit/withdrawal request parameter; present only because
+            // the custom advancly bulk-transaction endpoint forwards backdated transactions to this same core
+            // deposit(...)/withdrawal(...) path one at a time, deep-copying each per-transaction JSON object (which
+            // carries its own "type" field) rather than stripping it first. Allow-listed here for the same reason as
+            // the other advancly params above. See
+            // AdvanclySavingsAccountWritePlatformService#delegateBulkTransactionToCore.
+            "type"));
 
     protected static final Set<String> SAVINGS_ACCOUNT_TRANSACTION_RESPONSE_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(idParamName, accountNoParamName));

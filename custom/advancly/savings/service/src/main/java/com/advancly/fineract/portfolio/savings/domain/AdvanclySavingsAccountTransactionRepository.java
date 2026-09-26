@@ -45,15 +45,14 @@ public interface AdvanclySavingsAccountTransactionRepository extends JpaReposito
     // common case, 2 only when the latest row is itself a posting/accrual/overdraft-interest row. The caller must
     // not rely on the union's row order to tell the two apart - determine roles by comparing the returned rows'
     // own attributes instead (see AdvanclySavingsAccountAssembler).
-    @Query(value = "select * from ( " + "  select sat.* from m_savings_account_transaction sat "
-            + "  where sat.savings_account_id = :savingsId and sat.is_reversed = false and sat.is_reversal = false "
-            + "    and sat.transaction_type_enum <> 10 "
-            + "  order by sat.transaction_date desc, sat.created_date desc, sat.id desc limit 1" + ") seed " + "union " + "select * from ( "
-            + "  select sat.* from m_savings_account_transaction sat "
-            + "  where sat.savings_account_id = :savingsId and sat.is_reversed = false and sat.is_reversal = false "
-            + "    and sat.transaction_type_enum not in (3, 10, 17) "
-            + "  order by sat.transaction_date desc, sat.created_date desc, sat.id desc limit 1" + ") balanceBearing", nativeQuery = true)
-    List<SavingsAccountTransaction> findLastNonReversedAndBalanceBearingTransactions(@Param("savingsId") Long savingsId);
+    @Query(value = "(select sat.* from m_savings_account_transaction sat "
+            + "where sat.savings_account_id = ?1 and sat.is_reversed = false and sat.is_reversal = false "
+            + "and sat.transaction_type_enum <> 10 " + "order by sat.transaction_date desc, sat.created_date desc, sat.id desc limit 1) "
+            + "union " + "(select sat.* from m_savings_account_transaction sat "
+            + "where sat.savings_account_id = ?1 and sat.is_reversed = false and sat.is_reversal = false "
+            + "and sat.transaction_type_enum not in (3, 10, 17) "
+            + "order by sat.transaction_date desc, sat.created_date desc, sat.id desc limit 1)", nativeQuery = true)
+    List<SavingsAccountTransaction> findLastNonReversedAndBalanceBearingTransactions(Long savingsId);
 
     // O(1) append path: get just the last transaction date for path decision (excludes accrual type 10)
     @Query("select max(sat.dateOf) from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "

@@ -223,9 +223,12 @@ public class CumulativeInterestForfeitureService {
                 Money.of(account.getCurrency(), amount));
         final BigDecimal appliedAmount = forfeiture.getAmount();
 
-        // Mirrors SavingsAccount.payCharge(...): pay(...) before building the SavingsAccountChargePaidBy link, so the
-        // charge's own paid/outstanding bookkeeping stays symmetric with undoTransaction's undoPayment(...).
-        accountCharge.pay(account.getCurrency(), Money.of(account.getCurrency(), appliedAmount));
+        // accountCharge is a persistent, reusable rule definition (amount/amountOutstanding pinned at 0 between
+        // applications for PERCENT_OF_INTEREST charges), not a per-application ledger entry, so paying a bare
+        // externally-computed amount against it would drive amountOutstanding negative - see
+        // SavingsAccountCharge#payExternallyComputedCharge for why and how it stays symmetric with
+        // undoTransaction's undoPayment(...) while still tracking amountPaid as a running lifetime total.
+        accountCharge.payExternallyComputedCharge(account.getCurrency(), appliedAmount);
         forfeiture.getSavingsAccountChargesPaid().add(SavingsAccountChargePaidBy.instance(forfeiture, accountCharge, appliedAmount));
         if (backdatedTxnsAllowedTill) {
             account.addTransactionToExisting(forfeiture);

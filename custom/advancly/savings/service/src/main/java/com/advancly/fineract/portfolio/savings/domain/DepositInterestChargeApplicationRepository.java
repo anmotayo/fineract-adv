@@ -27,7 +27,7 @@ import org.springframework.data.repository.query.Param;
 public interface DepositInterestChargeApplicationRepository extends JpaRepository<DepositInterestChargeApplication, Long> {
 
     @Query("select count(app) from DepositInterestChargeApplication app " + "where app.account.id = :accountId "
-            + "and app.charge.id = :chargeId " + "and app.selectedFromDate = :fromDate " + "and app.selectedToDate = :toDate "
+            + "and app.charge.id = :chargeId " + "and app.selectedFromDate = :fromDate " + "and app.selectedToDate >= :toDate "
             + "and app.withdrawalTransaction.reversed = false " + "and app.interestChargeTransaction.reversed = false")
     long countActiveForSelectedPeriod(@Param("accountId") Long accountId, @Param("chargeId") Long chargeId,
             @Param("fromDate") LocalDate fromDate, @Param("toDate") LocalDate toDate);

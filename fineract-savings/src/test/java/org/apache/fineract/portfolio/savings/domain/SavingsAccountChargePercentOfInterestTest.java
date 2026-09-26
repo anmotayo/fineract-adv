@@ -24,9 +24,21 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.HashMap;
+import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
+import org.apache.fineract.infrastructure.core.domain.ActionContext;
+import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
+import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
 import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,6 +47,29 @@ import org.junit.jupiter.api.Test;
  * immediately dereferences through {@code determineIfFullyPaid()} -> {@code calculateOutstanding()}.
  */
 class SavingsAccountChargePercentOfInterestTest {
+
+    private FineractPlatformTenant originalTenant;
+
+    @BeforeEach
+    void setUp() {
+        this.originalTenant = ThreadLocalContextUtil.getTenant();
+        ThreadLocalContextUtil
+                .setTenant(FineractPlatformTenant.builder().id(1L).tenantIdentifier("default").name("Default").timezoneId("UTC").build());
+        MoneyHelper.initializeTenantRoundingMode("default", RoundingMode.HALF_EVEN.ordinal());
+
+        final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
+        businessDates.put(BusinessDateType.BUSINESS_DATE, LocalDate.now());
+        businessDates.put(BusinessDateType.COB_DATE, LocalDate.now().minusDays(1));
+        ThreadLocalContextUtil.setActionContext(ActionContext.DEFAULT);
+        ThreadLocalContextUtil.setBusinessDates(businessDates);
+    }
+
+    @AfterEach
+    void tearDown() {
+        ThreadLocalContextUtil.setTenant(this.originalTenant);
+        MoneyHelper.clearCache();
+        ThreadLocalContextUtil.reset();
+    }
 
     @Test
     void aPercentOfInterestChargeCanBeConstructedWithoutThrowing() {
@@ -74,6 +109,48 @@ class SavingsAccountChargePercentOfInterestTest {
 
         assertThat(charge.getPercentage()).isNull();
         assertThat(charge.amount()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void payingAnExternallyComputedAmountWithoutRefreshingOutstandingFirstDrivesItNegative() {
+        final SavingsAccountCharge charge = percentOfInterestCharge(new BigDecimal("50"));
+        final MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
+
+        // amountOutstanding is pinned at 0 between applications (see amountAndOutstandingAreZeroRatherThanNull...
+        // above) - paying an externally-computed amount straight against that, without refreshing it first, is
+        // exactly the bug: it goes negative instead of landing on zero.
+        charge.pay(currency, Money.of(currency, new BigDecimal("37.50")));
+
+        assertThat(charge.amoutOutstanding()).isEqualByComparingTo("-37.50");
+    }
+
+    @Test
+    void payExternallyComputedChargeLandsExactlyOnZeroInsteadOfGoingNegative() {
+        final SavingsAccountCharge charge = percentOfInterestCharge(new BigDecimal("50"));
+        final MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
+
+        charge.payExternallyComputedCharge(currency, new BigDecimal("37.50"));
+
+        assertThat(charge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(charge.isPaid()).isTrue();
+    }
+
+    @Test
+    void payExternallyComputedChargeStillAccumulatesAmountPaidAsALifetimeTotalAcrossApplications() {
+        final SavingsAccountCharge charge = percentOfInterestCharge(new BigDecimal("50"));
+        final MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
+
+        charge.payExternallyComputedCharge(currency, new BigDecimal("37.50"));
+        charge.payExternallyComputedCharge(currency, new BigDecimal("42.00"));
+        charge.payExternallyComputedCharge(currency, new BigDecimal("10.00"));
+
+        // amount/amountOutstanding only ever reflect the latest application, but amountPaid keeps the running
+        // lifetime total across all three - the tracking amountPaid alone would lose if it were reset per
+        // application.
+        assertThat(charge.amount()).isEqualByComparingTo("10.00");
+        assertThat(charge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(charge.amountPaid()).isEqualByComparingTo("89.50");
+        assertThat(charge.isPaid()).isTrue();
     }
 
     private SavingsAccountCharge percentOfInterestCharge(final BigDecimal percentage) {

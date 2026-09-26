@@ -38,6 +38,7 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
@@ -90,6 +91,8 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     @Mock
     private ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
+    @Mock
+    private ConfigurationDomainService configurationDomainService;
 
     private AdvanclySavingsAccountWritePlatformService service;
     private FromJsonHelper fromJsonHelper;
@@ -103,7 +106,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
                 fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, interestChargeApplicationService,
-                productToGLAccountMappingRepository);
+                productToGLAccountMappingRepository, configurationDomainService);
     }
 
     @Test

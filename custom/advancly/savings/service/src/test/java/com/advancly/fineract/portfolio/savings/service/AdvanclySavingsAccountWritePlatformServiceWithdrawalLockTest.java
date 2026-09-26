@@ -41,6 +41,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -107,6 +108,8 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
     private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     @Mock
     private ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
+    @Mock
+    private ConfigurationDomainService configurationDomainService;
 
     private AdvanclySavingsAccountWritePlatformService service;
     private FromJsonHelper fromJsonHelper;
@@ -120,7 +123,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         service = new AdvanclySavingsAccountWritePlatformService(context, savingsAccountTransactionDataValidator, assembler, domainService,
                 advanclyTransactionRepository, paymentDetailWritePlatformService, noteRepository, gsimRepository, delegate, bulkValidator,
                 fromJsonHelper, paymentTypeRepositoryWrapper, paymentDetailRepository, interestChargeApplicationService,
-                productToGLAccountMappingRepository);
+                productToGLAccountMappingRepository, configurationDomainService);
     }
 
     @Test
@@ -211,6 +214,36 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
 
         assertThat(result).isSameAs(delegateResult);
         verify(delegate).withdrawal(savingsId, command);
+    }
+
+    @Test
+    void backdatedWithdrawalAppliesChargeUsingCorePivotConfigStatusNotThisTransactionsOwnBackdatedFlag() {
+        Long savingsId = 10L;
+        LocalDate lastTxnDate = LocalDate.of(2026, 5, 27);
+        LocalDate transactionDate = lastTxnDate.minusDays(2);
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(savingsId).build();
+        AssembledSavingsAccount assembled = AssembledSavingsAccount.of(account, null);
+
+        JsonCommand command = withdrawalCommand(transactionDate, BigDecimal.valueOf(1000));
+
+        when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.of(lastTxnDate));
+        when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
+
+        CommandProcessingResult delegateResult = new CommandProcessingResultBuilder().withEntityId(999L).build();
+        when(delegate.withdrawal(savingsId, command)).thenReturn(delegateResult);
+
+        SavingsAccountTransaction withdrawal = new SavingsAccountTransactionTestBuilder().withId(999L).withSavingsAccount(account).build();
+        when(advanclyTransactionRepository.findById(999L)).thenReturn(Optional.of(withdrawal));
+
+        // This transaction IS backdated relative to the account's own history (transactionDate < lastTxnDate) -
+        // that must NOT be what decides the charge's collection. Only the tenant's pivot-date config, which is what
+        // core's own delegate.withdrawal(...) actually used internally, may decide it. Deliberately false here,
+        // opposite of the transaction's own backdated-ness, to prove the two are not conflated.
+        when(configurationDomainService.retrievePivotDateConfig()).thenReturn(false);
+
+        service.withdrawal(savingsId, command);
+
+        verify(interestChargeApplicationService).applyIfApplicable(eq(account), eq(withdrawal), eq(command), eq(false), eq(false));
     }
 
     private JsonCommand withdrawalCommand(LocalDate transactionDate, BigDecimal transactionAmount) {

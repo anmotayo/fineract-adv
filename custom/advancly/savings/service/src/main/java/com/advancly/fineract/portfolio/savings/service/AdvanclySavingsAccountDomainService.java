@@ -88,7 +88,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
      */
     public SavingsAccountTransaction handleDepositOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final Money lastRunningBalance,
-            final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction, boolean isAccountTransfer) {
+            final MonetaryCurrency currency, final SavingsAccountTransaction lastBalanceBearingTransaction, boolean isAccountTransfer) {
         account.validateForAccountBlock();
         account.validateForCreditBlock();
 
@@ -98,7 +98,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         account.addTransactionToExisting(deposit);
 
-        transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
+        transactionHelper.updatePreviousTransactionBalanceEndDate(lastBalanceBearingTransaction, transactionDate, currency);
         transactionHelper.setRunningBalanceForAppendPath(deposit, lastRunningBalance, currency);
         transactionHelper.updateSummaryIncremental(account, deposit, currency);
 
@@ -123,7 +123,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
      */
     public SavingsAccountTransaction handleWithdrawalOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final boolean applyWithdrawFee,
-            final Money lastRunningBalance, final MonetaryCurrency currency, final SavingsAccountTransaction lastNonReversedTransaction,
+            final Money lastRunningBalance, final MonetaryCurrency currency, final SavingsAccountTransaction lastBalanceBearingTransaction,
             boolean isAccountTransfer) {
         account.validateForAccountBlock();
         account.validateForDebitBlock();
@@ -134,7 +134,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         transactionHelper.validateBalanceForAppendPath(account, transactionAmount, currency);
         account.addTransactionToExisting(withdrawal);
-        transactionHelper.updatePreviousTransactionBalanceEndDate(lastNonReversedTransaction, transactionDate, currency);
+        transactionHelper.updatePreviousTransactionBalanceEndDate(lastBalanceBearingTransaction, transactionDate, currency);
         transactionHelper.setRunningBalanceForAppendPath(withdrawal, lastRunningBalance, currency);
         transactionHelper.updateSummaryIncremental(account, withdrawal, currency);
 

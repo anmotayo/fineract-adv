@@ -91,7 +91,7 @@ public class AdvanclyInterestChargeApplicationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
-            final JsonCommand command, final boolean backdatedTxnsAllowedTill) {
+            final JsonCommand command, final boolean appendPath, final boolean backdatedTxnsAllowedTill) {
         final boolean applyEarlyWithdrawalCharge = command.booleanPrimitiveValueOfParameterNamed(APPLY_EARLY_WITHDRAWAL_CHARGE);
         final BigDecimal percentageOverride = command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
                 ? command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
@@ -99,13 +99,26 @@ public class AdvanclyInterestChargeApplicationService {
         final LocalDate selectedFromDate = command.localDateValueOfParameterNamed(SELECTED_FROM_DATE);
         final LocalDate selectedToDate = command.localDateValueOfParameterNamed(SELECTED_TO_DATE);
         return applyIfApplicable(account, withdrawalTransaction, applyEarlyWithdrawalCharge, percentageOverride, selectedFromDate,
-                selectedToDate, backdatedTxnsAllowedTill);
+                selectedToDate, appendPath, backdatedTxnsAllowedTill);
     }
 
+    /**
+     * @param appendPath
+     *            whether {@code withdrawalTransaction} was added via {@code addTransactionToExisting(...)} (the
+     *            pivot-config transient list) because it went through the O(1) append path specifically - as opposed to
+     *            {@code addTransaction(...)} (the JPA-managed collection).
+     * @param backdatedTxnsAllowedTill
+     *            when {@code appendPath} is false, which of the two collections core's own
+     *            {@code handleWithdrawal(...)}/{@code withdraw(...)} used for this withdrawal - i.e. the fallback this
+     *            method defers to when it isn't itself on the append path. The charge transaction, its journal entries,
+     *            and (for cumulative rules) the forfeiture transaction must all be written through whichever of the two
+     *            collections the withdrawal itself used, or they end up in the collection
+     *            {@code deriveAccountingBridgeData(...)} isn't looking at.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
             final boolean applyEarlyWithdrawalCharge, final BigDecimal percentageOverride, final LocalDate selectedFromDate,
-            final LocalDate selectedToDate, final boolean backdatedTxnsAllowedTill) {
+            final LocalDate selectedToDate, final boolean appendPath, final boolean backdatedTxnsAllowedTill) {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()
                 || !isRequested(account, withdrawalTransaction, applyEarlyWithdrawalCharge)) {
             return null;
@@ -124,7 +137,7 @@ public class AdvanclyInterestChargeApplicationService {
         final LocalDate transactionDate = withdrawalTransaction.getTransactionDate();
         if (rule.isCumulative()) {
             return this.cumulativeInterestForfeitureService.forfeitIfApplicable(account, withdrawalTransaction, transactionDate,
-                    backdatedTxnsAllowedTill, false, percentageOverride);
+                    appendPath || backdatedTxnsAllowedTill, false, percentageOverride);
         }
         validateDailyPostingPeriod(account);
 
@@ -166,7 +179,7 @@ public class AdvanclyInterestChargeApplicationService {
         final Set<Long> existingTransactionIds = new HashSet<>(account.findCurrentTransactionIdsWithPivotDateConfig());
         final Set<Long> existingReversedTransactionIds = new HashSet<>(account.findCurrentReversedTransactionIdsWithPivotDateConfig());
         final SavingsAccountTransaction chargeTransaction = writeChargeTransaction(account, withdrawalTransaction, accountCharge,
-                transactionDate, roundedAmount, backdatedTxnsAllowedTill);
+                transactionDate, roundedAmount, appendPath, backdatedTxnsAllowedTill);
 
         final DepositInterestChargeApplication application = DepositInterestChargeApplication.createNew(account, accountCharge.getCharge(),
                 withdrawalTransaction, chargeTransaction, transactionDate, resolvedSelectedFromDate, resolvedSelectedToDate,
@@ -176,23 +189,40 @@ public class AdvanclyInterestChargeApplicationService {
         refreshPostedDerivedChargeColumn(account.getId());
 
         this.savingsAccountRepository.saveAndFlush(account);
-        postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
+        postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, appendPath || backdatedTxnsAllowedTill);
         return chargeTransaction;
     }
 
     private SavingsAccountTransaction writeChargeTransaction(final SavingsAccount account,
             final SavingsAccountTransaction withdrawalTransaction, final SavingsAccountCharge accountCharge,
-            final LocalDate transactionDate, final BigDecimal roundedAmount, final boolean backdatedTxnsAllowedTill) {
+            final LocalDate transactionDate, final BigDecimal roundedAmount, final boolean appendPath,
+            final boolean backdatedTxnsAllowedTill) {
         final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestCharge(account, account.office(),
                 transactionDate, Money.of(account.getCurrency(), roundedAmount));
-        accountCharge.pay(account.getCurrency(), Money.of(account.getCurrency(), chargeTransaction.getAmount()));
+        // accountCharge is a persistent, reusable rule definition (amount/amountOutstanding pinned at 0 for
+        // PERCENT_OF_INTEREST charges - see its populateDerivedFields(...)), not a per-application ledger entry, so
+        // its outstanding must be refreshed to this application's computed amount before paying it off - mirroring
+        // core's own updateWithdralFeeAmount(...) before pay(...) for withdrawal fees. payExternallyComputedCharge(...)
+        // does that refresh, pays it off (landing amountOutstanding on exactly zero instead of drifting negative),
+        // and preserves amountPaid as a running lifetime total across every application on this row.
+        accountCharge.payExternallyComputedCharge(account.getCurrency(), roundedAmount);
         chargeTransaction.getSavingsAccountChargesPaid()
                 .add(SavingsAccountChargePaidBy.instance(chargeTransaction, accountCharge, chargeTransaction.getAmount()));
-        if (backdatedTxnsAllowedTill) {
+        // If this is the O(1) append path, the withdrawal always used addTransactionToExisting(...), so the charge
+        // must too. Otherwise, defer to whichever collection backdatedTxnsAllowedTill says core's own
+        // handleWithdrawal(...)/withdraw(...) used for this withdrawal.
+        if (appendPath) {
+            account.addTransactionToExisting(chargeTransaction);
+        } else if (backdatedTxnsAllowedTill) {
             account.addTransactionToExisting(chargeTransaction);
         } else {
             account.addTransaction(chargeTransaction);
         }
+        // The charge is appended right after the withdrawal (same transactionDate), so the withdrawal's balance
+        // window - previously open-ended because it was the trailing transaction - must be closed here. Otherwise
+        // the withdrawal keeps a stale/overlapping window instead of being confined to its own day, corrupting any
+        // balance-day calculation (interest accrual, cumulative balance) that assumes non-overlapping windows.
+        transactionHelper.updatePreviousTransactionBalanceEndDate(withdrawalTransaction, transactionDate, account.getCurrency());
         transactionHelper.setRunningBalanceForAppendPath(chargeTransaction, withdrawalTransaction.getRunningBalance(account.getCurrency()),
                 account.getCurrency());
         transactionHelper.updateSummaryIncremental(account, chargeTransaction, account.getCurrency());
@@ -201,10 +231,10 @@ public class AdvanclyInterestChargeApplicationService {
     }
 
     private void postJournalEntries(final SavingsAccount account, final Set<Long> existingTransactionIds,
-            final Set<Long> existingReversedTransactionIds, final boolean backdatedTxnsAllowedTill) {
+            final Set<Long> existingReversedTransactionIds, final boolean appendPath) {
         final boolean isAccountTransfer = false;
         final Map<String, Object> accountingBridgeData = account.deriveAccountingBridgeData(account.getCurrency().getCode(),
-                existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, backdatedTxnsAllowedTill);
+                existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, appendPath);
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
     }
 

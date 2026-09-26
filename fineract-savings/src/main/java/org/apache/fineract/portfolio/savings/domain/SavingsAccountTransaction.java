@@ -599,6 +599,18 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         this.cumulativeBalance = Money.of(currency, this.runningBalance).multipliedBy(this.balanceNumberOfDays).getAmount();
     }
 
+    /**
+     * Whether this transaction carries its own balance window (balanceEndDate/balanceNumberOfDays). Interest postings,
+     * overdraft interest, and accrual rows never get windowed - their balance is already reflected in the running
+     * balance of the balance-bearing row that precedes/follows them, so windowing them would double count or fragment
+     * the balance-day calculation. Used both by {@code resetAccountTransactionsEndOfDayBalances} (the O(n)
+     * recalculation loop) and by the O(1) append-path helpers, so the two mechanisms agree on which rows to close.
+     */
+    public boolean isBalanceBearing() {
+        return isNotReversed() && !isReversalTransaction() && !isInterestPostingAndNotReversed() && !isOverdraftInterestAndNotReversed()
+                && !isAccrualAndNotReversed();
+    }
+
     public boolean isAcceptableForDailyBalance(final LocalDateInterval interestPeriodInterval) {
         return isNotReversed() && interestPeriodInterval.contains(getTransactionDate()) && isABalanceForAtLeastOneDay();
     }

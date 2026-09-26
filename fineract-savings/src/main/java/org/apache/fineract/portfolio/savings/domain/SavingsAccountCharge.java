@@ -370,6 +370,32 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         updateToPreviousDueDate();
     }
 
+    /**
+     * Applies and immediately fully pays an externally-computed charge amount - for charge types (e.g.
+     * {@code PERCENT_OF_INTEREST}) whose payable amount per application is computed by the caller rather than derived
+     * from a fixed {@code amount}/{@code percentage} on this row, which instead stays pinned at zero between
+     * applications (see {@code populateDerivedFields(...)}).
+     * <p>
+     * {@code amount}/{@code amountOutstanding} are refreshed to this application's amount before paying - mirroring
+     * {@link #updateWithdralFeeAmount} before {@link #pay} for withdrawal fees - so {@code amountOutstanding} lands on
+     * exactly zero instead of drifting negative, and {@code paid} correctly reflects this one application.
+     * {@code amountPaid}, however, is preserved as a running lifetime total across every application on this reused
+     * row: it is set aside before the reset and added back afterward, rather than being reset to just this
+     * application's amount, so it still answers "how much has ever been paid via this charge" instead of only "how much
+     * was paid this time."
+     */
+    public Money payExternallyComputedCharge(final MonetaryCurrency currency, final BigDecimal amount) {
+        final Money priorAmountPaid = getAmountPaid(currency);
+        this.amount = amount;
+        this.amountPaid = BigDecimal.ZERO;
+        this.amountOutstanding = amount;
+
+        final Money remainingOutstanding = pay(currency, Money.of(currency, amount));
+
+        this.amountPaid = priorAmountPaid.plus(this.amountPaid).getAmount();
+        return remainingOutstanding;
+    }
+
     public Money pay(final MonetaryCurrency currency, final Money amountPaid) {
         Money amountPaidToDate = Money.of(currency, this.amountPaid);
         Money amountOutstanding = Money.of(currency, this.amountOutstanding);
@@ -906,7 +932,7 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         return DateUtils.isAfter(getDueDate(), nextDueDate) && MathUtil.isGreaterThanZero(amountPaid());
     }
 
-    private BigDecimal amountPaid() {
+    public BigDecimal amountPaid() {
         return this.amountPaid;
     }
 

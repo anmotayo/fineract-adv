@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.domain;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,8 +28,6 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrap
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -45,7 +44,12 @@ public class AdvanclySavingsAccountAssembler {
     private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
     private final SavingsHelper savingsHelper;
 
-    private static final Pageable LAST_ONE = PageRequest.of(0, 1);
+    // Mirrors the query's own "order by transaction_date desc, created_date desc, id desc" exactly, so role
+    // resolution below agrees with the database's own tie-breaking when two rows share a transaction date.
+    private static final Comparator<SavingsAccountTransaction> MOST_RECENT_FIRST = Comparator
+            .comparing(SavingsAccountTransaction::getTransactionDate)
+            .thenComparing(txn -> txn.getCreatedDate().orElse(null), Comparator.nullsFirst(Comparator.naturalOrder()))
+            .thenComparing(SavingsAccountTransaction::getId);
 
     /**
      * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance.
@@ -53,18 +57,28 @@ public class AdvanclySavingsAccountAssembler {
     public AssembledSavingsAccount assembleForAppendPath(final Long savingsId) {
         SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, true);
 
-        List<SavingsAccountTransaction> lastTxnList = advanclyTransactionRepository.findLastNonReversedTransaction(savingsId, LAST_ONE);
+        // Single round trip: findLastNonReversedAndBalanceBearingTransactions(...) returns at most 2 rows - the
+        // last non-reversed transaction (excluding accrual) and the last balance-bearing one - deduped by the
+        // database to 1 row whenever they're the same transaction (the common case). See its javadoc for why role
+        // resolution below (by attribute, not by result order) is always correct regardless of which case applies.
+        List<SavingsAccountTransaction> recentTransactions = advanclyTransactionRepository
+                .findLastNonReversedAndBalanceBearingTransactions(savingsId);
 
-        SavingsAccountTransaction lastTransaction = null;
-        if (!lastTxnList.isEmpty()) {
-            lastTransaction = lastTxnList.get(0);
+        // The running-balance seed must come from the true latest row (a posting moves the balance too), so it's
+        // simply the most recent of the (at most 2) rows returned - never the window-closing target below, which
+        // closing a posting/accrual/overdraft-interest row would wrongly give a window core never intends it to have.
+        SavingsAccountTransaction lastTransaction = recentTransactions.stream().max(MOST_RECENT_FIRST).orElse(null);
+        if (lastTransaction != null) {
             BigDecimal lastBalance = lastTransaction.getRunningBalance(account.getCurrency()).getAmount();
             account.getSummary().setRunningBalanceOnPivotDate(lastBalance);
         } else {
             account.getSummary().setRunningBalanceOnPivotDate(BigDecimal.ZERO);
         }
 
+        SavingsAccountTransaction lastBalanceBearingTransaction = recentTransactions.stream()
+                .filter(SavingsAccountTransaction::isBalanceBearing).findFirst().orElse(null);
+
         account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, lastTransaction);
+        return AssembledSavingsAccount.of(account, lastBalanceBearingTransaction);
     }
 }

@@ -24,17 +24,19 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 
 /**
- * Lightweight wrapper that carries the assembled SavingsAccount along with the last non-reversed transaction for the
- * O(1) append path.
+ * Lightweight wrapper that carries the assembled SavingsAccount along with the last balance-bearing transaction (the
+ * row whose balance window needs closing when a new transaction is appended) for the O(1) append path. This is
+ * deliberately not just "the last non-reversed transaction": that row may be an interest posting/accrual/overdraft
+ * interest row, which core never windows (see SavingsAccountTransaction#isBalanceBearing()).
  */
 @Getter
 @RequiredArgsConstructor
 public class AssembledSavingsAccount {
 
     private final SavingsAccount account;
-    private final SavingsAccountTransaction lastNonReversedTransaction;
+    private final SavingsAccountTransaction lastBalanceBearingTransaction;
 
-    public static AssembledSavingsAccount of(SavingsAccount account, SavingsAccountTransaction lastNonReversedTransaction) {
-        return new AssembledSavingsAccount(account, lastNonReversedTransaction);
+    public static AssembledSavingsAccount of(SavingsAccount account, SavingsAccountTransaction lastBalanceBearingTransaction) {
+        return new AssembledSavingsAccount(account, lastBalanceBearingTransaction);
     }
 }

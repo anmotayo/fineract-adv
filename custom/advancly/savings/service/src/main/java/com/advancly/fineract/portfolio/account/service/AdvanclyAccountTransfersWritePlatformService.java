@@ -248,7 +248,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         if (appendPath && account.depositAccountType().isSavingsDeposit()) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             return savingsAccountDomainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
-                    lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(),
+                    lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(),
                     transactionBooleanValues.isAccountTransfer());
         }
 
@@ -277,21 +277,25 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
 
         final SavingsAccountTransaction withdrawal;
         // See the equivalent check in postOptimizedDeposit(...) above.
-        if (appendPath && account.depositAccountType().isSavingsDeposit()) {
+        final boolean usesOptimizedAppendPath = appendPath && account.depositAccountType().isSavingsDeposit();
+        if (usesOptimizedAppendPath) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             withdrawal = savingsAccountDomainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail,
                     transactionBooleanValues.isApplyWithdrawFee(), lastRunningBalance, account.getCurrency(),
-                    assembled.getLastNonReversedTransaction(), transactionBooleanValues.isAccountTransfer());
+                    assembled.getLastBalanceBearingTransaction(), transactionBooleanValues.isAccountTransfer());
         } else {
             withdrawal = coreDomainService.handleWithdrawal(account, fmt, transactionDate, transactionAmount, paymentDetail,
                     transactionBooleanValues, backdatedTxnsAllowedTill);
         }
 
         if (!transactionBooleanValues.isInterestTransfer()) {
+            // `withdrawal` was appended via addTransactionToExisting(...) (the pivot-config transient list) whenever
+            // usesOptimizedAppendPath is true. Otherwise handleWithdrawal(...) above already decided which
+            // collection to use based on backdatedTxnsAllowedTill, so the charge defers to that same flag.
             this.interestChargeApplicationService.applyIfApplicable(account, withdrawal,
                     earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge(),
                     earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage(), earlyWithdrawalChargeRequest.selectedFromDate(),
-                    earlyWithdrawalChargeRequest.selectedToDate(), backdatedTxnsAllowedTill);
+                    earlyWithdrawalChargeRequest.selectedToDate(), usesOptimizedAppendPath, backdatedTxnsAllowedTill);
         }
         return withdrawal;
     }

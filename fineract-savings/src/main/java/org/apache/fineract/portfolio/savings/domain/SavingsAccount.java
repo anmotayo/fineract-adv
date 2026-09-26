@@ -1146,9 +1146,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         LocalDate endOfBalanceDate = interestPostingUpToDate;
         for (int i = accountTransactionsSorted.size() - 1; i >= 0; i--) {
             final SavingsAccountTransaction transaction = accountTransactionsSorted.get(i);
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
-                    && !transaction.isAccrualAndNotReversed()) {
+            if (transaction.isBalanceBearing()) {
                 transaction.updateCumulativeBalanceAndDates(this.currency, endOfBalanceDate);
                 // this transactions transaction date is end of balance date for
                 // previous transaction.

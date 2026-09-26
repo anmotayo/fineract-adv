@@ -212,7 +212,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         service.create(command);
 
         verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
-                isNull(), eq(false));
+                isNull(), eq(true), eq(false));
     }
 
     @Test
@@ -251,7 +251,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         service.create(command);
 
         verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
-                isNull(), eq(false));
+                isNull(), eq(true), eq(false));
     }
 
     @Test
@@ -620,7 +620,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
         verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
-                isNull(), eq(false));
+                isNull(), eq(false), eq(false));
     }
 
     @Test

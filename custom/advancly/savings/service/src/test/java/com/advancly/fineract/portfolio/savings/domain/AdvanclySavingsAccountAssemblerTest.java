@@ -19,7 +19,6 @@
 package com.advancly.fineract.portfolio.savings.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -27,8 +26,10 @@ import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -39,7 +40,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class AdvanclySavingsAccountAssemblerTest {
@@ -63,18 +63,21 @@ class AdvanclySavingsAccountAssemblerTest {
     }
 
     @Test
-    void testAssembleForAppendPath_loadsNoTransactions_setsLastRunningBalance() {
+    void testAssembleForAppendPath_lastRowIsBalanceBearing_singleRowFromUnionServesBothRoles() {
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
         when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
 
-        SavingsAccountTransaction lastTxn = new SavingsAccountTransactionTestBuilder().withRunningBalance(BigDecimal.valueOf(5000)).build();
-        when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(List.of(lastTxn));
+        // Mirrors the common case the repository's plain UNION dedupes to 1 row: the latest transaction is itself
+        // balance-bearing, so it serves as both the running-balance seed and the window-closing target.
+        SavingsAccountTransaction lastTxn = new SavingsAccountTransactionTestBuilder().withId(1L)
+                .withRunningBalance(BigDecimal.valueOf(5000)).build();
+        when(advanclyTransactionRepository.findLastNonReversedAndBalanceBearingTransactions(eq(1L))).thenReturn(List.of(lastTxn));
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount()).isSameAs(account);
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(5000));
-        assertThat(result.getLastNonReversedTransaction()).isSameAs(lastTxn);
+        assertThat(result.getLastBalanceBearingTransaction()).isSameAs(lastTxn);
     }
 
     @Test
@@ -82,11 +85,31 @@ class AdvanclySavingsAccountAssemblerTest {
         SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
         when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
 
-        when(advanclyTransactionRepository.findLastNonReversedTransaction(eq(1L), any(Pageable.class))).thenReturn(new ArrayList<>());
+        when(advanclyTransactionRepository.findLastNonReversedAndBalanceBearingTransactions(eq(1L))).thenReturn(new ArrayList<>());
 
         AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
 
         assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(result.getLastNonReversedTransaction()).isNull();
+        assertThat(result.getLastBalanceBearingTransaction()).isNull();
+    }
+
+    @Test
+    void testAssembleForAppendPath_lastRowIsPosting_seedsBalanceFromPostingButClosesEarlierBalanceBearingRow() {
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        when(savingsAccountRepository.findSavingsWithNotFoundDetection(1L, true)).thenReturn(account);
+
+        // Mirrors the divergent case the repository's UNION returns 2 distinct rows for: the latest transaction
+        // (the posting) is NOT balance-bearing, so an earlier deposit is the window-closing target instead.
+        SavingsAccountTransaction depositTxn = new SavingsAccountTransactionTestBuilder().withId(1L).withDate(LocalDate.of(2026, 1, 5))
+                .withRunningBalance(BigDecimal.valueOf(5000)).build();
+        SavingsAccountTransaction postingTxn = new SavingsAccountTransactionTestBuilder().withId(2L).withDate(LocalDate.of(2026, 1, 10))
+                .withType(SavingsAccountTransactionType.INTEREST_POSTING).withRunningBalance(BigDecimal.valueOf(5100)).build();
+        when(advanclyTransactionRepository.findLastNonReversedAndBalanceBearingTransactions(eq(1L)))
+                .thenReturn(List.of(depositTxn, postingTxn));
+
+        AssembledSavingsAccount result = assembler.assembleForAppendPath(1L);
+
+        assertThat(result.getAccount().getSummary().getRunningBalanceOnPivotDate()).isEqualByComparingTo(BigDecimal.valueOf(5100));
+        assertThat(result.getLastBalanceBearingTransaction()).isSameAs(depositTxn);
     }
 }

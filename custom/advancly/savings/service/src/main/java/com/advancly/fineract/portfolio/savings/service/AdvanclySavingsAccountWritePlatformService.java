@@ -37,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.accounting.common.AccountingConstants.CashAccountsForSavings;
 import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMapping;
 import org.apache.fineract.accounting.producttoaccountmapping.domain.ProductToGLAccountMappingRepository;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
@@ -95,6 +96,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final PaymentDetailRepository paymentDetailRepository;
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     private final ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
+    private final ConfigurationDomainService configurationDomainService;
 
     @Autowired
     public AdvanclySavingsAccountWritePlatformService(final PlatformSecurityContext context,
@@ -107,7 +109,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
             final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
             final AdvanclyInterestChargeApplicationService interestChargeApplicationService,
-            final ProductToGLAccountMappingRepository productToGLAccountMappingRepository) {
+            final ProductToGLAccountMappingRepository productToGLAccountMappingRepository,
+            final ConfigurationDomainService configurationDomainService) {
         this.context = context;
         this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
         this.assembler = assembler;
@@ -123,6 +126,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.paymentDetailRepository = paymentDetailRepository;
         this.interestChargeApplicationService = interestChargeApplicationService;
         this.productToGLAccountMappingRepository = productToGLAccountMappingRepository;
+        this.configurationDomainService = configurationDomainService;
     }
 
     @Transactional
@@ -159,7 +163,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction deposit = domainService.handleDepositOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
+                paymentDetail, lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(), false);
 
         handleGsimDeposit(account, transactionAmount, deposit);
         handleNote(account, deposit, command);
@@ -197,7 +201,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
         if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
             final CommandProcessingResult result = delegate.withdrawal(savingsId, command);
-            applyInterestChargeIfApplicable(savingsId, result, command, isBackdated);
+            applyInterestChargeIfApplicable(savingsId, result, command);
             return result;
         }
 
@@ -207,9 +211,14 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
 
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
-                paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastNonReversedTransaction(), false);
+                paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(), false);
 
-        this.interestChargeApplicationService.applyIfApplicable(account, withdrawal, command, false);
+        // `withdrawal` was appended via addTransactionToExisting(...) (handleWithdrawalOptimized(...) above), i.e. it
+        // lives in the account's pivot-config transient list, not its JPA-managed transactions collection. The
+        // charge transaction and its journal entries must be added/derived through that same mechanism, so appendPath
+        // must be true here - passing false made the charge land in the wrong collection (invisible to
+        // deriveAccountingBridgeData(...), so no journal entries were ever posted for it).
+        this.interestChargeApplicationService.applyIfApplicable(account, withdrawal, command, true, false);
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
         handleNote(account, withdrawal, command);
@@ -218,8 +227,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
     }
 
-    private void applyInterestChargeIfApplicable(final Long savingsId, final CommandProcessingResult result, final JsonCommand command,
-            final boolean backdatedTxnsAllowedTill) {
+    private void applyInterestChargeIfApplicable(final Long savingsId, final CommandProcessingResult result, final JsonCommand command) {
         validateEarlyWithdrawalChargePercentageOverride(command);
         final Long transactionId = result.getResourceId();
         if (transactionId == null) {
@@ -229,8 +237,16 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         if (withdrawal == null || withdrawal.getSavingsAccount() == null || !savingsId.equals(withdrawal.getSavingsAccount().getId())) {
             return;
         }
-        this.interestChargeApplicationService.applyIfApplicable(withdrawal.getSavingsAccount(), withdrawal, command,
-                backdatedTxnsAllowedTill);
+        // This branch always goes through delegate.withdrawal(...) (core), never the O(1) append path. Core's own
+        // SavingsAccountWritePlatformServiceJpaRepositoryImpl decides which collection the withdrawal itself was
+        // added through purely from this tenant-wide config - NOT from whether this specific transaction is
+        // backdated relative to this account's own history, which is a different, unrelated concept despite both
+        // loosely being called "backdated" (this method used to conflate them). The charge must defer to the exact
+        // same config value core used, or it can land in the wrong collection regardless of this transaction's own
+        // backdated-ness.
+        final boolean corePivotConfigStatus = configurationDomainService.retrievePivotDateConfig();
+        this.interestChargeApplicationService.applyIfApplicable(withdrawal.getSavingsAccount(), withdrawal, command, false,
+                corePivotConfigStatus);
     }
 
     private void validateEarlyWithdrawalChargePercentageOverride(final JsonCommand command) {
@@ -278,7 +294,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         }
 
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
-        SavingsAccountTransaction lastNonReversedTxn = assembled.getLastNonReversedTransaction();
+        SavingsAccountTransaction lastBalanceBearingTxn = assembled.getLastBalanceBearingTransaction();
         final Map<String, Object> changes = new LinkedHashMap<>();
 
         for (int i = 0; i < transactions.size(); i++) {
@@ -293,16 +309,16 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             SavingsAccountTransaction savedTxn;
             if ("deposit".equals(type)) {
                 savedTxn = domainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
-                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn, false);
+                        lastRunningBalance, account.getCurrency(), lastBalanceBearingTxn, false);
             } else {
                 savedTxn = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail, true,
-                        lastRunningBalance, account.getCurrency(), lastNonReversedTxn, false);
+                        lastRunningBalance, account.getCurrency(), lastBalanceBearingTxn, false);
             }
 
             String txnKey = (receiptNumber != null && !receiptNumber.isBlank()) ? receiptNumber : String.valueOf(i);
             changes.put(txnKey, savedTxn.getId());
             lastRunningBalance = savedTxn.getRunningBalance(account.getCurrency());
-            lastNonReversedTxn = savedTxn;
+            lastBalanceBearingTxn = savedTxn;
 
             final String noteText = fromApiJsonHelper.extractStringNamed("note", txn);
             if (noteText != null && !noteText.isBlank()) {

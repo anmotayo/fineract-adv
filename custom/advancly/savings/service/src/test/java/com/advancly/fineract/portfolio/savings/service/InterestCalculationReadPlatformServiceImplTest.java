@@ -146,7 +146,6 @@ class InterestCalculationReadPlatformServiceImplTest {
         assertThat(result.maturityAmount()).isNull();
         assertThat(result.interestAsAtToday()).isEqualByComparingTo("5.00");
         assertThat(result.postingPeriods()).hasSize(1);
-        assertThat(result.postedInterestCharges()).isNull();
         // Only one calculateInterestUsing call for an account with no maturity date.
         verify(account, org.mockito.Mockito.times(1)).calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(),
                 anyBoolean(), anyBoolean());
@@ -216,7 +215,6 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
-        assertThat(result.postedInterestCharges()).isEqualByComparingTo("34");
         assertThat(result.totalInterestChargeDerived()).isEqualByComparingTo("34");
         assertThat(result.forfeitedAmount()).isEqualByComparingTo("34");
         assertThat(result.accountBalance()).isEqualByComparingTo("1000");

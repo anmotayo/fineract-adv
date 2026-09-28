@@ -41,6 +41,7 @@ import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.springframework.stereotype.Service;
@@ -74,6 +75,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
 
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
+    private final SavingsAccountAssembler savingsAccountAssembler;
     private final ConfigurationDomainService configurationDomainService;
     private final FromJsonHelper fromJsonHelper;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
@@ -83,6 +85,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
     @Override
     public EarlyWithdrawalChargeData calculate(final Long savingsAccountId, final JsonQuery query) {
         final SavingsAccount account = this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(savingsAccountId);
+        this.savingsAccountAssembler.setHelpers(account);
         this.context.authenticatedUser().validateHasReadPermission(account.depositAccountType().resourceName());
 
         final JsonElement element = this.fromJsonHelper.parse(query.json());

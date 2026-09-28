@@ -38,8 +38,7 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
  * schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life (Dynamic
  * Deposit and Recurring Deposit can both add/remove principal after opening).
  *
- * {@code postedInterestCharges}/{@code totalInterestChargeDerived} report the applied total from the charge-application
- * ledger.
+ * {@code totalInterestChargeDerived} reports the applied total from the charge-application ledger.
  *
  * {@code forfeitedAmount} is the posted interest-charge total under the business name the cumulative forfeiture API
  * consumers expect.
@@ -60,7 +59,6 @@ public class InterestCalculationData implements Serializable {
     private final BigDecimal interestAtMaturity;
     private final BigDecimal maturityAmount;
 
-    private final BigDecimal postedInterestCharges;
     private final BigDecimal totalInterestChargeDerived;
     private final BigDecimal forfeitedAmount;
 
@@ -88,7 +86,7 @@ public class InterestCalculationData implements Serializable {
     public InterestCalculationData(final Long accountId, final String accountNo, final String externalId, final Long clientId,
             final Long groupId, final Long productId, final SavingsAccountStatusEnumData status, final CurrencyData currency,
             final LocalDate maturityDate, final BigDecimal interestAsAtToday, final BigDecimal interestAtMaturity,
-            final BigDecimal maturityAmount, final BigDecimal postedInterestCharges, final BigDecimal totalInterestChargeDerived,
+            final BigDecimal maturityAmount, final BigDecimal totalInterestChargeDerived,
             final BigDecimal forfeitedAmount, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
             final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
             final BigDecimal totalInterestPosted, final BigDecimal accountBalance, final BigDecimal totalFeeCharge,
@@ -108,7 +106,6 @@ public class InterestCalculationData implements Serializable {
         this.interestAsAtToday = interestAsAtToday;
         this.interestAtMaturity = interestAtMaturity;
         this.maturityAmount = maturityAmount;
-        this.postedInterestCharges = postedInterestCharges;
         this.totalInterestChargeDerived = totalInterestChargeDerived;
         this.forfeitedAmount = forfeitedAmount;
         this.totalDeposits = totalDeposits;
@@ -151,10 +148,6 @@ public class InterestCalculationData implements Serializable {
 
     public BigDecimal maturityAmount() {
         return this.maturityAmount;
-    }
-
-    public BigDecimal postedInterestCharges() {
-        return this.postedInterestCharges;
     }
 
     public BigDecimal totalInterestChargeDerived() {

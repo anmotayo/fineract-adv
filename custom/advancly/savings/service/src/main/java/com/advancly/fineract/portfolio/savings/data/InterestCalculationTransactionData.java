@@ -28,6 +28,10 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumD
  * {@code SavingsAccountTransactionData} (charge-paid-by breakdowns etc. aren't needed here), just enough to show what
  * happened and when. A simulated top-up/withdrawal (see {@code InterestCalculationReadPlatformServiceImpl}) is included
  * with a {@code null} id so callers can tell it apart from a real, persisted transaction.
+ *
+ * The {@code deposit}/{@code withdrawal}/etc. flags mirror what {@code SavingsAccountTransactionData} exposes nested
+ * under {@code transactionType} for {@code associations=all} - flattened here so callers don't have to dig into the
+ * nested enum object just to branch on transaction type.
  */
 public class InterestCalculationTransactionData implements Serializable {
 
@@ -38,6 +42,14 @@ public class InterestCalculationTransactionData implements Serializable {
     private final BigDecimal runningBalance;
     private final boolean reversed;
     private final boolean simulated;
+    private final boolean deposit;
+    private final boolean withdrawal;
+    private final boolean interestPosting;
+    private final boolean chargeTransaction;
+    private final boolean withHoldTax;
+    private final boolean dividendPayout;
+    private final boolean accrual;
+    private final boolean interestCharge;
 
     public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType, final LocalDate date,
             final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated) {
@@ -48,6 +60,14 @@ public class InterestCalculationTransactionData implements Serializable {
         this.runningBalance = runningBalance;
         this.reversed = reversed;
         this.simulated = simulated;
+        this.deposit = transactionType.isDeposit();
+        this.withdrawal = transactionType.isWithdrawal();
+        this.interestPosting = transactionType.isInterestPosting() || transactionType.isOverDraftInterestPosting();
+        this.chargeTransaction = transactionType.isChargeTransaction();
+        this.withHoldTax = transactionType.isWithholdTax();
+        this.dividendPayout = transactionType.isDividendPayout();
+        this.accrual = transactionType.isAccrual();
+        this.interestCharge = transactionType.isInterestCharge();
     }
 
     public Long id() {
@@ -76,5 +96,37 @@ public class InterestCalculationTransactionData implements Serializable {
 
     public boolean isSimulated() {
         return this.simulated;
+    }
+
+    public boolean isDeposit() {
+        return this.deposit;
+    }
+
+    public boolean isWithdrawal() {
+        return this.withdrawal;
+    }
+
+    public boolean isInterestPosting() {
+        return this.interestPosting;
+    }
+
+    public boolean isChargeTransaction() {
+        return this.chargeTransaction;
+    }
+
+    public boolean isWithHoldTax() {
+        return this.withHoldTax;
+    }
+
+    public boolean isDividendPayout() {
+        return this.dividendPayout;
+    }
+
+    public boolean isAccrual() {
+        return this.accrual;
+    }
+
+    public boolean isInterestCharge() {
+        return this.interestCharge;
     }
 }

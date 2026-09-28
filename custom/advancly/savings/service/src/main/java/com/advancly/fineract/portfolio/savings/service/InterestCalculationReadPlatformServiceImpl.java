@@ -38,6 +38,7 @@ import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.domain.FixedDepositAccount;
 import org.apache.fineract.portfolio.savings.domain.RecurringDepositAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
@@ -62,6 +63,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
 
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
+    private final SavingsAccountAssembler savingsAccountAssembler;
     private final ConfigurationDomainService configurationDomainService;
     private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
 
@@ -69,6 +71,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
 
         final SavingsAccount account = this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(savingsAccountId);
+        this.savingsAccountAssembler.setHelpers(account);
 
         final DepositAccountType depositAccountType = account.depositAccountType();
         this.context.authenticatedUser().validateHasReadPermission(depositAccountType.resourceName());
@@ -115,12 +118,10 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     periodInterest.getAmount()));
         }
 
-        BigDecimal postedInterestCharges = null;
         BigDecimal totalInterestChargeDerived = null;
         if (account instanceof DynamicDepositAccount) {
             totalInterestChargeDerived = defaultToZero(
                     this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(account.getId()));
-            postedInterestCharges = totalInterestChargeDerived;
         }
 
         final List<InterestCalculationTransactionData> transactions = new ArrayList<>();
@@ -138,11 +139,11 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final var summary = account.getSummary();
         final BigDecimal totalInterestPosted = summary.getTotalInterestPosted();
         final BigDecimal totalWithholdTax = summary.getTotalWithholdTax();
-        final BigDecimal forfeitedAmount = postedInterestCharges;
+        final BigDecimal forfeitedAmount = totalInterestChargeDerived;
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
-                interestAsAtToday, interestAtMaturity, maturityAmount, postedInterestCharges, totalInterestChargeDerived, forfeitedAmount,
+                interestAsAtToday, interestAtMaturity, maturityAmount, totalInterestChargeDerived, forfeitedAmount,
                 summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(),
                 interestAsAtToday, totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(),
                 summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,

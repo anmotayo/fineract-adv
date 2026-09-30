@@ -52,6 +52,7 @@ import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
@@ -88,6 +89,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
     private PlatformSecurityContext context;
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
+    private SavingsAccountAssembler savingsAccountAssembler;
     private ConfigurationDomainService configurationDomainService;
     private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private AdvanclyInterestChargeApplicationService advanclyInterestChargeApplicationService;
@@ -110,6 +112,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         lenient().when(this.context.authenticatedUser()).thenReturn(appUser);
 
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
+        this.savingsAccountAssembler = mock(SavingsAccountAssembler.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
         this.cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
         this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
@@ -120,8 +123,9 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
                 withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
 
         this.service = new EarlyWithdrawalChargeReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.configurationDomainService, this.fromJsonHelper, this.cumulativeInterestForfeitureService,
-                this.advanclyInterestChargeApplicationService, this.interestChargeApplicationRepository);
+                this.savingsAccountAssembler, this.configurationDomainService, this.fromJsonHelper,
+                this.cumulativeInterestForfeitureService, this.advanclyInterestChargeApplicationService,
+                this.interestChargeApplicationRepository);
     }
 
     // ------------------------------------------------------------------ cumulative mode

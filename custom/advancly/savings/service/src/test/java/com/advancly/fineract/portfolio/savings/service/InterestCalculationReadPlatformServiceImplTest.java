@@ -45,6 +45,7 @@ import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.domain.FixedDepositAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
@@ -62,6 +63,7 @@ class InterestCalculationReadPlatformServiceImplTest {
 
     private PlatformSecurityContext context;
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
+    private SavingsAccountAssembler savingsAccountAssembler;
     private ConfigurationDomainService configurationDomainService;
     private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private InterestCalculationReadPlatformServiceImpl service;
@@ -74,10 +76,11 @@ class InterestCalculationReadPlatformServiceImplTest {
         lenient().when(this.context.authenticatedUser()).thenReturn(appUser);
 
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
+        this.savingsAccountAssembler = mock(SavingsAccountAssembler.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
         this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.configurationDomainService, this.interestChargeApplicationRepository);
+                this.savingsAccountAssembler, this.configurationDomainService, this.interestChargeApplicationRepository);
     }
 
     private SavingsAccount plainSavingsAccount() {

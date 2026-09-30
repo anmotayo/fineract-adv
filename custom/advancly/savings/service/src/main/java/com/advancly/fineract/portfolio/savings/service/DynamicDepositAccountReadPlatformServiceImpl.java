@@ -41,6 +41,7 @@ import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.DepositAccountInterestRateChartData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountApplicationTimelineData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountSubStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
@@ -205,6 +206,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
             sqlBuilder.append("sa.group_id as groupId, g.display_name as groupName, ");
             sqlBuilder.append("sa.product_id as savingsProductId, sp.name as savingsProductName, ");
             sqlBuilder.append("sa.field_officer_id as fieldOfficerId, sa.status_enum as statusEnum, ");
+            sqlBuilder.append("sa.sub_status_enum as subStatusEnum, ");
             sqlBuilder.append("sa.currency_code as currencyCode, sa.currency_digits as currencyDigits, ");
             sqlBuilder.append("sa.currency_multiplesof as inMultiplesOf, curr.name as currencyName, ");
             sqlBuilder.append("curr.internationalized_name_code as currencyNameCode, curr.display_symbol as currencyDisplaySymbol, ");
@@ -266,6 +268,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
 
             final Integer statusEnum = JdbcSupport.getInteger(rs, "statusEnum");
             final SavingsAccountStatusEnumData status = SavingsEnumerations.status(statusEnum);
+            final Integer subStatusEnum = JdbcSupport.getInteger(rs, "subStatusEnum");
+            final SavingsAccountSubStatusEnumData subStatus = subStatusEnum == null ? null : SavingsEnumerations.subStatus(subStatusEnum);
 
             final String currencyCode = rs.getString("currencyCode");
             final String currencyName = rs.getString("currencyName");
@@ -339,14 +343,14 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
                 withHoldTaxPostingType = SavingsEnumerations.withHoldTaxPostingType(withHoldTaxPostingTypeValue);
             }
 
-            return DynamicDepositAccountData.withRangeAndPostingType(
+            return DynamicDepositAccountData.withSubStatus(DynamicDepositAccountData.withRangeAndPostingType(
                     new DynamicDepositAccountData(id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId,
                             savingsProductName, fieldOfficerId, status, timeline, currency, nominalAnnualInterestRate,
                             interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType,
                             interestCalculationDaysInYearType, depositAmount, depositPeriod, depositPeriodFrequencyType,
                             expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate,
                             allowWithdrawal, dynamicRateEnabled, transferInterestToSavings, linkAccountId, summary),
-                    minDepositTerm, maxDepositTerm, minDepositAmount, maxDepositAmount, withHoldTaxPostingType);
+                    minDepositTerm, maxDepositTerm, minDepositAmount, maxDepositAmount, withHoldTaxPostingType), subStatus);
         }
     }
 }

@@ -19,13 +19,24 @@
 package com.advancly.fineract.portfolio.savings.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.portfolio.savings.SavingsApiConstants;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -84,11 +95,56 @@ class DynamicDepositAccountCommandHandlerTest {
     @Test
     void prematureCloseCallsSavingsAccountWritePlatformServiceClose() {
         when(this.writePlatformService.close(SAVINGS_ID, this.command)).thenReturn(this.commandProcessingResult);
+        final DynamicDepositAccountRepository repository = mock(DynamicDepositAccountRepository.class);
+        when(repository.findById(SAVINGS_ID)).thenReturn(Optional.empty());
 
-        final CommandProcessingResult result = new PrematureCloseDynamicDepositAccountCommandHandler(this.writePlatformService)
+        final CommandProcessingResult result = new PrematureCloseDynamicDepositAccountCommandHandler(this.writePlatformService, repository)
                 .processCommand(this.command);
 
         assertThat(result).isSameAs(this.commandProcessingResult);
+        verify(this.writePlatformService).close(SAVINGS_ID, this.command);
+    }
+
+    @Test
+    void prematureCloseRecordsThePrematureClosureStatusAfterTheAccountIsClosed() {
+        final Map<String, Object> changes = new LinkedHashMap<>();
+        changes.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(SavingsAccountStatusType.CLOSED));
+        when(this.commandProcessingResult.getChanges()).thenReturn(changes);
+        when(this.writePlatformService.close(SAVINGS_ID, this.command)).thenReturn(this.commandProcessingResult);
+        final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
+        when(account.getStatus()).thenReturn(SavingsAccountStatusType.CLOSED);
+        final DynamicDepositAccountRepository repository = mock(DynamicDepositAccountRepository.class);
+        when(repository.findById(SAVINGS_ID)).thenReturn(Optional.of(account));
+
+        new PrematureCloseDynamicDepositAccountCommandHandler(this.writePlatformService, repository).processCommand(this.command);
+
+        verify(account).setStatus(SavingsAccountStatusType.PRE_MATURE_CLOSURE.getValue());
+        verify(repository).save(account);
+        final SavingsAccountStatusEnumData reported = (SavingsAccountStatusEnumData) changes.get(SavingsApiConstants.statusParamName);
+        assertThat(reported.isPrematureClosed()).isTrue();
+        assertThat(reported.isClosed()).isFalse();
+    }
+
+    @Test
+    void prematureCloseLeavesTheStatusAloneWhenTheAccountWasNotClosed() {
+        when(this.writePlatformService.close(SAVINGS_ID, this.command)).thenReturn(this.commandProcessingResult);
+        final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
+        when(account.getStatus()).thenReturn(SavingsAccountStatusType.ACTIVE);
+        final DynamicDepositAccountRepository repository = mock(DynamicDepositAccountRepository.class);
+        when(repository.findById(SAVINGS_ID)).thenReturn(Optional.of(account));
+
+        new PrematureCloseDynamicDepositAccountCommandHandler(this.writePlatformService, repository).processCommand(this.command);
+
+        verify(account, never()).setStatus(anyInt());
+        verify(repository, never()).save(account);
+    }
+
+    @Test
+    void normalCloseKeepsTheClosedStatus() {
+        when(this.writePlatformService.close(SAVINGS_ID, this.command)).thenReturn(this.commandProcessingResult);
+
+        new CloseDynamicDepositAccountCommandHandler(this.writePlatformService).processCommand(this.command);
+
         verify(this.writePlatformService).close(SAVINGS_ID, this.command);
     }
 

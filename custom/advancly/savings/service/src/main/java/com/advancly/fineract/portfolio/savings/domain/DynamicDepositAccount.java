@@ -724,4 +724,17 @@ public class DynamicDepositAccount extends SavingsAccount {
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }
     }
+
+    /**
+     * The base implementation re-activates a {@code CLOSED} account whose balance became non-zero again (for example
+     * when the closing withdrawal is undone). A Dynamic Deposit that was closed prematurely ends up in
+     * {@code PRE_MATURE_CLOSURE} rather than {@code CLOSED}, so the same re-activation is applied to that status.
+     */
+    @Override
+    public void activateAccountBasedOnBalance() {
+        super.activateAccountBasedOnBalance();
+        if (getStatus().isPreMatureClosure() && getAccountBalance().signum() != 0) {
+            setStatus(SavingsAccountStatusType.ACTIVE.getValue());
+        }
+    }
 }

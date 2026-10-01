@@ -27,11 +27,13 @@ import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -104,8 +106,36 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Column(name = "total_interest_charge_derived", scale = 6, precision = 19)
     private BigDecimal totalInterestChargeDerived;
 
+    /**
+     * Never persisted. Lets the read-only interest-calculation preview inject "what if" rate-history rows (see
+     * {@code DynamicDepositRatePreviewService}) that {@link #calculateInterestUsing} treats as if they were saved, so a
+     * simulated top-up/withdrawal that would move the account into a different rate slab is projected at the new rate.
+     * Always empty on any real posting/COB path.
+     */
+    @Transient
+    private List<DepositAccountDynamicRateHistory> simulatedRateHistory = new ArrayList<>();
+
     protected DynamicDepositAccount() {
         //
+    }
+
+    public void setSimulatedRateHistory(final List<DepositAccountDynamicRateHistory> simulatedRateHistory) {
+        this.simulatedRateHistory = simulatedRateHistory == null ? new ArrayList<>() : new ArrayList<>(simulatedRateHistory);
+    }
+
+    /**
+     * Persisted rows plus any simulated ones, ascending by transaction date. The sort is stable and simulated rows are
+     * appended last, so a simulated row wins a same-date tie with a persisted row (the splitter takes the last row at
+     * or before a date).
+     */
+    private List<DepositAccountDynamicRateHistory> withSimulatedRateHistory(final List<DepositAccountDynamicRateHistory> persisted) {
+        if (this.simulatedRateHistory == null || this.simulatedRateHistory.isEmpty()) {
+            return persisted;
+        }
+        final List<DepositAccountDynamicRateHistory> combined = new ArrayList<>(persisted);
+        combined.addAll(this.simulatedRateHistory);
+        combined.sort(Comparator.comparing(DepositAccountDynamicRateHistory::transactionDate));
+        return combined;
     }
 
     public static DynamicDepositAccount createNewApplicationForSubmittal(final Client client, final Group group,
@@ -445,8 +475,8 @@ public class DynamicDepositAccount extends SavingsAccount {
                     getStartInterestCalculationDate(), cappedUpToInterestCalculationDate, postingPeriodType, financialYearBeginningMonth,
                     postedAsOnDates);
 
-            final List<DepositAccountDynamicRateHistory> rateHistoryAscending = DynamicDepositServiceLocator.rateHistoryRepository()
-                    .findByAccountIdOrderByTransactionDateAscIdAsc(getId());
+            final List<DepositAccountDynamicRateHistory> rateHistoryAscending = withSimulatedRateHistory(
+                    DynamicDepositServiceLocator.rateHistoryRepository().findByAccountIdOrderByTransactionDateAscIdAsc(getId()));
             final List<DynamicDepositInterestIntervalSplitter.RatedInterval> ratedIntervals = DynamicDepositInterestIntervalSplitter
                     .split(corePostingPeriodIntervals, rateHistoryAscending);
 

@@ -21,8 +21,11 @@ package com.advancly.fineract.portfolio.savings.service;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
+import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositRatePreviewService.RatePreview;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
@@ -66,6 +69,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final SavingsAccountAssembler savingsAccountAssembler;
     private final ConfigurationDomainService configurationDomainService;
     private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
+    private final DynamicDepositRatePreviewService ratePreviewService;
 
     @Override
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
@@ -79,7 +83,22 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final LocalDate today = DateUtils.getBusinessLocalDate();
         final LocalDate maturityDate = maturityDateOf(account);
 
-        addSimulatedTransactionIfPresent(account, today, topUpAmount, withdrawalAmount);
+        final SavingsAccountTransaction lastSimulatedTransaction = addSimulatedTransactionIfPresent(account, today, topUpAmount,
+                withdrawalAmount);
+        SimulatedRateData simulatedRate = null;
+        if (account instanceof DynamicDepositAccount dynamicDepositAccount && lastSimulatedTransaction != null) {
+            // One net row dated today, not one per leg: both legs share a date, so only the resolved rate on the net
+            // invested amount matters. Must be set before calculateInterestUsing so both runs below project it.
+            final BigDecimal net = defaultToZero(topUpAmount).subtract(defaultToZero(withdrawalAmount));
+            if (net.signum() != 0) {
+                final RatePreview preview = this.ratePreviewService.preview(dynamicDepositAccount, lastSimulatedTransaction,
+                        net.signum() > 0 ? DynamicDepositRateHistoryEventType.DEPOSIT : DynamicDepositRateHistoryEventType.WITHDRAWAL);
+                if (preview != null) {
+                    dynamicDepositAccount.setSimulatedRateHistory(List.of(preview.row()));
+                    simulatedRate = preview.data();
+                }
+            }
+        }
 
         final MathContext mc = new MathContext(15, MoneyHelper.getRoundingMode());
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
@@ -147,7 +166,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                 summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(),
                 interestAsAtToday, totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(),
                 summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,
-                summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount);
+                summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount, simulatedRate);
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {
@@ -176,17 +195,22 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     /**
      * Adds a transient (never persisted - see class javadoc) deposit and/or withdrawal transaction dated today, so the
      * calculation engine's daily-balance walk reflects "what if I did this today" from that point forward while leaving
-     * every already-elapsed day untouched. Both are independently optional and can be combined.
+     * every already-elapsed day untouched. Both are independently optional and can be combined. Returns the last one
+     * added, or {@code null} if nothing was simulated.
      */
-    private void addSimulatedTransactionIfPresent(final SavingsAccount account, final LocalDate today, final BigDecimal topUpAmount,
-            final BigDecimal withdrawalAmount) {
+    private SavingsAccountTransaction addSimulatedTransactionIfPresent(final SavingsAccount account, final LocalDate today,
+            final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
+        SavingsAccountTransaction last = null;
         if (topUpAmount != null && topUpAmount.compareTo(BigDecimal.ZERO) > 0) {
-            account.addTransaction(SavingsAccountTransaction.deposit(account, account.office(), null, today,
-                    Money.of(account.getCurrency(), topUpAmount), null));
+            last = SavingsAccountTransaction.deposit(account, account.office(), null, today, Money.of(account.getCurrency(), topUpAmount),
+                    null);
+            account.addTransaction(last);
         }
         if (withdrawalAmount != null && withdrawalAmount.compareTo(BigDecimal.ZERO) > 0) {
-            account.addTransaction(SavingsAccountTransaction.withdrawal(account, account.office(), null, today,
-                    Money.of(account.getCurrency(), withdrawalAmount), null));
+            last = SavingsAccountTransaction.withdrawal(account, account.office(), null, today,
+                    Money.of(account.getCurrency(), withdrawalAmount), null);
+            account.addTransaction(last);
         }
+        return last;
     }
 }

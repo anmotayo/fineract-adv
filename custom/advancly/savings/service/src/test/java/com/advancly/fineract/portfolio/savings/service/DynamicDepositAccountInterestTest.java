@@ -284,6 +284,74 @@ class DynamicDepositAccountInterestTest {
         return transaction;
     }
 
+    @Test
+    void simulatedRateHistoryRowSplitsThePostingPeriodLikeAPersistedOneWithoutBeingSaved() {
+        this.account = buildAccount();
+
+        final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
+        final SavingsAccountTransaction simulatedTopUp = transaction(null, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(1000));
+
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
+                .thenReturn(List.of(DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, LocalDate.of(2026, 1, 1),
+                        DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
+                        BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART)));
+        this.account.setSimulatedRateHistory(List.of(DepositAccountDynamicRateHistory.createNew(this.account, simulatedTopUp,
+                LocalDate.of(2026, 1, 15), DynamicDepositRateHistoryEventType.DEPOSIT, BigDecimal.valueOf(2000), 12, 2, null, null,
+                BigDecimal.valueOf(3), BigDecimal.valueOf(3), DynamicDepositRateSource.INTEREST_RATE_CHART)));
+
+        final MathContext mc = MoneyHelper.getMathContext();
+        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+
+        final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
+        assertThat(interestPostings).hasSize(1);
+
+        // Same hand-computed figure as the persisted-rows test: 14 days at 1000 @ 2%, 17 days at 2000 @ 3%.
+        final BigDecimal dailyFractionAt2Pct = BigDecimal.valueOf(2).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
+                mc);
+        final BigDecimal dailyFractionAt3Pct = BigDecimal.valueOf(3).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
+                mc);
+        final BigDecimal expectedInterest = BigDecimal.valueOf(1000).multiply(dailyFractionAt2Pct).multiply(BigDecimal.valueOf(14))
+                .add(BigDecimal.valueOf(2000).multiply(dailyFractionAt3Pct).multiply(BigDecimal.valueOf(17)))
+                .setScale(2, MoneyHelper.getRoundingMode());
+        assertThat(interestPostings.get(0).getAmount()).isEqualByComparingTo(expectedInterest);
+    }
+
+    @Test
+    void simulatedRowWinsASameDateTieAgainstAPersistedRow() {
+        this.account = buildAccount();
+
+        final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
+        final SavingsAccountTransaction persistedSameDay = transaction(2L, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(500));
+        final SavingsAccountTransaction simulatedSameDay = transaction(null, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(500));
+
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
+                .thenReturn(List.of(
+                        DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, LocalDate.of(2026, 1, 1),
+                                DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, BigDecimal.valueOf(1000), 12, 2, null, null,
+                                BigDecimal.valueOf(2), BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART),
+                        DepositAccountDynamicRateHistory.createNew(this.account, persistedSameDay, LocalDate.of(2026, 1, 15),
+                                DynamicDepositRateHistoryEventType.DEPOSIT, BigDecimal.valueOf(1500), 12, 2, null, null,
+                                BigDecimal.valueOf(3), BigDecimal.valueOf(3), DynamicDepositRateSource.INTEREST_RATE_CHART)));
+        this.account.setSimulatedRateHistory(List.of(DepositAccountDynamicRateHistory.createNew(this.account, simulatedSameDay,
+                LocalDate.of(2026, 1, 15), DynamicDepositRateHistoryEventType.DEPOSIT, BigDecimal.valueOf(2000), 12, 2, null, null,
+                BigDecimal.valueOf(5), BigDecimal.valueOf(5), DynamicDepositRateSource.INTEREST_RATE_CHART)));
+
+        final MathContext mc = MoneyHelper.getMathContext();
+        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+
+        final SavingsAccountTransaction posting = this.account.getTransactions().stream()
+                .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).findFirst().orElseThrow();
+        // 14 days at 1000 @ 2% (0.77), then 17 days at 2000 @ 5% (4.66) - the simulated 5%, not the persisted 3%. The
+        // engine rounds each rate segment separately, hence two rounded terms rather than one rounded sum.
+        final BigDecimal segment1 = BigDecimal.valueOf(1000).multiply(BigDecimal.valueOf(0.02)).multiply(BigDecimal.valueOf(14))
+                .divide(BigDecimal.valueOf(365), mc).setScale(2, MoneyHelper.getRoundingMode());
+        final BigDecimal segment2 = BigDecimal.valueOf(2000).multiply(BigDecimal.valueOf(0.05)).multiply(BigDecimal.valueOf(17))
+                .divide(BigDecimal.valueOf(365), mc).setScale(2, MoneyHelper.getRoundingMode());
+        final BigDecimal expected = segment1.add(segment2);
+        assertThat(posting.getAmount()).isEqualByComparingTo(expected);
+    }
+
     private DynamicDepositAccount buildAccount() {
         final DynamicDepositAccount newAccount = createInstance(DynamicDepositAccount.class);
         ReflectionTestUtils.setField(newAccount, "id", 1L);

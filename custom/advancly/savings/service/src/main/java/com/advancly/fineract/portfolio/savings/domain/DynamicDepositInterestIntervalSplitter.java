@@ -52,6 +52,10 @@ public final class DynamicDepositInterestIntervalSplitter {
                     result.add(new RatedInterval(LocalDateInterval.create(subIntervalStart, changeDate.minusDays(1)), currentRate));
                     subIntervalStart = changeDate;
                     currentRate = row.resolvedAnnualInterestRate();
+                } else if (changeDate.equals(subIntervalStart) && DateUtils.isAfter(changeDate, corePeriod.startDate())) {
+                    // A later row sharing the date of the split just made (two principal changes on the same day, or a
+                    // simulated row on the same day as a real one): the last row of the day wins, no empty interval.
+                    currentRate = row.resolvedAnnualInterestRate();
                 }
             }
             result.add(new RatedInterval(LocalDateInterval.create(subIntervalStart, corePeriod.endDate()), currentRate));

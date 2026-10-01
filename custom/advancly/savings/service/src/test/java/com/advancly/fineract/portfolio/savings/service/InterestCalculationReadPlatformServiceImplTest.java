@@ -29,8 +29,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
+import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositRatePreviewService.RatePreview;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import java.math.BigDecimal;
@@ -66,6 +70,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     private SavingsAccountAssembler savingsAccountAssembler;
     private ConfigurationDomainService configurationDomainService;
     private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
+    private DynamicDepositRatePreviewService ratePreviewService;
     private InterestCalculationReadPlatformServiceImpl service;
 
     @BeforeEach
@@ -79,8 +84,10 @@ class InterestCalculationReadPlatformServiceImplTest {
         this.savingsAccountAssembler = mock(SavingsAccountAssembler.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
         this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
+        this.ratePreviewService = mock(DynamicDepositRatePreviewService.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.savingsAccountAssembler, this.configurationDomainService, this.interestChargeApplicationRepository);
+                this.savingsAccountAssembler, this.configurationDomainService, this.interestChargeApplicationRepository,
+                this.ratePreviewService);
     }
 
     private SavingsAccount plainSavingsAccount() {
@@ -222,6 +229,67 @@ class InterestCalculationReadPlatformServiceImplTest {
         assertThat(result.forfeitedAmount()).isEqualByComparingTo("34");
         assertThat(result.accountBalance()).isEqualByComparingTo("1000");
         assertThat(result.totalWithholdTax()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    private DynamicDepositAccount dynamicDepositAccount() {
+        final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
+        commonStubs(account, DepositAccountType.DYNAMIC_DEPOSIT);
+        when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
+        return account;
+    }
+
+    private RatePreview ratePreview(final boolean rateChanged) {
+        return new RatePreview(mock(DepositAccountDynamicRateHistory.class), new SimulatedRateData(new BigDecimal("8"), new BigDecimal("8"),
+                "INTEREST_RATE_CHART", 1L, 2L, LocalDate.now(), new BigDecimal("11000"), new BigDecimal("5"), rateChanged));
+    }
+
+    @Test
+    void dynamicDepositSimulationInjectsThePreviewRowBeforeCalculatingAndReturnsTheSimulatedRate() {
+        final DynamicDepositAccount account = dynamicDepositAccount();
+        final RatePreview preview = ratePreview(true);
+        when(this.ratePreviewService.preview(eq(account), any(SavingsAccountTransaction.class),
+                eq(DynamicDepositRateHistoryEventType.DEPOSIT))).thenReturn(preview);
+
+        final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, new BigDecimal("3000"), null);
+
+        final org.mockito.InOrder inOrder = Mockito.inOrder(account);
+        inOrder.verify(account).setSimulatedRateHistory(List.of(preview.row()));
+        inOrder.verify(account, org.mockito.Mockito.atLeastOnce()).calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(),
+                any(), anyBoolean(), anyBoolean());
+        assertThat(result.simulatedRate()).isSameAs(preview.data());
+        assertThat(result.simulatedRate().rateChanged()).isTrue();
+    }
+
+    @Test
+    void netWithdrawalPreviewsAWithdrawalEvent() {
+        final DynamicDepositAccount account = dynamicDepositAccount();
+        when(this.ratePreviewService.preview(eq(account), any(SavingsAccountTransaction.class),
+                eq(DynamicDepositRateHistoryEventType.WITHDRAWAL))).thenReturn(ratePreview(true));
+
+        final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, new BigDecimal("100"), new BigDecimal("400"));
+
+        assertThat(result.simulatedRate()).isNotNull();
+    }
+
+    @Test
+    void netZeroSimulationSkipsTheRatePreview() {
+        dynamicDepositAccount();
+
+        final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, new BigDecimal("250"), new BigDecimal("250"));
+
+        verify(this.ratePreviewService, never()).preview(any(), any(), any());
+        assertThat(result.simulatedRate()).isNull();
+    }
+
+    @Test
+    void noRatePreviewWithoutASimulationOrForNonDynamicAccounts() {
+        dynamicDepositAccount();
+        assertThat(this.service.calculate(ACCOUNT_ID, null, null).simulatedRate()).isNull();
+
+        plainSavingsAccount();
+        assertThat(this.service.calculate(ACCOUNT_ID, new BigDecimal("50"), null).simulatedRate()).isNull();
+
+        verify(this.ratePreviewService, never()).preview(any(), any(), any());
     }
 
     @Test

@@ -79,6 +79,23 @@ class DynamicDepositInterestIntervalSplitterTest {
     }
 
     @Test
+    void lastRowOfASharedDateWinsInsideThePeriodWithoutCreatingAnEmptyInterval() {
+        final LocalDateInterval period = LocalDateInterval.create(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+        final DepositAccountDynamicRateHistory activation = rateRow(LocalDate.of(2025, 12, 1), BigDecimal.valueOf(2));
+        final DepositAccountDynamicRateHistory first = rateRow(LocalDate.of(2026, 1, 15), BigDecimal.valueOf(3));
+        final DepositAccountDynamicRateHistory second = rateRow(LocalDate.of(2026, 1, 15), BigDecimal.valueOf(5));
+
+        final List<DynamicDepositInterestIntervalSplitter.RatedInterval> result = DynamicDepositInterestIntervalSplitter
+                .split(List.of(period), List.of(activation, first, second));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).annualInterestRate()).isEqualByComparingTo("2");
+        assertThat(result.get(0).periodInterval().endDate()).isEqualTo(LocalDate.of(2026, 1, 14));
+        assertThat(result.get(1).periodInterval().startDate()).isEqualTo(LocalDate.of(2026, 1, 15));
+        assertThat(result.get(1).annualInterestRate()).isEqualByComparingTo("5");
+    }
+
+    @Test
     void ignoresRateChangesOutsideThePeriodBeingSplit() {
         final LocalDateInterval period = LocalDateInterval.create(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28));
         final DepositAccountDynamicRateHistory activation = rateRow(LocalDate.of(2025, 12, 1), BigDecimal.valueOf(2));

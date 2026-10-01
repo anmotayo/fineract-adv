@@ -83,17 +83,19 @@ public class InterestCalculationData implements Serializable {
     private final BigDecimal simulatedTopUpAmount;
     private final BigDecimal simulatedWithdrawalAmount;
 
+    // Dynamic Deposit only, and only when a simulation was requested: the rate the simulated net amount resolves to
+    private final SimulatedRateData simulatedRate;
+
     public InterestCalculationData(final Long accountId, final String accountNo, final String externalId, final Long clientId,
             final Long groupId, final Long productId, final SavingsAccountStatusEnumData status, final CurrencyData currency,
             final LocalDate maturityDate, final BigDecimal interestAsAtToday, final BigDecimal interestAtMaturity,
-            final BigDecimal maturityAmount, final BigDecimal totalInterestChargeDerived,
-            final BigDecimal forfeitedAmount, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
-            final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
-            final BigDecimal totalInterestPosted, final BigDecimal accountBalance, final BigDecimal totalFeeCharge,
-            final BigDecimal totalPenaltyCharge, final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax,
-            final LocalDate interestPostedTillDate, final Collection<InterestCalculationTransactionData> transactions,
-            final Collection<PostingPeriodData> postingPeriods, final BigDecimal simulatedTopUpAmount,
-            final BigDecimal simulatedWithdrawalAmount) {
+            final BigDecimal maturityAmount, final BigDecimal totalInterestChargeDerived, final BigDecimal forfeitedAmount,
+            final BigDecimal totalDeposits, final BigDecimal totalWithdrawals, final BigDecimal totalWithdrawalFees,
+            final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned, final BigDecimal totalInterestPosted,
+            final BigDecimal accountBalance, final BigDecimal totalFeeCharge, final BigDecimal totalPenaltyCharge,
+            final BigDecimal totalOverdraftInterestDerived, final BigDecimal totalWithholdTax, final LocalDate interestPostedTillDate,
+            final Collection<InterestCalculationTransactionData> transactions, final Collection<PostingPeriodData> postingPeriods,
+            final BigDecimal simulatedTopUpAmount, final BigDecimal simulatedWithdrawalAmount, final SimulatedRateData simulatedRate) {
         this.accountId = accountId;
         this.accountNo = accountNo;
         this.externalId = externalId;
@@ -124,6 +126,7 @@ public class InterestCalculationData implements Serializable {
         this.postingPeriods = postingPeriods;
         this.simulatedTopUpAmount = simulatedTopUpAmount;
         this.simulatedWithdrawalAmount = simulatedWithdrawalAmount;
+        this.simulatedRate = simulatedRate;
     }
 
     public Long accountId() {
@@ -176,5 +179,9 @@ public class InterestCalculationData implements Serializable {
 
     public Collection<PostingPeriodData> postingPeriods() {
         return this.postingPeriods;
+    }
+
+    public SimulatedRateData simulatedRate() {
+        return this.simulatedRate;
     }
 }

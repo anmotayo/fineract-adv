@@ -129,7 +129,7 @@ public class DynamicDepositRateHistoryService {
      * audit-trail duplicate of the original, not a new movement of its own - see
      * {@code SavingsAccountTransactionRepository}'s own balance queries, which apply the same exclusion).
      */
-    private BigDecimal computeInvestedAmountAsOf(final DynamicDepositAccount account, final SavingsAccountTransaction uptoAndIncluding) {
+    public BigDecimal computeInvestedAmountAsOf(final DynamicDepositAccount account, final SavingsAccountTransaction uptoAndIncluding) {
         BigDecimal total = BigDecimal.ZERO;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             if (transaction.isReversed() || transaction.isReversalTransaction()) {
@@ -202,7 +202,7 @@ public class DynamicDepositRateHistoryService {
         }
     }
 
-    private ResolvedRate resolveRate(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure accountTermAndPreClosure,
+    public ResolvedRate resolveRate(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure accountTermAndPreClosure,
             final BigDecimal investedAmount, final LocalDate asOfDate, final long priorRowCount) {
         final BigDecimal nominalAnnualInterestRate = account.savingsProduct().nominalAnnualInterestRate();
         if (priorRowCount == 0) {

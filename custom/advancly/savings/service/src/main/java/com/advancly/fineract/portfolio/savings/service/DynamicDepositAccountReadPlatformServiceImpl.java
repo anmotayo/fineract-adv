@@ -136,9 +136,8 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         // The current period's unposted accrual: total earned to date minus what has already been posted.
         final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
-        final BigDecimal totalInterestChargeDerived = defaultToZero(
+        final BigDecimal interestCharges = defaultToZero(
                 this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId));
-        final BigDecimal interestCharges = totalInterestChargeDerived;
         // Phase 5 (Transfers And Withdrawal Lock) owns this field; it stays zero for now.
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
 
@@ -171,8 +170,7 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
                 .toList();
 
         return new DynamicDepositInterestSummaryData(grossInterestEarnedAsAtToday, interestPosted, totalInterestForPeriod,
-                interestWithdrawn, withholdingTax, interestCharges, totalInterestChargeDerived, netInterest, interestTransferredToSavings,
-                effectiveRateIntervals);
+                interestWithdrawn, withholdingTax, interestCharges, netInterest, interestTransferredToSavings, effectiveRateIntervals);
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {

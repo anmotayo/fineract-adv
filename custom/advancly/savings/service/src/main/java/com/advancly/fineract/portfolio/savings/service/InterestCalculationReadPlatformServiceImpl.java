@@ -22,7 +22,6 @@ import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
 import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
-import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositRatePreviewService.RatePreview;
@@ -68,7 +67,6 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final SavingsAccountAssembler savingsAccountAssembler;
     private final ConfigurationDomainService configurationDomainService;
-    private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private final DynamicDepositRatePreviewService ratePreviewService;
 
     @Override
@@ -80,7 +78,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final DepositAccountType depositAccountType = account.depositAccountType();
         this.context.authenticatedUser().validateHasReadPermission(depositAccountType.resourceName());
 
-        final LocalDate today = DateUtils.getBusinessLocalDate();
+        final LocalDate today = DateUtils.getBusinessLocalDate().minusDays(1);
         final LocalDate maturityDate = maturityDateOf(account);
 
         final SavingsAccountTransaction lastSimulatedTransaction = addSimulatedTransactionIfPresent(account, today, topUpAmount,
@@ -137,12 +135,6 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     periodInterest.getAmount()));
         }
 
-        BigDecimal totalInterestChargeDerived = null;
-        if (account instanceof DynamicDepositAccount) {
-            totalInterestChargeDerived = defaultToZero(
-                    this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(account.getId()));
-        }
-
         final List<InterestCalculationTransactionData> transactions = new ArrayList<>();
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             transactions.add(new InterestCalculationTransactionData(transaction.getId(),
@@ -158,15 +150,14 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final var summary = account.getSummary();
         final BigDecimal totalInterestPosted = summary.getTotalInterestPosted();
         final BigDecimal totalWithholdTax = summary.getTotalWithholdTax();
-        final BigDecimal forfeitedAmount = totalInterestChargeDerived;
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
-                interestAsAtToday, interestAtMaturity, maturityAmount, totalInterestChargeDerived, forfeitedAmount,
-                summary.getTotalDeposits(), summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(),
-                interestAsAtToday, totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(),
-                summary.getTotalPenaltyCharge(), summary.getTotalOverdraftInterestDerived(), totalWithholdTax,
-                summary.getInterestPostedTillDate(), transactions, postingPeriods, topUpAmount, withdrawalAmount, simulatedRate);
+                account.getNominalAnnualInterestRate(), interestAsAtToday, interestAtMaturity, maturityAmount, summary.getTotalDeposits(),
+                summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(), interestAsAtToday,
+                totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(),
+                summary.getTotalOverdraftInterestDerived(), totalWithholdTax, summary.getInterestPostedTillDate(), transactions,
+                postingPeriods, topUpAmount, withdrawalAmount, simulatedRate);
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {

@@ -31,7 +31,6 @@ import static org.mockito.Mockito.when;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
 import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
-import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositRatePreviewService.RatePreview;
@@ -69,7 +68,6 @@ class InterestCalculationReadPlatformServiceImplTest {
     private SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private SavingsAccountAssembler savingsAccountAssembler;
     private ConfigurationDomainService configurationDomainService;
-    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private DynamicDepositRatePreviewService ratePreviewService;
     private InterestCalculationReadPlatformServiceImpl service;
 
@@ -83,11 +81,9 @@ class InterestCalculationReadPlatformServiceImplTest {
         this.savingsAccountRepositoryWrapper = mock(SavingsAccountRepositoryWrapper.class);
         this.savingsAccountAssembler = mock(SavingsAccountAssembler.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
-        this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
         this.ratePreviewService = mock(DynamicDepositRatePreviewService.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.savingsAccountAssembler, this.configurationDomainService, this.interestChargeApplicationRepository,
-                this.ratePreviewService);
+                this.savingsAccountAssembler, this.configurationDomainService, this.ratePreviewService);
     }
 
     private SavingsAccount plainSavingsAccount() {
@@ -145,8 +141,8 @@ class InterestCalculationReadPlatformServiceImplTest {
         // periods by their interval end date - see the regression this guards against in the class javadoc.
         final PostingPeriod currentPartialPeriod = postingPeriodWithInterest(today.withDayOfMonth(1), today.plusDays(10),
                 new BigDecimal("5.00"), new BigDecimal("1005.00"));
-        when(account.calculateInterestUsing(any(), eq(today), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
-                .thenReturn(List.of(currentPartialPeriod));
+        when(account.calculateInterestUsing(any(), eq(today.minusDays(1)), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(),
+                anyBoolean())).thenReturn(List.of(currentPartialPeriod));
         when(summaryOf(account).getTotalInterestEarned()).thenReturn(new BigDecimal("5.00"));
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
@@ -174,8 +170,8 @@ class InterestCalculationReadPlatformServiceImplTest {
                 new BigDecimal("1002.00"));
         final PostingPeriod fullPeriodProjectedToMaturity = postingPeriodWithInterest(today.withDayOfMonth(1), maturityDate,
                 new BigDecimal("32.00"), new BigDecimal("1032.00"));
-        when(account.calculateInterestUsing(any(), eq(today), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
-                .thenReturn(List.of(partialToday));
+        when(account.calculateInterestUsing(any(), eq(today.minusDays(1)), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(),
+                anyBoolean())).thenReturn(List.of(partialToday));
         when(account.calculateInterestUsing(any(), eq(maturityDate), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(fullPeriodProjectedToMaturity));
         // First call (today-bounded) leaves totalInterestEarned=2.00; second call (maturity-bounded) overwrites it to
@@ -217,16 +213,16 @@ class InterestCalculationReadPlatformServiceImplTest {
     }
 
     @Test
-    void interestChargeTotalsAreReadFromApplicationLedgerForDynamicDepositAccounts() {
+    void totalPenaltyChargeIsReadFromSummaryAndIncludesInterestCharges() {
         final DynamicDepositAccount account = mock(DynamicDepositAccount.class);
         commonStubs(account, DepositAccountType.DYNAMIC_DEPOSIT);
         when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
-        when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID)).thenReturn(new BigDecimal("34"));
+        final SavingsAccountSummary summary = account.getSummary();
+        Mockito.doReturn(new BigDecimal("34")).when(summary).getTotalPenaltyCharge();
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
-        assertThat(result.totalInterestChargeDerived()).isEqualByComparingTo("34");
-        assertThat(result.forfeitedAmount()).isEqualByComparingTo("34");
+        assertThat(result.totalPenaltyCharge()).isEqualByComparingTo("34");
         assertThat(result.accountBalance()).isEqualByComparingTo("1000");
         assertThat(result.totalWithholdTax()).isEqualByComparingTo(BigDecimal.ZERO);
     }

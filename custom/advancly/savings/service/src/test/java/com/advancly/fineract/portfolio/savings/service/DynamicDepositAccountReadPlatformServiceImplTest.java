@@ -144,7 +144,6 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
         final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
         assertThat(summary.interestCharges()).isEqualByComparingTo("30");
-        assertThat(summary.totalInterestChargeDerived()).isEqualByComparingTo("30");
         // 500 posted - 50 withholding tax - 30 interest charge
         assertThat(summary.netInterest()).isEqualByComparingTo("420");
     }

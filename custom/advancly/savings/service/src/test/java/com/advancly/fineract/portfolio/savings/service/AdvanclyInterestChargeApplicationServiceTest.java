@@ -54,7 +54,6 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSum
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class AdvanclyInterestChargeApplicationServiceTest {
 
@@ -74,10 +73,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionHelper transactionHelper = mock(SavingsAccountTransactionHelper.class);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
-        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final AdvanclyInterestChargeApplicationService service = new AdvanclyInterestChargeApplicationService(ruleRepository,
                 applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
 
         final Long accountId = 11L;
         final Long savingsProductId = 22L;
@@ -115,7 +113,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
         assertThat(chargeTransaction).isNull();
         verify(applicationRepository).countActiveForSelectedPeriod(accountId, chargeId, selectedFromDate, selectedToDate);
         verifyNoInteractions(transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
     }
 
     @Test
@@ -127,10 +125,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionHelper transactionHelper = mock(SavingsAccountTransactionHelper.class);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
-        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final AdvanclyInterestChargeApplicationService service = new AdvanclyInterestChargeApplicationService(ruleRepository,
                 applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
 
         final Long savingsProductId = 22L;
         final Long chargeId = 33L;
@@ -165,7 +162,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
         verify(cumulativeInterestForfeitureService).forfeitIfApplicable(account, withdrawalTransaction, transactionDate, true, false,
                 percentageOverride);
         verifyNoInteractions(applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper,
-                journalEntryWritePlatformService, jdbcTemplate);
+                journalEntryWritePlatformService);
     }
 
     @Test
@@ -177,10 +174,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionHelper transactionHelper = mock(SavingsAccountTransactionHelper.class);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
-        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final AdvanclyInterestChargeApplicationService service = new AdvanclyInterestChargeApplicationService(ruleRepository,
                 applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
 
         final Long accountId = 11L;
         final Long savingsProductId = 22L;
@@ -239,8 +235,6 @@ class AdvanclyInterestChargeApplicationServiceTest {
         assertThat(application.originalBasisAmount()).isEqualByComparingTo("200");
         assertThat(application.previouslyConsumedAmount()).isEqualByComparingTo("100");
         assertThat(application.appliedAmount()).isEqualByComparingTo("50");
-        verify(jdbcTemplate).update("update m_savings_account set total_interest_charge_derived = ? where id = ?", new BigDecimal("150"),
-                accountId);
         verify(transactionRepository).save(chargeTransaction);
         verify(savingsAccountRepository).saveAndFlush(account);
         verify(journalEntryWritePlatformService).createJournalEntriesForSavings(any());
@@ -289,10 +283,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionHelper transactionHelper = mock(SavingsAccountTransactionHelper.class);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
-        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final AdvanclyInterestChargeApplicationService service = new AdvanclyInterestChargeApplicationService(ruleRepository,
                 applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
 
         final Long accountId = 11L;
         final Long savingsProductId = 22L;
@@ -352,10 +345,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionHelper transactionHelper = new SavingsAccountTransactionHelper(summaryWrapper);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
-        final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         final AdvanclyInterestChargeApplicationService service = new AdvanclyInterestChargeApplicationService(ruleRepository,
                 applicationRepository, transactionRepository, savingsAccountRepository, transactionHelper, journalEntryWritePlatformService,
-                cumulativeInterestForfeitureService, jdbcTemplate);
+                cumulativeInterestForfeitureService);
 
         final Long accountId = 11L;
         final Long savingsProductId = 22L;

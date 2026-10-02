@@ -43,22 +43,20 @@ public class DynamicDepositInterestSummaryData {
     private final BigDecimal interestWithdrawn;
     private final BigDecimal withholdingTax;
     private final BigDecimal interestCharges;
-    private final BigDecimal totalInterestChargeDerived;
     private final BigDecimal netInterest;
     private final BigDecimal interestTransferredToSavings;
     private final List<RateIntervalData> effectiveRateIntervals;
 
     public DynamicDepositInterestSummaryData(final BigDecimal grossInterestEarnedAsAtToday, final BigDecimal interestPosted,
             final BigDecimal totalInterestForPeriod, final BigDecimal interestWithdrawn, final BigDecimal withholdingTax,
-            final BigDecimal interestCharges, final BigDecimal totalInterestChargeDerived, final BigDecimal netInterest,
-            final BigDecimal interestTransferredToSavings, final List<RateIntervalData> effectiveRateIntervals) {
+            final BigDecimal interestCharges, final BigDecimal netInterest, final BigDecimal interestTransferredToSavings,
+            final List<RateIntervalData> effectiveRateIntervals) {
         this.grossInterestEarnedAsAtToday = grossInterestEarnedAsAtToday;
         this.interestPosted = interestPosted;
         this.totalInterestForPeriod = totalInterestForPeriod;
         this.interestWithdrawn = interestWithdrawn;
         this.withholdingTax = withholdingTax;
         this.interestCharges = interestCharges;
-        this.totalInterestChargeDerived = totalInterestChargeDerived;
         this.netInterest = netInterest;
         this.interestTransferredToSavings = interestTransferredToSavings;
         this.effectiveRateIntervals = effectiveRateIntervals;
@@ -86,10 +84,6 @@ public class DynamicDepositInterestSummaryData {
 
     public BigDecimal interestCharges() {
         return this.interestCharges;
-    }
-
-    public BigDecimal totalInterestChargeDerived() {
-        return this.totalInterestChargeDerived;
     }
 
     public BigDecimal netInterest() {

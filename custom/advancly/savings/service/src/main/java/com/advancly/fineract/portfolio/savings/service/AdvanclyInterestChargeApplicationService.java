@@ -49,7 +49,6 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrap
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,14 +66,13 @@ public class AdvanclyInterestChargeApplicationService {
     private final SavingsAccountTransactionHelper transactionHelper;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
-    private final JdbcTemplate jdbcTemplate;
 
     public AdvanclyInterestChargeApplicationService(final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository,
             final DepositInterestChargeApplicationRepository applicationRepository,
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             final SavingsAccountRepositoryWrapper savingsAccountRepository, final SavingsAccountTransactionHelper transactionHelper,
             final JournalEntryWritePlatformService journalEntryWritePlatformService,
-            @Lazy final CumulativeInterestForfeitureService cumulativeInterestForfeitureService, final JdbcTemplate jdbcTemplate) {
+            @Lazy final CumulativeInterestForfeitureService cumulativeInterestForfeitureService) {
         this.chargeInterestRuleRepository = chargeInterestRuleRepository;
         this.applicationRepository = applicationRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -82,7 +80,6 @@ public class AdvanclyInterestChargeApplicationService {
         this.transactionHelper = transactionHelper;
         this.journalEntryWritePlatformService = journalEntryWritePlatformService;
         this.cumulativeInterestForfeitureService = cumulativeInterestForfeitureService;
-        this.jdbcTemplate = jdbcTemplate;
     }
 
     public boolean hasChargeDrivenRule(final SavingsAccount account) {
@@ -186,7 +183,6 @@ public class AdvanclyInterestChargeApplicationService {
                 rule.interestBasisMode(), rule.customPeriodReapplyPolicy(), percentage, selectedNetInterestAmount, alreadyApplied,
                 roundedAmount);
         this.applicationRepository.saveAndFlush(application);
-        refreshPostedDerivedChargeColumn(account.getId());
 
         this.savingsAccountRepository.saveAndFlush(account);
         postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, appendPath || backdatedTxnsAllowedTill);
@@ -236,11 +232,6 @@ public class AdvanclyInterestChargeApplicationService {
         final Map<String, Object> accountingBridgeData = account.deriveAccountingBridgeData(account.getCurrency().getCode(),
                 existingTransactionIds, existingReversedTransactionIds, isAccountTransfer, appendPath);
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
-    }
-
-    private void refreshPostedDerivedChargeColumn(final Long accountId) {
-        final BigDecimal posted = amountOrZero(this.applicationRepository.sumActiveAppliedAmountForAccount(accountId));
-        this.jdbcTemplate.update("update m_savings_account set total_interest_charge_derived = ? where id = ?", posted, accountId);
     }
 
     /**

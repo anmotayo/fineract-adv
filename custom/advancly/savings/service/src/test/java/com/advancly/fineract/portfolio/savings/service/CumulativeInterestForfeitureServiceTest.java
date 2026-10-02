@@ -55,7 +55,6 @@ import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatform
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class CumulativeInterestForfeitureServiceTest {
 
@@ -72,7 +71,6 @@ class CumulativeInterestForfeitureServiceTest {
     private NoteRepository noteRepository;
     private SavingsAccountRepositoryWrapper savingsAccountRepository;
     private JournalEntryWritePlatformService journalEntryWritePlatformService;
-    private JdbcTemplate jdbcTemplate;
     private CumulativeInterestForfeitureService service;
 
     @BeforeEach
@@ -95,11 +93,9 @@ class CumulativeInterestForfeitureServiceTest {
         this.noteRepository = mock(NoteRepository.class);
         this.savingsAccountRepository = mock(SavingsAccountRepositoryWrapper.class);
         this.journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
-        this.jdbcTemplate = mock(JdbcTemplate.class);
 
         this.service = new CumulativeInterestForfeitureService(this.chargeInterestRuleRepository, this.interestChargeApplicationRepository,
-                this.writePlatformService, this.noteRepository, this.savingsAccountRepository, this.journalEntryWritePlatformService,
-                this.jdbcTemplate);
+                this.writePlatformService, this.noteRepository, this.savingsAccountRepository, this.journalEntryWritePlatformService);
     }
 
     @Test
@@ -178,10 +174,8 @@ class CumulativeInterestForfeitureServiceTest {
 
         this.service.forfeitIfApplicable(account, WITHDRAWAL_DATE, false, false);
 
-        final InOrder inOrder = inOrder(this.savingsAccountRepository, this.jdbcTemplate, this.journalEntryWritePlatformService);
+        final InOrder inOrder = inOrder(this.savingsAccountRepository, this.journalEntryWritePlatformService);
         inOrder.verify(this.savingsAccountRepository).saveAndFlush(account);
-        inOrder.verify(this.jdbcTemplate).update("update m_savings_account set total_interest_charge_derived = ? where id = ?",
-                new BigDecimal("70"), 1L);
         inOrder.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
     }
 

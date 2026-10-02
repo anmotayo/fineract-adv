@@ -22,7 +22,6 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator;
 import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -102,9 +101,6 @@ public class DynamicDepositAccount extends SavingsAccount {
      */
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "account", orphanRemoval = true)
     private DepositAccountInterestRateChart chart;
-
-    @Column(name = "total_interest_charge_derived", scale = 6, precision = 19)
-    private BigDecimal totalInterestChargeDerived;
 
     /**
      * Never persisted. Lets the read-only interest-calculation preview inject "what if" rate-history rows (see
@@ -240,10 +236,6 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
-    }
-
-    public BigDecimal totalInterestChargeDerived() {
-        return this.totalInterestChargeDerived == null ? BigDecimal.ZERO : this.totalInterestChargeDerived;
     }
 
     /**

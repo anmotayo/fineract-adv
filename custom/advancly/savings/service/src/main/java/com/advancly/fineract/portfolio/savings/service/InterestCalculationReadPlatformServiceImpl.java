@@ -140,7 +140,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
             transactions.add(new InterestCalculationTransactionData(transaction.getId(),
                     SavingsEnumerations.transactionType(transaction.getTransactionType()), transaction.getTransactionDate(),
                     transaction.getAmount(account.getCurrency()).getAmount(), transaction.getRunningBalance(), transaction.isReversed(),
-                    transaction.getId() == null));
+                    transaction.getId() == null, transaction.getCreatedDate().orElse(null), account.getCurrency().toData()));
         }
 
         // Note: summary.getTotalInterestEarned() itself now reflects whichever run happened LAST (the

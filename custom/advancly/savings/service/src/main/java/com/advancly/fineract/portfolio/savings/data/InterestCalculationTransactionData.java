@@ -21,13 +21,16 @@ package com.advancly.fineract.portfolio.savings.data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
 
 /**
  * Lightweight transaction row for the interest-calculation preview response - deliberately not the full
  * {@code SavingsAccountTransactionData} (charge-paid-by breakdowns etc. aren't needed here), just enough to show what
  * happened and when. A simulated top-up/withdrawal (see {@code InterestCalculationReadPlatformServiceImpl}) is included
- * with a {@code null} id so callers can tell it apart from a real, persisted transaction.
+ * with a {@code null} id (and a {@code null} {@code createdOnUtc}) so callers can tell it apart from a real, persisted
+ * transaction.
  */
 public class InterestCalculationTransactionData implements Serializable {
 
@@ -38,9 +41,12 @@ public class InterestCalculationTransactionData implements Serializable {
     private final BigDecimal runningBalance;
     private final boolean reversed;
     private final boolean simulated;
+    private final OffsetDateTime createdOnUtc;
+    private final CurrencyData currency;
 
     public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType, final LocalDate date,
-            final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated) {
+            final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated,
+            final OffsetDateTime createdOnUtc, final CurrencyData currency) {
         this.id = id;
         this.transactionType = transactionType;
         this.date = date;
@@ -48,6 +54,8 @@ public class InterestCalculationTransactionData implements Serializable {
         this.runningBalance = runningBalance;
         this.reversed = reversed;
         this.simulated = simulated;
+        this.createdOnUtc = createdOnUtc;
+        this.currency = currency;
     }
 
     public Long id() {
@@ -68,6 +76,14 @@ public class InterestCalculationTransactionData implements Serializable {
 
     public BigDecimal runningBalance() {
         return this.runningBalance;
+    }
+
+    public OffsetDateTime createdOnUtc() {
+        return this.createdOnUtc;
+    }
+
+    public CurrencyData currency() {
+        return this.currency;
     }
 
     public boolean isReversed() {

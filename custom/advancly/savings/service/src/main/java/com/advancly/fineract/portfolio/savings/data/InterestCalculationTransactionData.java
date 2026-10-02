@@ -43,10 +43,13 @@ public class InterestCalculationTransactionData implements Serializable {
     private final boolean simulated;
     private final OffsetDateTime createdOnUtc;
     private final CurrencyData currency;
+    private final Long accountTransferId;
+    private final Long accountTransferTransactionId;
 
     public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType, final LocalDate date,
             final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated,
-            final OffsetDateTime createdOnUtc, final CurrencyData currency) {
+            final OffsetDateTime createdOnUtc, final CurrencyData currency, final Long accountTransferId,
+            final Long accountTransferTransactionId) {
         this.id = id;
         this.transactionType = transactionType;
         this.date = date;
@@ -56,6 +59,8 @@ public class InterestCalculationTransactionData implements Serializable {
         this.simulated = simulated;
         this.createdOnUtc = createdOnUtc;
         this.currency = currency;
+        this.accountTransferId = accountTransferId;
+        this.accountTransferTransactionId = accountTransferTransactionId;
     }
 
     public Long id() {
@@ -84,6 +89,21 @@ public class InterestCalculationTransactionData implements Serializable {
 
     public CurrencyData currency() {
         return this.currency;
+    }
+
+    /**
+     * The {@code m_account_transfer_details} id - the {@code resourceId} the account-transfer API returns - when this
+     * transaction is one leg of an account transfer, else {@code null}.
+     */
+    public Long accountTransferId() {
+        return this.accountTransferId;
+    }
+
+    /**
+     * The {@code m_account_transfer_transaction} id of the transfer leg this transaction belongs to, else {@code null}.
+     */
+    public Long accountTransferTransactionId() {
+        return this.accountTransferTransactionId;
     }
 
     public boolean isReversed() {

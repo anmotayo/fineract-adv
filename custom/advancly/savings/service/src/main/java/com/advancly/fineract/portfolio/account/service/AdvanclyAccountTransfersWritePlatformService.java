@@ -108,6 +108,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     private final AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
 
+    /**
+     * The returned {@code resourceId} is the {@code m_account_transfer_details} id, not the
+     * {@code m_account_transfer_transaction} id of the individual transfer leg.
+     */
     @Transactional
     @Override
     public CommandProcessingResult create(final JsonCommand command) {
@@ -333,10 +337,13 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         coreAccountTransfersWritePlatformService.reverseTransfersWithFromAccountType(accountNumber, accountTypeId);
     }
 
+    /**
+     * Returns the {@code m_account_transfer_details} id of the transfer, not the id of the individual transfer leg.
+     */
     @Transactional
     @Override
     public Long transferFunds(final AccountTransferDTO accountTransferDTO) {
-        Long transferTransactionId;
+        Long transferDetailsId;
         AccountTransferDetails accountTransferDetails = accountTransferDTO.getAccountTransferDetails();
         final boolean isAccountTransfer = true;
         final boolean isRegularTransaction = accountTransferDTO.isRegularTransaction();
@@ -368,7 +375,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             accountTransferDetails = this.accountTransferAssembler.assembleSavingsToLoanTransfer(accountTransferDTO, fromSavingsAccount,
                     toLoanAccount, withdrawal, loanTransaction);
             this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
-            transferTransactionId = accountTransferDetails.getId();
+            transferDetailsId = accountTransferDetails.getId();
         } else if (isSavingsToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             LocalDate transactionDate = resolveSavingsToSavingsTransferDate(accountTransferDTO);
             final Long fromSavingsAccountId = fromSavingsAccountId(accountTransferDTO, accountTransferDetails);
@@ -405,7 +412,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             accountTransferDetails = this.accountTransferAssembler.assembleSavingsToSavingsTransfer(accountTransferDTO, fromSavingsAccount,
                     toSavingsAccount, withdrawal, deposit);
             this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
-            transferTransactionId = accountTransferDetails.getId();
+            transferDetailsId = accountTransferDetails.getId();
         } else if (isLoanToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             final Loan fromLoanAccount = resolveFromLoanAccount(accountTransferDTO, accountTransferDetails);
 
@@ -426,7 +433,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             accountTransferDetails = this.accountTransferAssembler.assembleLoanToSavingsTransfer(accountTransferDTO, fromLoanAccount,
                     toSavingsAccount, deposit, loanTransaction);
             this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
-            transferTransactionId = accountTransferDetails.getId();
+            transferDetailsId = accountTransferDetails.getId();
 
             handleGsimDeposit(toSavingsAccount, accountTransferDTO.getTransactionAmount());
         } else {
@@ -434,7 +441,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
                     "Account transfer from loan to another loan is not supported");
         }
 
-        return transferTransactionId;
+        return transferDetailsId;
     }
 
     @Transactional
@@ -443,6 +450,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         coreAccountTransfersWritePlatformService.reverseAllTransactions(accountId, accountTypeId);
     }
 
+    /**
+     * The returned {@code resourceId} is the {@code m_account_transfer_details} id, not the
+     * {@code m_account_transfer_transaction} id of the individual transfer leg.
+     */
     @Transactional
     @Override
     public CommandProcessingResult refundByTransfer(final JsonCommand command) {

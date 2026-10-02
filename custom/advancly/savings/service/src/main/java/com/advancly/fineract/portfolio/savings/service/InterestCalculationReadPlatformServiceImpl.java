@@ -29,13 +29,17 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
+import org.apache.fineract.portfolio.account.domain.AccountTransferRepository;
+import org.apache.fineract.portfolio.account.domain.AccountTransferTransaction;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.domain.FixedDepositAccount;
 import org.apache.fineract.portfolio.savings.domain.RecurringDepositAccount;
@@ -68,6 +72,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
     private final SavingsAccountAssembler savingsAccountAssembler;
     private final ConfigurationDomainService configurationDomainService;
     private final DynamicDepositRatePreviewService ratePreviewService;
+    private final AccountTransferRepository accountTransferRepository;
 
     @Override
     public InterestCalculationData calculate(final Long savingsAccountId, final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
@@ -135,12 +140,17 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     periodInterest.getAmount()));
         }
 
+        final Map<Long, AccountTransferTransaction> transfersBySavingsTransactionId = transfersBySavingsTransactionId(account);
         final List<InterestCalculationTransactionData> transactions = new ArrayList<>();
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
+            final AccountTransferTransaction transfer = transaction.getId() == null ? null
+                    : transfersBySavingsTransactionId.get(transaction.getId());
             transactions.add(new InterestCalculationTransactionData(transaction.getId(),
                     SavingsEnumerations.transactionType(transaction.getTransactionType()), transaction.getTransactionDate(),
                     transaction.getAmount(account.getCurrency()).getAmount(), transaction.getRunningBalance(), transaction.isReversed(),
-                    transaction.getId() == null, transaction.getCreatedDate().orElse(null), account.getCurrency().toData()));
+                    transaction.getId() == null, transaction.getCreatedDate().orElse(null), account.getCurrency().toData(),
+                    transfer == null || transfer.accountTransferDetails() == null ? null : transfer.accountTransferDetails().getId(),
+                    transfer == null ? null : transfer.getId()));
         }
 
         // Note: summary.getTotalInterestEarned() itself now reflects whichever run happened LAST (the
@@ -158,6 +168,28 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                 totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(),
                 summary.getTotalOverdraftInterestDerived(), totalWithholdTax, summary.getInterestPostedTillDate(), transactions,
                 postingPeriods, topUpAmount, withdrawalAmount, simulatedRate);
+    }
+
+    /**
+     * Maps each persisted savings transaction that is a leg of an account transfer (either side) to its transfer row,
+     * so the preview can return the transfer ids callers recorded when they initiated the transfer.
+     */
+    private Map<Long, AccountTransferTransaction> transfersBySavingsTransactionId(final SavingsAccount account) {
+        final List<Long> transactionIds = account.getTransactions().stream().map(SavingsAccountTransaction::getId)
+                .filter(java.util.Objects::nonNull).toList();
+        final Map<Long, AccountTransferTransaction> bySavingsTransactionId = new HashMap<>();
+        if (transactionIds.isEmpty()) {
+            return bySavingsTransactionId;
+        }
+        for (final AccountTransferTransaction transfer : this.accountTransferRepository.findBySavingsTransactionIds(transactionIds)) {
+            if (transfer.getFromTransaction() != null) {
+                bySavingsTransactionId.put(transfer.getFromTransaction().getId(), transfer);
+            }
+            if (transfer.getToSavingsTransaction() != null) {
+                bySavingsTransactionId.put(transfer.getToSavingsTransaction().getId(), transfer);
+            }
+        }
+        return bySavingsTransactionId;
     }
 
     private static BigDecimal defaultToZero(final BigDecimal value) {

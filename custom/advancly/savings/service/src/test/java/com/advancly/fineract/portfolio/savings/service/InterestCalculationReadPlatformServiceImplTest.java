@@ -29,6 +29,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
+import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
@@ -45,7 +46,11 @@ import org.apache.fineract.infrastructure.security.service.PlatformSecurityConte
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.office.domain.Office;
+import org.apache.fineract.portfolio.account.domain.AccountTransferDetails;
+import org.apache.fineract.portfolio.account.domain.AccountTransferRepository;
+import org.apache.fineract.portfolio.account.domain.AccountTransferTransaction;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.FixedDepositAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
@@ -69,6 +74,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     private SavingsAccountAssembler savingsAccountAssembler;
     private ConfigurationDomainService configurationDomainService;
     private DynamicDepositRatePreviewService ratePreviewService;
+    private AccountTransferRepository accountTransferRepository;
     private InterestCalculationReadPlatformServiceImpl service;
 
     @BeforeEach
@@ -82,8 +88,9 @@ class InterestCalculationReadPlatformServiceImplTest {
         this.savingsAccountAssembler = mock(SavingsAccountAssembler.class);
         this.configurationDomainService = mock(ConfigurationDomainService.class);
         this.ratePreviewService = mock(DynamicDepositRatePreviewService.class);
+        this.accountTransferRepository = mock(AccountTransferRepository.class);
         this.service = new InterestCalculationReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
-                this.savingsAccountAssembler, this.configurationDomainService, this.ratePreviewService);
+                this.savingsAccountAssembler, this.configurationDomainService, this.ratePreviewService, this.accountTransferRepository);
     }
 
     private SavingsAccount plainSavingsAccount() {
@@ -201,6 +208,44 @@ class InterestCalculationReadPlatformServiceImplTest {
                 txn -> txn.getTransactionType().isDeposit() && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("100")) == 0));
         verify(account).addTransaction(org.mockito.ArgumentMatchers.argThat(txn -> txn.getTransactionType().isWithdrawal()
                 && txn.getAmount(CURRENCY).getAmount().compareTo(new BigDecimal("40")) == 0));
+    }
+
+    @Test
+    void transactionsCarryTheAccountTransferIdsOfTheTransferLegTheyBelongTo() {
+        final SavingsAccount account = plainSavingsAccount();
+        final SavingsAccountTransaction transferLeg = mock(SavingsAccountTransaction.class);
+        lenient().when(transferLeg.getId()).thenReturn(77L);
+        lenient().when(transferLeg.getTransactionType()).thenReturn(SavingsAccountTransactionType.DEPOSIT);
+        lenient().when(transferLeg.getTransactionDate()).thenReturn(LocalDate.of(2026, 1, 5));
+        lenient().when(transferLeg.getAmount(CURRENCY))
+                .thenReturn(org.apache.fineract.organisation.monetary.domain.Money.of(CURRENCY, new BigDecimal("100")));
+        lenient().when(transferLeg.getRunningBalance()).thenReturn(new BigDecimal("100"));
+        lenient().when(transferLeg.getCreatedDate()).thenReturn(java.util.Optional.empty());
+        final SavingsAccountTransaction plainLeg = mock(SavingsAccountTransaction.class);
+        lenient().when(plainLeg.getId()).thenReturn(78L);
+        lenient().when(plainLeg.getTransactionType()).thenReturn(SavingsAccountTransactionType.DEPOSIT);
+        lenient().when(plainLeg.getTransactionDate()).thenReturn(LocalDate.of(2026, 1, 6));
+        lenient().when(plainLeg.getAmount(CURRENCY))
+                .thenReturn(org.apache.fineract.organisation.monetary.domain.Money.of(CURRENCY, new BigDecimal("5")));
+        lenient().when(plainLeg.getRunningBalance()).thenReturn(new BigDecimal("105"));
+        lenient().when(plainLeg.getCreatedDate()).thenReturn(java.util.Optional.empty());
+        when(account.getTransactions()).thenReturn(List.of(transferLeg, plainLeg));
+
+        final AccountTransferDetails details = mock(AccountTransferDetails.class);
+        when(details.getId()).thenReturn(900L);
+        final AccountTransferTransaction transfer = mock(AccountTransferTransaction.class);
+        when(transfer.getId()).thenReturn(910L);
+        when(transfer.accountTransferDetails()).thenReturn(details);
+        when(transfer.getToSavingsTransaction()).thenReturn(transferLeg);
+        when(this.accountTransferRepository.findBySavingsTransactionIds(List.of(77L, 78L))).thenReturn(List.of(transfer));
+
+        final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
+
+        final List<InterestCalculationTransactionData> rows = List.copyOf(result.transactions());
+        assertThat(rows.get(0).accountTransferId()).isEqualTo(900L);
+        assertThat(rows.get(0).accountTransferTransactionId()).isEqualTo(910L);
+        assertThat(rows.get(1).accountTransferId()).isNull();
+        assertThat(rows.get(1).accountTransferTransactionId()).isNull();
     }
 
     @Test

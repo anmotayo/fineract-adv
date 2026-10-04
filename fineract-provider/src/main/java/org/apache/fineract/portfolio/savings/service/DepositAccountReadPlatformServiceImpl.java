@@ -974,6 +974,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String ON_ACCOUNT_CLOSURE_ID = "onAccountClosureId";
         public static final String EXPECTED_FIRST_DEPOSIT_ON_DATE = "expectedFirstDepositOnDate";
         public static final String WITHHOLD_TAX_POSTING_TYPE_ID = "withholdTaxPostingTypeId";
+        public static final String TRANSFER_INTEREST_TO_SAVINGS = "transferInterestToSavings";
         private final String schemaSql;
 
         RecurringDepositAccountMapper() {
@@ -1003,6 +1004,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             sqlBuilder.append("datp.deposit_period as depositPeriod, ");
             sqlBuilder.append("datp.deposit_period_frequency_enum as depositPeriodFrequencyTypeId, ");
             sqlBuilder.append("datp.on_account_closure_enum as onAccountClosureId, ");
+            sqlBuilder.append("datp.transfer_interest_to_linked_account as transferInterestToSavings, ");
             sqlBuilder.append("datp.withhold_tax_posting_type_enum as withHoldTaxPostingTypeId ");
 
             sqlBuilder.append(this.selectTablesSql());
@@ -1054,6 +1056,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final boolean allowWithdrawal = rs.getBoolean(ALLOW_WITHDRAWAL);
             final boolean adjustAdvanceTowardsFuturePayments = rs.getBoolean(ADJUST_ADVANCE_TOWARDS_FUTURE_PAYMENTS);
             final boolean isCalendarInherited = rs.getBoolean(IS_CALENDAR_INHERITED);
+            final boolean transferInterestToSavings = rs.getBoolean(TRANSFER_INTEREST_TO_SAVINGS);
 
             final Integer onAccountClosureId = JdbcSupport.getInteger(rs, ON_ACCOUNT_CLOSURE_ID);
             final EnumOptionData onAccountClosureType = (onAccountClosureId == null) ? null
@@ -1068,7 +1071,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, depositAmount, maturityAmount, maturityDate, depositPeriod,
                     depositPeriodFrequencyType, mandatoryRecommendedDepositAmount, onAccountClosureType, expectedFirstDepositOnDate,
                     totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments,
-                    isCalendarInherited, withHoldTaxPostingType);
+                    isCalendarInherited, withHoldTaxPostingType, transferInterestToSavings);
 
         }
     }
@@ -1607,7 +1610,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, depositAmount, maturityAmount, maturityDate, depositPeriod,
                     depositPeriodFrequencyType, mandatoryRecommendedDepositAmount, onAccountClosureType, expectedFirstDepositOnDate,
                     totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments,
-                    isCalendarInherited, withholdTaxPostingType);
+                    isCalendarInherited, withholdTaxPostingType, false);
         }
     }
 

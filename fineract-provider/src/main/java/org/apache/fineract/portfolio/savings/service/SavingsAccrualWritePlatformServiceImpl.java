@@ -54,7 +54,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -67,8 +69,17 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
     private final SavingsHelper savingsHelper;
     private final ConfigurationDomainService configurationDomainService;
     private final SavingsAccountDomainService savingsAccountDomainService;
+    private final PlatformTransactionManager transactionManager;
 
-    @Transactional
+    private static final int PROGRESS_LOG_INTERVAL = 100;
+
+    /**
+     * Accrues every eligible account in its own transaction. A single transaction (and persistence context) spanning
+     * all accounts keeps every loaded account graph in memory and makes every flush re-scan all of them, which exhausts
+     * the heap on large tenants. A transaction per account bounds both, isolates failures and keeps each account's
+     * accrual and journal entries atomic. Re-runs resume from the account's accrued-till date, so partial progress is
+     * safe.
+     */
     @Override
     public void addAccrualEntries(LocalDate tillDate) throws JobExecutionException {
         final List<SavingsAccrualData> savingsAccrualData = savingsAccountReadPlatformService.retrievePeriodicAccrualData(tillDate, null);
@@ -77,36 +88,51 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final MathContext mc = MoneyHelper.getMathContext();
 
+        final TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        final int total = savingsAccrualData.size();
+        int processed = 0;
         List<Throwable> errors = new ArrayList<>();
         for (SavingsAccrualData savingsAccrual : savingsAccrualData) {
             try {
-                if (savingsAccrual.getDepositType().isSavingsDeposit() && savingsAccrual.getIsAllowOverdraft()) {
-                    if (!savingsAccrual.getIsTypeInterestReceivable()) {
-                        continue;
-                    }
-                }
-                SavingsAccount savingsAccount = savingsAccountAssembler.assembleFrom(savingsAccrual.getId(), false);
-                LocalDate fromDate = savingsAccrual.getAccruedTill();
-                if (fromDate == null) {
-                    if (savingsAccount.getStartInterestCalculationDate() != null) {
-                        fromDate = savingsAccount.getStartInterestCalculationDate();
-                    } else {
-                        fromDate = savingsAccount.getActivationDate();
-                    }
-                } else {
-                    fromDate = fromDate.plusDays(1);
-                }
-                log.debug("Processing savings account {} from date {} till date {}", savingsAccrual.getAccountNo(), fromDate, tillDate);
-                addAccrualTransactions(savingsAccount, fromDate, tillDate, financialYearBeginningMonth,
-                        isSavingsInterestPostingAtCurrentPeriodEnd, mc, null);
+                transactionTemplate.executeWithoutResult(status -> accrueAccount(savingsAccrual, tillDate, financialYearBeginningMonth,
+                        isSavingsInterestPostingAtCurrentPeriodEnd, mc));
             } catch (Exception e) {
-                log.error("Failed to add accrual transaction for savings {} : {}", savingsAccrual.getAccountNo(), e.getMessage());
-                errors.add(e.getCause());
+                log.error("Failed to add accrual transaction for savings {} : {}", savingsAccrual.getAccountNo(), e.getMessage(), e);
+                errors.add(e);
+            }
+            processed++;
+            if (processed % PROGRESS_LOG_INTERVAL == 0) {
+                log.info("Savings accrual progress: {}/{} accounts processed, {} failed", processed, total, errors.size());
             }
         }
         if (!errors.isEmpty()) {
             throw new JobExecutionException(errors);
         }
+    }
+
+    private void accrueAccount(final SavingsAccrualData savingsAccrual, final LocalDate tillDate, final Integer financialYearBeginningMonth,
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final MathContext mc) {
+        if (savingsAccrual.getDepositType().isSavingsDeposit() && savingsAccrual.getIsAllowOverdraft()) {
+            if (!savingsAccrual.getIsTypeInterestReceivable()) {
+                return;
+            }
+        }
+        SavingsAccount savingsAccount = savingsAccountAssembler.assembleFrom(savingsAccrual.getId(), false);
+        LocalDate fromDate = savingsAccrual.getAccruedTill();
+        if (fromDate == null) {
+            if (savingsAccount.getStartInterestCalculationDate() != null) {
+                fromDate = savingsAccount.getStartInterestCalculationDate();
+            } else {
+                fromDate = savingsAccount.getActivationDate();
+            }
+        } else {
+            fromDate = fromDate.plusDays(1);
+        }
+        log.debug("Processing savings account {} from date {} till date {}", savingsAccrual.getAccountNo(), fromDate, tillDate);
+        addAccrualTransactions(savingsAccount, fromDate, tillDate, financialYearBeginningMonth, isSavingsInterestPostingAtCurrentPeriodEnd,
+                mc, null);
     }
 
     private void addAccrualTransactions(SavingsAccount savingsAccount, final LocalDate fromDate, final LocalDate tillDate,

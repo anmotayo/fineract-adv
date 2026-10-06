@@ -60,6 +60,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
 
 class SavingsAccrualWritePlatformServiceImplTest {
 
@@ -87,7 +88,7 @@ class SavingsAccrualWritePlatformServiceImplTest {
         this.savingsAccountDomainService = mock(SavingsAccountDomainService.class);
         this.service = new SavingsAccrualWritePlatformServiceImpl(mock(SavingsAccountReadPlatformService.class),
                 mock(SavingsAccountAssembler.class), this.savingsAccountRepository, this.savingsHelper,
-                mock(ConfigurationDomainService.class), this.savingsAccountDomainService);
+                mock(ConfigurationDomainService.class), this.savingsAccountDomainService, mock(PlatformTransactionManager.class));
     }
 
     @AfterEach

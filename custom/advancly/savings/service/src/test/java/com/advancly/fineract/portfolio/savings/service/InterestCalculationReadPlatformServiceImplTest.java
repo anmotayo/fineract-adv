@@ -140,11 +140,11 @@ class InterestCalculationReadPlatformServiceImplTest {
     }
 
     @Test
-    void plainSavingsHasNoMaturityFieldsAndReadsInterestAsAtTodayOffTheSummary() {
+    void plainSavingsHasNoMaturityFieldsAndReadsInterestEarnedOffTheSummary() {
         final SavingsAccount account = plainSavingsAccount();
         final LocalDate today = org.apache.fineract.infrastructure.core.service.DateUtils.getBusinessLocalDate();
         // Simulates a mid-month, not-yet-posted partial period: its interval's own end date is month-end (in the
-        // future), which is exactly why interestAsAtToday must come from the summary rather than from filtering
+        // future), which is exactly why asAtTodaySummary must come from the summary rather than from filtering
         // periods by their interval end date - see the regression this guards against in the class javadoc.
         final PostingPeriod currentPartialPeriod = postingPeriodWithInterest(today.withDayOfMonth(1), today.plusDays(10),
                 new BigDecimal("5.00"), new BigDecimal("1005.00"));
@@ -155,9 +155,9 @@ class InterestCalculationReadPlatformServiceImplTest {
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
         assertThat(result.maturityDate()).isNull();
-        assertThat(result.interestAtMaturity()).isNull();
         assertThat(result.maturityAmount()).isNull();
-        assertThat(result.interestAsAtToday()).isEqualByComparingTo("5.00");
+        assertThat(result.asAtTodaySummary().totalInterestEarned()).isEqualByComparingTo("5.00");
+        assertThat(result.asAtMaturitySummary()).isNull();
         assertThat(result.postingPeriods()).hasSize(1);
         // Only one calculateInterestUsing call for an account with no maturity date.
         verify(account, org.mockito.Mockito.times(1)).calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(),
@@ -165,7 +165,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     }
 
     @Test
-    void fixedDepositRunsTwoCalculationsAndReportsInterestAsAtTodaySeparatelyFromInterestAtMaturity() {
+    void fixedDepositRunsTwoCalculationsAndSnapshotsTodayAndMaturitySummariesSeparately() {
         final FixedDepositAccount account = mock(FixedDepositAccount.class);
         commonStubs(account, DepositAccountType.FIXED_DEPOSIT);
         final LocalDate maturityDate = LocalDate.now().plusMonths(6);
@@ -188,9 +188,12 @@ class InterestCalculationReadPlatformServiceImplTest {
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
         assertThat(result.maturityDate()).isEqualTo(maturityDate);
-        assertThat(result.interestAsAtToday()).isEqualByComparingTo("2.00");
-        assertThat(result.interestAtMaturity()).isEqualByComparingTo("32.00");
         assertThat(result.maturityAmount()).isEqualByComparingTo("1032.00");
+        // Each run's full summary is snapshotted before the next run overwrites it.
+        assertThat(result.asAtTodaySummary().totalInterestEarned()).isEqualByComparingTo("2.00");
+        assertThat(result.asAtMaturitySummary().totalInterestEarned()).isEqualByComparingTo("32.00");
+        assertThat(result.asAtTodaySummary().accountBalance()).isEqualByComparingTo("1000");
+        assertThat(result.asAtMaturitySummary().accountBalance()).isEqualByComparingTo("1000");
         // The posting-period breakdown reflects the maturity-bounded (second) run, not the today-bounded one.
         assertThat(result.postingPeriods()).hasSize(1);
         assertThat(result.postingPeriods().iterator().next().toDate()).isEqualTo(maturityDate);
@@ -267,9 +270,9 @@ class InterestCalculationReadPlatformServiceImplTest {
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
-        assertThat(result.totalPenaltyCharge()).isEqualByComparingTo("34");
-        assertThat(result.accountBalance()).isEqualByComparingTo("1000");
-        assertThat(result.totalWithholdTax()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.asAtTodaySummary().totalPenaltyCharge()).isEqualByComparingTo("34");
+        assertThat(result.asAtTodaySummary().accountBalance()).isEqualByComparingTo("1000");
+        assertThat(result.asAtTodaySummary().totalWithholdTax()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private DynamicDepositAccount dynamicDepositAccount() {

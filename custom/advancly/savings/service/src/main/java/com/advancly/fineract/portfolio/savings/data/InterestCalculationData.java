@@ -32,11 +32,14 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
  * persists anything - the loaded account is detached before (and remains detached throughout) the calculation, so this
  * is safe to call as often as needed, including with a simulated top-up or withdrawal.
  *
- * {@code maturityDate}/{@code interestAtMaturity}/{@code maturityAmount} are {@code null} for plain Savings accounts,
- * which have no maturity concept. {@code interestAtMaturity} and {@code maturityAmount} project forward from the amount
- * actually invested to date (including any simulated top-up/withdrawal) - not from the account's originally approved
- * schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life (Dynamic
- * Deposit and Recurring Deposit can both add/remove principal after opening).
+ * {@code maturityDate}/{@code maturityAmount}/{@code asAtMaturitySummary} are {@code null} for plain Savings accounts,
+ * which have no maturity concept. {@code asAtMaturitySummary} and {@code maturityAmount} project forward from the
+ * amount actually invested to date (including any simulated top-up/withdrawal) - not from the account's originally
+ * approved schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life
+ * (Dynamic Deposit and Recurring Deposit can both add/remove principal after opening).
+ *
+ * {@code asAtTodaySummary} and {@code asAtMaturitySummary} carry the account's whole summary as it stands after each of
+ * those two calculation runs; the latter is {@code null} when there is no maturity date.
  */
 public class InterestCalculationData implements Serializable {
 
@@ -53,23 +56,12 @@ public class InterestCalculationData implements Serializable {
     // the account's current nominal annual rate (%), populated for every account type, not just Dynamic Deposit
     private final BigDecimal nominalAnnualInterestRate;
 
-    private final BigDecimal interestAsAtToday;
-    private final BigDecimal interestAtMaturity;
     private final BigDecimal maturityAmount;
 
-    // all-time derived totals, straight off the account's own summary
-    private final BigDecimal totalDeposits;
-    private final BigDecimal totalWithdrawals;
-    private final BigDecimal totalWithdrawalFees;
-    private final BigDecimal totalAnnualFees;
-    private final BigDecimal totalInterestEarned;
-    private final BigDecimal totalInterestPosted;
-    private final BigDecimal accountBalance;
-    private final BigDecimal totalFeeCharge;
-    private final BigDecimal totalPenaltyCharge;
-    private final BigDecimal totalOverdraftInterestDerived;
-    private final BigDecimal totalWithholdTax;
-    private final LocalDate interestPostedTillDate;
+    // the account's whole summary after each calculation run; asAtMaturitySummary is null for accounts with no maturity
+    // date
+    private final InterestCalculationSummaryData asAtTodaySummary;
+    private final InterestCalculationSummaryData asAtMaturitySummary;
 
     private final Collection<InterestCalculationTransactionData> transactions;
     private final Collection<PostingPeriodData> postingPeriods;
@@ -83,12 +75,8 @@ public class InterestCalculationData implements Serializable {
 
     public InterestCalculationData(final Long accountId, final String accountNo, final String externalId, final Long clientId,
             final Long groupId, final Long productId, final SavingsAccountStatusEnumData status, final CurrencyData currency,
-            final LocalDate maturityDate, final BigDecimal nominalAnnualInterestRate, final BigDecimal interestAsAtToday,
-            final BigDecimal interestAtMaturity, final BigDecimal maturityAmount, final BigDecimal totalDeposits,
-            final BigDecimal totalWithdrawals, final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees,
-            final BigDecimal totalInterestEarned, final BigDecimal totalInterestPosted, final BigDecimal accountBalance,
-            final BigDecimal totalFeeCharge, final BigDecimal totalPenaltyCharge, final BigDecimal totalOverdraftInterestDerived,
-            final BigDecimal totalWithholdTax, final LocalDate interestPostedTillDate,
+            final LocalDate maturityDate, final BigDecimal nominalAnnualInterestRate, final BigDecimal maturityAmount,
+            final InterestCalculationSummaryData asAtTodaySummary, final InterestCalculationSummaryData asAtMaturitySummary,
             final Collection<InterestCalculationTransactionData> transactions, final Collection<PostingPeriodData> postingPeriods,
             final BigDecimal simulatedTopUpAmount, final BigDecimal simulatedWithdrawalAmount, final SimulatedRateData simulatedRate) {
         this.accountId = accountId;
@@ -101,21 +89,9 @@ public class InterestCalculationData implements Serializable {
         this.currency = currency;
         this.maturityDate = maturityDate;
         this.nominalAnnualInterestRate = nominalAnnualInterestRate;
-        this.interestAsAtToday = interestAsAtToday;
-        this.interestAtMaturity = interestAtMaturity;
         this.maturityAmount = maturityAmount;
-        this.totalDeposits = totalDeposits;
-        this.totalWithdrawals = totalWithdrawals;
-        this.totalWithdrawalFees = totalWithdrawalFees;
-        this.totalAnnualFees = totalAnnualFees;
-        this.totalInterestEarned = totalInterestEarned;
-        this.totalInterestPosted = totalInterestPosted;
-        this.accountBalance = accountBalance;
-        this.totalFeeCharge = totalFeeCharge;
-        this.totalPenaltyCharge = totalPenaltyCharge;
-        this.totalOverdraftInterestDerived = totalOverdraftInterestDerived;
-        this.totalWithholdTax = totalWithholdTax;
-        this.interestPostedTillDate = interestPostedTillDate;
+        this.asAtTodaySummary = asAtTodaySummary;
+        this.asAtMaturitySummary = asAtMaturitySummary;
         this.transactions = transactions;
         this.postingPeriods = postingPeriods;
         this.simulatedTopUpAmount = simulatedTopUpAmount;
@@ -139,32 +115,16 @@ public class InterestCalculationData implements Serializable {
         return this.nominalAnnualInterestRate;
     }
 
-    public BigDecimal interestAsAtToday() {
-        return this.interestAsAtToday;
-    }
-
-    public BigDecimal interestAtMaturity() {
-        return this.interestAtMaturity;
-    }
-
     public BigDecimal maturityAmount() {
         return this.maturityAmount;
     }
 
-    public BigDecimal totalPenaltyCharge() {
-        return this.totalPenaltyCharge;
+    public InterestCalculationSummaryData asAtTodaySummary() {
+        return this.asAtTodaySummary;
     }
 
-    public BigDecimal accountBalance() {
-        return this.accountBalance;
-    }
-
-    public BigDecimal totalInterestPosted() {
-        return this.totalInterestPosted;
-    }
-
-    public BigDecimal totalWithholdTax() {
-        return this.totalWithholdTax;
+    public InterestCalculationSummaryData asAtMaturitySummary() {
+        return this.asAtMaturitySummary;
     }
 
     public Collection<InterestCalculationTransactionData> transactions() {

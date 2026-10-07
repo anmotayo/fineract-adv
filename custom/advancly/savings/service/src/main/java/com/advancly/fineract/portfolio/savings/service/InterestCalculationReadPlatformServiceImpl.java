@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationData;
+import com.advancly.fineract.portfolio.savings.data.InterestCalculationSummaryData;
 import com.advancly.fineract.portfolio.savings.data.InterestCalculationTransactionData;
 import com.advancly.fineract.portfolio.savings.data.PostingPeriodData;
 import com.advancly.fineract.portfolio.savings.data.SimulatedRateData;
@@ -119,17 +120,18 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         // correctly-truncated figure `command=calculateInterest` already computes, just actually returned here.
         List<PostingPeriod> periods = account.calculateInterestUsing(mc, today, isInterestTransfer,
                 isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
-        final BigDecimal interestAsAtToday = account.getSummary().getTotalInterestEarned();
+        // the engine overwrites this one summary on every run, so copy run #1's figures out before run #2 clobbers them
+        final InterestCalculationSummaryData asAtTodaySummary = InterestCalculationSummaryData.from(account.getSummary());
 
-        BigDecimal interestAtMaturity = null;
         BigDecimal maturityAmount = null;
+        InterestCalculationSummaryData asAtMaturitySummary = null;
         if (maturityDate != null) {
             // Run #2, bounded by maturity: a second full recalculation (the engine always recomputes from the
             // beginning - see class javadoc) projecting through maturity on the amount actually invested as of
             // today, which is also what supplies the full posting-period breakdown below.
             periods = account.calculateInterestUsing(mc, maturityDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
-            interestAtMaturity = account.getSummary().getTotalInterestEarned();
+            asAtMaturitySummary = InterestCalculationSummaryData.from(account.getSummary());
             maturityAmount = lastClosingBalanceOf(periods, account).getAmount();
         }
 
@@ -153,21 +155,11 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                     transfer == null ? null : transfer.getId()));
         }
 
-        // Note: summary.getTotalInterestEarned() itself now reflects whichever run happened LAST (the
-        // maturity-bounded projection, when there is one) - use the captured interestAsAtToday value below instead
-        // of re-reading it off the summary, so the general derived-totals block below stays "as at today" and isn't
-        // silently polluted by the maturity projection.
-        final var summary = account.getSummary();
-        final BigDecimal totalInterestPosted = summary.getTotalInterestPosted();
-        final BigDecimal totalWithholdTax = summary.getTotalWithholdTax();
         return new InterestCalculationData(account.getId(), account.getAccountNumber(),
                 account.getExternalId() == null ? null : account.getExternalId().getValue(), account.clientId(), account.groupId(),
                 account.productId(), SavingsEnumerations.status(account.getStatus()), account.getCurrency().toData(), maturityDate,
-                account.getNominalAnnualInterestRate(), interestAsAtToday, interestAtMaturity, maturityAmount, summary.getTotalDeposits(),
-                summary.getTotalWithdrawals(), summary.getTotalWithdrawalFees(), summary.getTotalAnnualFees(), interestAsAtToday,
-                totalInterestPosted, summary.getAccountBalance(), summary.getTotalFeeCharge(), summary.getTotalPenaltyCharge(),
-                summary.getTotalOverdraftInterestDerived(), totalWithholdTax, summary.getInterestPostedTillDate(), transactions,
-                postingPeriods, topUpAmount, withdrawalAmount, simulatedRate);
+                account.getNominalAnnualInterestRate(), maturityAmount, asAtTodaySummary, asAtMaturitySummary, transactions, postingPeriods,
+                topUpAmount, withdrawalAmount, simulatedRate);
     }
 
     /**

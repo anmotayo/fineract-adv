@@ -31,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
@@ -43,13 +44,21 @@ import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.account.PortfolioAccountType;
+import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
 import org.apache.fineract.portfolio.account.domain.AccountAssociations;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
+import org.apache.fineract.portfolio.account.domain.AccountTransferType;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
+import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
 import org.apache.fineract.portfolio.group.domain.Group;
@@ -104,6 +113,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
     private final SavingsHelper savingsHelper;
     private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
+    private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
+    private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
 
     public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositAccountRepository dynamicDepositAccountRepository,
@@ -116,7 +127,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final DepositAccountAssembler depositAccountAssembler, final DepositAccountDataValidator depositAccountDataValidator,
             final AccountAssociationsRepository accountAssociationsRepository,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
-            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator,
+            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
+            final AccountTransfersWritePlatformService accountTransfersWritePlatformService) {
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -133,6 +146,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
         this.savingsHelper = savingsHelper;
         this.chargeInterestRuleValidator = chargeInterestRuleValidator;
+        this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
+        this.accountTransfersWritePlatformService = accountTransfersWritePlatformService;
     }
 
     @Transactional
@@ -371,13 +386,46 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             // never creates the opening-balance deposit transaction, so a Dynamic Deposit account would have no
             // transaction to key its first m_deposit_account_dynamic_rate_history row to (implementation plan,
             // Section 3 step 7 / Section 6). Reused directly rather than duplicated - see plan's "Confirmed gap".
-            final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(command.extractLocale());
+            final Locale locale = command.extractLocale();
+            final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(locale);
+            fundOpeningDepositFromLinkedAccount(account, locale, fmt);
             final Set<Long> existingTransactionIds = new HashSet<>();
             final Set<Long> existingReversedTransactionIds = new HashSet<>();
             this.savingsAccountWritePlatformService.processPostActiveActions(account, fmt, existingTransactionIds,
                     existingReversedTransactionIds);
         }
         return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    /**
+     * Mirrors {@code DepositAccountWritePlatformServiceJpaRepositoryImpl#activateFDAccount}: when the account has a
+     * linked savings account, the opening deposit is funded by a transfer out of that account (so it is debited)
+     * instead of being credited from nowhere by {@code processPostActiveActions}. The account is flagged so that
+     * {@code processPostActiveActions} does not post the opening deposit a second time. Accounts without a linked
+     * account keep the unfunded opening deposit.
+     */
+    private void fundOpeningDepositFromLinkedAccount(final DynamicDepositAccount account, final Locale locale,
+            final DateTimeFormatter fmt) {
+        final Money openingDeposit = account.activateWithBalance();
+        if (!openingDeposit.isGreaterThanZero()) {
+            return;
+        }
+        final PortfolioAccountData linkedAccount = this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(account.getId());
+        if (linkedAccount == null) {
+            return;
+        }
+        // The transfer re-resolves the account by id, so the activation must be visible to it first.
+        this.dynamicDepositAccountRepository.saveAndFlush(account);
+
+        final SavingsAccount fromSavingsAccount = null;
+        final boolean isRegularTransaction = false;
+        final boolean isExceptionForBalanceCheck = false;
+        final AccountTransferDTO accountTransferDTO = new AccountTransferDTO(account.getActivationDate(), openingDeposit.getAmount(),
+                PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS, linkedAccount.getId(), account.getId(), "Account Transfer",
+                locale, fmt, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(),
+                null, account, fromSavingsAccount, isRegularTransaction, isExceptionForBalanceCheck);
+        this.accountTransfersWritePlatformService.transferFunds(accountTransferDTO);
+        account.markOpeningDepositFundedByLinkedTransfer();
     }
 
     private CommandProcessingResult saveAndBuildTransitionResult(final DynamicDepositAccount account, final JsonCommand command,

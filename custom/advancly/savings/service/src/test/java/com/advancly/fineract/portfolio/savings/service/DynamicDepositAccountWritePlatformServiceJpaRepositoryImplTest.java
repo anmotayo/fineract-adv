@@ -48,10 +48,15 @@ import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
 import org.apache.fineract.portfolio.account.domain.AccountAssociations;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
+import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
@@ -122,6 +127,10 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
     private SavingsHelper savingsHelper;
     @Mock
     private AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
+    @Mock
+    private AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
+    @Mock
+    private AccountTransfersWritePlatformService accountTransfersWritePlatformService;
 
     private DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl service;
 
@@ -131,7 +140,8 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 dynamicDepositAccountDataValidator, dynamicDepositAccountAssembler, accountNumberGenerator, accountNumberFormatRepository,
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,
                 savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository,
-                savingsAccountTransactionSummaryWrapper, savingsHelper, chargeInterestRuleValidator);
+                savingsAccountTransactionSummaryWrapper, savingsHelper, chargeInterestRuleValidator, accountAssociationsReadPlatformService,
+                accountTransfersWritePlatformService);
 
         // The modifyApplication tests exercise the real DynamicDepositAccountDataValidator end-to-end, which reaches
         // account.validateNewApplicationState(...) -> DateUtils.isDateInTheFuture(submittedOnDate) ->
@@ -223,7 +233,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
-                chargeInterestRuleValidator);
+                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 
@@ -265,7 +275,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
-                chargeInterestRuleValidator);
+                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 
@@ -298,6 +308,62 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
         account.setDynamicDetail(DepositAccountDynamicDetail.createNew(account, allowWithdrawal, false));
         ReflectionTestUtils.setField(account, "id", accountId);
         return account;
+    }
+
+    @Test
+    void activateWithLinkedAccountFundsOpeningDepositByTransferInsteadOfUnfundedDeposit() {
+        Long savingsId = 5L;
+        Long linkedSavingsId = 9L;
+        DynamicDepositAccount account = Mockito.mock(DynamicDepositAccount.class);
+        when(account.getId()).thenReturn(savingsId);
+        when(account.activate(any(), any())).thenReturn(new HashMap<>(java.util.Map.of("status", "active")));
+        when(account.activateWithBalance()).thenReturn(Money.of(new MonetaryCurrency("USD", 2, null), BigDecimal.valueOf(1000)));
+        when(account.getActivationDate()).thenReturn(LocalDate.of(2026, 1, 1));
+        when(dynamicDepositAccountRepository.findById(savingsId)).thenReturn(Optional.of(account));
+        PortfolioAccountData linkedAccount = Mockito.mock(PortfolioAccountData.class);
+        when(linkedAccount.getId()).thenReturn(linkedSavingsId);
+        when(accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(savingsId)).thenReturn(linkedAccount);
+
+        service.activate(savingsId, activateCommand());
+
+        ArgumentCaptor<AccountTransferDTO> captor = ArgumentCaptor.forClass(AccountTransferDTO.class);
+        verify(accountTransfersWritePlatformService).transferFunds(captor.capture());
+        assertThat(captor.getValue().getFromAccountId()).isEqualTo(linkedSavingsId);
+        assertThat(captor.getValue().getToAccountId()).isEqualTo(savingsId);
+        assertThat(captor.getValue().getTransactionAmount()).isEqualByComparingTo(BigDecimal.valueOf(1000));
+        verify(account).markOpeningDepositFundedByLinkedTransfer();
+    }
+
+    @Test
+    void activateWithoutLinkedAccountDoesNotTransfer() {
+        Long savingsId = 5L;
+        DynamicDepositAccount account = Mockito.mock(DynamicDepositAccount.class);
+        when(account.getId()).thenReturn(savingsId);
+        when(account.activate(any(), any())).thenReturn(new HashMap<>(java.util.Map.of("status", "active")));
+        when(account.activateWithBalance()).thenReturn(Money.of(new MonetaryCurrency("USD", 2, null), BigDecimal.valueOf(1000)));
+        when(dynamicDepositAccountRepository.findById(savingsId)).thenReturn(Optional.of(account));
+        when(accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(savingsId)).thenReturn(null);
+
+        service.activate(savingsId, activateCommand());
+
+        verify(accountTransfersWritePlatformService, never()).transferFunds(any());
+        verify(account, never()).markOpeningDepositFundedByLinkedTransfer();
+    }
+
+    @Test
+    void activateWithBalanceIsZeroOnceOpeningDepositIsFundedByLinkedTransfer() {
+        DynamicDepositAccount account = dynamicDepositAccountWithTransferInterestEnabled(5L, true, false);
+
+        assertThat(account.activateWithBalance().getAmount()).isEqualByComparingTo(BigDecimal.valueOf(100000));
+        account.markOpeningDepositFundedByLinkedTransfer();
+        assertThat(account.activateWithBalance().getAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    private JsonCommand activateCommand() {
+        JsonCommand command = Mockito.mock(JsonCommand.class);
+        when(command.dateFormat()).thenReturn("dd MMMM yyyy");
+        when(command.extractLocale()).thenReturn(java.util.Locale.ENGLISH);
+        return command;
     }
 
     private DynamicDepositAccount dynamicDepositAccount(Long savingsId) {

@@ -111,6 +111,10 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Transient
     private List<DepositAccountDynamicRateHistory> simulatedRateHistory = new ArrayList<>();
 
+    /** Never persisted; only lives for the duration of the activation command. */
+    @Transient
+    private boolean openingDepositFundedByLinkedTransfer = false;
+
     protected DynamicDepositAccount() {
         //
     }
@@ -246,7 +250,18 @@ public class DynamicDepositAccount extends SavingsAccount {
      */
     @Override
     public Money activateWithBalance() {
+        if (this.openingDepositFundedByLinkedTransfer) {
+            return Money.zero(getCurrency());
+        }
         return Money.of(getCurrency(), this.accountTermAndPreClosure.depositAmount());
+    }
+
+    /**
+     * Called once the opening deposit has been posted by a transfer from the linked savings account, so that
+     * {@code processPostActiveActions} (which deposits {@link #activateWithBalance()}) does not credit it again.
+     */
+    public void markOpeningDepositFundedByLinkedTransfer() {
+        this.openingDepositFundedByLinkedTransfer = true;
     }
 
     /**

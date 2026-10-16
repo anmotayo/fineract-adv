@@ -31,6 +31,7 @@ import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct;
+import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDataValidator;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
@@ -136,6 +137,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
 
     @BeforeEach
     void setUp() {
+        MoneyHelperInitializer.initialize();
         service = new DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(context, dynamicDepositAccountRepository,
                 dynamicDepositAccountDataValidator, dynamicDepositAccountAssembler, accountNumberGenerator, accountNumberFormatRepository,
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,

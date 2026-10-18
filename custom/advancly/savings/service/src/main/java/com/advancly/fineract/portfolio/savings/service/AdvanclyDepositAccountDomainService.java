@@ -18,6 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.service;
 
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.onAccountClosureIdParamName;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.toSavingsAccountIdParamName;
@@ -144,6 +145,13 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         final SavingsAccount transferDestination = closureType.isTransferToSavings() ? resolveTransferDestination(account, command) : null;
 
         Long savingsTransactionId = null;
+        // A premature closure may carry its own early-withdrawal charge percentage; the forfeiture settlement reads it
+        // from the account, so it is set for the duration of the closure only.
+        final boolean hasPercentageOverride = command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
+                && command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE) != null;
+        if (hasPercentageOverride) {
+            account.setWithdrawalChargePercentageOverride(command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
+        }
         // allowWithdrawal=false stops an early exit, not the closure at maturity: lift it for the payout (the transfer
         // wrapper checks it too), and put it back whatever happens.
         if (!isPreMatureClosure) {
@@ -175,6 +183,9 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         } finally {
             if (!isPreMatureClosure) {
                 account.markClosingAtMaturity(false);
+            }
+            if (hasPercentageOverride) {
+                account.setWithdrawalChargePercentageOverride(null);
             }
         }
 

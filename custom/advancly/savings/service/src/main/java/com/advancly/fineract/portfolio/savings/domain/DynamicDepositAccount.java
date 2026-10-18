@@ -131,6 +131,13 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Transient
     private boolean closingAtMaturity = false;
 
+    /**
+     * Never persisted; the early-withdrawal charge percentage one request asked for in place of the configured one -
+     * see {@link #setWithdrawalChargePercentageOverride}. Whoever sets it clears it again in a {@code finally}.
+     */
+    @Transient
+    private BigDecimal withdrawalChargePercentageOverride;
+
     protected DynamicDepositAccount() {
         //
     }
@@ -266,6 +273,19 @@ public class DynamicDepositAccount extends SavingsAccount {
      */
     public void markClosingAtMaturity(final boolean closingAtMaturity) {
         this.closingAtMaturity = closingAtMaturity;
+    }
+
+    /**
+     * The one hook core offers a request for carrying its own early-withdrawal charge percentage; this type honours it.
+     */
+    @Override
+    public void setWithdrawalChargePercentageOverride(final BigDecimal percentage) {
+        this.withdrawalChargePercentageOverride = percentage;
+    }
+
+    @Override
+    public BigDecimal earlyWithdrawalChargePercentageOverride() {
+        return this.withdrawalChargePercentageOverride;
     }
 
     public boolean isDynamicRateEnabled() {

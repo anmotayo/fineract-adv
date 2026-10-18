@@ -711,6 +711,35 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         return JsonQuery.from(json, JsonParser.parseString(json), fromJsonHelper);
     }
 
+    // A premature closure may carry its own early-withdrawal charge percentage. It must reach the forfeiture the
+    // closure
+    // takes - the preview already honours it, and the two must agree.
+    @Test
+    void aPercentageOverrideSetOnTheAccountIsTheOneTheClosureForfeitsAt() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        assignDatabaseIdsOnFlush();
+
+        this.account.setWithdrawalChargePercentageOverride(new BigDecimal("100"));
+        this.account.beginClosureSettlement(CLOSED_DATE);
+
+        assertThat(singleForfeitureTransaction().getAmount()).isEqualByComparingTo(singleInterestPosting().getAmount());
+    }
+
+    @Test
+    void withoutAnOverrideTheClosureForfeitsAtTheConfiguredPercentage() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        assignDatabaseIdsOnFlush();
+
+        this.account.beginClosureSettlement(CLOSED_DATE);
+
+        assertThat(singleForfeitureTransaction().getAmount())
+                .isEqualByComparingTo(singleInterestPosting().getAmount().multiply(new BigDecimal("0.5")));
+    }
+
     // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds
     // OUTRIGHT - before any settlement (interest posting, charge collection) or the withdrawal itself runs - rather
     // than partially settling the account and only then refusing the payout.

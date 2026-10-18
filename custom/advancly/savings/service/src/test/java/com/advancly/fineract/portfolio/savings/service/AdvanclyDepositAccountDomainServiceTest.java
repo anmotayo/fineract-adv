@@ -468,6 +468,39 @@ class AdvanclyDepositAccountDomainServiceTest {
     }
 
     @Test
+    void aPercentageOverrideInTheRequestIsSetOnTheAccountBeforeSettlementAndClearedAfterwards() {
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+        final InOrder order = inOrder(this.account);
+
+        this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), commandWithPercentage(25), this.changes);
+
+        order.verify(this.account).setWithdrawalChargePercentageOverride(new BigDecimal("25"));
+        order.verify(this.account).beginClosureSettlement(CLOSED_DATE);
+        order.verify(this.account).setWithdrawalChargePercentageOverride(null);
+    }
+
+    @Test
+    void theOverrideIsClearedEvenWhenTheClosureFails() {
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+        when(this.coreDomainService.handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean()))
+                .thenThrow(new IllegalStateException("payout failed"));
+
+        assertThatThrownBy(() -> this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class),
+                commandWithPercentage(25), this.changes)).isInstanceOf(IllegalStateException.class);
+
+        verify(this.account).setWithdrawalChargePercentageOverride(null);
+    }
+
+    @Test
+    void aRequestWithoutAPercentageLeavesTheAccountsOverrideAlone() {
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+
+        this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
+
+        verify(this.account, never()).setWithdrawalChargePercentageOverride(any());
+    }
+
+    @Test
     void aPrematureClosureNeverLiftsTheWithdrawalLock() {
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
 
@@ -497,6 +530,18 @@ class AdvanclyDepositAccountDomainServiceTest {
 
         assertThat(this.service.handleFDAccountPreMatureClosure(fixedDeposit, null, null, command, this.changes)).isEqualTo(42L);
         verify(this.coreDomainService).handleFDAccountPreMatureClosure(fixedDeposit, null, null, command, this.changes);
+    }
+
+    private static JsonCommand commandWithPercentage(final int percentage) {
+        final JsonObject payload = new JsonObject();
+        payload.addProperty("dateFormat", "dd MMMM yyyy");
+        payload.addProperty("locale", "en");
+        payload.addProperty("closedOnDate", "20 January 2026");
+        payload.addProperty("onAccountClosureId", WITHDRAW);
+        payload.addProperty("earlyWithdrawalChargePercentage", percentage);
+        final String json = payload.toString();
+        return JsonCommand.fromExistingCommand(null, json, JsonParser.parseString(json), new FromJsonHelper(), null, null, null, null, null,
+                null, ACCOUNT_ID, null, null, null, null, null, null, null);
     }
 
     private static JsonCommand command(final int onAccountClosureId, final Long toSavingsAccountId) {

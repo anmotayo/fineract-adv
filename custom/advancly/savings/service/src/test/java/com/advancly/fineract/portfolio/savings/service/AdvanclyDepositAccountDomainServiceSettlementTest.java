@@ -217,6 +217,23 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
+    // Closing the account - early or not - is when tax configured to be withheld at maturity is written, as it is for
+    // Fixed and Recurring Deposits.
+    @Test
+    void aPrematureClosureAlsoWritesAndJournalsTheTaxConfiguredToBeWithheldAtMaturity() {
+        withholdingTax(WithHoldTaxPostingType.MATURITY, true);
+        ReflectionTestUtils.setField(this.account.accountTermAndPreClosure(), "maturityDate", LocalDate.of(2026, 7, 1));
+
+        this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), closeCommand(WITHDRAW),
+                new java.util.HashMap<>());
+
+        final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+        assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
+        assertThat(this.payoutAmounts).containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
+        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
     @Test
     void whenTaxIsWithheldAtEachInterestPostingTheClosureWritesExactlyOneTaxTransaction() {
         withholdingTax(WithHoldTaxPostingType.INTEREST_POSTING, true);
@@ -416,6 +433,9 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
                         BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART)));
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(rateHistoryRepository);
+        // An early closure asks whether a cumulative forfeiture rule applies; none does here.
+        final CumulativeInterestForfeitureService forfeitureService = mock(CumulativeInterestForfeitureService.class);
+        when(applicationContext.getBean(CumulativeInterestForfeitureService.class)).thenReturn(forfeitureService);
         ReflectionTestUtils.setField(com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator.class,
                 "applicationContext", applicationContext);
         return newAccount;

@@ -35,8 +35,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Closing a Dynamic Deposit takes the same request shape as closing a Fixed or Recurring Deposit
- * ({@code onAccountClosureId}, {@code toSavingsAccountId}, ...), plus the early-withdrawal charge overrides the Dynamic
- * Deposit withdrawal already accepts.
+ * ({@code onAccountClosureId}, {@code toSavingsAccountId}, ...). A premature closure also accepts
+ * {@code earlyWithdrawalChargePercentage}.
  */
 class DynamicDepositAccountClosureDataValidatorTest {
 
@@ -76,12 +76,28 @@ class DynamicDepositAccountClosureDataValidatorTest {
     }
 
     @Test
-    void acceptsTheEarlyWithdrawalChargeOverrides() {
+    void prematureCloseAcceptsTheEarlyWithdrawalChargePercentage() {
         final JsonObject payload = payload(WITHDRAW);
-        payload.addProperty("applyEarlyWithdrawalCharge", true);
         payload.addProperty("earlyWithdrawalChargePercentage", 25);
 
         assertThatCode(() -> validator.validateClosing(command(payload), true)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void maturityCloseTakesExactlyTheFdAndRdParametersSoItRejectsTheEarlyWithdrawalChargePercentage() {
+        final JsonObject payload = payload(WITHDRAW);
+        payload.addProperty("earlyWithdrawalChargePercentage", 25);
+
+        assertThatThrownBy(() -> validator.validateClosing(command(payload), false)).isInstanceOf(UnsupportedParameterException.class);
+    }
+
+    @Test
+    void neitherCloseNorPrematureCloseAcceptsTheApplyEarlyWithdrawalChargeFlag() {
+        final JsonObject payload = payload(WITHDRAW);
+        payload.addProperty("applyEarlyWithdrawalCharge", true);
+
+        assertThatThrownBy(() -> validator.validateClosing(command(payload), true)).isInstanceOf(UnsupportedParameterException.class);
+        assertThatThrownBy(() -> validator.validateClosing(command(payload), false)).isInstanceOf(UnsupportedParameterException.class);
     }
 
     @Test

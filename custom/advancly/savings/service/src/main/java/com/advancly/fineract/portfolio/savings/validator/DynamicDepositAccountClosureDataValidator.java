@@ -18,7 +18,6 @@
  */
 package com.advancly.fineract.portfolio.savings.validator;
 
-import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.APPLY_EARLY_WITHDRAWAL_CHARGE;
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.bankNumberParamName;
@@ -57,19 +56,29 @@ import org.springframework.stereotype.Component;
  * Validates {@code close} and {@code prematureClose} requests for the {@code DYNAMICDEPOSITACCOUNT} entity.
  *
  * Takes the request shape Fixed and Recurring Deposit closure takes
- * ({@code DepositAccountTransactionDataValidator#validateClosing}) so every deposit type closes the same way, plus the
- * early-withdrawal charge overrides a Dynamic Deposit withdrawal already accepts. Like Fixed and Recurring Deposit,
- * reinvesting is only offered on a maturity closure.
+ * ({@code DepositAccountTransactionDataValidator#validateClosing}) so every deposit type closes the same way. A
+ * premature closure additionally accepts {@code earlyWithdrawalChargePercentage}, the override a Dynamic Deposit
+ * withdrawal already accepts for the early-withdrawal charge. Like Fixed and Recurring Deposit, reinvesting is only
+ * offered on a maturity closure.
  */
 @Component
 public class DynamicDepositAccountClosureDataValidator {
 
+    /** Exactly what Fixed and Recurring Deposit closure accepts. */
     private static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(DepositsApiConstants.localeParamName, DepositsApiConstants.dateFormatParamName, closedOnDateParamName,
                     DepositsApiConstants.noteParamName, onAccountClosureIdParamName, paymentTypeIdParamName,
                     transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName, receiptNumberParamName,
-                    bankNumberParamName, DepositsApiConstants.transferDescriptionParamName, toSavingsAccountIdParamName,
-                    APPLY_EARLY_WITHDRAWAL_CHARGE, EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
+                    bankNumberParamName, DepositsApiConstants.transferDescriptionParamName, toSavingsAccountIdParamName));
+
+    /** The closure parameters plus the override of the early-withdrawal charge percentage. */
+    private static final Set<String> DYNAMIC_DEPOSIT_ACCOUNT_PRE_MATURE_CLOSE_REQUEST_DATA_PARAMETERS = createPreMatureCloseParameters();
+
+    private static Set<String> createPreMatureCloseParameters() {
+        final Set<String> parameters = new HashSet<>(DYNAMIC_DEPOSIT_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS);
+        parameters.add(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE);
+        return parameters;
+    }
 
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
@@ -87,7 +96,9 @@ public class DynamicDepositAccountClosureDataValidator {
         }
 
         final Type typeOfMap = new TypeToken<Map<String, Object>>() {}.getType();
-        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, DYNAMIC_DEPOSIT_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS);
+        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json,
+                isPreMatureClose ? DYNAMIC_DEPOSIT_ACCOUNT_PRE_MATURE_CLOSE_REQUEST_DATA_PARAMETERS
+                        : DYNAMIC_DEPOSIT_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS);
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)

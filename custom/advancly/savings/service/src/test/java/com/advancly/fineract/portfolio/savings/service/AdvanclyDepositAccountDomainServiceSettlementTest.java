@@ -213,7 +213,8 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
                 .isEqualByComparingTo(posting.getAmount().multiply(new BigDecimal("0.1")).setScale(2, java.math.RoundingMode.HALF_UP));
         assertThat(journalled(SavingsAccountTransactionType.INTEREST_POSTING)).hasSize(1);
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
-        assertThat(this.payoutAmounts).containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
@@ -230,7 +231,8 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
         final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
-        assertThat(this.payoutAmounts).containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
@@ -273,7 +275,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         // The interest leaves FIRST, so the engine's interest-first labelling books it as interest and the principal
         // withdrawal that follows as principal.
         assertThat(this.payoutLegs).containsExactly("transfer", "withdrawal");
-        assertThat(this.payoutAmounts).containsExactly(netInterest, PRINCIPAL);
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo).containsExactly(netInterest, PRINCIPAL);
         assertThat(this.transfers.get(0).getToSavingsAccount()).isSameAs(this.linkedAccount);
         final ArgumentCaptor<BigDecimal> reinvested = ArgumentCaptor.forClass(BigDecimal.class);
         verify(this.reinvestmentService).reinvest(any(), reinvested.capture(), any(), any());
@@ -293,7 +295,8 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
         final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
         assertThat(this.payoutLegs).containsExactly("withdrawal", "withdrawal");
-        assertThat(this.payoutAmounts).containsExactly(posting.getAmount().subtract(tax.getAmount()), PRINCIPAL);
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(posting.getAmount().subtract(tax.getAmount()), PRINCIPAL);
         verify(this.accountTransfersWritePlatformService, never()).transferFunds(any());
         assertThat(this.account.isClosed()).isTrue();
     }
@@ -309,7 +312,8 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
         final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
         assertThat(this.payoutLegs).containsExactly("withdrawal");
-        assertThat(this.payoutAmounts).containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
         verify(this.accountTransfersWritePlatformService, never()).transferFunds(any());
     }
 
@@ -322,7 +326,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
                 new java.util.HashMap<>());
 
         assertThat(this.payoutLegs).containsExactly("withdrawal");
-        assertThat(this.payoutAmounts).containsExactly(PRINCIPAL);
+        assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo).containsExactly(PRINCIPAL);
         verify(this.accountTransfersWritePlatformService, never()).transferFunds(any());
         assertThat(this.account.isClosed()).isTrue();
     }

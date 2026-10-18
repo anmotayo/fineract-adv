@@ -65,6 +65,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.apache.fineract.useradministration.domain.AppUser;
@@ -228,11 +229,18 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
     }
 
     /**
-     * The amount invested - what a principal-only reinvestment carries over; the interest it earned is not part of it.
+     * The amount invested - what a principal-only reinvestment carries over - as it stands now, after the closing
+     * interest and tax have been written and before any of the payout leaves. Computed from the transactions, not read
+     * from the {@code deposit_amount} cache, which an account that predates the correct calculation may still hold
+     * wrongly.
      */
     private static BigDecimal principalOf(final DynamicDepositAccount account) {
-        final BigDecimal depositAmount = account.accountTermAndPreClosure().depositAmount();
-        return depositAmount == null ? BigDecimal.ZERO : depositAmount;
+        final List<SavingsAccountTransaction> transactions = account.getTransactions();
+        if (transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        final SavingsAccountTransaction last = transactions.stream().max(new SavingsAccountTransactionComparator()).orElseThrow();
+        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(transactions, account.getCurrency(), last).max(BigDecimal.ZERO);
     }
 
     private Long withdraw(final DynamicDepositAccount account, final BigDecimal amount, final LocalDate closedDate,

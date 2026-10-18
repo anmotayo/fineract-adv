@@ -121,30 +121,14 @@ public class DynamicDepositRateHistoryService {
     }
 
     /**
-     * Sums the account's own non-reversed deposit/withdrawal transactions up to and including
-     * {@code uptoAndIncluding}'s position in chronological order (reusing core's own
-     * {@link SavingsAccountTransactionComparator} - transaction date, then created date, then id - the same tiebreak
-     * core uses everywhere else for chronological ordering). Mirrors core's own {@code isCredit()}/{@code isDebit()}
-     * semantics in excluding both reversed transactions AND {@code isReversalTransaction()} marker copies (a reversal's
-     * audit-trail duplicate of the original, not a new movement of its own - see
-     * {@code SavingsAccountTransactionRepository}'s own balance queries, which apply the same exclusion).
+     * The amount invested as of {@code uptoAndIncluding}'s position in chronological order (reusing core's own
+     * {@link SavingsAccountTransactionComparator} - transaction date, then created date, then id): deposits less the
+     * principal part of withdrawals - see {@link DynamicDepositInvestedAmountCalculator} for why that is not simply
+     * deposits less withdrawals.
      */
     public BigDecimal computeInvestedAmountAsOf(final DynamicDepositAccount account, final SavingsAccountTransaction uptoAndIncluding) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (final SavingsAccountTransaction transaction : account.getTransactions()) {
-            if (transaction.isReversed() || transaction.isReversalTransaction()) {
-                continue;
-            }
-            if (!transaction.isDeposit() && !transaction.isWithdrawal()) {
-                continue;
-            }
-            if (this.transactionComparator.compare(transaction, uptoAndIncluding) > 0) {
-                continue;
-            }
-            final BigDecimal amount = transaction.getAmount(account.getCurrency()).getAmount();
-            total = transaction.isDeposit() ? total.add(amount) : total.subtract(amount);
-        }
-        return total;
+        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(account.getTransactions(), account.getCurrency(),
+                uptoAndIncluding);
     }
 
     /**

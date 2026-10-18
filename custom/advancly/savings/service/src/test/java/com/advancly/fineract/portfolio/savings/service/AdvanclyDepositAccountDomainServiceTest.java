@@ -337,24 +337,26 @@ class AdvanclyDepositAccountDomainServiceTest {
     @Test
     void reinvestingPrincipalOnlyPaysTheInterestOutFirstThenMovesJustThePrincipalAndClosesTheAccount() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
-        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(1000));
+        investedAmountOf("1000");
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
             this.balance.set(BigDecimal.valueOf(1050));
             return false;
         });
         final AppUser user = mock(AppUser.class);
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
-        when(this.reinvestmentService.reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user)).thenReturn(reinvested);
+        when(this.reinvestmentService.reinvest(eq(this.account), org.mockito.ArgumentMatchers.argThat(amount -> amount.compareTo(BigDecimal.valueOf(1000)) == 0),
+                eq(CLOSED_DATE), eq(user))).thenReturn(reinvested);
 
         this.service.handleDynamicDepositClosure(this.account, null, user, command(REINVEST_PRINCIPAL_ONLY, null), this.changes);
 
         // No linked account here, so the 50 of interest (less tax) is withdrawn - and BEFORE the principal moves on.
         final InOrder order = inOrder(this.coreDomainService, this.reinvestmentService, this.account);
         order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
-                eq(BigDecimal.valueOf(50)), any(), eq(false), eq(false));
+                org.mockito.ArgumentMatchers.argThat(amount -> amount.compareTo(BigDecimal.valueOf(50)) == 0), any(), eq(false), eq(false));
         order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
-                eq(BigDecimal.valueOf(1000)), any(), eq(false), eq(false));
-        order.verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user);
+                org.mockito.ArgumentMatchers.argThat(amount -> amount.compareTo(BigDecimal.valueOf(1000)) == 0), any(), eq(false), eq(false));
+        order.verify(this.reinvestmentService).reinvest(eq(this.account),
+                org.mockito.ArgumentMatchers.argThat(amount -> amount.compareTo(BigDecimal.valueOf(1000)) == 0), eq(CLOSED_DATE), eq(user));
         order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
         verify(this.term).updateOnAccountClosureStatus(DepositAccountOnClosureType.REINVEST_PRINCIPAL_ONLY);
         assertThat(this.changes).containsEntry("reinvestedDepositId", 808L);
@@ -363,7 +365,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     @Test
     void aPrincipalOnlyReinvestmentNeverCarriesOverMoreThanThePayout() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
-        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(5000));
+        investedAmountOf("5000");
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
@@ -396,6 +398,14 @@ class AdvanclyDepositAccountDomainServiceTest {
         verify(this.reinvestmentService, never()).reinvest(any(), any(), any(), any());
     }
 
+    /** The account holds this much principal: the invested amount is worked out from its transactions. */
+    private void investedAmountOf(final String amount) {
+        final org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction deposit = new com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder()
+                .withId(1L).withType(org.apache.fineract.portfolio.savings.SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2026, 1, 1)).withAmount(new BigDecimal(amount)).build();
+        when(this.account.getTransactions()).thenReturn(List.of(deposit));
+    }
+
     private static DynamicDepositAccount reinvestedAccount(final Long id) {
         final DynamicDepositAccount reinvested = mock(DynamicDepositAccount.class);
         when(reinvested.getId()).thenReturn(id);
@@ -418,7 +428,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
         when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
-        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(1000));
+        investedAmountOf("1000");
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
 

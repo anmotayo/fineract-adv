@@ -35,6 +35,10 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
  * and after any early-withdrawal forfeiture. It carries that name because that is the field the Fixed and Recurring
  * Deposit closure templates use for it and the closure screens already bind to it.
  *
+ * {@code principal} is the account balance before the closing interest posts; {@code depositAmount} is the amount
+ * invested, which is what reinvesting the principal only carries over (reinvesting principal and interest carries
+ * {@code maturityAmount}).
+ *
  * {@code forfeiture*} describe the early-withdrawal forfeiture a premature closure incurs; {@code forfeitureApplicable}
  * is {@code false} - and the amount zero - when the account's product has no qualifying cumulative rule, or the closure
  * is not early.
@@ -46,6 +50,7 @@ public class DynamicDepositClosureData implements Serializable {
     private final LocalDate maturityDate;
     private final boolean earlyClosure;
     private final BigDecimal principal;
+    private final BigDecimal depositAmount;
     private final BigDecimal interestPosted;
     private final BigDecimal withholdTax;
     private final boolean forfeitureApplicable;
@@ -59,16 +64,17 @@ public class DynamicDepositClosureData implements Serializable {
     private final Collection<SavingsAccountData> savingsAccounts;
 
     public DynamicDepositClosureData(final Long accountId, final LocalDate closedOnDate, final LocalDate maturityDate,
-            final boolean earlyClosure, final BigDecimal principal, final BigDecimal interestPosted, final BigDecimal withholdTax,
-            final boolean forfeitureApplicable, final BigDecimal forfeitureAmount, final BigDecimal forfeiturePercentage,
-            final Long forfeitureChargeId, final String forfeitureChargeName, final BigDecimal maturityAmount,
-            final Collection<EnumOptionData> onAccountClosureOptions, final Collection<PaymentTypeData> paymentTypeOptions,
-            final Collection<SavingsAccountData> savingsAccounts) {
+            final boolean earlyClosure, final BigDecimal principal, final BigDecimal depositAmount, final BigDecimal interestPosted,
+            final BigDecimal withholdTax, final boolean forfeitureApplicable, final BigDecimal forfeitureAmount,
+            final BigDecimal forfeiturePercentage, final Long forfeitureChargeId, final String forfeitureChargeName,
+            final BigDecimal maturityAmount, final Collection<EnumOptionData> onAccountClosureOptions,
+            final Collection<PaymentTypeData> paymentTypeOptions, final Collection<SavingsAccountData> savingsAccounts) {
         this.accountId = accountId;
         this.closedOnDate = closedOnDate;
         this.maturityDate = maturityDate;
         this.earlyClosure = earlyClosure;
         this.principal = principal;
+        this.depositAmount = depositAmount;
         this.interestPosted = interestPosted;
         this.withholdTax = withholdTax;
         this.forfeitureApplicable = forfeitureApplicable;
@@ -100,6 +106,10 @@ public class DynamicDepositClosureData implements Serializable {
 
     public BigDecimal getPrincipal() {
         return principal;
+    }
+
+    public BigDecimal getDepositAmount() {
+        return depositAmount;
     }
 
     public BigDecimal getInterestPosted() {

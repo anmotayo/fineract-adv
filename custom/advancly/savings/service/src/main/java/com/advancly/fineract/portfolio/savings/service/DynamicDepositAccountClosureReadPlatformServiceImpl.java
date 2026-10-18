@@ -81,6 +81,13 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
             Arrays.asList(DepositsApiConstants.localeParamName, DepositsApiConstants.dateFormatParamName,
                     DepositsApiConstants.closedOnDateParamName, EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
 
+    /** A premature closure, like a Fixed or Recurring Deposit's, cannot reinvest. */
+    private static final DepositAccountOnClosureType[] PRE_MATURE_CLOSURE_OPTIONS = { DepositAccountOnClosureType.WITHDRAW_DEPOSIT,
+            DepositAccountOnClosureType.TRANSFER_TO_SAVINGS };
+    private static final DepositAccountOnClosureType[] MATURITY_CLOSURE_OPTIONS = { DepositAccountOnClosureType.WITHDRAW_DEPOSIT,
+            DepositAccountOnClosureType.TRANSFER_TO_SAVINGS, DepositAccountOnClosureType.REINVEST_PRINCIPAL_AND_INTEREST,
+            DepositAccountOnClosureType.REINVEST_PRINCIPAL_ONLY };
+
     private final PlatformSecurityContext context;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final SavingsAccountAssembler savingsAccountAssembler;
@@ -99,7 +106,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         // date while the account has not reached it, today's figure once it has.
         final LocalDate maturityDate = account.maturityDate();
         final LocalDate asOfDate = maturityDate != null && businessDate.isBefore(maturityDate) ? maturityDate : businessDate;
-        return simulate(account, asOfDate, null);
+        return simulate(account, asOfDate, null, MATURITY_CLOSURE_OPTIONS);
     }
 
     @Override
@@ -115,7 +122,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         validatePrematureClosureDate(account, closedOnDate);
         this.advanclyInterestChargeApplicationService.validatePercentageOverride(percentageOverride);
 
-        return simulate(account, closedOnDate, percentageOverride);
+        return simulate(account, closedOnDate, percentageOverride, PRE_MATURE_CLOSURE_OPTIONS);
     }
 
     private DynamicDepositAccount loadAccount(final Long accountId) {
@@ -152,7 +159,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
     }
 
     private DynamicDepositClosureData simulate(final DynamicDepositAccount account, final LocalDate closedOnDate,
-            final BigDecimal percentageOverride) {
+            final BigDecimal percentageOverride, final DepositAccountOnClosureType[] closureOptions) {
         final boolean earlyClosure = account.isEarlyWithdrawal(closedOnDate);
         final CumulativeInterestForfeitureService.QualifyingCharge qualifying = earlyClosure
                 ? this.cumulativeInterestForfeitureService.resolveQualifyingChargeWithPercentage(account, percentageOverride)
@@ -185,16 +192,14 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         }
         final BigDecimal payout = zeroIfNull(summary.getAccountBalance()).subtract(forfeiture);
 
-        final Collection<EnumOptionData> onAccountClosureOptions = SavingsEnumerations
-                .depositAccountOnClosureType(new DepositAccountOnClosureType[] { DepositAccountOnClosureType.WITHDRAW_DEPOSIT,
-                        DepositAccountOnClosureType.TRANSFER_TO_SAVINGS });
+        final Collection<EnumOptionData> onAccountClosureOptions = SavingsEnumerations.depositAccountOnClosureType(closureOptions);
         final Collection<PaymentTypeData> paymentTypeOptions = this.paymentTypeReadPlatformService.retrieveAllPaymentTypes();
         final Collection<SavingsAccountData> savingsAccounts = this.savingsAccountReadPlatformService
                 .retrieveActiveForLookup(account.clientId(), DepositAccountType.SAVINGS_DEPOSIT);
 
         return new DynamicDepositClosureData(account.getId(), closedOnDate, account.maturityDate(), earlyClosure, principal,
-                totalInterestPosted.subtract(interestPostedBefore), withholdTax, qualifying != null, forfeiture,
-                qualifying == null ? null : qualifying.percentage(),
+                zeroIfNull(account.accountTermAndPreClosure().depositAmount()), totalInterestPosted.subtract(interestPostedBefore),
+                withholdTax, qualifying != null, forfeiture, qualifying == null ? null : qualifying.percentage(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getId(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getName(), payout, onAccountClosureOptions,
                 paymentTypeOptions, savingsAccounts);

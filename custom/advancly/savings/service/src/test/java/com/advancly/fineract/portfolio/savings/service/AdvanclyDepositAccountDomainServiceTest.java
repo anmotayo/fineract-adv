@@ -87,6 +87,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     private static final int WITHDRAW = 100;
     private static final int TRANSFER_TO_SAVINGS = 200;
     private static final int REINVEST_PRINCIPAL_AND_INTEREST = 300;
+    private static final int REINVEST_PRINCIPAL_ONLY = 400;
 
     private DepositAccountDomainServiceJpa coreDomainService;
     private SavingsAccountRepositoryWrapper savingsAccountRepository;
@@ -94,6 +95,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     private JournalEntryWritePlatformService journalEntryWritePlatformService;
     private DepositAccountAssembler depositAccountAssembler;
     private AccountTransfersWritePlatformService accountTransfersWritePlatformService;
+    private DynamicDepositReinvestmentService reinvestmentService;
     private AdvanclyDepositAccountDomainService service;
 
     private DynamicDepositAccount account;
@@ -112,9 +114,10 @@ class AdvanclyDepositAccountDomainServiceTest {
         final ConfigurationDomainService configurationDomainService = mock(ConfigurationDomainService.class);
         this.depositAccountAssembler = mock(DepositAccountAssembler.class);
         this.accountTransfersWritePlatformService = mock(AccountTransfersWritePlatformService.class);
+        this.reinvestmentService = mock(DynamicDepositReinvestmentService.class);
         this.service = new AdvanclyDepositAccountDomainService(this.coreDomainService, this.savingsAccountRepository,
                 this.savingsAccountTransactionRepository, this.journalEntryWritePlatformService, configurationDomainService,
-                this.depositAccountAssembler, this.accountTransfersWritePlatformService);
+                this.depositAccountAssembler, this.accountTransfersWritePlatformService, this.reinvestmentService);
 
         this.account = mock(DynamicDepositAccount.class);
         this.term = mock(DepositAccountTermAndPreClosure.class);
@@ -302,14 +305,97 @@ class AdvanclyDepositAccountDomainServiceTest {
     }
 
     @Test
-    void reinvestIsRejectedUntilItIsSupportedAndNothingIsSettled() {
+    void reinvestingPrincipalAndInterestWithdrawsTheWholePayoutAndOpensTheNewDepositWithIt() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
+            this.balance.set(BigDecimal.valueOf(1050));
+            return false;
+        });
+        final DynamicDepositAccount reinvested = reinvestedAccount(808L);
+        final AppUser user = mock(AppUser.class);
+        when(this.reinvestmentService.reinvest(this.account, BigDecimal.valueOf(1050), CLOSED_DATE, user)).thenReturn(reinvested);
+
+        final Long transactionId = this.service.handleDynamicDepositClosure(this.account, null, user,
+                command(REINVEST_PRINCIPAL_AND_INTEREST, null), this.changes);
+
+        assertThat(transactionId).isEqualTo(555L);
+        assertThat(this.changes).containsEntry("reinvestedDepositId", 808L);
+        final InOrder order = inOrder(this.account, this.coreDomainService, this.reinvestmentService);
+        order.verify(this.account).beginClosureSettlement(CLOSED_DATE);
+        order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
+                eq(BigDecimal.valueOf(1050)), any(), eq(false), eq(false));
+        order.verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1050), CLOSED_DATE, user);
+        order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
+        verify(this.term).updateOnAccountClosureStatus(DepositAccountOnClosureType.REINVEST_PRINCIPAL_AND_INTEREST);
+        final SavingsAccountStatusEnumData reported = (SavingsAccountStatusEnumData) this.changes.get(SavingsApiConstants.statusParamName);
+        assertThat(reported.isClosed()).isTrue();
+    }
+
+    @Test
+    void reinvestingPrincipalOnlyCarriesOverJustThePrincipalAndLeavesTheInterestInAnAccountThatStaysOpen() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(1000));
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
+            this.balance.set(BigDecimal.valueOf(1050));
+            return false;
+        });
+        final AppUser user = mock(AppUser.class);
+        final DynamicDepositAccount reinvested = reinvestedAccount(808L);
+        when(this.reinvestmentService.reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user)).thenReturn(reinvested);
+
+        this.service.handleDynamicDepositClosure(this.account, null, user, command(REINVEST_PRINCIPAL_ONLY, null), this.changes);
+
+        verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
+                eq(BigDecimal.valueOf(1000)), any(), eq(false), eq(false));
+        verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user);
+        verify(this.term).updateOnAccountClosureStatus(DepositAccountOnClosureType.REINVEST_PRINCIPAL_ONLY);
+        // The interest stays behind, so the account is not closed - exactly as a Fixed Deposit reinvested for its
+        // principal only.
+        verify(this.account, never()).close(any(AppUser.class), any(JsonCommand.class));
+        verify(this.savingsAccountRepository).save(this.account);
+        assertThat(this.changes).containsEntry("reinvestedDepositId", 808L);
+    }
+
+    @Test
+    void aPrincipalOnlyReinvestmentNeverCarriesOverMoreThanThePayout() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(5000));
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+        final DynamicDepositAccount reinvested = reinvestedAccount(808L);
+        when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
+
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(REINVEST_PRINCIPAL_ONLY, null),
+                this.changes);
+
+        verify(this.reinvestmentService).reinvest(eq(this.account), eq(BigDecimal.valueOf(1000)), eq(CLOSED_DATE), any());
+    }
+
+    @Test
+    void reinvestIsRejectedOnPrematureClosureAndNothingIsSettled() {
+        assertThatThrownBy(() -> this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class),
+                command(REINVEST_PRINCIPAL_AND_INTEREST, null), this.changes)).isInstanceOf(GeneralPlatformDomainRuleException.class)
+                .hasMessageContaining("pre mature close");
+
+        verify(this.account, never()).beginClosureSettlement(any());
+        verify(this.reinvestmentService, never()).reinvest(any(), any(), any(), any());
+    }
+
+    @Test
+    void reinvestIsRejectedWhenThereIsNothingToReinvest() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        this.balance.set(BigDecimal.ZERO);
 
         assertThatThrownBy(() -> this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class),
                 command(REINVEST_PRINCIPAL_AND_INTEREST, null), this.changes)).isInstanceOf(GeneralPlatformDomainRuleException.class)
-                .hasMessageContaining("not yet supported");
+                .hasMessageContaining("no balance to reinvest");
 
-        verify(this.account, never()).beginClosureSettlement(any());
+        verify(this.reinvestmentService, never()).reinvest(any(), any(), any(), any());
+    }
+
+    private static DynamicDepositAccount reinvestedAccount(final Long id) {
+        final DynamicDepositAccount reinvested = mock(DynamicDepositAccount.class);
+        when(reinvested.getId()).thenReturn(id);
+        return reinvested;
     }
 
     @Test

@@ -654,7 +654,17 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(template.isEarlyClosure()).isFalse();
         assertThat(template.isForfeitureApplicable()).isFalse();
         assertThat(template.getMaturityAmount()).isGreaterThan(OPENING_BALANCE);
-        assertThat(template.getOnAccountClosureOptions()).extracting(EnumOptionData::getId).containsExactly(100L, 200L);
+        assertThat(template.getOnAccountClosureOptions()).extracting(EnumOptionData::getId).containsExactly(100L, 200L, 300L, 400L);
+    }
+
+    @Test
+    void aPrematureClosurePreviewOffersNoReinvestOption() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        final DynamicDepositClosureData preview = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+
+        assertThat(preview.getOnAccountClosureOptions()).extracting(EnumOptionData::getId).containsExactly(100L, 200L);
     }
 
     @Test

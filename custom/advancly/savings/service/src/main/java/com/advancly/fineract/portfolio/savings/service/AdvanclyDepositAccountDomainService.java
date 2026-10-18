@@ -95,6 +95,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
     private final ConfigurationDomainService configurationDomainService;
     private final DepositAccountAssembler depositAccountAssembler;
     private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
+    private final DynamicDepositReinvestmentService reinvestmentService;
 
     @Autowired
     public AdvanclyDepositAccountDomainService(final DepositAccountDomainServiceJpa coreDomainService,
@@ -102,7 +103,8 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
             final SavingsAccountTransactionRepository savingsAccountTransactionRepository,
             final JournalEntryWritePlatformService journalEntryWritePlatformService,
             final ConfigurationDomainService configurationDomainService, final DepositAccountAssembler depositAccountAssembler,
-            final AccountTransfersWritePlatformService accountTransfersWritePlatformService) {
+            final AccountTransfersWritePlatformService accountTransfersWritePlatformService,
+            final DynamicDepositReinvestmentService reinvestmentService) {
         this.coreDomainService = coreDomainService;
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -110,6 +112,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         this.configurationDomainService = configurationDomainService;
         this.depositAccountAssembler = depositAccountAssembler;
         this.accountTransfersWritePlatformService = accountTransfersWritePlatformService;
+        this.reinvestmentService = reinvestmentService;
     }
 
     /**
@@ -153,18 +156,26 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                 if (transferDestination != null) {
                     transferPayout(account, transferDestination, payout, closedDate, fmt, locale,
                             command.stringValueOfParameterNamed(transferDescriptionParamName));
+                } else if (closureType.isReinvest()) {
+                    final BigDecimal reinvestAmount = closureType.isReinvestPrincipal() ? principalOf(account).min(payout) : payout;
+                    savingsTransactionId = withdraw(account, reinvestAmount, closedDate, fmt, paymentDetail);
+                    changes.put("reinvestedDepositId",
+                            this.reinvestmentService.reinvest(account, reinvestAmount, closedDate, user).getId());
                 } else {
-                    final boolean applyWithdrawFee = false;
-                    final boolean isRegularTransaction = false;
-                    final SavingsAccountTransaction withdrawal = this.coreDomainService.handleWithdrawal(account, fmt, closedDate, payout,
-                            paymentDetail, applyWithdrawFee, isRegularTransaction);
-                    savingsTransactionId = withdrawal.getId();
+                    savingsTransactionId = withdraw(account, payout, closedDate, fmt, paymentDetail);
                 }
             }
         }
 
-        changes.putAll(account.close(user, command));
         account.accountTermAndPreClosure().updateOnAccountClosureStatus(closureType);
+        if (closureType.isReinvestPrincipal()) {
+            // Only the principal moved on, so - as for Fixed and Recurring Deposits - the interest it earned stays in
+            // this account, which therefore stays open until that interest is paid out by closing it again.
+            this.savingsAccountRepository.save(account);
+            return savingsTransactionId;
+        }
+
+        changes.putAll(account.close(user, command));
         if (isPreMatureClosure) {
             // close() finalises every account as CLOSED; a premature closure is recorded as PRE_MATURE_CLOSURE, the
             // status Fixed and Recurring Deposits end up in, so clients can tell it from a normal closure.
@@ -173,6 +184,22 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         }
         this.savingsAccountRepository.save(account);
         return savingsTransactionId;
+    }
+
+    /**
+     * The amount invested - what a principal-only reinvestment carries over; the interest it earned is not part of it.
+     */
+    private static BigDecimal principalOf(final DynamicDepositAccount account) {
+        final BigDecimal depositAmount = account.accountTermAndPreClosure().depositAmount();
+        return depositAmount == null ? BigDecimal.ZERO : depositAmount;
+    }
+
+    private Long withdraw(final DynamicDepositAccount account, final BigDecimal amount, final LocalDate closedDate,
+            final DateTimeFormatter fmt, final PaymentDetail paymentDetail) {
+        final boolean applyWithdrawFee = false;
+        final boolean isRegularTransaction = false;
+        return this.coreDomainService
+                .handleWithdrawal(account, fmt, closedDate, amount, paymentDetail, applyWithdrawFee, isRegularTransaction).getId();
     }
 
     private void validateClosure(final DynamicDepositAccount account, final LocalDate closedDate,
@@ -196,8 +223,15 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         }
 
         if (closureType.isReinvest()) {
-            throw new GeneralPlatformDomainRuleException("error.msg.dynamicdepositaccount.closure.reinvest.not.yet.supported",
-                    "Re-Invest on closure is not yet supported for a Dynamic Deposit account.", account.getId());
+            if (isPreMatureClosure) {
+                throw new GeneralPlatformDomainRuleException("error.msg.dynamicdepositaccount.prematureclosure.reinvest.not.allowed",
+                        "Re-Invest is not supported for a Dynamic Deposit account pre mature close.", account.getId());
+            }
+            if (account.getSummary().getAccountBalance().signum() <= 0
+                    || (closureType.isReinvestPrincipal() && principalOf(account).signum() <= 0)) {
+                throw new GeneralPlatformDomainRuleException("error.msg.dynamicdepositaccount.closure.nothing.to.reinvest",
+                        "The Dynamic Deposit account has no balance to reinvest.", account.getId());
+            }
         }
         if (account.getSummary().getAccountBalance().signum() > 0 && account.isWithdrawalBlockedByAccountRule()) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.close.withdrawal.not.allowed.account.rule",

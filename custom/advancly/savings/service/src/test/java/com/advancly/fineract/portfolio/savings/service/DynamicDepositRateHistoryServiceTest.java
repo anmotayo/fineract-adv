@@ -191,6 +191,98 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("600");
     }
 
+    // ---- recompute: existing accounts hold invested amounts (and rates) computed under the old rule ----
+
+    @Test
+    void recomputeReportsAClosedAccountsNegativeInvestedAmountAndChangesNothingInADryRun() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "-24.93", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("-24.93"));
+
+        final DynamicDepositRateHistoryService.AccountRecompute report = this.service.recompute(this.account, false);
+
+        assertThat(report.changed()).isTrue();
+        assertThat(report.storedDepositAmount()).isEqualByComparingTo("-24.93");
+        assertThat(report.correctedDepositAmount()).isEqualByComparingTo("0");
+        assertThat(report.rows()).extracting(DynamicDepositRateHistoryService.RowRecompute::changed).containsExactly(false, true);
+        // A dry run writes nothing.
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("-24.93");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("-24.93");
+    }
+
+    @Test
+    void applyingTheRecomputeCorrectsTheRowsAndTheDepositAmountCache() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "-24.93", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("-24.93"));
+
+        this.service.recompute(this.account, true);
+
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("0");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("0");
+    }
+
+    // transferInterestToSavings paid interest out; the old rule counted that as principal leaving and dropped the
+    // account into a lower slab than its principal earns.
+    @Test
+    void recomputeRestoresTheRateSlabTheRealPrincipalEarns() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.ZERO, new BigDecimal("999.99"), BigDecimal.valueOf(5))
+                .withSlab(BigDecimal.valueOf(1000), BigDecimal.valueOf(99999), BigDecimal.valueOf(10)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(10), BigDecimal.valueOf(2), chart);
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        final SavingsAccountTransaction interestTransfer = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL,
+                LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "10");
+        // Stale: counted the interest transfer as 22.44 of principal leaving, so 977.56 - the lower slab.
+        staleRow(interestTransfer, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "5");
+        this.account.updateNominalAnnualInterestRate(BigDecimal.valueOf(5));
+
+        final DynamicDepositRateHistoryService.AccountRecompute dryRun = this.service.recompute(this.account, false);
+
+        assertThat(dryRun.storedNominalRate()).isEqualByComparingTo("5");
+        assertThat(dryRun.correctedNominalRate()).isEqualByComparingTo("10");
+        assertThat(dryRun.rows().get(1).correctedInvested()).isEqualByComparingTo("1000");
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("5");
+
+        this.service.recompute(this.account, true);
+
+        assertThat(rowFor(interestTransfer).resolvedAnnualInterestRate()).isEqualByComparingTo("10");
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void anAccountAlreadyCorrectIsReportedUnchanged() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(BigDecimal.valueOf(1000));
+
+        assertThat(this.service.recompute(this.account, false).changed()).isFalse();
+    }
+
+    private void staleRow(final SavingsAccountTransaction transaction, final DynamicDepositRateHistoryEventType eventType,
+            final String investedAmount, final String rate) {
+        this.savedRows.add(DepositAccountDynamicRateHistory.createNew(this.account, transaction, transaction.getTransactionDate(),
+                eventType, new BigDecimal(investedAmount), 12, 2, null, null, new BigDecimal(rate), new BigDecimal(rate),
+                DynamicDepositRateSource.ACCOUNT_NOMINAL));
+    }
+
     private DepositAccountDynamicRateHistory rowFor(final SavingsAccountTransaction transaction) {
         return this.savedRows.stream().filter(row -> row.transaction() == transaction).findFirst()
                 .orElseThrow(() -> new AssertionError("No rate history row recorded for transaction " + transaction.getId()));
@@ -223,6 +315,7 @@ class DynamicDepositRateHistoryServiceTest {
         final DynamicDepositAccount newAccount = createInstance(DynamicDepositAccount.class);
         ReflectionTestUtils.setField(newAccount, "id", 1L);
         ReflectionTestUtils.setField(newAccount, "currency", CURRENCY);
+        ReflectionTestUtils.setField(newAccount, "status", 300); // ACTIVE
         ReflectionTestUtils.setField(newAccount, "savingsAccountTransactions", new ArrayList<SavingsAccountTransaction>());
         ReflectionTestUtils.setField(newAccount, "nominalAnnualInterestRate", nominalAnnualInterestRate);
 

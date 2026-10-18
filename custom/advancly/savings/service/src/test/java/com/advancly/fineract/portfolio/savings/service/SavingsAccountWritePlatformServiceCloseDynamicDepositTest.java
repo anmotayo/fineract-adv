@@ -41,6 +41,7 @@ import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
 import com.advancly.fineract.portfolio.savings.domain.InterestBasisMode;
+import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
@@ -463,6 +464,67 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.savedApplications).isEmpty();
         assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList())
                 .isEmpty();
+    }
+
+    // Phase 0.2 (DD closure parity): pins today's behaviour for a per-period (non-cumulative) rule. A premature closure
+    // applies NO per-period charge - the Advancly withdrawal and transfer wrappers call applyIfApplicable(...), but
+    // core
+    // close() does not. Decision: this stays as it is, and the new closure path must not start applying one.
+    @Test
+    void aPerPeriodRuleAppliesNoChargeOnPrematureClosure() {
+        final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
+        lenient().when(rule.chargeId()).thenReturn(CHARGE_ID);
+        lenient().when(rule.isCumulative()).thenReturn(false);
+        lenient().when(this.chargeInterestRuleRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(List.of(rule));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        this.service.close(1L, closeCommandFor(1L, true));
+
+        assertThat(this.account.isEarlyWithdrawal(CLOSED_DATE)).isTrue();
+        final BigDecimal grossInterest = singleInterestPosting().getAmount();
+        assertThat(payChargeTransactions()).isEmpty();
+        assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestChargeAndNotReversed).toList())
+                .isEmpty();
+        assertThat(this.savedApplications).isEmpty();
+        assertThat(this.withdrawals).hasSize(1);
+        assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(grossInterest));
+        assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // Phase 0.3 (DD closure parity): EXPECTED RED until Phase 2.3. A closure payout that goes through an account
+    // transfer is followed by AdvanclyAccountTransfersWritePlatformService calling
+    // AdvanclyInterestChargeApplicationService#applyIfApplicable on the transfer's withdrawal, and an early DD
+    // withdrawal always counts as "requested". With a cumulative rule that re-runs the forfeiture after
+    // beginClosureSettlement has already forfeited; CumulativeForfeitureCalculator takes pct x (net interest -
+    // alreadyForfeited), so any partial percentage forfeits a second time. A closure must forfeit at most once.
+    @Test
+    void aCumulativeForfeitureIsNotAppliedAgainWhenTheClosurePayoutIsAnAccountTransfer() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        assignDatabaseIdsOnFlush();
+        final AdvanclyInterestChargeApplicationService chargeApplicationService = new AdvanclyInterestChargeApplicationService(
+                this.chargeInterestRuleRepository, this.interestChargeApplicationRepository, this.savingsAccountTransactionRepository,
+                this.savingAccountRepositoryWrapper, mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
+                this.cumulativeInterestForfeitureService);
+
+        // Settlement exactly as the closure path runs it: forced interest posting, then the 50% forfeiture.
+        final boolean coreStillOwesInterestPosting = this.account.beginClosureSettlement(CLOSED_DATE);
+        assertThat(coreStillOwesInterestPosting).isFalse();
+        final BigDecimal forfeitedOnce = singleForfeitureTransaction().getAmount();
+        assertThat(this.savedApplications).hasSize(1);
+
+        // The transfer's withdrawal, then what the transfer wrapper does with it.
+        final SavingsAccountTransaction transferWithdrawal = SavingsAccountTransaction.withdrawal(this.account, this.office, null,
+                CLOSED_DATE, Money.of(CURRENCY, this.account.getSummary().getAccountBalance()), "test-transfer-ref");
+        ReflectionTestUtils.setField(transferWithdrawal, "id", 950L);
+        this.account.addTransaction(transferWithdrawal);
+        chargeApplicationService.applyIfApplicable(this.account, transferWithdrawal, false, null, null, null, false, false);
+
+        assertThat(this.savedApplications).hasSize(1);
+        assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestChargeAndNotReversed).toList())
+                .hasSize(1);
+        assertThat(singleForfeitureTransaction().getAmount()).isEqualByComparingTo(forfeitedOnce);
     }
 
     // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds

@@ -115,6 +115,14 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Transient
     private boolean openingDepositFundedByLinkedTransfer = false;
 
+    /**
+     * Never persisted; the exit date whose cumulative early-withdrawal forfeiture {@link #beginClosureSettlement} has
+     * already taken in this unit of work. A closure whose payout is an account transfer withdraws through the transfer
+     * wrapper, which would otherwise treat that withdrawal as a fresh early withdrawal and forfeit a second time.
+     */
+    @Transient
+    private LocalDate closureForfeitureSettledOn;
+
     protected DynamicDepositAccount() {
         //
     }
@@ -372,9 +380,18 @@ public class DynamicDepositAccount extends SavingsAccount {
                     "error.msg.savings.account.close.backdated.cumulative.early.withdrawal.not.allowed",
                     "Backdated cumulative early-withdrawal closure is not allowed.");
         }
+        this.closureForfeitureSettledOn = closedDate;
         DynamicDepositServiceLocator.cumulativeInterestForfeitureService().forfeitIfApplicable(this, closedDate, false, true,
                 chargePercentageOverride);
         return false;
+    }
+
+    /**
+     * True once a closure dated {@code date} has taken this account's cumulative forfeiture, so nothing may take it
+     * again.
+     */
+    public boolean isClosureForfeitureSettledOn(final LocalDate date) {
+        return date != null && date.equals(this.closureForfeitureSettledOn);
     }
 
     /**

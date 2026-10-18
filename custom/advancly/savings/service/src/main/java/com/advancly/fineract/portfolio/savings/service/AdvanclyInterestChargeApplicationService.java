@@ -28,6 +28,7 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule
 import com.advancly.fineract.portfolio.savings.domain.CustomPeriodReapplyPolicy;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.InterestChargeMath;
 import com.advancly.fineract.portfolio.savings.helper.SavingsAccountTransactionHelper;
 import java.math.BigDecimal;
@@ -133,6 +134,10 @@ public class AdvanclyInterestChargeApplicationService {
 
         final LocalDate transactionDate = withdrawalTransaction.getTransactionDate();
         if (rule.isCumulative()) {
+            if (account instanceof DynamicDepositAccount dynamicDepositAccount
+                    && dynamicDepositAccount.isClosureForfeitureSettledOn(transactionDate)) {
+                return null;
+            }
             return this.cumulativeInterestForfeitureService.forfeitIfApplicable(account, withdrawalTransaction, transactionDate,
                     appendPath || backdatedTxnsAllowedTill, false, percentageOverride);
         }

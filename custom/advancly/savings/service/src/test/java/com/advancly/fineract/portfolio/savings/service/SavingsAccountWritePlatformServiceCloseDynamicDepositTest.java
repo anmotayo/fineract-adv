@@ -491,7 +491,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Phase 0.3 (DD closure parity): EXPECTED RED until Phase 2.3. A closure payout that goes through an account
+    // Phase 0.3 / 2.3 (DD closure parity): A closure payout that goes through an account
     // transfer is followed by AdvanclyAccountTransfersWritePlatformService calling
     // AdvanclyInterestChargeApplicationService#applyIfApplicable on the transfer's withdrawal, and an early DD
     // withdrawal always counts as "requested". With a cumulative rule that re-runs the forfeiture after
@@ -663,8 +663,9 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         lenient().when(this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
         lenient().when(this.configurationDomainService.retrieveFinancialYearBeginningMonth()).thenReturn(1);
 
-        when(this.context.authenticatedUser()).thenReturn(mock(AppUser.class));
-        when(this.savingAccountAssembler.assembleFrom(1L, false)).thenReturn(this.account);
+        // lenient: the settlement-only scenarios drive the account directly and never reach close().
+        lenient().when(this.context.authenticatedUser()).thenReturn(mock(AppUser.class));
+        lenient().when(this.savingAccountAssembler.assembleFrom(1L, false)).thenReturn(this.account);
 
         // lenient: the Task 3 withdrawal-lock test deliberately never reaches this call - the guard rejects the
         // closure before any withdrawal is attempted - so this stub goes unused there by design.

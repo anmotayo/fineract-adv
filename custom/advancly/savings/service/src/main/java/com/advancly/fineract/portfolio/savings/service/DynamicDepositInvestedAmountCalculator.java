@@ -21,7 +21,9 @@ package com.advancly.fineract.portfolio.savings.service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
@@ -56,32 +58,67 @@ public final class DynamicDepositInvestedAmountCalculator {
             final SavingsAccountTransaction uptoAndIncluding) {
         final List<SavingsAccountTransaction> chronological = new ArrayList<>();
         for (final SavingsAccountTransaction transaction : transactions) {
-            if (transaction.isReversed() || transaction.isReversalTransaction()) {
-                continue;
+            if (isCounted(transaction) && COMPARATOR.compare(transaction, uptoAndIncluding) <= 0) {
+                chronological.add(transaction);
             }
-            if (COMPARATOR.compare(transaction, uptoAndIncluding) > 0) {
-                continue;
-            }
-            chronological.add(transaction);
         }
         chronological.sort(COMPARATOR);
-
-        BigDecimal principal = BigDecimal.ZERO;
-        BigDecimal interestAvailable = BigDecimal.ZERO;
+        final Position position = new Position();
         for (final SavingsAccountTransaction transaction : chronological) {
-            final BigDecimal amount = transaction.getAmount(currency).getAmount();
-            if (transaction.isDeposit()) {
-                principal = principal.add(amount);
-            } else if (transaction.isInterestPostingAndNotReversed()) {
-                interestAvailable = interestAvailable.add(amount);
-            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestChargeAndNotReversed()) {
-                interestAvailable = interestAvailable.subtract(amount);
-            } else if (transaction.isWithdrawal()) {
-                final BigDecimal fromInterest = amount.min(interestAvailable.max(BigDecimal.ZERO));
-                interestAvailable = interestAvailable.subtract(fromInterest);
-                principal = principal.subtract(amount.subtract(fromInterest));
+            position.apply(transaction, currency);
+        }
+        return position.principal;
+    }
+
+    /**
+     * The amount invested after each transaction, in one pass over the transactions - for re-deriving every
+     * rate-history row of an account without recalculating from the start for each of them. Keyed by transaction
+     * instance.
+     */
+    public static Map<SavingsAccountTransaction, BigDecimal> investedAmountAfterEach(
+            final Collection<SavingsAccountTransaction> transactions, final MonetaryCurrency currency) {
+        final List<SavingsAccountTransaction> chronological = new ArrayList<>();
+        for (final SavingsAccountTransaction transaction : transactions) {
+            if (isCounted(transaction)) {
+                chronological.add(transaction);
             }
         }
-        return principal;
+        chronological.sort(COMPARATOR);
+        final Map<SavingsAccountTransaction, BigDecimal> investedAfter = new IdentityHashMap<>();
+        final Position position = new Position();
+        for (final SavingsAccountTransaction transaction : chronological) {
+            position.apply(transaction, currency);
+            investedAfter.put(transaction, position.principal);
+        }
+        return investedAfter;
+    }
+
+    private static boolean isCounted(final SavingsAccountTransaction transaction) {
+        return !transaction.isReversed() && !transaction.isReversalTransaction();
+    }
+
+    /**
+     * The principal still invested and the interest still available to be withdrawn, as of the transactions applied so
+     * far.
+     */
+    private static final class Position {
+
+        private BigDecimal principal = BigDecimal.ZERO;
+        private BigDecimal interestAvailable = BigDecimal.ZERO;
+
+        void apply(final SavingsAccountTransaction transaction, final MonetaryCurrency currency) {
+            final BigDecimal amount = transaction.getAmount(currency).getAmount();
+            if (transaction.isDeposit()) {
+                this.principal = this.principal.add(amount);
+            } else if (transaction.isInterestPostingAndNotReversed()) {
+                this.interestAvailable = this.interestAvailable.add(amount);
+            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestChargeAndNotReversed()) {
+                this.interestAvailable = this.interestAvailable.subtract(amount);
+            } else if (transaction.isWithdrawal()) {
+                final BigDecimal fromInterest = amount.min(this.interestAvailable.max(BigDecimal.ZERO));
+                this.interestAvailable = this.interestAvailable.subtract(fromInterest);
+                this.principal = this.principal.subtract(amount.subtract(fromInterest));
+            }
+        }
     }
 }

@@ -26,8 +26,8 @@ import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositRateResolutionService.ResolvedRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
@@ -54,7 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
  * this transaction's amount to the last-cached total would get the running TOTAL right (addition commutes) but would
  * resolve this event's own rate against the wrong invested-amount-as-of-its-date, and would leave every already-written
  * row for a later date silently stale (both its invested amount and, potentially, which rate slab it should have
- * matched). {@link #reconcileFollowingRows} walks forward and corrects those.
+ * matched). {@link #recompute} re-derives those.
  */
 @Component
 public class DynamicDepositRateHistoryService {
@@ -99,7 +99,7 @@ public class DynamicDepositRateHistoryService {
                 resolvedRate.annualInterestRate(), resolvedRate.source());
         this.rateHistoryRepository.save(historyRow);
 
-        reconcileFollowingRows(account, accountTermAndPreClosure, transaction);
+        recompute(account);
     }
 
     /**
@@ -118,7 +118,7 @@ public class DynamicDepositRateHistoryService {
         if (accountTermAndPreClosure == null) {
             return;
         }
-        reconcileFollowingRows(account, accountTermAndPreClosure, undoneTransaction);
+        recompute(account);
     }
 
     /**
@@ -133,152 +133,89 @@ public class DynamicDepositRateHistoryService {
     }
 
     /**
-     * Walks every existing rate-history row dated after {@code referenceTransaction} (a backdated insert, or the undo
-     * of a transaction that had rows recorded after it) and corrects its invested amount and resolved rate, since a
-     * change earlier in the timeline changes what was true for everything after it. Then refreshes the
-     * {@code deposit_amount} cache and the account's live nominal rate from whichever non-reversed row is now
-     * chronologically last.
+     * Re-derives every rate-history row of {@code account} - the invested amount after each transaction, and the rate
+     * resolved from it - from the account's transactions, then the {@code deposit_amount} cache and the account's live
+     * nominal rate from the latest row, writing only what differs. It runs on every transaction that changes the
+     * principal (and on an undo), so none of these figures can go stale: a backdated transaction, an interest payout, a
+     * closing withdrawal or the correction of an earlier mistake all leave them right.
      *
-     * dynamic_rate_enabled = false accounts never re-resolve past activation (business rule 7): corrected rows simply
-     * carry the activation row's rate forward unchanged, only their invested amount changes.
+     * @return whether anything was changed
      */
-    private void reconcileFollowingRows(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure accountTermAndPreClosure,
-            final SavingsAccountTransaction referenceTransaction) {
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean recompute(final DynamicDepositAccount account) {
+        final DepositAccountTermAndPreClosure term = account.accountTermAndPreClosure();
+        if (term == null) {
+            return false;
+        }
         final List<DepositAccountDynamicRateHistory> rows = this.rateHistoryRepository
                 .findByAccountIdOrderByTransactionDateAscIdAsc(account.getId());
         if (rows.isEmpty()) {
-            return;
+            return false;
         }
 
+        final Map<SavingsAccountTransaction, BigDecimal> investedAfter = DynamicDepositInvestedAmountCalculator
+                .investedAmountAfterEach(account.getTransactions(), account.getCurrency());
         final DepositAccountDynamicRateHistory activationRow = rows.get(0);
-        for (final DepositAccountDynamicRateHistory row : rows) {
-            if (row.transaction().isReversed() || this.transactionComparator.compare(row.transaction(), referenceTransaction) <= 0) {
-                continue;
-            }
-            final BigDecimal correctedInvestedAmount = computeInvestedAmountAsOf(account, row.transaction());
-            if (account.isDynamicRateEnabled()) {
-                final ResolvedRate rate = this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account),
-                        correctedInvestedAmount, row.transactionDate(), accountTermAndPreClosure.depositPeriod(),
-                        accountTermAndPreClosure.depositPeriodFrequencyType());
-                row.correct(correctedInvestedAmount, rate.interestRateChartId(), rate.interestRateSlabId(), rate.baseAnnualInterestRate(),
-                        rate.annualInterestRate(), rate.source());
-            } else {
-                row.correct(correctedInvestedAmount, activationRow.interestRateChartId(), activationRow.interestRateSlabId(),
-                        activationRow.baseAnnualInterestRate(), activationRow.resolvedAnnualInterestRate(), activationRow.rateSource());
-            }
-        }
-
-        DepositAccountDynamicRateHistory latestActiveRow = null;
-        for (final DepositAccountDynamicRateHistory row : rows) {
-            if (row.transaction().isReversed()) {
-                continue;
-            }
-            if (latestActiveRow == null || this.transactionComparator.compare(row.transaction(), latestActiveRow.transaction()) > 0) {
-                latestActiveRow = row;
-            }
-        }
-        if (latestActiveRow != null) {
-            accountTermAndPreClosure.updateDepositAmount(latestActiveRow.investedAmountAfterTransaction());
-            // Business rule 7 / plan Section 8: the interest engine (Phase 3) will replay resolved_annual_interest_rate
-            // per interval from this history table. Until that lands, also keep the account's own
-            // nominalAnnualInterestRate current so the platform's existing (pre-Phase-3) interest calculation
-            // continues to use the latest rate.
-            account.updateNominalAnnualInterestRate(latestActiveRow.resolvedAnnualInterestRate());
-        }
-    }
-
-    /** One rate-history row's stored figures and what they should be. */
-    public record RowRecompute(Long rowId, LocalDate transactionDate, String eventType, BigDecimal storedInvested,
-            BigDecimal correctedInvested, BigDecimal storedRate, BigDecimal correctedRate) {
-
-        public boolean changed() {
-            return storedInvested.compareTo(correctedInvested) != 0 || storedRate.compareTo(correctedRate) != 0;
-        }
-    }
-
-    /** An account's stored invested amount and rate, and what they should be. */
-    public record AccountRecompute(Long accountId, String accountNo, String status, BigDecimal storedDepositAmount,
-            BigDecimal correctedDepositAmount, BigDecimal storedNominalRate, BigDecimal correctedNominalRate, List<RowRecompute> rows) {
-
-        public boolean changed() {
-            return storedDepositAmount.compareTo(correctedDepositAmount) != 0 || storedNominalRate.compareTo(correctedNominalRate) != 0
-                    || rows.stream().anyMatch(RowRecompute::changed);
-        }
-    }
-
-    /**
-     * Re-derives every rate-history row of {@code account} - the invested amount after each transaction, and the rate
-     * resolved from it - from the account's transactions, as {@link #computeInvestedAmountAsOf} now defines them; then
-     * the {@code deposit_amount} cache and the account's live nominal rate from the latest row. Reads everything from
-     * the transactions, so it also repairs anything a backdated transaction left stale.
-     *
-     * With {@code apply} false nothing is changed and the result is a report of what would change.
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public AccountRecompute recompute(final DynamicDepositAccount account, final boolean apply) {
-        final DepositAccountTermAndPreClosure term = account.accountTermAndPreClosure();
-        final List<DepositAccountDynamicRateHistory> rows = this.rateHistoryRepository
-                .findByAccountIdOrderByTransactionDateAscIdAsc(account.getId());
-        final BigDecimal storedDepositAmount = zeroIfNull(term == null ? null : term.depositAmount());
-        final BigDecimal storedNominalRate = zeroIfNull(account.getNominalAnnualInterestRate());
-        if (term == null || rows.isEmpty()) {
-            return new AccountRecompute(account.getId(), account.getAccountNumber(), statusOf(account), storedDepositAmount,
-                    storedDepositAmount, storedNominalRate, storedNominalRate, List.of());
-        }
-
-        final DepositAccountDynamicRateHistory activationRow = rows.get(0);
-        final List<RowRecompute> report = new ArrayList<>();
+        boolean changed = false;
         DepositAccountDynamicRateHistory latest = null;
-        BigDecimal latestInvested = storedDepositAmount;
-        BigDecimal latestRate = storedNominalRate;
+        BigDecimal latestInvested = null;
+        BigDecimal latestRate = null;
         for (final DepositAccountDynamicRateHistory row : rows) {
             if (row.transaction().isReversed()) {
                 continue;
             }
-            final BigDecimal correctedInvested = computeInvestedAmountAsOf(account, row.transaction());
-            final ResolvedRate rate = rateFor(account, term, activationRow, row, correctedInvested);
-            report.add(new RowRecompute(row.getId(), row.transactionDate(), row.eventType().name(),
-                    zeroIfNull(row.investedAmountAfterTransaction()), correctedInvested, zeroIfNull(row.resolvedAnnualInterestRate()),
-                    rate.annualInterestRate()));
-            if (apply) {
-                row.correct(correctedInvested, rate.interestRateChartId(), rate.interestRateSlabId(), rate.baseAnnualInterestRate(),
+            final BigDecimal invested = investedAfter.containsKey(row.transaction()) ? investedAfter.get(row.transaction())
+                    : computeInvestedAmountAsOf(account, row.transaction());
+            final ResolvedRate rate = rateFor(account, term, activationRow, row, invested);
+            if (differs(row, invested, rate)) {
+                row.correct(invested, rate.interestRateChartId(), rate.interestRateSlabId(), rate.baseAnnualInterestRate(),
                         rate.annualInterestRate(), rate.source());
+                changed = true;
             }
             if (latest == null || this.transactionComparator.compare(row.transaction(), latest.transaction()) > 0) {
                 latest = row;
-                latestInvested = correctedInvested;
+                latestInvested = invested;
                 latestRate = rate.annualInterestRate();
             }
         }
-        if (apply && latest != null) {
-            term.updateDepositAmount(latestInvested);
-            account.updateNominalAnnualInterestRate(latestRate);
+        if (latest != null) {
+            if (compare(term.depositAmount(), latestInvested) != 0) {
+                term.updateDepositAmount(latestInvested);
+                changed = true;
+            }
+            // Business rule 7 / plan Section 8: keep the account's own nominal rate equal to the latest row's resolved
+            // rate.
+            if (compare(account.getNominalAnnualInterestRate(), latestRate) != 0) {
+                account.updateNominalAnnualInterestRate(latestRate);
+                changed = true;
+            }
         }
-        return new AccountRecompute(account.getId(), account.getAccountNumber(), statusOf(account), storedDepositAmount, latestInvested,
-                storedNominalRate, latestRate, report);
+        return changed;
     }
 
     /**
-     * The rate a row should carry: the activation row keeps its own; later rows are resolved from the corrected
-     * invested amount.
+     * The rate a row should carry: the activation row keeps its own; later rows are resolved from the invested amount.
      */
     private ResolvedRate rateFor(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure term,
-            final DepositAccountDynamicRateHistory activationRow, final DepositAccountDynamicRateHistory row,
-            final BigDecimal correctedInvested) {
+            final DepositAccountDynamicRateHistory activationRow, final DepositAccountDynamicRateHistory row, final BigDecimal invested) {
         if (row == activationRow || !account.isDynamicRateEnabled()) {
             return new ResolvedRate(activationRow.resolvedAnnualInterestRate(), activationRow.baseAnnualInterestRate(),
                     activationRow.rateSource(), activationRow.interestRateChartId(), activationRow.interestRateSlabId());
         }
-        return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account), correctedInvested,
-                row.transactionDate(), term.depositPeriod(), term.depositPeriodFrequencyType());
+        return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate(account), invested, row.transactionDate(),
+                term.depositPeriod(), term.depositPeriodFrequencyType());
     }
 
-    private static String statusOf(final DynamicDepositAccount account) {
-        return account.getStatus() == null ? null : account.getStatus().name();
+    private static boolean differs(final DepositAccountDynamicRateHistory row, final BigDecimal invested, final ResolvedRate rate) {
+        return compare(row.investedAmountAfterTransaction(), invested) != 0
+                || compare(row.resolvedAnnualInterestRate(), rate.annualInterestRate()) != 0
+                || compare(row.baseAnnualInterestRate(), rate.baseAnnualInterestRate()) != 0
+                || !java.util.Objects.equals(row.interestRateChartId(), rate.interestRateChartId())
+                || !java.util.Objects.equals(row.interestRateSlabId(), rate.interestRateSlabId()) || row.rateSource() != rate.source();
     }
 
-    private static BigDecimal zeroIfNull(final BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
+    private static int compare(final BigDecimal a, final BigDecimal b) {
+        return (a == null ? BigDecimal.ZERO : a).compareTo(b == null ? BigDecimal.ZERO : b);
     }
 
     public ResolvedRate resolveRate(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure accountTermAndPreClosure,

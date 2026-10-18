@@ -169,6 +169,25 @@ class DynamicDepositInvestedAmountCalculatorTest {
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
+    // The one-pass form used to re-derive every rate-history row must agree with asking about each transaction in turn.
+    @Test
+    void theOnePassFormAgreesWithAskingAboutEachTransactionInTurn() {
+        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
+        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
+        add(SavingsAccountTransactionType.WITHHOLD_TAX, MAR_1, "2.49");
+        add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "22.44");
+        add(SavingsAccountTransactionType.DEPOSIT, APR_1, "300");
+        add(SavingsAccountTransactionType.WITHDRAWAL, APR_1.plusDays(5), "1100");
+
+        final java.util.Map<SavingsAccountTransaction, BigDecimal> investedAfter = DynamicDepositInvestedAmountCalculator
+                .investedAmountAfterEach(this.transactions, CURRENCY);
+
+        assertThat(investedAfter).hasSize(this.transactions.size());
+        for (final SavingsAccountTransaction transaction : this.transactions) {
+            assertThat(investedAfter.get(transaction)).isEqualByComparingTo(invested(transaction));
+        }
+    }
+
     private BigDecimal invested(final SavingsAccountTransaction upTo) {
         return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(this.transactions, CURRENCY, upTo);
     }

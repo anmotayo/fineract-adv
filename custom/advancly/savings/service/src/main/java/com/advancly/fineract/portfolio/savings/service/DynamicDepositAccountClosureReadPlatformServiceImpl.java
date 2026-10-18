@@ -59,6 +59,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.stereotype.Service;
@@ -181,6 +183,12 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         account.postInterest(mc, closedOnDate, false, this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
                 this.configurationDomainService.retrieveFinancialYearBeginningMonth(),
                 account.interestPostingTransactionDateForClosure(closedOnDate), false, false);
+        // A closure also writes tax configured to be withheld at maturity - unless a cumulative forfeiture settles it,
+        // which
+        // takes its own course - so the preview must too, or it would show more than the closure pays.
+        if (qualifying == null) {
+            account.withholdMaturityTaxAtClosure(account.interestPostingTransactionDateForClosure(closedOnDate));
+        }
 
         final BigDecimal totalInterestPosted = zeroIfNull(summary.getTotalInterestPosted());
         final BigDecimal withholdTax = zeroIfNull(summary.getTotalWithholdTax());
@@ -198,11 +206,24 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
                 .retrieveActiveForLookup(account.clientId(), DepositAccountType.SAVINGS_DEPOSIT);
 
         return new DynamicDepositClosureData(account.getId(), closedOnDate, account.maturityDate(), earlyClosure, principal,
-                zeroIfNull(account.accountTermAndPreClosure().depositAmount()), totalInterestPosted.subtract(interestPostedBefore),
-                withholdTax, qualifying != null, forfeiture, qualifying == null ? null : qualifying.percentage(),
+                investedAmountOf(account), totalInterestPosted.subtract(interestPostedBefore), withholdTax, qualifying != null, forfeiture,
+                qualifying == null ? null : qualifying.percentage(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getId(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getName(), payout, onAccountClosureOptions,
                 paymentTypeOptions, savingsAccounts);
+    }
+
+    /**
+     * The principal invested as the account stands after the closing settlement: what a principal-only reinvestment
+     * carries.
+     */
+    private static BigDecimal investedAmountOf(final DynamicDepositAccount account) {
+        final List<SavingsAccountTransaction> transactions = account.getTransactions();
+        if (transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        final SavingsAccountTransaction last = transactions.stream().max(new SavingsAccountTransactionComparator()).orElseThrow();
+        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(transactions, account.getCurrency(), last).max(BigDecimal.ZERO);
     }
 
     private static BigDecimal zeroIfNull(final BigDecimal value) {

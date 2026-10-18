@@ -686,6 +686,25 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isInstanceOf(PlatformApiDataValidationException.class);
     }
 
+    // A closure writes the tax configured to be withheld at maturity (see AdvanclyDepositAccountDomainService), so the
+    // preview of it must too, or it would show a larger payout than the closure pays.
+    @Test
+    void thePreviewTaxesInterestThatIsConfiguredToBeWithheldAtMaturityAsTheClosureDoes() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+        withholdingTaxAt(new BigDecimal("10"));
+        ReflectionTestUtils.setField(this.account.accountTermAndPreClosure(), "withHoldTaxPostingType",
+                WithHoldTaxPostingType.MATURITY.getValue());
+
+        final DynamicDepositClosureData preview = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+
+        assertThat(preview.getWithholdTax()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(preview.getWithholdTax()).isEqualByComparingTo(
+                preview.getInterestPosted().multiply(new BigDecimal("0.1")).setScale(2, java.math.RoundingMode.HALF_UP));
+        assertThat(preview.getMaturityAmount())
+                .isEqualByComparingTo(OPENING_BALANCE.add(preview.getInterestPosted()).subtract(preview.getWithholdTax()));
+    }
+
     private DynamicDepositAccountClosureReadPlatformServiceImpl closureReadService() {
         when(this.savingAccountRepositoryWrapper.findOneWithNotFoundDetection(1L)).thenReturn(this.account);
         return new DynamicDepositAccountClosureReadPlatformServiceImpl(this.context, this.savingAccountRepositoryWrapper,

@@ -18,16 +18,11 @@
  */
 package com.advancly.fineract.portfolio.savings.handler;
 
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
-import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountClosureWritePlatformService;
 import org.apache.fineract.commands.annotation.CommandType;
 import org.apache.fineract.commands.handler.NewCommandSourceHandler;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
-import org.apache.fineract.portfolio.savings.SavingsApiConstants;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
-import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
-import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,36 +31,17 @@ import org.springframework.transaction.annotation.Transactional;
 @CommandType(entity = "DYNAMICDEPOSITACCOUNT", action = "PREMATURECLOSE")
 public class PrematureCloseDynamicDepositAccountCommandHandler implements NewCommandSourceHandler {
 
-    private final SavingsAccountWritePlatformService writePlatformService;
-    private final DynamicDepositAccountRepository dynamicDepositAccountRepository;
+    private final DynamicDepositAccountClosureWritePlatformService closureWritePlatformService;
 
     @Autowired
-    public PrematureCloseDynamicDepositAccountCommandHandler(final SavingsAccountWritePlatformService writePlatformService,
-            final DynamicDepositAccountRepository dynamicDepositAccountRepository) {
-        this.writePlatformService = writePlatformService;
-        this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
+    public PrematureCloseDynamicDepositAccountCommandHandler(
+            final DynamicDepositAccountClosureWritePlatformService closureWritePlatformService) {
+        this.closureWritePlatformService = closureWritePlatformService;
     }
 
-    /**
-     * {@code close} finalises every account type as {@code CLOSED}. A premature close of a Dynamic Deposit is recorded
-     * as {@code PRE_MATURE_CLOSURE} instead - the same status Fixed and Recurring deposits end up in - so clients can
-     * tell a premature closure from a normal one. The status is moved inside the same transaction, after the close has
-     * validated and settled the account.
-     */
     @Transactional
     @Override
     public CommandProcessingResult processCommand(final JsonCommand command) {
-        final CommandProcessingResult result = this.writePlatformService.close(command.getSavingsId(), command);
-
-        final DynamicDepositAccount account = this.dynamicDepositAccountRepository.findById(command.getSavingsId()).orElse(null);
-        if (account != null && SavingsAccountStatusType.CLOSED.hasStateOf(account.getStatus())) {
-            account.setStatus(SavingsAccountStatusType.PRE_MATURE_CLOSURE.getValue());
-            this.dynamicDepositAccountRepository.save(account);
-            if (result != null && result.getChanges() != null && result.getChanges().containsKey(SavingsApiConstants.statusParamName)) {
-                result.getChanges().put(SavingsApiConstants.statusParamName,
-                        SavingsEnumerations.status(SavingsAccountStatusType.PRE_MATURE_CLOSURE));
-            }
-        }
-        return result;
+        return this.closureWritePlatformService.prematureClose(command.getSavingsId(), command);
     }
 }

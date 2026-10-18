@@ -18,11 +18,11 @@
  */
 package com.advancly.fineract.portfolio.savings.handler;
 
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountClosureWritePlatformService;
 import org.apache.fineract.commands.annotation.CommandType;
 import org.apache.fineract.commands.handler.NewCommandSourceHandler;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
-import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,16 +31,16 @@ import org.springframework.transaction.annotation.Transactional;
 @CommandType(entity = "DYNAMICDEPOSITACCOUNT", action = "CLOSE")
 public class CloseDynamicDepositAccountCommandHandler implements NewCommandSourceHandler {
 
-    private final SavingsAccountWritePlatformService writePlatformService;
+    private final DynamicDepositAccountClosureWritePlatformService closureWritePlatformService;
 
     @Autowired
-    public CloseDynamicDepositAccountCommandHandler(final SavingsAccountWritePlatformService writePlatformService) {
-        this.writePlatformService = writePlatformService;
+    public CloseDynamicDepositAccountCommandHandler(final DynamicDepositAccountClosureWritePlatformService closureWritePlatformService) {
+        this.closureWritePlatformService = closureWritePlatformService;
     }
 
     @Transactional
     @Override
     public CommandProcessingResult processCommand(final JsonCommand command) {
-        return this.writePlatformService.close(command.getSavingsId(), command);
+        return this.closureWritePlatformService.close(command.getSavingsId(), command);
     }
 }

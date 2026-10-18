@@ -118,7 +118,8 @@ public class AdvanclyInterestChargeApplicationService {
             final boolean applyEarlyWithdrawalCharge, final BigDecimal percentageOverride, final LocalDate selectedFromDate,
             final LocalDate selectedToDate, final boolean appendPath, final boolean backdatedTxnsAllowedTill) {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()
-                || !isRequested(account, withdrawalTransaction, applyEarlyWithdrawalCharge)) {
+                || !isRequested(account, withdrawalTransaction, applyEarlyWithdrawalCharge)
+                || isSettledByClosure(account, withdrawalTransaction)) {
             return null;
         }
         validatePercentageOverride(percentageOverride);
@@ -134,10 +135,6 @@ public class AdvanclyInterestChargeApplicationService {
 
         final LocalDate transactionDate = withdrawalTransaction.getTransactionDate();
         if (rule.isCumulative()) {
-            if (account instanceof DynamicDepositAccount dynamicDepositAccount
-                    && dynamicDepositAccount.isClosureForfeitureSettledOn(transactionDate)) {
-                return null;
-            }
             return this.cumulativeInterestForfeitureService.forfeitIfApplicable(account, withdrawalTransaction, transactionDate,
                     appendPath || backdatedTxnsAllowedTill, false, percentageOverride);
         }
@@ -275,6 +272,14 @@ public class AdvanclyInterestChargeApplicationService {
 
     private BigDecimal amountOrZero(final BigDecimal amount) {
         return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    /**
+     * An early closure has already settled its own charges (see {@code DynamicDepositAccount#beginClosureSettlement}).
+     */
+    private boolean isSettledByClosure(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction) {
+        return account instanceof DynamicDepositAccount dynamicDepositAccount
+                && dynamicDepositAccount.isClosureSettledOn(withdrawalTransaction.getTransactionDate());
     }
 
     private boolean isRequested(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,

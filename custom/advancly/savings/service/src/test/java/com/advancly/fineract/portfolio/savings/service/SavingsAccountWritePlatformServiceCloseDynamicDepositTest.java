@@ -527,6 +527,39 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(singleForfeitureTransaction().getAmount()).isEqualByComparingTo(forfeitedOnce);
     }
 
+    // Phase 2.4 (DD closure parity): a per-period rule applies no charge on closure - and that must stay true when the
+    // payout is an account transfer. The transfer wrapper runs applyIfApplicable(...) on the transfer's withdrawal, an
+    // early DD withdrawal always counts as "requested", and a per-period rule would then either charge the closure or
+    // throw because the closure request carries no selectedFromDate/selectedToDate.
+    @Test
+    void aPerPeriodRuleIsNotAppliedWhenTheClosurePayoutIsAnAccountTransfer() {
+        withBusinessDateOn(CLOSED_DATE);
+        final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
+        lenient().when(rule.chargeId()).thenReturn(CHARGE_ID);
+        lenient().when(rule.isCumulative()).thenReturn(false);
+        lenient().when(this.chargeInterestRuleRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(List.of(rule));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+        assignDatabaseIdsOnFlush();
+        final AdvanclyInterestChargeApplicationService chargeApplicationService = new AdvanclyInterestChargeApplicationService(
+                this.chargeInterestRuleRepository, this.interestChargeApplicationRepository, this.savingsAccountTransactionRepository,
+                this.savingAccountRepositoryWrapper, mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
+                this.cumulativeInterestForfeitureService);
+
+        this.account.beginClosureSettlement(CLOSED_DATE);
+        final SavingsAccountTransaction transferWithdrawal = SavingsAccountTransaction.withdrawal(this.account, this.office, null,
+                CLOSED_DATE, Money.of(CURRENCY, OPENING_BALANCE), "test-transfer-ref");
+        ReflectionTestUtils.setField(transferWithdrawal, "id", 950L);
+        this.account.addTransaction(transferWithdrawal);
+
+        final SavingsAccountTransaction charge = chargeApplicationService.applyIfApplicable(this.account, transferWithdrawal, false, null,
+                null, null, false, false);
+
+        assertThat(charge).isNull();
+        assertThat(this.savedApplications).isEmpty();
+        assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestChargeAndNotReversed).toList())
+                .isEmpty();
+    }
+
     // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds
     // OUTRIGHT - before any settlement (interest posting, charge collection) or the withdrawal itself runs - rather
     // than partially settling the account and only then refusing the payout.

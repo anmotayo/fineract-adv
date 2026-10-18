@@ -144,26 +144,37 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         final SavingsAccount transferDestination = closureType.isTransferToSavings() ? resolveTransferDestination(account, command) : null;
 
         Long savingsTransactionId = null;
-        if (account.getSummary().getAccountBalance().signum() > 0) {
-            if (account.beginClosureSettlement(closedDate)) {
-                postClosureInterest(account, account.interestPostingTransactionDateForClosure(closedDate), closedDate);
-            }
-
-            // Read AFTER settlement: this is principal plus the final interest, net of withholding tax and any
-            // forfeiture - the customer's complete payout.
-            final BigDecimal payout = account.getSummary().getAccountBalance();
-            if (payout.signum() > 0) {
-                if (transferDestination != null) {
-                    transferPayout(account, transferDestination, payout, closedDate, fmt, locale,
-                            command.stringValueOfParameterNamed(transferDescriptionParamName));
-                } else if (closureType.isReinvest()) {
-                    final BigDecimal reinvestAmount = closureType.isReinvestPrincipal() ? principalOf(account).min(payout) : payout;
-                    savingsTransactionId = withdraw(account, reinvestAmount, closedDate, fmt, paymentDetail);
-                    changes.put("reinvestedDepositId",
-                            this.reinvestmentService.reinvest(account, reinvestAmount, closedDate, user).getId());
-                } else {
-                    savingsTransactionId = withdraw(account, payout, closedDate, fmt, paymentDetail);
+        // allowWithdrawal=false stops an early exit, not the closure at maturity: lift it for the payout (the transfer
+        // wrapper checks it too), and put it back whatever happens.
+        if (!isPreMatureClosure) {
+            account.markClosingAtMaturity(true);
+        }
+        try {
+            if (account.getSummary().getAccountBalance().signum() > 0) {
+                if (account.beginClosureSettlement(closedDate)) {
+                    postClosureInterest(account, account.interestPostingTransactionDateForClosure(closedDate), closedDate);
                 }
+
+                // Read AFTER settlement: this is principal plus the final interest, net of withholding tax and any
+                // forfeiture - the customer's complete payout.
+                final BigDecimal payout = account.getSummary().getAccountBalance();
+                if (payout.signum() > 0) {
+                    if (transferDestination != null) {
+                        transferPayout(account, transferDestination, payout, closedDate, fmt, locale,
+                                command.stringValueOfParameterNamed(transferDescriptionParamName));
+                    } else if (closureType.isReinvest()) {
+                        final BigDecimal reinvestAmount = closureType.isReinvestPrincipal() ? principalOf(account).min(payout) : payout;
+                        savingsTransactionId = withdraw(account, reinvestAmount, closedDate, fmt, paymentDetail);
+                        changes.put("reinvestedDepositId",
+                                this.reinvestmentService.reinvest(account, reinvestAmount, closedDate, user).getId());
+                    } else {
+                        savingsTransactionId = withdraw(account, payout, closedDate, fmt, paymentDetail);
+                    }
+                }
+            }
+        } finally {
+            if (!isPreMatureClosure) {
+                account.markClosingAtMaturity(false);
             }
         }
 
@@ -233,7 +244,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                         "The Dynamic Deposit account has no balance to reinvest.", account.getId());
             }
         }
-        if (account.getSummary().getAccountBalance().signum() > 0 && account.isWithdrawalBlockedByAccountRule()) {
+        if (isPreMatureClosure && account.getSummary().getAccountBalance().signum() > 0 && account.isWithdrawalBlockedByAccountRule()) {
             throw new GeneralPlatformDomainRuleException("error.msg.savings.account.close.withdrawal.not.allowed.account.rule",
                     "This account cannot be closed with a fund withdrawal while withdrawals are disabled for it.", account.getId());
         }

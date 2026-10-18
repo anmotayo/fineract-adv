@@ -40,6 +40,28 @@ class DynamicDepositAccountWithdrawalLockTest {
         assertThat(account.isWithdrawalBlockedByAccountRule()).isFalse();
     }
 
+    // The lock stops an early exit. At maturity the customer must be able to take the money out - or the account could
+    // never be closed - so a maturity closure lifts it, for as long as that closure is in progress and no longer.
+    @Test
+    void aMaturityClosureLiftsTheLockWhileItIsInProgress() {
+        final DynamicDepositAccount account = accountWithAllowWithdrawal(false);
+
+        account.markClosingAtMaturity(true);
+        assertThat(account.isWithdrawalBlockedByAccountRule()).isFalse();
+
+        account.markClosingAtMaturity(false);
+        assertThat(account.isWithdrawalBlockedByAccountRule()).isTrue();
+    }
+
+    @Test
+    void aMaturityClosureChangesNothingForAnAccountThatAllowsWithdrawals() {
+        final DynamicDepositAccount account = accountWithAllowWithdrawal(true);
+
+        account.markClosingAtMaturity(true);
+
+        assertThat(account.isWithdrawalBlockedByAccountRule()).isFalse();
+    }
+
     // Build a minimal DynamicDepositAccount with only its DepositAccountDynamicDetail(allowWithdrawal=...) set -
     // mirrors the no-arg-protected-constructor + ReflectionTestUtils pattern used by
     // DynamicDepositAccountWithHoldTaxTest in this same package to construct an account without going through the

@@ -125,6 +125,12 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Transient
     private LocalDate closureSettledOn;
 
+    /**
+     * Never persisted; true only while a maturity closure pays the account out - see {@link #markClosingAtMaturity}.
+     */
+    @Transient
+    private boolean closingAtMaturity = false;
+
     protected DynamicDepositAccount() {
         //
     }
@@ -243,9 +249,23 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isAllowWithdrawal();
     }
 
+    /**
+     * {@code allowWithdrawal = false} stops an early exit: withdrawals, transfers out and premature closure. It must
+     * never stop the account being closed at maturity - the customer has to be able to take the money out, or the
+     * account could never be closed - so a maturity closure lifts it for as long as that closure is in progress (see
+     * {@link #markClosingAtMaturity}).
+     */
     @Override
     public boolean isWithdrawalBlockedByAccountRule() {
-        return !isAllowWithdrawal();
+        return !isAllowWithdrawal() && !this.closingAtMaturity;
+    }
+
+    /**
+     * Lifts the withdrawal lock for the payout of a maturity closure. Scoped to one unit of work by whoever sets it,
+     * which must clear it again in a {@code finally}.
+     */
+    public void markClosingAtMaturity(final boolean closingAtMaturity) {
+        this.closingAtMaturity = closingAtMaturity;
     }
 
     public boolean isDynamicRateEnabled() {

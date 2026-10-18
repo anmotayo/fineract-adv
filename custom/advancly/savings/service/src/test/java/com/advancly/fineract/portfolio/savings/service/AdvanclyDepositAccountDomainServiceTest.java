@@ -399,13 +399,63 @@ class AdvanclyDepositAccountDomainServiceTest {
     }
 
     @Test
-    void aWithdrawalIsRejectedWhenTheAccountRuleDisallowsWithdrawals() {
+    void aPrematureWithdrawalIsRejectedWhenTheAccountRuleDisallowsWithdrawals() {
         when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
 
         assertThatThrownBy(() -> this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class),
                 command(WITHDRAW, null), this.changes)).isInstanceOf(GeneralPlatformDomainRuleException.class);
 
         verify(this.account, never()).beginClosureSettlement(any());
+    }
+
+    // The lock stops an early exit; it must never stop the account being closed at maturity.
+    @Test
+    void aMaturityClosureIsNotBlockedByTheWithdrawalLockForWithdrawTransferOrReinvest() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+        when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(1000));
+        final DynamicDepositAccount reinvested = reinvestedAccount(808L);
+        when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
+
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(TRANSFER_TO_SAVINGS, DESTINATION_ID),
+                this.changes);
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(REINVEST_PRINCIPAL_AND_INTEREST, null),
+                this.changes);
+
+        verify(this.coreDomainService, org.mockito.Mockito.times(2)).handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(),
+                anyBoolean());
+        verify(this.accountTransfersWritePlatformService).transferFunds(any());
+        verify(this.reinvestmentService).reinvest(any(), any(), any(), any());
+    }
+
+    @Test
+    void theLockIsLiftedOnlyForTheDurationOfAMaturityClosureAndLiftedAgainEvenWhenItFails() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+        final InOrder order = inOrder(this.account, this.coreDomainService);
+
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
+
+        order.verify(this.account).markClosingAtMaturity(true);
+        order.verify(this.coreDomainService).handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean());
+        order.verify(this.account).markClosingAtMaturity(false);
+
+        when(this.coreDomainService.handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean()))
+                .thenThrow(new IllegalStateException("payout failed"));
+        assertThatThrownBy(() -> this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null),
+                this.changes)).isInstanceOf(IllegalStateException.class);
+        verify(this.account, org.mockito.Mockito.times(2)).markClosingAtMaturity(false);
+    }
+
+    @Test
+    void aPrematureClosureNeverLiftsTheWithdrawalLock() {
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
+
+        this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
+
+        verify(this.account, never()).markClosingAtMaturity(anyBoolean());
     }
 
     @Test

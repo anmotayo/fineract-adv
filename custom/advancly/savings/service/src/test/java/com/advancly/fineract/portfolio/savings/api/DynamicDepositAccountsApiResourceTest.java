@@ -19,13 +19,18 @@
 package com.advancly.fineract.portfolio.savings.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositClosureData;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountClosureReadPlatformService;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountReadPlatformService;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -35,9 +40,12 @@ import java.util.List;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
+import org.apache.fineract.infrastructure.core.api.JsonQuery;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.exception.UnrecognizedQueryParamException;
 import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSerializationSettings;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
+import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
@@ -69,6 +77,8 @@ class DynamicDepositAccountsApiResourceTest {
     private DepositAccountReadPlatformService depositAccountReadPlatformService;
     private SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService;
     private AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
+    private DynamicDepositAccountClosureReadPlatformService closureReadPlatformService;
+    private DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer;
     private DynamicDepositAccountsApiResource resource;
 
     @BeforeEach
@@ -82,12 +92,15 @@ class DynamicDepositAccountsApiResourceTest {
         this.depositAccountReadPlatformService = mock(DepositAccountReadPlatformService.class);
         this.savingsAccountChargeReadPlatformService = mock(SavingsAccountChargeReadPlatformService.class);
         this.accountAssociationsReadPlatformService = mock(AccountAssociationsReadPlatformService.class);
+        this.closureReadPlatformService = mock(DynamicDepositAccountClosureReadPlatformService.class);
+        this.closureToApiJsonSerializer = mock(DefaultToApiJsonSerializer.class);
         final ApiRequestParameterHelper apiRequestParameterHelper = new ApiRequestParameterHelper();
         when(this.commandsSourceWritePlatformService.logCommandSource(any(CommandWrapper.class)))
                 .thenReturn(mock(CommandProcessingResult.class));
         this.resource = new DynamicDepositAccountsApiResource(context, this.readPlatformService, this.toApiJsonSerializer,
                 this.commandsSourceWritePlatformService, apiRequestParameterHelper, this.depositAccountReadPlatformService,
-                this.savingsAccountChargeReadPlatformService, this.accountAssociationsReadPlatformService);
+                this.savingsAccountChargeReadPlatformService, this.accountAssociationsReadPlatformService, this.closureReadPlatformService,
+                this.closureToApiJsonSerializer, new FromJsonHelper());
     }
 
     @Test
@@ -191,5 +204,39 @@ class DynamicDepositAccountsApiResourceTest {
         final UriInfo uriInfo = mock(UriInfo.class);
         when(uriInfo.getQueryParameters()).thenReturn(queryParameters);
         return uriInfo;
+    }
+
+    @Test
+    void calculatePrematureAmountIsAReadThatNeverLogsACommand() {
+        final DynamicDepositClosureData preview = mock(DynamicDepositClosureData.class);
+        when(this.closureReadPlatformService.calculatePrematureAmount(eq(ACCOUNT_ID), any(JsonQuery.class))).thenReturn(preview);
+        when(this.closureToApiJsonSerializer.serialize(preview)).thenReturn("{\"maturityAmount\":1}");
+
+        final String response = this.resource.handleCommands(ACCOUNT_ID, "calculatePrematureAmount",
+                "{\"closedOnDate\":\"20 January 2026\",\"dateFormat\":\"dd MMMM yyyy\",\"locale\":\"en\"}");
+
+        assertThat(response).isEqualTo("{\"maturityAmount\":1}");
+        final ArgumentCaptor<JsonQuery> query = ArgumentCaptor.forClass(JsonQuery.class);
+        verify(this.closureReadPlatformService).calculatePrematureAmount(eq(ACCOUNT_ID), query.capture());
+        assertThat(query.getValue().json()).contains("20 January 2026");
+        verify(this.commandsSourceWritePlatformService, never()).logCommandSource(any(CommandWrapper.class));
+    }
+
+    @Test
+    void theCloseTemplateIsServedFromTheClosureReadService() {
+        final DynamicDepositClosureData template = mock(DynamicDepositClosureData.class);
+        when(this.closureReadPlatformService.retrieveClosureTemplate(ACCOUNT_ID)).thenReturn(template);
+        when(this.closureToApiJsonSerializer.serialize(template)).thenReturn("{\"onAccountClosureOptions\":[]}");
+
+        assertThat(this.resource.retrieveAccountTemplate(ACCOUNT_ID, "close")).isEqualTo("{\"onAccountClosureOptions\":[]}");
+    }
+
+    @Test
+    void onlyTheCloseTemplateExists() {
+        assertThatThrownBy(() -> this.resource.retrieveAccountTemplate(ACCOUNT_ID, "prematureClose"))
+                .isInstanceOf(UnrecognizedQueryParamException.class);
+        assertThatThrownBy(() -> this.resource.retrieveAccountTemplate(ACCOUNT_ID, null))
+                .isInstanceOf(UnrecognizedQueryParamException.class);
+        verify(this.closureReadPlatformService, never()).retrieveClosureTemplate(any());
     }
 }

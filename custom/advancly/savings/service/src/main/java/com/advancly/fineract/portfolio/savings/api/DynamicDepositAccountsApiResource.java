@@ -22,8 +22,11 @@ import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESPONSE_DATA_PARAMETERS;
 
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositClosureData;
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountClosureReadPlatformService;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositAccountReadPlatformService;
+import com.google.gson.JsonElement;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
@@ -47,10 +50,12 @@ import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
 import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
+import org.apache.fineract.infrastructure.core.api.JsonQuery;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.exception.UnrecognizedQueryParamException;
 import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSerializationSettings;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
+import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
@@ -83,6 +88,9 @@ public class DynamicDepositAccountsApiResource {
     private final DepositAccountReadPlatformService depositAccountReadPlatformService;
     private final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService;
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
+    private final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService;
+    private final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer;
+    private final FromJsonHelper fromJsonHelper;
 
     public DynamicDepositAccountsApiResource(final PlatformSecurityContext context,
             final DynamicDepositAccountReadPlatformService dynamicDepositAccountReadPlatformService,
@@ -91,7 +99,9 @@ public class DynamicDepositAccountsApiResource {
             final ApiRequestParameterHelper apiRequestParameterHelper,
             final DepositAccountReadPlatformService depositAccountReadPlatformService,
             final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService,
-            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService) {
+            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
+            final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService,
+            final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer, final FromJsonHelper fromJsonHelper) {
         this.context = context;
         this.dynamicDepositAccountReadPlatformService = dynamicDepositAccountReadPlatformService;
         this.toApiJsonSerializer = toApiJsonSerializer;
@@ -100,6 +110,9 @@ public class DynamicDepositAccountsApiResource {
         this.depositAccountReadPlatformService = depositAccountReadPlatformService;
         this.savingsAccountChargeReadPlatformService = savingsAccountChargeReadPlatformService;
         this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
+        this.closureReadPlatformService = closureReadPlatformService;
+        this.closureToApiJsonSerializer = closureToApiJsonSerializer;
+        this.fromJsonHelper = fromJsonHelper;
     }
 
     @POST
@@ -177,11 +190,16 @@ public class DynamicDepositAccountsApiResource {
             commandRequest = builder.closeDynamicDepositAccount(accountId).build();
         } else if (CommandParameterUtil.is(commandParam, "prematureClose")) {
             commandRequest = builder.prematureCloseDynamicDepositAccount(accountId).build();
+        } else if (CommandParameterUtil.is(commandParam, "calculatePrematureAmount")) {
+            final JsonElement parsedQuery = this.fromJsonHelper.parse(jsonApiRequest);
+            final JsonQuery query = JsonQuery.from(jsonApiRequest, parsedQuery, this.fromJsonHelper);
+            return this.closureToApiJsonSerializer.serialize(this.closureReadPlatformService.calculatePrematureAmount(accountId, query));
         }
 
         if (commandRequest == null) {
-            throw new UnrecognizedQueryParamException("command", commandParam, new Object[] { "approve", "undoapproval", "reject",
-                    "withdrawnByApplicant", "activate", "calculateInterest", "postInterest", "close", "prematureClose" });
+            throw new UnrecognizedQueryParamException("command", commandParam,
+                    new Object[] { "approve", "undoapproval", "reject", "withdrawnByApplicant", "activate", "calculateInterest",
+                            "postInterest", "close", "prematureClose", "calculatePrematureAmount" });
         }
 
         final CommandProcessingResult result = this.commandsSourceWritePlatformService.logCommandSource(commandRequest);
@@ -284,6 +302,19 @@ public class DynamicDepositAccountsApiResource {
         final DynamicDepositInterestSummaryData summary = this.dynamicDepositAccountReadPlatformService.retrieveInterestSummary(accountId);
 
         return this.toApiJsonSerializer.serialize(summary);
+    }
+
+    @GET
+    @Path("{accountId}/template")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    public String retrieveAccountTemplate(@PathParam("accountId") final Long accountId, @QueryParam("command") final String commandParam) {
+
+        this.context.authenticatedUser().validateHasReadPermission(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+        if (!CommandParameterUtil.is(commandParam, "close")) {
+            throw new UnrecognizedQueryParamException("command", commandParam, new Object[] { "close" });
+        }
+        return this.closureToApiJsonSerializer.serialize(this.closureReadPlatformService.retrieveClosureTemplate(accountId));
     }
 
     @GET

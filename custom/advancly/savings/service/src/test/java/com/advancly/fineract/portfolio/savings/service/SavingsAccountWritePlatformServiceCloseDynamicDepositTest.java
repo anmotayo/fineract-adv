@@ -30,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositClosureData;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRuleRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
@@ -62,9 +63,12 @@ import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlat
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.infrastructure.core.api.JsonQuery;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
+import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
@@ -86,6 +90,7 @@ import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
+import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeDataValidator;
@@ -108,6 +113,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
 import org.apache.fineract.portfolio.savings.service.SavingsInterestReadPlatformService;
 import org.apache.fineract.portfolio.tax.domain.TaxComponent;
@@ -558,6 +564,141 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.savedApplications).isEmpty();
         assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestChargeAndNotReversed).toList())
                 .isEmpty();
+    }
+
+    // Phase 4 (DD closure parity): the preview must show exactly what the closure then pays out. Each scenario
+    // previews on one account, then really closes a fresh identical one and compares.
+    @Test
+    void thePreviewOfAPartialCumulativeEarlyClosureEqualsWhatTheClosureWithdraws() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        withholdingTaxAt(new BigDecimal("10"));
+
+        final DynamicDepositClosureData preview = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+
+        assertThat(preview.isEarlyClosure()).isTrue();
+        assertThat(preview.isForfeitureApplicable()).isTrue();
+        assertThat(preview.getForfeiturePercentage()).isEqualByComparingTo(new BigDecimal("50"));
+        assertThat(preview.getForfeitureAmount()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(preview.getPrincipal()).isEqualByComparingTo(OPENING_BALANCE);
+
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        withholdingTaxAt(new BigDecimal("10"));
+        assignDatabaseIdsOnFlush();
+        this.service.close(1L, closeCommandFor(1L, true));
+
+        assertThat(this.withdrawals).hasSize(1);
+        assertThat(preview.getMaturityAmount()).isEqualByComparingTo(this.withdrawals.get(0).getAmount());
+        assertThat(preview.getForfeitureAmount()).isEqualByComparingTo(singleForfeitureTransaction().getAmount());
+        assertThat(preview.getInterestPosted()).isEqualByComparingTo(singleInterestPosting().getAmount());
+        assertThat(preview.getWithholdTax()).isEqualByComparingTo(singleWithholdTaxTransaction().getAmount());
+    }
+
+    @Test
+    void thePreviewHonoursAnEarlyWithdrawalChargePercentageOverride() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+
+        final DynamicDepositClosureData atConfiguredPercentage = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+        final DynamicDepositClosureData overridden = closureReadService().calculatePrematureAmount(1L, closeQuery(new BigDecimal("100")));
+
+        assertThat(overridden.getForfeiturePercentage()).isEqualByComparingTo(new BigDecimal("100"));
+        assertThat(overridden.getForfeitureAmount()).isGreaterThan(atConfiguredPercentage.getForfeitureAmount());
+        // Everything forfeited: the customer is left with principal only.
+        assertThat(overridden.getMaturityAmount()).isEqualByComparingTo(OPENING_BALANCE);
+    }
+
+    @Test
+    void thePreviewOfAnEarlyClosureWithoutAChargeRuleForfeitsNothingAndEqualsTheClosurePayout() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        final DynamicDepositClosureData preview = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+
+        assertThat(preview.isForfeitureApplicable()).isFalse();
+        assertThat(preview.getForfeitureAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(preview.getForfeiturePercentage()).isNull();
+
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+        this.service.close(1L, closeCommandFor(1L, true));
+        assertThat(preview.getMaturityAmount()).isEqualByComparingTo(this.withdrawals.get(0).getAmount());
+    }
+
+    @Test
+    void aPerPeriodRulePreviewForfeitsNothingBecauseAClosureAppliesNoPerPeriodCharge() {
+        withBusinessDateOn(CLOSED_DATE);
+        final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
+        lenient().when(rule.chargeId()).thenReturn(CHARGE_ID);
+        lenient().when(rule.isCumulative()).thenReturn(false);
+        lenient().when(this.chargeInterestRuleRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(List.of(rule));
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        final DynamicDepositClosureData preview = closureReadService().calculatePrematureAmount(1L, closeQuery(null));
+
+        assertThat(preview.isForfeitureApplicable()).isFalse();
+        assertThat(preview.getMaturityAmount()).isGreaterThan(OPENING_BALANCE);
+    }
+
+    @Test
+    void theClosureTemplateProjectsTheMaturityPayoutWithoutForfeiture() {
+        withBusinessDateOn(CLOSED_DATE);
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("50")));
+
+        final DynamicDepositClosureData template = closureReadService().retrieveClosureTemplate(1L);
+
+        assertThat(template.getClosedOnDate()).isEqualTo(MATURITY_AFTER_CLOSURE);
+        assertThat(template.isEarlyClosure()).isFalse();
+        assertThat(template.isForfeitureApplicable()).isFalse();
+        assertThat(template.getMaturityAmount()).isGreaterThan(OPENING_BALANCE);
+        assertThat(template.getOnAccountClosureOptions()).extracting(EnumOptionData::getId).containsExactly(100L, 200L);
+    }
+
+    @Test
+    void thePreviewRefusesABackdatedCumulativeClosureJustAsTheClosureDoes() {
+        // Business date left well after CLOSED_DATE, so this closure is backdated.
+        cumulativeProduct();
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("100")));
+
+        assertThatThrownBy(() -> closureReadService().calculatePrematureAmount(1L, closeQuery(null)))
+                .isInstanceOf(GeneralPlatformDomainRuleException.class);
+    }
+
+    @Test
+    void thePreviewRefusesAPrematureClosureOnOrAfterMaturity() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_BEFORE_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        assertThatThrownBy(() -> closureReadService().calculatePrematureAmount(1L, closeQuery(null)))
+                .isInstanceOf(PlatformApiDataValidationException.class);
+    }
+
+    private DynamicDepositAccountClosureReadPlatformServiceImpl closureReadService() {
+        when(this.savingAccountRepositoryWrapper.findOneWithNotFoundDetection(1L)).thenReturn(this.account);
+        return new DynamicDepositAccountClosureReadPlatformServiceImpl(this.context, this.savingAccountRepositoryWrapper,
+                this.savingAccountAssembler, this.configurationDomainService, new FromJsonHelper(),
+                this.cumulativeInterestForfeitureService,
+                new AdvanclyInterestChargeApplicationService(this.chargeInterestRuleRepository, this.interestChargeApplicationRepository,
+                        this.savingsAccountTransactionRepository, this.savingAccountRepositoryWrapper,
+                        mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
+                        this.cumulativeInterestForfeitureService),
+                mock(PaymentTypeReadPlatformService.class), mock(SavingsAccountReadPlatformService.class));
+    }
+
+    private static JsonQuery closeQuery(final BigDecimal earlyWithdrawalChargePercentage) {
+        final JsonObject payload = new JsonObject();
+        payload.addProperty("dateFormat", "dd MMMM yyyy");
+        payload.addProperty("locale", "en");
+        payload.addProperty("closedOnDate", "20 January 2026");
+        if (earlyWithdrawalChargePercentage != null) {
+            payload.addProperty("earlyWithdrawalChargePercentage", earlyWithdrawalChargePercentage);
+        }
+        final String json = payload.toString();
+        final FromJsonHelper fromJsonHelper = new FromJsonHelper();
+        return JsonQuery.from(json, JsonParser.parseString(json), fromJsonHelper);
     }
 
     // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds

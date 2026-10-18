@@ -117,7 +117,8 @@ class AdvanclyDepositAccountDomainServiceTest {
         this.reinvestmentService = mock(DynamicDepositReinvestmentService.class);
         this.service = new AdvanclyDepositAccountDomainService(this.coreDomainService, this.savingsAccountRepository,
                 this.savingsAccountTransactionRepository, this.journalEntryWritePlatformService, configurationDomainService,
-                this.depositAccountAssembler, this.accountTransfersWritePlatformService, this.reinvestmentService);
+                this.depositAccountAssembler, this.accountTransfersWritePlatformService, this.reinvestmentService,
+                mock(org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService.class));
 
         this.account = mock(DynamicDepositAccount.class);
         this.term = mock(DepositAccountTermAndPreClosure.class);
@@ -334,7 +335,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     }
 
     @Test
-    void reinvestingPrincipalOnlyCarriesOverJustThePrincipalAndLeavesTheInterestInAnAccountThatStaysOpen() {
+    void reinvestingPrincipalOnlyPaysTheInterestOutFirstThenMovesJustThePrincipalAndClosesTheAccount() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
         when(this.term.depositAmount()).thenReturn(BigDecimal.valueOf(1000));
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
@@ -347,14 +348,15 @@ class AdvanclyDepositAccountDomainServiceTest {
 
         this.service.handleDynamicDepositClosure(this.account, null, user, command(REINVEST_PRINCIPAL_ONLY, null), this.changes);
 
-        verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
+        // No linked account here, so the 50 of interest (less tax) is withdrawn - and BEFORE the principal moves on.
+        final InOrder order = inOrder(this.coreDomainService, this.reinvestmentService, this.account);
+        order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
+                eq(BigDecimal.valueOf(50)), any(), eq(false), eq(false));
+        order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
                 eq(BigDecimal.valueOf(1000)), any(), eq(false), eq(false));
-        verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user);
+        order.verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1000), CLOSED_DATE, user);
+        order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
         verify(this.term).updateOnAccountClosureStatus(DepositAccountOnClosureType.REINVEST_PRINCIPAL_ONLY);
-        // The interest stays behind, so the account is not closed - exactly as a Fixed Deposit reinvested for its
-        // principal only.
-        verify(this.account, never()).close(any(AppUser.class), any(JsonCommand.class));
-        verify(this.savingsAccountRepository).save(this.account);
         assertThat(this.changes).containsEntry("reinvestedDepositId", 808L);
     }
 

@@ -47,7 +47,9 @@ import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidati
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.account.PortfolioAccountType;
 import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.domain.AccountTransferType;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
 import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
@@ -97,6 +99,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
     private final DepositAccountAssembler depositAccountAssembler;
     private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
     private final DynamicDepositReinvestmentService reinvestmentService;
+    private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
 
     @Autowired
     public AdvanclyDepositAccountDomainService(final DepositAccountDomainServiceJpa coreDomainService,
@@ -105,7 +108,8 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
             final JournalEntryWritePlatformService journalEntryWritePlatformService,
             final ConfigurationDomainService configurationDomainService, final DepositAccountAssembler depositAccountAssembler,
             final AccountTransfersWritePlatformService accountTransfersWritePlatformService,
-            final DynamicDepositReinvestmentService reinvestmentService) {
+            final DynamicDepositReinvestmentService reinvestmentService,
+            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService) {
         this.coreDomainService = coreDomainService;
         this.savingsAccountRepository = savingsAccountRepository;
         this.savingsAccountTransactionRepository = savingsAccountTransactionRepository;
@@ -114,6 +118,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         this.depositAccountAssembler = depositAccountAssembler;
         this.accountTransfersWritePlatformService = accountTransfersWritePlatformService;
         this.reinvestmentService = reinvestmentService;
+        this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
     }
 
     /**
@@ -143,6 +148,8 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
 
         validateClosure(account, closedDate, closureType, isPreMatureClosure);
         final SavingsAccount transferDestination = closureType.isTransferToSavings() ? resolveTransferDestination(account, command) : null;
+        // Reinvesting the principal only sends the interest, less tax, to the linked savings account when there is one.
+        final SavingsAccount interestDestination = closureType.isReinvestPrincipal() ? resolveLinkedAccount(account) : null;
 
         Long savingsTransactionId = null;
         // A premature closure may carry its own early-withdrawal charge percentage; the forfeiture settlement reads it
@@ -170,8 +177,27 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                     if (transferDestination != null) {
                         transferPayout(account, transferDestination, payout, closedDate, fmt, locale,
                                 command.stringValueOfParameterNamed(transferDescriptionParamName));
+                    } else if (closureType.isReinvestPrincipal()) {
+                        // The principal moves to the new deposit; the interest, less tax, goes to the linked account or
+                        // is
+                        // paid out. The interest leaves FIRST: the engine labels a withdrawal as interest first, so
+                        // this
+                        // one is booked as interest and the principal withdrawal after it as principal.
+                        final BigDecimal reinvestAmount = principalOf(account).min(payout);
+                        final BigDecimal interestLessTax = payout.subtract(reinvestAmount);
+                        if (interestLessTax.signum() > 0) {
+                            if (interestDestination != null) {
+                                transferPayout(account, interestDestination, interestLessTax, closedDate, fmt, locale,
+                                        "Interest on closure of account " + account.getAccountNumber());
+                            } else {
+                                withdraw(account, interestLessTax, closedDate, fmt, paymentDetail);
+                            }
+                        }
+                        savingsTransactionId = withdraw(account, reinvestAmount, closedDate, fmt, paymentDetail);
+                        changes.put("reinvestedDepositId",
+                                this.reinvestmentService.reinvest(account, reinvestAmount, closedDate, user).getId());
                     } else if (closureType.isReinvest()) {
-                        final BigDecimal reinvestAmount = closureType.isReinvestPrincipal() ? principalOf(account).min(payout) : payout;
+                        final BigDecimal reinvestAmount = payout;
                         savingsTransactionId = withdraw(account, reinvestAmount, closedDate, fmt, paymentDetail);
                         changes.put("reinvestedDepositId",
                                 this.reinvestmentService.reinvest(account, reinvestAmount, closedDate, user).getId());
@@ -190,13 +216,6 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         }
 
         account.accountTermAndPreClosure().updateOnAccountClosureStatus(closureType);
-        if (closureType.isReinvestPrincipal()) {
-            // Only the principal moved on, so - as for Fixed and Recurring Deposits - the interest it earned stays in
-            // this account, which therefore stays open until that interest is paid out by closing it again.
-            this.savingsAccountRepository.save(account);
-            return savingsTransactionId;
-        }
-
         changes.putAll(account.close(user, command));
         if (isPreMatureClosure) {
             // close() finalises every account as CLOSED; a premature closure is recorded as PRE_MATURE_CLOSURE, the
@@ -287,6 +306,20 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         return destination;
     }
 
+    /** The savings account interest is transferred to, or {@code null} when the account has none. */
+    private SavingsAccount resolveLinkedAccount(final DynamicDepositAccount account) {
+        final PortfolioAccountData linked = this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(account.getId());
+        if (linked == null) {
+            return null;
+        }
+        final SavingsAccount destination = this.depositAccountAssembler.assembleFrom(linked.getId(), DepositAccountType.SAVINGS_DEPOSIT);
+        if (!destination.isActive()) {
+            throw new GeneralPlatformDomainRuleException("error.msg.dynamicdepositaccount.closure.linked.account.not.active",
+                    "The linked savings account the interest is sent to must be active.", linked.getId());
+        }
+        return destination;
+    }
+
     private void transferPayout(final DynamicDepositAccount account, final SavingsAccount destination, final BigDecimal payout,
             final LocalDate closedDate, final DateTimeFormatter fmt, final Locale locale, final String transferDescription) {
         final boolean isRegularTransaction = false;
@@ -320,6 +353,8 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         final boolean postReversals = false;
         account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                 financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill, postReversals);
+        // Tax configured to be withheld at maturity is not written by the posting above; write it with the interest.
+        account.withholdMaturityTaxAtClosure(postingDate);
 
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
             if (transaction.getId() == null) {

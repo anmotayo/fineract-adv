@@ -288,6 +288,25 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.withdrawalChargePercentageOverride;
     }
 
+    /**
+     * Withholds tax on the interest posted so far, for an account whose tax is configured to be withheld at MATURITY.
+     * An account taxed at each INTEREST_POSTING has its tax written as every posting is written, so this does nothing
+     * for it. Fixed and Recurring Deposits do exactly this at closure ({@code applyWithholdTaxForDepositAccounts});
+     * without it a Dynamic Deposit configured to withhold at maturity would close with interest and no tax at all.
+     * Idempotent: a tax transaction already on {@code closureDate} is updated, never duplicated.
+     */
+    public void withholdMaturityTaxAtClosure(final LocalDate closureDate) {
+        final WithHoldTaxPostingType postingType = withHoldTaxPostingType();
+        if (!withHoldTax() || postingType == null || !postingType.isMaturity()) {
+            return;
+        }
+        final boolean recalculateDailyBalances = applyWithholdTaxForDepositAccounts(closureDate, false, false, postingType);
+        if (recalculateDailyBalances) {
+            recalculateDailyBalances(Money.zero(this.currency), closureDate, false, false);
+        }
+        this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+    }
+
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
     }

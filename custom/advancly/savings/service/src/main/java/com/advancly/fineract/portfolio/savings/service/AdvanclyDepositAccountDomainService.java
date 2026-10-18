@@ -225,7 +225,10 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         } else if (isPreMatureClosure && !account.isEarlyWithdrawal(closedDate)) {
             baseDataValidator.reset().parameter(SavingsApiConstants.closedOnDateParamName).value(closedDate)
                     .failWithCode("must.be.before.maturity.date");
-        } else if (!isPreMatureClosure && account.isEarlyWithdrawal(closedDate)) {
+        } else if (!isPreMatureClosure && (account.maturityDate() == null || account.isEarlyWithdrawal(closedDate))) {
+            // isEarlyWithdrawal(...) is false for an account with no maturity date, so "not early" is not enough: a
+            // maturity closure - which lifts the withdrawal lock for its payout - needs maturity positively
+            // established.
             baseDataValidator.reset().parameter(SavingsApiConstants.closedOnDateParamName).value(closedDate)
                     .failWithCode("must.be.on.or.after.maturity.date");
         }

@@ -135,6 +135,8 @@ class AdvanclyDepositAccountDomainServiceTest {
         when(this.account.getTransactions()).thenReturn(List.of());
         when(this.account.interestPostingTransactionDateForClosure(CLOSED_DATE)).thenReturn(CLOSED_DATE);
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(true);
+        // Matured before CLOSED_DATE, as every maturity-closure scenario below needs; a premature closure ignores it.
+        when(this.account.maturityDate()).thenReturn(LocalDate.of(2026, 1, 10));
         when(this.account.close(any(AppUser.class), any(JsonCommand.class))).thenAnswer(invocation -> {
             final Map<String, Object> closeChanges = new LinkedHashMap<>();
             closeChanges.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(SavingsAccountStatusType.CLOSED));
@@ -447,6 +449,22 @@ class AdvanclyDepositAccountDomainServiceTest {
         assertThatThrownBy(() -> this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null),
                 this.changes)).isInstanceOf(IllegalStateException.class);
         verify(this.account, org.mockito.Mockito.times(2)).markClosingAtMaturity(false);
+    }
+
+    // isEarlyWithdrawal(...) is false for an account with no maturity date, so "not early" alone would let such an
+    // account through a maturity closure - and past the withdrawal lock. Maturity must be positively established.
+    @Test
+    void aMaturityClosureOfAnAccountWithNoMaturityDateIsRejectedAndNeverLiftsTheLock() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.account.maturityDate()).thenReturn(null);
+        when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
+
+        assertThatThrownBy(() -> this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null),
+                this.changes)).isInstanceOf(PlatformApiDataValidationException.class);
+
+        verify(this.account, never()).markClosingAtMaturity(anyBoolean());
+        verify(this.account, never()).beginClosureSettlement(any());
+        verify(this.coreDomainService, never()).handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test

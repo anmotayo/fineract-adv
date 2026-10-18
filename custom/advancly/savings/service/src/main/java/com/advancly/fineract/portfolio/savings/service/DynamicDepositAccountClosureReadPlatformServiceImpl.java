@@ -49,6 +49,8 @@ import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
@@ -99,6 +101,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
     private final AdvanclyInterestChargeApplicationService advanclyInterestChargeApplicationService;
     private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
     private final SavingsAccountReadPlatformService savingsAccountReadPlatformService;
+    private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
 
     @Override
     public DynamicDepositClosureData retrieveClosureTemplate(final Long accountId) {
@@ -205,12 +208,16 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         final Collection<SavingsAccountData> savingsAccounts = this.savingsAccountReadPlatformService
                 .retrieveActiveForLookup(account.clientId(), DepositAccountType.SAVINGS_DEPOSIT);
 
+        final PortfolioAccountData linkedAccount = this.accountAssociationsReadPlatformService
+                .retriveSavingsLinkedAssociation(account.getId());
+
         return new DynamicDepositClosureData(account.getId(), closedOnDate, account.maturityDate(), earlyClosure, principal,
                 investedAmountOf(account), totalInterestPosted.subtract(interestPostedBefore), withholdTax, qualifying != null, forfeiture,
                 qualifying == null ? null : qualifying.percentage(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getId(),
                 qualifying == null ? null : qualifying.accountCharge().getCharge().getName(), payout, onAccountClosureOptions,
-                paymentTypeOptions, savingsAccounts);
+                paymentTypeOptions, savingsAccounts, linkedAccount == null ? null : linkedAccount.getId(),
+                linkedAccount == null ? null : linkedAccount.getAccountNo());
     }
 
     /**

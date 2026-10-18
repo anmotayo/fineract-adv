@@ -705,6 +705,36 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEqualByComparingTo(OPENING_BALANCE.add(preview.getInterestPosted()).subtract(preview.getWithholdTax()));
     }
 
+    // Reinvesting the principal only sends the interest less tax to the linked savings account, so the closure screen
+    // is
+    // told which account that is - or that there is none and the interest is paid out.
+    @Test
+    void theTemplateNamesTheLinkedAccountTheInterestWillBeSentTo() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+        final org.apache.fineract.portfolio.account.data.PortfolioAccountData linked = mock(
+                org.apache.fineract.portfolio.account.data.PortfolioAccountData.class);
+        when(linked.getId()).thenReturn(77L);
+        when(linked.getAccountNo()).thenReturn("000000077");
+        when(this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(1L)).thenReturn(linked);
+
+        final DynamicDepositClosureData template = closureReadService().retrieveClosureTemplate(1L);
+
+        assertThat(template.getLinkedAccountId()).isEqualTo(77L);
+        assertThat(template.getLinkedAccountNo()).isEqualTo("000000077");
+    }
+
+    @Test
+    void theTemplateHasNoLinkedAccountWhenThereIsNone() {
+        withBusinessDateOn(CLOSED_DATE);
+        prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
+
+        final DynamicDepositClosureData template = closureReadService().retrieveClosureTemplate(1L);
+
+        assertThat(template.getLinkedAccountId()).isNull();
+        assertThat(template.getLinkedAccountNo()).isNull();
+    }
+
     private DynamicDepositAccountClosureReadPlatformServiceImpl closureReadService() {
         when(this.savingAccountRepositoryWrapper.findOneWithNotFoundDetection(1L)).thenReturn(this.account);
         return new DynamicDepositAccountClosureReadPlatformServiceImpl(this.context, this.savingAccountRepositoryWrapper,
@@ -714,7 +744,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                         this.savingsAccountTransactionRepository, this.savingAccountRepositoryWrapper,
                         mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
                         this.cumulativeInterestForfeitureService),
-                mock(PaymentTypeReadPlatformService.class), mock(SavingsAccountReadPlatformService.class));
+                mock(PaymentTypeReadPlatformService.class), mock(SavingsAccountReadPlatformService.class),
+                this.accountAssociationsReadPlatformService);
     }
 
     private static JsonQuery closeQuery(final BigDecimal earlyWithdrawalChargePercentage) {

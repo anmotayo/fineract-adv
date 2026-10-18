@@ -39,6 +39,9 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
  * invested, which is what reinvesting the principal only carries over (reinvesting principal and interest carries
  * {@code maturityAmount}).
  *
+ * {@code linkedAccountId}/{@code linkedAccountNo} name the savings account linked to the deposit, if any: where the
+ * interest, less tax, goes when the principal only is reinvested (it is paid out when there is none).
+ *
  * {@code forfeiture*} describe the early-withdrawal forfeiture a premature closure incurs; {@code forfeitureApplicable}
  * is {@code false} - and the amount zero - when the account's product has no qualifying cumulative rule, or the closure
  * is not early.
@@ -62,13 +65,16 @@ public class DynamicDepositClosureData implements Serializable {
     private final Collection<EnumOptionData> onAccountClosureOptions;
     private final Collection<PaymentTypeData> paymentTypeOptions;
     private final Collection<SavingsAccountData> savingsAccounts;
+    private final Long linkedAccountId;
+    private final String linkedAccountNo;
 
     public DynamicDepositClosureData(final Long accountId, final LocalDate closedOnDate, final LocalDate maturityDate,
             final boolean earlyClosure, final BigDecimal principal, final BigDecimal depositAmount, final BigDecimal interestPosted,
             final BigDecimal withholdTax, final boolean forfeitureApplicable, final BigDecimal forfeitureAmount,
             final BigDecimal forfeiturePercentage, final Long forfeitureChargeId, final String forfeitureChargeName,
             final BigDecimal maturityAmount, final Collection<EnumOptionData> onAccountClosureOptions,
-            final Collection<PaymentTypeData> paymentTypeOptions, final Collection<SavingsAccountData> savingsAccounts) {
+            final Collection<PaymentTypeData> paymentTypeOptions, final Collection<SavingsAccountData> savingsAccounts,
+            final Long linkedAccountId, final String linkedAccountNo) {
         this.accountId = accountId;
         this.closedOnDate = closedOnDate;
         this.maturityDate = maturityDate;
@@ -86,6 +92,8 @@ public class DynamicDepositClosureData implements Serializable {
         this.onAccountClosureOptions = onAccountClosureOptions;
         this.paymentTypeOptions = paymentTypeOptions;
         this.savingsAccounts = savingsAccounts;
+        this.linkedAccountId = linkedAccountId;
+        this.linkedAccountNo = linkedAccountNo;
     }
 
     public Long getAccountId() {
@@ -154,5 +162,13 @@ public class DynamicDepositClosureData implements Serializable {
 
     public Collection<SavingsAccountData> getSavingsAccounts() {
         return savingsAccounts;
+    }
+
+    public Long getLinkedAccountId() {
+        return linkedAccountId;
+    }
+
+    public String getLinkedAccountNo() {
+        return linkedAccountNo;
     }
 }

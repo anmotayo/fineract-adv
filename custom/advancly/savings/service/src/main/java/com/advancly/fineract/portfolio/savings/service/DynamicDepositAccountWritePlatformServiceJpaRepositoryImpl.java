@@ -410,7 +410,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         if (!openingDeposit.isGreaterThanZero()) {
             return;
         }
-        final PortfolioAccountData linkedAccount = this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(account.getId());
+        final PortfolioAccountData linkedAccount = this.accountAssociationsReadPlatformService
+                .retriveSavingsLinkedAssociation(account.getId());
         if (linkedAccount == null) {
             return;
         }

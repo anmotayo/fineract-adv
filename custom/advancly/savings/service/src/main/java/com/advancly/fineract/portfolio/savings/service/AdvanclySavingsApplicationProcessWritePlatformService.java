@@ -23,8 +23,12 @@ import com.google.gson.JsonElement;
 import java.util.List;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDataDTO;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.service.SavingsApplicationProcessWritePlatformService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -149,6 +153,30 @@ public class AdvanclySavingsApplicationProcessWritePlatformService implements Sa
             return;
         }
         final SavingsAccount account = this.savingsAccountRepository.findOneWithNotFoundDetection(savingsId);
+        attachProductEarlyWithdrawalChargeIfMissing(account);
         this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
+    }
+
+    private void attachProductEarlyWithdrawalChargeIfMissing(final SavingsAccount account) {
+        final Charge earlyWithdrawalCharge = this.chargeInterestRuleValidator.resolveSingleInterestCharge(account.savingsProduct());
+        if (earlyWithdrawalCharge == null || hasAccountCharge(account, earlyWithdrawalCharge.getId())) {
+            return;
+        }
+
+        final ChargeTimeType chargeTime = earlyWithdrawalCharge.getChargeTimeType() == null ? null
+                : ChargeTimeType.fromInt(earlyWithdrawalCharge.getChargeTimeType());
+        final ChargeCalculationType chargeCalculation = earlyWithdrawalCharge.getChargeCalculation() == null ? null
+                : ChargeCalculationType.fromInt(earlyWithdrawalCharge.getChargeCalculation());
+        final SavingsAccountCharge accountCharge = SavingsAccountCharge.createNewWithoutSavingsAccount(earlyWithdrawalCharge,
+                earlyWithdrawalCharge.getAmount(), chargeTime, chargeCalculation, null, true, earlyWithdrawalCharge.getFeeOnMonthDay(),
+                earlyWithdrawalCharge.feeInterval());
+        accountCharge.update(account);
+        account.charges().add(accountCharge);
+        this.savingsAccountRepository.saveAndFlush(account);
+    }
+
+    private boolean hasAccountCharge(final SavingsAccount account, final Long chargeId) {
+        return account.charges().stream()
+                .anyMatch(accountCharge -> accountCharge.getCharge() != null && chargeId.equals(accountCharge.getCharge().getId()));
     }
 }

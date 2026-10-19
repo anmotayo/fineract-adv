@@ -23,12 +23,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
+import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDataDTO;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.savings.service.SavingsApplicationProcessWritePlatformService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,6 +72,32 @@ class AdvanclySavingsApplicationProcessWritePlatformServiceTest {
     }
 
     @Test
+    void submitApplicationAttachesTheProductEarlyWithdrawalChargeWhenMissing() {
+        final JsonCommand command = mock(JsonCommand.class);
+        final SavingsAccount account = mock(SavingsAccount.class);
+        final SavingsProduct product = mock(SavingsProduct.class);
+        final Charge earlyWithdrawalCharge = percentOfInterestChargeDefinition(21L, new BigDecimal("7.5"));
+        final Set<SavingsAccountCharge> charges = new HashSet<>();
+        final CommandProcessingResult result = new CommandProcessingResultBuilder().withEntityId(11L).withSavingsId(11L).build();
+        when(this.delegate.submitApplication(command)).thenReturn(result);
+        when(this.savingsAccountRepository.findOneWithNotFoundDetection(11L)).thenReturn(account);
+        when(account.savingsProduct()).thenReturn(product);
+        when(account.charges()).thenReturn(charges);
+        when(this.chargeInterestRuleValidator.resolveSingleInterestCharge(product)).thenReturn(earlyWithdrawalCharge);
+
+        final CommandProcessingResult actual = this.service.submitApplication(command);
+
+        assertThat(actual).isSameAs(result);
+        assertThat(charges).hasSize(1);
+        final SavingsAccountCharge attachedCharge = charges.iterator().next();
+        assertThat(attachedCharge.getCharge()).isSameAs(earlyWithdrawalCharge);
+        assertThat(attachedCharge.getPercentage()).isEqualByComparingTo("7.5");
+        assertThat(attachedCharge.isPenaltyCharge()).isTrue();
+        verify(this.savingsAccountRepository).saveAndFlush(account);
+        verify(this.chargeInterestRuleValidator).validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
+    }
+
+    @Test
     void modifyApplicationValidatesTheFinalPersistedAccount() {
         final Long savingsId = 12L;
         final JsonCommand command = mock(JsonCommand.class);
@@ -91,5 +125,15 @@ class AdvanclySavingsApplicationProcessWritePlatformServiceTest {
 
         assertThat(actual).isSameAs(result);
         verify(this.chargeInterestRuleValidator).validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
+    }
+
+    private Charge percentOfInterestChargeDefinition(final Long id, final BigDecimal percentage) {
+        final Charge charge = mock(Charge.class);
+        when(charge.getId()).thenReturn(id);
+        when(charge.getAmount()).thenReturn(percentage);
+        when(charge.getChargeCalculation()).thenReturn(ChargeCalculationType.PERCENT_OF_INTEREST.getValue());
+        when(charge.getChargeTimeType()).thenReturn(ChargeTimeType.WITHDRAWAL_FEE.getValue());
+        when(charge.isPenalty()).thenReturn(true);
+        return charge;
     }
 }

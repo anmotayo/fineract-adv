@@ -66,6 +66,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -127,6 +128,17 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.interestChargeApplicationService = interestChargeApplicationService;
         this.productToGLAccountMappingRepository = productToGLAccountMappingRepository;
         this.configurationDomainService = configurationDomainService;
+    }
+
+    // Setter injection, and lazy: the closure goes through the account-transfer and interest-charge services, which in
+    // turn
+    // reach back to this bean to post interest, so a constructor parameter would close the same bean cycle
+    // CumulativeInterestForfeitureService already breaks with @Lazy.
+    private AdvanclySavingsClosureTransferService closureTransferService;
+
+    @Autowired
+    public void setClosureTransferService(@Lazy final AdvanclySavingsClosureTransferService closureTransferService) {
+        this.closureTransferService = closureTransferService;
     }
 
     @Transactional
@@ -444,6 +456,9 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     @Transactional
     @Override
     public CommandProcessingResult close(final Long savingsId, final JsonCommand command) {
+        if (closureTransferService != null && AdvanclySavingsClosureTransferService.isCloseWithTransfer(command)) {
+            return closureTransferService.closeWithTransfer(savingsId, command);
+        }
         return delegate.close(savingsId, command);
     }
 

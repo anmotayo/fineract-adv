@@ -25,6 +25,10 @@ public final class AdvanclyInterestChargeApiConstants {
     public static final String SELECTED_FROM_DATE = "selectedFromDate";
     public static final String SELECTED_TO_DATE = "selectedToDate";
     public static final String WITHDRAWAL_DATE = "withdrawalDate";
+    /**
+     * Asks the early-withdrawal charge preview to quote the charge of a closure rather than of an ordinary withdrawal.
+     */
+    public static final String FOR_CLOSURE = "forClosure";
 
     private AdvanclyInterestChargeApiConstants() {}
 }

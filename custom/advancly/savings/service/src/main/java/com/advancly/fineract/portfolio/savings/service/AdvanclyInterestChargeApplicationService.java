@@ -117,6 +117,23 @@ public class AdvanclyInterestChargeApplicationService {
     public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
             final boolean applyEarlyWithdrawalCharge, final BigDecimal percentageOverride, final LocalDate selectedFromDate,
             final LocalDate selectedToDate, final boolean appendPath, final boolean backdatedTxnsAllowedTill) {
+        return applyIfApplicable(account, withdrawalTransaction, applyEarlyWithdrawalCharge, percentageOverride, selectedFromDate,
+                selectedToDate, appendPath, backdatedTxnsAllowedTill, false);
+    }
+
+    /**
+     * @param postAtClosureDate
+     *            only matters for a cumulative rule, whose charge is taken on interest posted by a forced posting
+     *            transaction: {@code false} dates that posting {@code transactionDate - 1} (an ordinary withdrawal),
+     *            {@code true} dates it on {@code transactionDate} itself, the date a closure posts its closing interest
+     *            on, so the closing interest covers the accrual through {@code transactionDate - 1}. When a posting
+     *            already exists on that date (the closure posts first, to know what it can pay out) none is added.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
+            final boolean applyEarlyWithdrawalCharge, final BigDecimal percentageOverride, final LocalDate selectedFromDate,
+            final LocalDate selectedToDate, final boolean appendPath, final boolean backdatedTxnsAllowedTill,
+            final boolean postAtClosureDate) {
         if (withdrawalTransaction == null || withdrawalTransaction.isReversed()
                 || !isRequested(account, withdrawalTransaction, applyEarlyWithdrawalCharge)
                 || isSettledByClosure(account, withdrawalTransaction)) {
@@ -136,8 +153,43 @@ public class AdvanclyInterestChargeApplicationService {
         final LocalDate transactionDate = withdrawalTransaction.getTransactionDate();
         if (rule.isCumulative()) {
             return this.cumulativeInterestForfeitureService.forfeitIfApplicable(account, withdrawalTransaction, transactionDate,
-                    appendPath || backdatedTxnsAllowedTill, false, percentageOverride);
+                    appendPath || backdatedTxnsAllowedTill, postAtClosureDate, percentageOverride);
         }
+        final CustomPeriodCharge charge = customPeriodCharge(account, rule, accountCharge, transactionDate, selectedFromDate,
+                selectedToDate, percentageOverride);
+        if (charge == null) {
+            return null;
+        }
+        final LocalDate resolvedSelectedFromDate = charge.selectedFromDate();
+        final LocalDate resolvedSelectedToDate = charge.selectedToDate();
+        final BigDecimal percentage = charge.percentage();
+        final BigDecimal selectedNetInterestAmount = charge.selectedNetInterestAmount();
+        final BigDecimal alreadyApplied = charge.alreadyApplied();
+        final BigDecimal roundedAmount = charge.amount();
+
+        final Set<Long> existingTransactionIds = new HashSet<>(account.findCurrentTransactionIdsWithPivotDateConfig());
+        final Set<Long> existingReversedTransactionIds = new HashSet<>(account.findCurrentReversedTransactionIdsWithPivotDateConfig());
+        final SavingsAccountTransaction chargeTransaction = writeChargeTransaction(account, withdrawalTransaction, accountCharge,
+                transactionDate, roundedAmount, appendPath, backdatedTxnsAllowedTill);
+
+        final DepositInterestChargeApplication application = DepositInterestChargeApplication.createNew(account, accountCharge.getCharge(),
+                withdrawalTransaction, chargeTransaction, transactionDate, resolvedSelectedFromDate, resolvedSelectedToDate,
+                rule.interestBasisMode(), rule.customPeriodReapplyPolicy(), percentage, selectedNetInterestAmount, alreadyApplied,
+                roundedAmount);
+        this.applicationRepository.saveAndFlush(application);
+
+        this.savingsAccountRepository.saveAndFlush(account);
+        postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, appendPath || backdatedTxnsAllowedTill);
+        return chargeTransaction;
+    }
+
+    /**
+     * What a custom-period rule would charge for a withdrawal on {@code transactionDate}, or {@code null} when it would
+     * charge nothing. Writes nothing, so the closure can size its payout from it before the charge is applied.
+     */
+    private CustomPeriodCharge customPeriodCharge(final SavingsAccount account, final AdvanclyChargeInterestRule rule,
+            final SavingsAccountCharge accountCharge, final LocalDate transactionDate, final LocalDate selectedFromDate,
+            final LocalDate selectedToDate, final BigDecimal percentageOverride) {
         validateDailyPostingPeriod(account);
 
         final LocalDate resolvedSelectedFromDate = selectedFromDate(account, transactionDate, selectedFromDate, rule);
@@ -174,21 +226,47 @@ public class AdvanclyInterestChargeApplicationService {
         if (roundedAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
+        return new CustomPeriodCharge(percentage, selectedNetInterestAmount, alreadyApplied, roundedAmount, resolvedSelectedFromDate,
+                resolvedSelectedToDate);
+    }
 
-        final Set<Long> existingTransactionIds = new HashSet<>(account.findCurrentTransactionIdsWithPivotDateConfig());
-        final Set<Long> existingReversedTransactionIds = new HashSet<>(account.findCurrentReversedTransactionIdsWithPivotDateConfig());
-        final SavingsAccountTransaction chargeTransaction = writeChargeTransaction(account, withdrawalTransaction, accountCharge,
-                transactionDate, roundedAmount, appendPath, backdatedTxnsAllowedTill);
+    private record CustomPeriodCharge(BigDecimal percentage, BigDecimal selectedNetInterestAmount, BigDecimal alreadyApplied,
+            BigDecimal amount, LocalDate selectedFromDate, LocalDate selectedToDate) {
+    }
 
-        final DepositInterestChargeApplication application = DepositInterestChargeApplication.createNew(account, accountCharge.getCharge(),
-                withdrawalTransaction, chargeTransaction, transactionDate, resolvedSelectedFromDate, resolvedSelectedToDate,
-                rule.interestBasisMode(), rule.customPeriodReapplyPolicy(), percentage, selectedNetInterestAmount, alreadyApplied,
-                roundedAmount);
-        this.applicationRepository.saveAndFlush(application);
-
-        this.savingsAccountRepository.saveAndFlush(account);
-        postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, appendPath || backdatedTxnsAllowedTill);
-        return chargeTransaction;
+    /**
+     * What {@link #applyIfApplicable} would charge for a closure of {@code account} dated {@code closedDate}, rounded
+     * the way the charge transaction is, or zero when no charge applies. Writes nothing. A cumulative rule is quoted on
+     * the interest posted so far, so the caller must already have posted the closing interest on {@code closedDate}.
+     */
+    public BigDecimal quoteClosureCharge(final SavingsAccount account, final LocalDate closedDate, final boolean applyEarlyWithdrawalCharge,
+            final BigDecimal percentageOverride, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
+        if (!(account.isEarlyWithdrawal(closedDate) || applyEarlyWithdrawalCharge)) {
+            return BigDecimal.ZERO;
+        }
+        validatePercentageOverride(percentageOverride);
+        final AdvanclyChargeInterestRule rule = resolveSingleRule(account);
+        if (rule == null) {
+            return BigDecimal.ZERO;
+        }
+        final SavingsAccountCharge accountCharge = resolveAccountCharge(account, rule.chargeId());
+        if (accountCharge == null) {
+            return BigDecimal.ZERO;
+        }
+        if (rule.isCumulative()) {
+            final CumulativeInterestForfeitureService.QualifyingCharge qualifying = this.cumulativeInterestForfeitureService
+                    .resolveQualifyingChargeWithPercentage(account, percentageOverride);
+            if (qualifying == null) {
+                return BigDecimal.ZERO;
+            }
+            final BigDecimal amount = CumulativeForfeitureCalculator.forfeitureAmount(account.getSummary().getTotalInterestPosted(),
+                    account.getSummary().getTotalWithholdTax(),
+                    this.cumulativeInterestForfeitureService.sumActiveAppliedAmount(account.getId()), qualifying.percentage());
+            return Money.of(account.getCurrency(), amount).getAmount();
+        }
+        final CustomPeriodCharge charge = customPeriodCharge(account, rule, accountCharge, closedDate, selectedFromDate, selectedToDate,
+                percentageOverride);
+        return charge == null ? BigDecimal.ZERO : charge.amount();
     }
 
     private SavingsAccountTransaction writeChargeTransaction(final SavingsAccount account,

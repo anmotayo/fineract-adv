@@ -49,10 +49,12 @@ public class EarlyWithdrawalChargeData implements Serializable {
     private final BigDecimal chargeAmount;
     private final LocalDate selectedFromDate;
     private final LocalDate selectedToDate;
+    private final BigDecimal accountBalanceAfterPosting;
 
     private EarlyWithdrawalChargeData(final Long accountId, final LocalDate withdrawalDate, final boolean chargeApplicable,
             final String reason, final String interestBasisMode, final Long chargeId, final String chargeName, final BigDecimal percentage,
-            final BigDecimal basisAmount, final BigDecimal chargeAmount, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
+            final BigDecimal basisAmount, final BigDecimal chargeAmount, final LocalDate selectedFromDate, final LocalDate selectedToDate,
+            final BigDecimal accountBalanceAfterPosting) {
         this.accountId = accountId;
         this.withdrawalDate = withdrawalDate;
         this.chargeApplicable = chargeApplicable;
@@ -65,17 +67,44 @@ public class EarlyWithdrawalChargeData implements Serializable {
         this.chargeAmount = chargeAmount;
         this.selectedFromDate = selectedFromDate;
         this.selectedToDate = selectedToDate;
+        this.accountBalanceAfterPosting = accountBalanceAfterPosting;
     }
 
     public static EarlyWithdrawalChargeData notApplicable(final Long accountId, final LocalDate withdrawalDate, final String reason) {
-        return new EarlyWithdrawalChargeData(accountId, withdrawalDate, false, reason, null, null, null, null, null, null, null, null);
+        return notApplicable(accountId, withdrawalDate, reason, null);
+    }
+
+    /**
+     * See the {@code accountBalanceAfterPosting} parameter of
+     * {@link #applicable(Long, LocalDate, String, Long, String, BigDecimal, BigDecimal, BigDecimal, LocalDate, LocalDate, BigDecimal)}.
+     */
+    public static EarlyWithdrawalChargeData notApplicable(final Long accountId, final LocalDate withdrawalDate, final String reason,
+            final BigDecimal accountBalanceAfterPosting) {
+        return new EarlyWithdrawalChargeData(accountId, withdrawalDate, false, reason, null, null, null, null, null, null, null, null,
+                accountBalanceAfterPosting);
     }
 
     public static EarlyWithdrawalChargeData applicable(final Long accountId, final LocalDate withdrawalDate, final String interestBasisMode,
             final Long chargeId, final String chargeName, final BigDecimal percentage, final BigDecimal basisAmount,
             final BigDecimal chargeAmount, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
+        return applicable(accountId, withdrawalDate, interestBasisMode, chargeId, chargeName, percentage, basisAmount, chargeAmount,
+                selectedFromDate, selectedToDate, null);
+    }
+
+    /**
+     * @param accountBalanceAfterPosting
+     *            what the account would hold once the exit has posted its interest, and the tax withheld on it, and
+     *            before the charge is taken; {@code null} when no interest was posted to work it out. A full
+     *            liquidation pays out this less the charge, so it is the figure to quote a payout from. Only the
+     *            early-withdrawal charge call can produce it: it simulates that posting on a copy of the account and
+     *            persists nothing.
+     */
+    public static EarlyWithdrawalChargeData applicable(final Long accountId, final LocalDate withdrawalDate, final String interestBasisMode,
+            final Long chargeId, final String chargeName, final BigDecimal percentage, final BigDecimal basisAmount,
+            final BigDecimal chargeAmount, final LocalDate selectedFromDate, final LocalDate selectedToDate,
+            final BigDecimal accountBalanceAfterPosting) {
         return new EarlyWithdrawalChargeData(accountId, withdrawalDate, true, null, interestBasisMode, chargeId, chargeName, percentage,
-                basisAmount, chargeAmount, selectedFromDate, selectedToDate);
+                basisAmount, chargeAmount, selectedFromDate, selectedToDate, accountBalanceAfterPosting);
     }
 
     public Long accountId() {
@@ -124,5 +153,9 @@ public class EarlyWithdrawalChargeData implements Serializable {
 
     public LocalDate selectedToDate() {
         return this.selectedToDate;
+    }
+
+    public BigDecimal accountBalanceAfterPosting() {
+        return this.accountBalanceAfterPosting;
     }
 }

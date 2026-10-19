@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.FOR_CLOSURE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +57,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -145,7 +147,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
         assertThat(result.chargeApplicable()).isTrue();
         assertThat(result.percentage()).isEqualByComparingTo("50");
-        // 1000 earned - 0 withheld - 0 already forfeited, at 50% rather than the charge's 25%.
+        // 1000 posted - 0 withheld - 0 already forfeited, at 50% rather than the charge's 25%.
         assertThat(result.chargeAmount()).isEqualByComparingTo("500");
         assertThat(result.basisAmount()).isEqualByComparingTo("1000");
         verify(this.cumulativeInterestForfeitureService).resolveQualifyingChargeWithPercentage(account, new BigDecimal("50"));
@@ -223,6 +225,120 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         assertThat(result.chargeAmount()).isEqualByComparingTo("250");
     }
 
+    // ------------------------------------------------------------------ what the quote mirrors of the real exit
+
+    @Test
+    void cumulativeModePostsOnTheDayBeforeTheWithdrawalForAnOrdinaryWithdrawal() {
+        final SavingsAccount account = cumulativeAccount();
+        stubQualifyingCharge(account);
+
+        this.service.calculate(ACCOUNT_ID, query());
+
+        verify(this.cumulativeInterestForfeitureService).forcedPostingDate(account, WITHDRAWAL_DATE, false);
+        verify(account).postInterest(any(), eq(BUSINESS_DATE), anyBoolean(), anyBoolean(), any(), eq(WITHDRAWAL_DATE), anyBoolean(),
+                anyBoolean());
+    }
+
+    @Test
+    void cumulativeModePostsOnTheClosureDateForAClosureAndBoundsTheAccrualByIt() {
+        final SavingsAccount account = cumulativeAccount();
+        stubQualifyingCharge(account);
+        final LocalDate closureDate = WITHDRAWAL_DATE;
+        when(this.cumulativeInterestForfeitureService.forcedPostingDate(account, closureDate, true)).thenReturn(closureDate);
+
+        this.service.calculate(ACCOUNT_ID, query("\"forClosure\": true"));
+
+        verify(this.cumulativeInterestForfeitureService).forcedPostingDate(account, closureDate, true);
+        // the accrual is bounded by the closure date, not today's business date: a backdated closure earns nothing
+        // after it
+        verify(account).postInterest(any(), eq(closureDate), anyBoolean(), anyBoolean(), any(), eq(closureDate), anyBoolean(),
+                anyBoolean());
+    }
+
+    @Test
+    void cumulativeModeDoesNotPostAgainWhenInterestAlreadySitsOnTheForcedDate() {
+        final SavingsAccount account = cumulativeAccount();
+        stubQualifyingCharge(account);
+        when(this.cumulativeInterestForfeitureService.latestInterestPostingOn(account, WITHDRAWAL_DATE))
+                .thenReturn(mock(SavingsAccountTransaction.class));
+
+        this.service.calculate(ACCOUNT_ID, query());
+
+        verify(account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    void cumulativeModeTakesThePercentageOfTheInterestNetOfTheTaxPostedWithIt() {
+        final SavingsAccount account = accountWith(summaryWith(new BigDecimal("1000"), new BigDecimal("100")));
+        cumulativeRule(account);
+        stubQualifyingCharge(account);
+
+        final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID, query());
+
+        // 25% of (1000 posted - 100 tax), the same figure the real forfeiture takes
+        assertThat(result.basisAmount()).isEqualByComparingTo("900");
+        assertThat(result.chargeAmount()).isEqualByComparingTo("225");
+    }
+
+    @Test
+    void cumulativeModeRoundsTheChargeToTheCurrencyLikeTheForfeitureItQuotes() {
+        final SavingsAccount account = accountWith(summaryWith(new BigDecimal("7.98"), BigDecimal.ZERO));
+        cumulativeRule(account);
+        stubQualifyingCharge(account);
+
+        final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID, query());
+
+        // 25% of 7.98 is 1.995; the forfeiture transaction is written at the currency's 2 decimal places
+        assertThat(result.chargeAmount().scale()).isLessThanOrEqualTo(2);
+        assertThat(result.chargeAmount()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void cumulativeModeReportsTheBalanceTheAccountWouldHoldOnceTheInterestIsPosted() {
+        final SavingsAccount account = cumulativeAccount();
+        stubQualifyingCharge(account);
+
+        final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID, query());
+
+        // the balance after the simulated posting: what a full liquidation pays out of, before the charge
+        assertThat(result.accountBalanceAfterPosting()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void customPeriodModeForAClosureSimulatesTheClosingPostingAndReportsTheBalanceAfterIt() {
+        final SavingsAccount account = customPeriodAccount();
+        when(account.interestPostingTransactionDateForClosure(WITHDRAWAL_DATE)).thenReturn(WITHDRAWAL_DATE);
+        when(account.interestPostingUpToForClosure(WITHDRAWAL_DATE)).thenReturn(WITHDRAWAL_DATE);
+
+        final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID,
+                query("\"forClosure\": true", "\"selectedFromDate\": \"2026-09-01\"", "\"selectedToDate\": \"2026-09-15\""));
+
+        verify(account).postInterest(any(), eq(WITHDRAWAL_DATE), anyBoolean(), anyBoolean(), any(), eq(WITHDRAWAL_DATE), anyBoolean(),
+                anyBoolean());
+        assertThat(result.accountBalanceAfterPosting()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void customPeriodModeForAWithdrawalPostsNothingAndReportsNoBalanceAfterPosting() {
+        final SavingsAccount account = customPeriodAccount();
+
+        final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID,
+                query("\"selectedFromDate\": \"2026-09-01\"", "\"selectedToDate\": \"2026-09-15\""));
+
+        verify(account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        assertThat(result.accountBalanceAfterPosting()).isNull();
+    }
+
+    @Test
+    void theClosureFlagIsNamedAsDocumented() {
+        assertThat(FOR_CLOSURE).isEqualTo("forClosure");
+    }
+
+    private void stubQualifyingCharge(final SavingsAccount account) {
+        lenient().when(this.cumulativeInterestForfeitureService.resolveQualifyingChargeWithPercentage(eq(account), any())).thenAnswer(
+                invocation -> new CumulativeInterestForfeitureService.QualifyingCharge(accountChargeMock(), CONFIGURED_PERCENTAGE));
+    }
+
     // ------------------------------------------------------------------ fixtures
 
     private SavingsAccountCharge accountChargeMock() {
@@ -237,10 +353,10 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         return accountCharge;
     }
 
-    private SavingsAccountSummary summaryWith(final BigDecimal totalInterestEarned, final BigDecimal totalWithholdTax) {
+    private SavingsAccountSummary summaryWith(final BigDecimal totalInterestPosted, final BigDecimal totalWithholdTax) {
         final SavingsAccountSummary summary = Mockito
                 .spy(new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build());
-        lenient().when(summary.getTotalInterestEarned()).thenReturn(totalInterestEarned);
+        lenient().when(summary.getTotalInterestPosted()).thenReturn(totalInterestPosted);
         lenient().when(summary.getTotalWithholdTax()).thenReturn(totalWithholdTax);
         return summary;
     }
@@ -252,15 +368,22 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         lenient().when(account.getCurrency()).thenReturn(CURRENCY);
         lenient().when(account.depositAccountType()).thenReturn(DepositAccountType.SAVINGS_DEPOSIT);
         lenient().when(account.getSummary()).thenReturn(summary);
-        lenient().when(account.calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
-                .thenReturn(null);
+        lenient().when(account.interestPostingUpToForClosure(any())).thenAnswer(invocation -> invocation.getArgument(0));
         lenient().when(this.savingsAccountRepositoryWrapper.findOneWithNotFoundDetection(ACCOUNT_ID)).thenReturn(account);
         return account;
     }
 
-    /** An account whose product's single rule is cumulative, with 1000 earned and nothing withheld or forfeited yet. */
+    /**
+     * An account whose product's single rule is cumulative, with 1000 posted (once the exit posts) and nothing withheld
+     * or forfeited.
+     */
     private SavingsAccount cumulativeAccount() {
         final SavingsAccount account = accountWith(summaryWith(new BigDecimal("1000"), BigDecimal.ZERO));
+        cumulativeRule(account);
+        return account;
+    }
+
+    private void cumulativeRule(final SavingsAccount account) {
         final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
         lenient().when(rule.isCumulative()).thenReturn(true);
         // doReturn(...).when(...), not when(...).thenReturn(...): on a CALLS_REAL_METHODS partial mock the latter would
@@ -269,7 +392,6 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         lenient().when(this.cumulativeInterestForfeitureService.forcedPostingDate(eq(account), any(), anyBoolean()))
                 .thenReturn(WITHDRAWAL_DATE);
         lenient().when(this.cumulativeInterestForfeitureService.sumActiveAppliedAmount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
-        return account;
     }
 
     /** An account whose product's single rule is custom-period, with 1000 net interest still chargeable. */

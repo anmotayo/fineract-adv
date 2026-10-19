@@ -299,7 +299,8 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             this.interestChargeApplicationService.applyIfApplicable(account, withdrawal,
                     earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge(),
                     earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage(), earlyWithdrawalChargeRequest.selectedFromDate(),
-                    earlyWithdrawalChargeRequest.selectedToDate(), usesOptimizedAppendPath, backdatedTxnsAllowedTill);
+                    earlyWithdrawalChargeRequest.selectedToDate(), usesOptimizedAppendPath, backdatedTxnsAllowedTill,
+                    earlyWithdrawalChargeRequest.postAtClosureDate());
         }
         return withdrawal;
     }
@@ -315,7 +316,8 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
                     "earlyWithdrawalChargePercentage must be between 0 and 100.");
         }
         return new EarlyWithdrawalTransferChargeRequest(applyEarlyWithdrawalCharge, chargePercentageOverride,
-                command.localDateValueOfParameterNamed(SELECTED_FROM_DATE), command.localDateValueOfParameterNamed(SELECTED_TO_DATE));
+                command.localDateValueOfParameterNamed(SELECTED_FROM_DATE), command.localDateValueOfParameterNamed(SELECTED_TO_DATE),
+                false);
     }
 
     private boolean isSavingsToSavingsAccountTransfer(final PortfolioAccountType fromAccountType,
@@ -343,6 +345,30 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     @Transactional
     @Override
     public Long transferFunds(final AccountTransferDTO accountTransferDTO) {
+        return transferFunds(accountTransferDTO, EarlyWithdrawalTransferChargeRequest.none());
+    }
+
+    /**
+     * Moves the closing payout of a savings account to another savings account and applies the account's
+     * early-withdrawal charge to the withdrawal leg, the way a withdrawal does. Differs from
+     * {@link #transferFunds(AccountTransferDTO)} only in the charge: a cumulative rule posts the closing interest on
+     * the closure date itself (see {@link AdvanclyInterestChargeApplicationService#applyIfApplicable}).
+     *
+     * @return the id of the transfer details
+     */
+    @Transactional
+    public Long transferClosurePayout(final AccountTransferDTO accountTransferDTO, final ClosureCharge charge) {
+        return transferFunds(accountTransferDTO, new EarlyWithdrawalTransferChargeRequest(charge.applyEarlyWithdrawalCharge(),
+                charge.earlyWithdrawalChargePercentage(), charge.selectedFromDate(), charge.selectedToDate(), true));
+    }
+
+    /** The early-withdrawal charge to apply to a closure payout; see {@link #transferClosurePayout}. */
+    public record ClosureCharge(boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage, LocalDate selectedFromDate,
+            LocalDate selectedToDate) {
+    }
+
+    private Long transferFunds(final AccountTransferDTO accountTransferDTO,
+            final EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest) {
         Long transferDetailsId;
         AccountTransferDetails accountTransferDetails = accountTransferDTO.getAccountTransferDetails();
         final boolean isAccountTransfer = true;
@@ -379,7 +405,11 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         } else if (isSavingsToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             LocalDate transactionDate = resolveSavingsToSavingsTransferDate(accountTransferDTO);
             final Long fromSavingsAccountId = fromSavingsAccountId(accountTransferDTO, accountTransferDetails);
-            final boolean fromAppendPath = isAppendPath(fromSavingsAccountId, transactionDate);
+            // A closure takes its charge from the interest posted so far, read from the account summary; the optimized
+            // append
+            // path does not keep that summary whole, so the account being closed goes through core's full path.
+            final boolean fromAppendPath = !earlyWithdrawalChargeRequest.postAtClosureDate()
+                    && isAppendPath(fromSavingsAccountId, transactionDate);
             final AssembledSavingsAccount fromAssembled = assembleSavingsAccount(fromSavingsAccountId, transactionDate,
                     backdatedTxnsAllowedTill, fromAppendPath);
             final SavingsAccount fromSavingsAccount = fromAssembled.getAccount();
@@ -404,7 +434,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
 
             final SavingsAccountTransaction withdrawal = postOptimizedWithdrawal(fromAssembled, accountTransferDTO.getFmt(),
                     transactionDate, accountTransferDTO.getTransactionAmount(), transactionBooleanValues, backdatedTxnsAllowedTill,
-                    fromAppendPath);
+                    fromAppendPath, earlyWithdrawalChargeRequest);
 
             final SavingsAccountTransaction deposit = postOptimizedDeposit(toAssembled, accountTransferDTO.getFmt(), transactionDate,
                     accountTransferDTO.getTransactionAmount(), transactionBooleanValues, backdatedTxnsAllowedTill, toAppendPath);
@@ -616,10 +646,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     }
 
     private record EarlyWithdrawalTransferChargeRequest(boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage,
-            LocalDate selectedFromDate, LocalDate selectedToDate) {
+            LocalDate selectedFromDate, LocalDate selectedToDate, boolean postAtClosureDate) {
 
         private static EarlyWithdrawalTransferChargeRequest none() {
-            return new EarlyWithdrawalTransferChargeRequest(false, null, null, null);
+            return new EarlyWithdrawalTransferChargeRequest(false, null, null, null, false);
         }
     }
 }

@@ -19,6 +19,7 @@
 package com.advancly.fineract.portfolio.savings.service;
 
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.EARLY_WITHDRAWAL_CHARGE_PERCENTAGE;
+import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.FOR_CLOSURE;
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.SELECTED_FROM_DATE;
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.SELECTED_TO_DATE;
 import static com.advancly.fineract.portfolio.savings.AdvanclyInterestChargeApiConstants.WITHDRAWAL_DATE;
@@ -39,6 +40,7 @@ import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRu
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
@@ -53,17 +55,18 @@ import org.springframework.stereotype.Service;
  * Deliberately has NO {@code @Transactional} annotation of its own, for the same reason
  * {@link InterestCalculationReadPlatformServiceImpl} does not: {@code findOneWithNotFoundDetection(Long)} opens and
  * commits its own transaction, detaching the account before this class touches it, so every mutation this class makes
- * afterwards (running {@code calculateInterestUsing(...)}) happens on an object nothing is tracking for a flush. This
- * is what makes it safe to call this endpoint as often as needed without ever charging or posting anything for real.
+ * afterwards (posting the interest on its in-memory copy) happens on an object nothing is tracking for a flush. This is
+ * what makes it safe to call this endpoint as often as needed without ever charging or posting anything for real.
  *
- * Mirrors {@link InterestCalculationReadPlatformServiceImpl}'s "earned, not posted" convention for the cumulative-mode
- * basis: {@code calculateInterestUsing(...)} only ever refreshes {@code totalInterestEarned} (a live projection,
- * correct even for a not-yet-posted partial period), never {@code totalInterestPosted}/{@code totalWithholdTax} (those
- * only change when real transactions exist) - so this class reads {@code getTotalInterestEarned()} in place of
- * {@code getTotalInterestPosted()}, and leaves withholding tax as whatever has actually posted, exactly as that
- * endpoint already does. Custom-period mode reuses
- * {@link AdvanclyInterestChargeApplicationService#selectedPostedNetInterest} unmodified (real posted transactions only)
- * since that mode is restricted to daily-posting accounts, where any gap is at most a single day's uncommitted accrual.
+ * Cumulative mode quotes what the real exit charges, by doing what it does to the copy: force-post the interest on the
+ * date {@link CumulativeInterestForfeitureService#forcedPostingDate} picks (skipped when a posting already sits on that
+ * date), then take the percentage of the interest posted net of the tax posted with it, less what was already
+ * forfeited. {@code forClosure} selects the date a closure posts on (the closure date, which accrues through the day
+ * before it) instead of the one an ordinary withdrawal uses (the day before the withdrawal). Custom-period mode reuses
+ * {@link AdvanclyInterestChargeApplicationService#selectedPostedNetInterest} on the interest posted in the period: for
+ * a withdrawal only what has really posted, for a closure (which posts its closing interest before it charges) what the
+ * closure would have posted. Both rules report {@code accountBalanceAfterPosting}, the balance once that posting is in,
+ * which a closure pays out of.
  *
  * An optional {@code earlyWithdrawalChargePercentage} in the request body is threaded through to the same resolution
  * the real withdrawal uses ({@code resolveQualifyingChargeWithPercentage(...)} / {@code resolvePercentage(...)}, both
@@ -103,8 +106,10 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                     "No early-withdrawal interest-charge rule is configured for this account's product.");
         }
 
-        return rule.isCumulative() ? calculateCumulative(account, withdrawalDate, percentageOverride)
-                : calculateCustomPeriod(account, withdrawalDate, rule, selectedFromDateParam, selectedToDateParam, percentageOverride);
+        final boolean forClosure = Boolean.TRUE.equals(this.fromJsonHelper.extractBooleanNamed(FOR_CLOSURE, element));
+        return rule.isCumulative() ? calculateCumulative(account, withdrawalDate, percentageOverride, forClosure)
+                : calculateCustomPeriod(account, withdrawalDate, rule, selectedFromDateParam, selectedToDateParam, percentageOverride,
+                        forClosure);
     }
 
     private void validateWithdrawalDate(final LocalDate withdrawalDate) {
@@ -120,7 +125,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
     }
 
     private EarlyWithdrawalChargeData calculateCumulative(final SavingsAccount account, final LocalDate withdrawalDate,
-            final BigDecimal percentageOverride) {
+            final BigDecimal percentageOverride, final boolean forClosure) {
         final CumulativeInterestForfeitureService.QualifyingCharge qualifying = this.cumulativeInterestForfeitureService
                 .resolveQualifyingChargeWithPercentage(account, percentageOverride);
         if (qualifying == null) {
@@ -128,25 +133,35 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                     "No active penalty charge qualifies for this account's cumulative early-withdrawal rule.");
         }
 
-        final LocalDate basisDate = this.cumulativeInterestForfeitureService.forcedPostingDate(account, withdrawalDate, false);
-        calculateInterestThrough(account, basisDate);
+        // Do what the real exit does, so the quote is the charge: force-post the interest on the same date, then take
+        // the
+        // percentage of the interest posted net of the tax posted with it. A closure dates that posting on the closure
+        // date (the accrual through the day before it), an ordinary withdrawal the day before the withdrawal.
+        final LocalDate basisDate = this.cumulativeInterestForfeitureService.forcedPostingDate(account, withdrawalDate, forClosure);
+        if (this.cumulativeInterestForfeitureService.latestInterestPostingOn(account, basisDate) == null) {
+            postInterestOn(account, basisDate,
+                    forClosure ? account.interestPostingUpToForClosure(withdrawalDate) : DateUtils.getBusinessLocalDate());
+        }
+        account.refreshSummary(false);
 
         final BigDecimal alreadyForfeited = this.cumulativeInterestForfeitureService.sumActiveAppliedAmount(account.getId());
-        final BigDecimal totalInterestEarned = zeroIfNull(account.getSummary().getTotalInterestEarned());
+        final BigDecimal totalInterestPosted = zeroIfNull(account.getSummary().getTotalInterestPosted());
         final BigDecimal totalWithholdTax = zeroIfNull(account.getSummary().getTotalWithholdTax());
-        final BigDecimal basisAmount = totalInterestEarned.subtract(totalWithholdTax).subtract(alreadyForfeited).max(BigDecimal.ZERO);
-        final BigDecimal chargeAmount = CumulativeForfeitureCalculator.forfeitureAmount(totalInterestEarned, totalWithholdTax,
-                alreadyForfeited, qualifying.percentage());
+        final BigDecimal basisAmount = totalInterestPosted.subtract(totalWithholdTax).subtract(alreadyForfeited).max(BigDecimal.ZERO);
+        // Rounded to the currency, as the forfeiture transaction is when it is written, so the quote is the amount
+        // charged.
+        final BigDecimal chargeAmount = Money.of(account.getCurrency(), CumulativeForfeitureCalculator.forfeitureAmount(totalInterestPosted,
+                totalWithholdTax, alreadyForfeited, qualifying.percentage())).getAmount();
 
         final SavingsAccountCharge accountCharge = qualifying.accountCharge();
         return EarlyWithdrawalChargeData.applicable(account.getId(), withdrawalDate, InterestBasisMode.CUMULATIVE.name(),
                 accountCharge.getCharge().getId(), accountCharge.getCharge().getName(), qualifying.percentage(), basisAmount, chargeAmount,
-                null, null);
+                null, null, account.getSummary().getAccountBalance());
     }
 
     private EarlyWithdrawalChargeData calculateCustomPeriod(final SavingsAccount account, final LocalDate withdrawalDate,
             final AdvanclyChargeInterestRule rule, final LocalDate selectedFromDateParam, final LocalDate selectedToDateParam,
-            final BigDecimal percentageOverride) {
+            final BigDecimal percentageOverride, final boolean forClosure) {
         final SavingsAccountCharge accountCharge = this.advanclyInterestChargeApplicationService.resolveAccountCharge(account,
                 rule.chargeId());
         if (accountCharge == null) {
@@ -154,6 +169,21 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                     "No active penalty charge qualifies for this account's custom-period early-withdrawal rule.");
         }
         this.advanclyInterestChargeApplicationService.validateDailyPostingPeriod(account);
+
+        // A closure posts its closing interest before it takes the charge, so the interest posted in the period is what
+        // the
+        // closure will see, not just what the daily postings have reached; the withdrawal of a period only charges what
+        // is
+        // posted. The balance after that posting is what the closure pays out of.
+        BigDecimal accountBalanceAfterPosting = null;
+        if (forClosure) {
+            final LocalDate postingDate = account.interestPostingTransactionDateForClosure(withdrawalDate);
+            if (this.cumulativeInterestForfeitureService.latestInterestPostingOn(account, postingDate) == null) {
+                postInterestOn(account, postingDate, account.interestPostingUpToForClosure(withdrawalDate));
+            }
+            account.refreshSummary(false);
+            accountBalanceAfterPosting = account.getSummary().getAccountBalance();
+        }
 
         final LocalDate resolvedSelectedFromDate = this.advanclyInterestChargeApplicationService.selectedFromDate(account, withdrawalDate,
                 selectedFromDateParam, rule);
@@ -168,7 +198,8 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                 && this.interestChargeApplicationRepository.countActiveForSelectedPeriod(account.getId(), rule.chargeId(),
                         resolvedSelectedFromDate, resolvedSelectedToDate) > 0) {
             return EarlyWithdrawalChargeData.notApplicable(account.getId(), withdrawalDate,
-                    "A charge has already been applied for this selected period under a once-per-selected-period policy.");
+                    "A charge has already been applied for this selected period under a once-per-selected-period policy.",
+                    accountBalanceAfterPosting);
         }
 
         final BigDecimal selectedNetInterestAmount = this.advanclyInterestChargeApplicationService.selectedPostedNetInterest(account,
@@ -180,7 +211,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
         final BigDecimal percentage = this.advanclyInterestChargeApplicationService.resolvePercentage(percentageOverride, accountCharge);
         if (percentage == null || percentage.compareTo(BigDecimal.ZERO) <= 0 || remaining.compareTo(BigDecimal.ZERO) <= 0) {
             return EarlyWithdrawalChargeData.notApplicable(account.getId(), withdrawalDate,
-                    "No net interest remains available to charge for the selected period.");
+                    "No net interest remains available to charge for the selected period.", accountBalanceAfterPosting);
         }
 
         final BigDecimal baseCharge = InterestChargeMath.recomputedChargeAmount(remaining, percentage);
@@ -188,20 +219,23 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
 
         return EarlyWithdrawalChargeData.applicable(account.getId(), withdrawalDate, rule.interestBasisMode().name(),
                 accountCharge.getCharge().getId(), accountCharge.getCharge().getName(), percentage, remaining, chargeAmount,
-                resolvedSelectedFromDate, resolvedSelectedToDate);
+                resolvedSelectedFromDate, resolvedSelectedToDate, accountBalanceAfterPosting);
     }
 
-    /** Same "run #1" the interest-calculation preview endpoint runs - see this class's javadoc. */
-    private void calculateInterestThrough(final SavingsAccount account, final LocalDate asOfDate) {
-        final MathContext mc = new MathContext(15, MoneyHelper.getRoundingMode());
+    /**
+     * Posts the interest on {@code postingDate} the way a real exit does, on this detached copy of the account only, so
+     * the interest and the tax it posts can be read back from the summary.
+     */
+    private void postInterestOn(final SavingsAccount account, final LocalDate postingDate, final LocalDate interestPostingUpToDate) {
+        final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();
         final boolean isInterestTransfer = false;
         final boolean backdatedTxnsAllowedTill = false;
         final boolean postReversals = false;
-        account.calculateInterestUsing(mc, asOfDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
+        account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+                financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill, postReversals);
     }
 
     private static BigDecimal zeroIfNull(final BigDecimal value) {

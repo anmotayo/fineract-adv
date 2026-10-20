@@ -129,7 +129,7 @@ public class DynamicDepositRateHistoryService {
      */
     public BigDecimal computeInvestedAmountAsOf(final DynamicDepositAccount account, final SavingsAccountTransaction uptoAndIncluding) {
         return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(account.getTransactions(), account.getCurrency(),
-                uptoAndIncluding);
+                account.interestTransferTransactionIds(), uptoAndIncluding);
     }
 
     /**
@@ -154,7 +154,7 @@ public class DynamicDepositRateHistoryService {
         }
 
         final Map<SavingsAccountTransaction, BigDecimal> investedAfter = DynamicDepositInvestedAmountCalculator
-                .investedAmountAfterEach(account.getTransactions(), account.getCurrency());
+                .investedAmountAfterEach(account.getTransactions(), account.getCurrency(), account.interestTransferTransactionIds());
         final DepositAccountDynamicRateHistory activationRow = rows.get(0);
         boolean changed = false;
         DepositAccountDynamicRateHistory latest = null;

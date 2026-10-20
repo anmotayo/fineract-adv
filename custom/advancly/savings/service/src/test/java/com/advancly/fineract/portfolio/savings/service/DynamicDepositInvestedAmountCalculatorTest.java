@@ -25,7 +25,9 @@ import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactio
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -34,10 +36,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * The amount invested is the principal that is still in the account: deposits less the PRINCIPAL part of withdrawals. A
- * withdrawal takes interest first (what has been posted, less the tax withheld on it and any interest forfeited), and
- * only the rest of it is principal. Subtracting every withdrawal in full - the old rule - drove a closed account to a
- * negative amount and understated the principal whenever interest had been paid out.
+ * The amount invested is the principal that is still in the account: deposits less the PRINCIPAL part of withdrawals.
+ * An interest transfer to the linked account takes interest only; the closing payout (the withdrawal that leaves the
+ * account empty, counting the early-withdrawal charge posted right after it) sweeps what interest is left and then
+ * principal; every other withdrawal is principal withdrawn in full, whatever interest the account holds at the time.
  */
 class DynamicDepositInvestedAmountCalculatorTest {
 
@@ -47,12 +49,14 @@ class DynamicDepositInvestedAmountCalculatorTest {
     private static final LocalDate APR_1 = LocalDate.of(2026, 4, 1);
 
     private final List<SavingsAccountTransaction> transactions = new ArrayList<>();
+    private final Set<Long> interestTransfers = new HashSet<>();
     private long nextId = 1;
 
     @BeforeEach
     void setUp() {
         MoneyHelperInitializer.initialize();
         this.transactions.clear();
+        this.interestTransfers.clear();
         this.nextId = 1;
     }
 
@@ -77,7 +81,7 @@ class DynamicDepositInvestedAmountCalculatorTest {
     void closingWithdrawalOfPrincipalAndInterestLeavesNothingInvestedNotANegativeAmount() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
-        final SavingsAccountTransaction closing = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "1024.93");
+        final SavingsAccountTransaction closing = addEmptyingWithdrawal(MAR_1, "1024.93");
 
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
@@ -88,7 +92,7 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
         add(SavingsAccountTransactionType.WITHHOLD_TAX, MAR_1, "2.49");
         // transferInterestToSavings: the interest less tax, 22.44, is paid out to the linked account.
-        final SavingsAccountTransaction interestTransfer = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "22.44");
+        final SavingsAccountTransaction interestTransfer = addInterestTransfer(MAR_1, "22.44");
 
         assertThat(invested(interestTransfer)).isEqualByComparingTo("1000");
     }
@@ -98,43 +102,75 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
         add(SavingsAccountTransactionType.WITHHOLD_TAX, MAR_1, "2.49");
-        add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "22.44");
+        addInterestTransfer(MAR_1, "22.44");
         final SavingsAccountTransaction principal = add(SavingsAccountTransactionType.WITHDRAWAL, APR_1, "1000");
 
         // No phantom interest is left to be mislabelled: the tax already took its share of the posting out.
         assertThat(invested(principal)).isEqualByComparingTo("0");
     }
 
+    // The bug: 300 of interest is sitting in the account and a customer takes out 5000 of their own money.
     @Test
-    void aWithdrawalLargerThanTheInterestTakesTheRestFromPrincipal() {
-        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
-        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "20");
-        final SavingsAccountTransaction withdrawal = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "120");
+    void aPrincipalWithdrawalIsPrincipalEvenWhileTheAccountHoldsInterest() {
+        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "100000");
+        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "300");
+        final SavingsAccountTransaction withdrawal = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "5000");
 
-        assertThat(invested(withdrawal)).isEqualByComparingTo("900");
+        assertThat(invested(withdrawal)).isEqualByComparingTo("95000");
     }
 
     @Test
-    void interestForfeitedIsNotAvailableToBeWithdrawnAsInterest() {
+    void interestForfeitedIsNotAvailableToBeSweptAsInterestByTheClosingPayout() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "20");
         add(SavingsAccountTransactionType.INTEREST_CHARGE, MAR_1, "10");
         // 1010 left in the account: 1000 principal and 10 of surviving interest.
-        final SavingsAccountTransaction closing = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "1010");
+        final SavingsAccountTransaction closing = addEmptyingWithdrawal(MAR_1, "1010");
 
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
+    // 1000 principal + 24.93 interest, 5.00 early-withdrawal charge: the payout is 1019.93 and leaves the 5.00 for the
+    // charge, which is posted right after it and is what brings the account to zero.
     @Test
-    void interestIsConsumedAcrossWithdrawalsInTheOrderTheyHappened() {
+    void theClosingPayoutIsRecognisedWhenTheEarlyWithdrawalChargeTakesTheLastOfTheBalance() {
+        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
+        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
+        final SavingsAccountTransaction payout = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "1019.93", "5.00");
+        final SavingsAccountTransaction charge = add(SavingsAccountTransactionType.INTEREST_CHARGE, MAR_1, "5.00", "0");
+
+        assertThat(invested(payout)).isEqualByComparingTo("0");
+        assertThat(invested(charge)).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void aWithdrawalThatLeavesBalanceBehindIsNotTakenForAClosingPayout() {
+        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
+        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "20");
+        final SavingsAccountTransaction withdrawal = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "500", "520");
+
+        assertThat(invested(withdrawal)).isEqualByComparingTo("500");
+    }
+
+    @Test
+    void aWithdrawalWithoutARunningBalanceIsPrincipal() {
+        add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
+        add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "20");
+        final SavingsAccountTransaction simulated = add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "120");
+
+        assertThat(invested(simulated)).isEqualByComparingTo("880");
+    }
+
+    @Test
+    void interestIsConsumedAcrossInterestTransfersInTheOrderTheyHappened() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, JAN_1.plusDays(30), "10");
-        add(SavingsAccountTransactionType.WITHDRAWAL, JAN_1.plusDays(31), "6");
+        addInterestTransfer(JAN_1.plusDays(31), "6");
         add(SavingsAccountTransactionType.INTEREST_POSTING, JAN_1.plusDays(60), "10");
-        final SavingsAccountTransaction withdrawal = add(SavingsAccountTransactionType.WITHDRAWAL, JAN_1.plusDays(61), "100");
+        final SavingsAccountTransaction closing = addEmptyingWithdrawal(JAN_1.plusDays(61), "1014");
 
-        // 6 + 100 withdrawn against 20 of interest: 14 of the second comes from interest... 86 from principal.
-        assertThat(invested(withdrawal)).isEqualByComparingTo("914");
+        // 14 of interest was still there for the closing payout to sweep, so all 1000 of principal leaves.
+        assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
     @Test
@@ -159,7 +195,7 @@ class DynamicDepositInvestedAmountCalculatorTest {
     void theOrderTheTransactionsAreListedInDoesNotMatter() {
         final SavingsAccountTransaction closing = new SavingsAccountTransactionTestBuilder().withId(9L)
                 .withType(SavingsAccountTransactionType.WITHDRAWAL).withDate(MAR_1.plusDays(1)).withAmount(new BigDecimal("1024.93"))
-                .build();
+                .withRunningBalance(BigDecimal.ZERO).build();
         this.transactions.add(closing);
         this.transactions.add(new SavingsAccountTransactionTestBuilder().withId(8L).withType(SavingsAccountTransactionType.INTEREST_POSTING)
                 .withDate(MAR_1).withAmount(new BigDecimal("24.93")).build());
@@ -175,12 +211,12 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
         add(SavingsAccountTransactionType.WITHHOLD_TAX, MAR_1, "2.49");
-        add(SavingsAccountTransactionType.WITHDRAWAL, MAR_1, "22.44");
+        addInterestTransfer(MAR_1, "22.44");
         add(SavingsAccountTransactionType.DEPOSIT, APR_1, "300");
         add(SavingsAccountTransactionType.WITHDRAWAL, APR_1.plusDays(5), "1100");
 
         final java.util.Map<SavingsAccountTransaction, BigDecimal> investedAfter = DynamicDepositInvestedAmountCalculator
-                .investedAmountAfterEach(this.transactions, CURRENCY);
+                .investedAmountAfterEach(this.transactions, CURRENCY, this.interestTransfers);
 
         assertThat(investedAfter).hasSize(this.transactions.size());
         for (final SavingsAccountTransaction transaction : this.transactions) {
@@ -189,7 +225,25 @@ class DynamicDepositInvestedAmountCalculatorTest {
     }
 
     private BigDecimal invested(final SavingsAccountTransaction upTo) {
-        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(this.transactions, CURRENCY, upTo);
+        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(this.transactions, CURRENCY, this.interestTransfers, upTo);
+    }
+
+    private SavingsAccountTransaction addInterestTransfer(final LocalDate date, final String amount) {
+        final SavingsAccountTransaction transfer = add(SavingsAccountTransactionType.WITHDRAWAL, date, amount);
+        this.interestTransfers.add(transfer.getId());
+        return transfer;
+    }
+
+    private SavingsAccountTransaction addEmptyingWithdrawal(final LocalDate date, final String amount) {
+        return add(SavingsAccountTransactionType.WITHDRAWAL, date, amount, "0");
+    }
+
+    private SavingsAccountTransaction add(final SavingsAccountTransactionType type, final LocalDate date, final String amount,
+            final String runningBalanceAfter) {
+        final SavingsAccountTransaction transaction = new SavingsAccountTransactionTestBuilder().withId(this.nextId++).withType(type)
+                .withDate(date).withAmount(new BigDecimal(amount)).withRunningBalance(new BigDecimal(runningBalanceAfter)).build();
+        this.transactions.add(transaction);
+        return transaction;
     }
 
     private SavingsAccountTransaction add(final SavingsAccountTransactionType type, final LocalDate date, final String amount) {

@@ -230,7 +230,9 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
             return BigDecimal.ZERO;
         }
         final SavingsAccountTransaction last = transactions.stream().max(new SavingsAccountTransactionComparator()).orElseThrow();
-        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(transactions, account.getCurrency(), last).max(BigDecimal.ZERO);
+        return DynamicDepositInvestedAmountCalculator
+                .investedAmountAsOf(transactions, account.getCurrency(), account.interestTransferTransactionIds(), last)
+                .max(BigDecimal.ZERO);
     }
 
     private static BigDecimal zeroIfNull(final BigDecimal value) {

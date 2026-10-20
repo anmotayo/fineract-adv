@@ -240,7 +240,9 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
             return BigDecimal.ZERO;
         }
         final SavingsAccountTransaction last = transactions.stream().max(new SavingsAccountTransactionComparator()).orElseThrow();
-        return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(transactions, account.getCurrency(), last).max(BigDecimal.ZERO);
+        return DynamicDepositInvestedAmountCalculator
+                .investedAmountAsOf(transactions, account.getCurrency(), account.interestTransferTransactionIds(), last)
+                .max(BigDecimal.ZERO);
     }
 
     private Long withdraw(final DynamicDepositAccount account, final BigDecimal amount, final LocalDate closedDate,

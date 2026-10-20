@@ -33,6 +33,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -612,6 +613,17 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
         final BigDecimal runningBalanceOnPivotDate = getSummary().getRunningBalanceOnPivotDate();
         return runningBalanceOnPivotDate == null ? Money.zero(this.currency) : Money.of(this.currency, runningBalanceOnPivotDate);
+    }
+
+    /**
+     * The withdrawals that paid this account's interest out to its linked account (transfer type interest transfer).
+     * Empty for an account that has no helper or is not saved yet, such as the detached copy a rate preview works on.
+     */
+    public Set<Long> interestTransferTransactionIds() {
+        if (this.savingsHelper == null || getId() == null) {
+            return Set.of();
+        }
+        return new HashSet<>(this.savingsHelper.fetchPostInterestTransactionIds(getId()));
     }
 
     /**

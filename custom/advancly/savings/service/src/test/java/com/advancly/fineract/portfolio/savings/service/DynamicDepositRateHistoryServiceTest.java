@@ -36,9 +36,11 @@ import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
@@ -47,6 +49,7 @@ import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -201,6 +204,7 @@ class DynamicDepositRateHistoryServiceTest {
         transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
         final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
                 new BigDecimal("1024.93"));
+        closing.setRunningBalance(Money.zero(CURRENCY));
         staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
         staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "-24.93", "2");
         this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("-24.93"));
@@ -222,6 +226,7 @@ class DynamicDepositRateHistoryServiceTest {
         transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
         final SavingsAccountTransaction interestPayout = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 2, 1),
                 new BigDecimal("22.44"));
+        markAsInterestTransfers(interestPayout);
         staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
         staleRow(interestPayout, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "2");
 
@@ -247,6 +252,7 @@ class DynamicDepositRateHistoryServiceTest {
         transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
         final SavingsAccountTransaction interestTransfer = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL,
                 LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        markAsInterestTransfers(interestTransfer);
         staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "10");
         // Stale: counted the interest transfer as 22.44 of principal leaving, so 977.56 - the lower slab.
         staleRow(interestTransfer, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "5");
@@ -275,6 +281,14 @@ class DynamicDepositRateHistoryServiceTest {
         this.account = buildAccount(false, BigDecimal.valueOf(2));
 
         assertThat(this.service.recompute(this.account)).isFalse();
+    }
+
+    /** What the transfer records say: these withdrawals sent interest to the linked account. */
+    private void markAsInterestTransfers(final SavingsAccountTransaction... transfers) {
+        final SavingsHelper savingsHelper = mock(SavingsHelper.class);
+        lenient().when(savingsHelper.fetchPostInterestTransactionIds(anyLong()))
+                .thenReturn(Arrays.stream(transfers).map(SavingsAccountTransaction::getId).collect(Collectors.toList()));
+        ReflectionTestUtils.setField(this.account, "savingsHelper", savingsHelper);
     }
 
     private void staleRow(final SavingsAccountTransaction transaction, final DynamicDepositRateHistoryEventType eventType,

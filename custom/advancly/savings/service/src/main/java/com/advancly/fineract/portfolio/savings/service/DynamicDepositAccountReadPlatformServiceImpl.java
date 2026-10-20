@@ -22,8 +22,6 @@ import com.advancly.fineract.portfolio.savings.data.DynamicDepositAccountData;
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
 import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawal;
-import com.advancly.fineract.portfolio.savings.domain.DepositAccountInterestWithdrawalRepository;
 import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
 import com.advancly.fineract.portfolio.savings.exception.DynamicDepositAccountNotFoundException;
 import java.math.BigDecimal;
@@ -68,7 +66,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     private final JdbcTemplate jdbcTemplate;
     private final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService;
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
-    private final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository;
     private final DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
     private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
     private final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
@@ -84,7 +81,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
     public DynamicDepositAccountReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
             final DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService,
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
-            final DepositAccountInterestWithdrawalRepository interestWithdrawalRepository,
             final DepositAccountDynamicRateHistoryRepository rateHistoryRepository,
             final DepositInterestChargeApplicationRepository interestChargeApplicationRepository,
             final DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService) {
@@ -92,7 +88,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         this.jdbcTemplate = jdbcTemplate;
         this.dynamicDepositProductReadPlatformService = dynamicDepositProductReadPlatformService;
         this.savingsAccountRepository = savingsAccountRepository;
-        this.interestWithdrawalRepository = interestWithdrawalRepository;
         this.rateHistoryRepository = rateHistoryRepository;
         this.interestChargeApplicationRepository = interestChargeApplicationRepository;
         this.accountChartReadPlatformService = accountChartReadPlatformService;
@@ -138,21 +133,9 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
         final BigDecimal interestCharges = defaultToZero(
                 this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId));
+        final BigDecimal interestWithdrawn = BigDecimal.ZERO;
         // Phase 5 (Transfers And Withdrawal Lock) owns this field; it stays zero for now.
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
-
-        BigDecimal interestWithdrawn = BigDecimal.ZERO;
-        for (final DepositAccountInterestWithdrawal withdrawal : this.interestWithdrawalRepository
-                .findByAccountIdOrderByTransactionDateAscIdAsc(accountId)) {
-            // Skip marker rows whose linked posting or withdrawal transaction has since been reversed (e.g. a
-            // backdated-transaction correction that reverses-and-replaces the interest posting transaction) - the
-            // marker's own row carries no reversal state of its own (see class Javadoc), so this must be checked on
-            // both linked transactions to avoid double-counting against a transaction that no longer stands.
-            if (withdrawal.interestPostingTransaction().isReversed() || withdrawal.withdrawalTransaction().isReversed()) {
-                continue;
-            }
-            interestWithdrawn = interestWithdrawn.add(withdrawal.withdrawnInterestAmount());
-        }
 
         // Life-to-date scope, consistent with withholdingTax and interestCharges (both life-to-date; charges are
         // read from the application ledger) - not totalInterestForPeriod, which is the current unposted accrual.

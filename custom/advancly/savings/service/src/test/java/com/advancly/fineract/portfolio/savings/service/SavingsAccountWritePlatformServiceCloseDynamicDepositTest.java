@@ -137,8 +137,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  * {@code SavingsAccount#close(...)}'s own {@code results.in.balance.not.zero} check.
  *
  * The early-withdrawal charge service is deliberately REAL here (only its repositories are mocked), so that the
- * settlement withdrawal genuinely runs through {@code recordIfApplicable(...)} and the suppression that stops it
- * creating a second, never-appliable pending row for the same closure is actually exercised rather than assumed.
+ * suppression that stops the settlement withdrawal creating a second, never-applicable pending row for the same closure
+ * is actually exercised rather than assumed.
  */
 @ExtendWith(MockitoExtension.class)
 class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {

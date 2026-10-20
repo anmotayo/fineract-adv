@@ -25,9 +25,11 @@ import java.util.List;
 
 /**
  * Read-side reporting summary for a Dynamic Deposit account's interest position (implementation plan Section 9). Purely
- * a reporting surface over data already produced by the interest-calculation engine ({@code account.getSummary()}), the
- * FIFO interest-withdrawal marker table ({@code DepositAccountInterestWithdrawal}) and the rate-history table
- * ({@code DepositAccountDynamicRateHistory}) - it adds no new business logic of its own.
+ * a reporting surface over data already produced by the interest-calculation engine ({@code account.getSummary()}) and
+ * the rate-history table ({@code DepositAccountDynamicRateHistory}) - it adds no new business logic of its own.
+ *
+ * {@code interestWithdrawn} is always {@link BigDecimal#ZERO}; withdrawals are no longer separately attributed by
+ * posted-interest source.
  *
  * {@code interestTransferredToSavings} is always {@link BigDecimal#ZERO} this phase; Phase 5 of the implementation plan
  * (Transfers And Withdrawal Lock) is responsible for populating it.

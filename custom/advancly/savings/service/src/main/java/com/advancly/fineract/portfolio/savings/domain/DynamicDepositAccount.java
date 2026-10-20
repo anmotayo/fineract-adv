@@ -495,7 +495,6 @@ public class DynamicDepositAccount extends SavingsAccount {
                 relaxingDaysConfigForPivotDate, refNo);
         DynamicDepositServiceLocator.rateHistoryService().recordPrincipalChangeEvent(this, transaction,
                 DynamicDepositRateHistoryEventType.WITHDRAWAL);
-        DynamicDepositServiceLocator.interestWithdrawalService().recordIfApplicable(this, transaction);
         return transaction;
     }
 

@@ -33,8 +33,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionCom
  *
  * It is deposits less the PRINCIPAL part of withdrawals. A withdrawal takes interest first - the interest posted, less
  * the tax withheld on it and any interest forfeited, that has not already been withdrawn - and only what is left of it
- * is principal. This is the same interest-first rule the interest-withdrawal ledger uses to label a withdrawal, but
- * with the interest net of tax, so a payout of interest less tax leaves nothing behind to be mislabelled later.
+ * is principal. This is applied with the interest net of tax, so a payout of interest less tax leaves nothing behind to
+ * be mislabelled later.
  *
  * Subtracting every withdrawal in full, as this used to, drove a fully closed account to a negative amount, and
  * understated the principal whenever interest had been paid out (for instance each time

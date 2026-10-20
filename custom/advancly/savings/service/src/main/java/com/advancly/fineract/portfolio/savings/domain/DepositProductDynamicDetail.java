@@ -53,32 +53,23 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
     @Column(name = "dynamic_rate_enabled", nullable = false)
     private boolean dynamicRateEnabled;
 
-    /**
-     * Legacy product-level flag retained for existing rows. Charge-driven early-withdrawal rules now live on
-     * m_adv_charge_interest_rule and this flag is no longer written from product APIs.
-     */
-    @Column(name = "early_withdrawal_penalty_enabled", nullable = false)
-    private boolean earlyWithdrawalPenaltyEnabled;
-
     protected DepositProductDynamicDetail() {
         //
     }
 
-    private DepositProductDynamicDetail(final SavingsProduct product, final boolean allowWithdrawal, final boolean dynamicRateEnabled,
-            final boolean earlyWithdrawalPenaltyEnabled) {
+    private DepositProductDynamicDetail(final SavingsProduct product, final boolean allowWithdrawal, final boolean dynamicRateEnabled) {
         this.product = product;
         this.allowWithdrawal = allowWithdrawal;
         this.dynamicRateEnabled = dynamicRateEnabled;
-        this.earlyWithdrawalPenaltyEnabled = earlyWithdrawalPenaltyEnabled;
     }
 
     public static DepositProductDynamicDetail createNew(final SavingsProduct product, final boolean allowWithdrawal,
-            final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled) {
-        return new DepositProductDynamicDetail(product, allowWithdrawal, dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
+            final boolean dynamicRateEnabled) {
+        return new DepositProductDynamicDetail(product, allowWithdrawal, dynamicRateEnabled);
     }
 
     public Map<String, Object> update(final JsonCommand command) {
-        final Map<String, Object> actualChanges = new LinkedHashMap<>(3);
+        final Map<String, Object> actualChanges = new LinkedHashMap<>(2);
 
         if (command.isChangeInBooleanParameterNamed(allowWithdrawalParamName, this.allowWithdrawal)) {
             final boolean newValue = command.booleanPrimitiveValueOfParameterNamed(allowWithdrawalParamName);
@@ -109,9 +100,5 @@ public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTim
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicRateEnabled;
-    }
-
-    public boolean isEarlyWithdrawalPenaltyEnabled() {
-        return this.earlyWithdrawalPenaltyEnabled;
     }
 }

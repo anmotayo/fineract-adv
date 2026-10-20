@@ -155,7 +155,7 @@ public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler 
         final DynamicDepositProduct product = DynamicDepositProduct.createNew(name, shortName, description, currency, interestRate,
                 interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
                 lockinPeriodFrequency, lockinPeriodFrequencyType, accountingRuleType, charges, productTermAndPreClosure, charts,
-                minBalanceForInterestCalculation, withHoldTax, taxGroup, allowWithdrawal, dynamicRateEnabled, false);
+                minBalanceForInterestCalculation, withHoldTax, taxGroup, allowWithdrawal, dynamicRateEnabled);
 
         productTermAndPreClosure.updateProductReference(product);
 

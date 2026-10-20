@@ -27,11 +27,7 @@ import org.springframework.data.repository.query.Param;
 public interface DynamicDepositAccountRepository
         extends JpaRepository<DynamicDepositAccount, Long>, JpaSpecificationExecutor<DynamicDepositAccount> {
 
-    /**
-     * Backs {@link com.advancly.fineract.portfolio.savings.job.DynamicDepositPostInterestTasklet} (Task 7) - the
-     * scheduled counterpart to the shared, DTO-based bulk posting job, which excludes Dynamic Deposit accounts
-     * (deposit_type_enum = 500) so they are posted here instead, through the JPA-entity path.
-     */
+    /** Finds Dynamic Deposit account ids by status. */
     @Query("select a.id from DynamicDepositAccount a where a.status = :statusEnum")
     List<Long> findIdsByStatus(@Param("statusEnum") Integer statusEnum);
 }

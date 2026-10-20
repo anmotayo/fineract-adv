@@ -37,7 +37,6 @@
         <class>com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory</class>
-        <class>com.advancly.fineract.portfolio.savings.domain.SavingsProductEarlyWithdrawalCharge</class>
         <class>com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication</class>
 

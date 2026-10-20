@@ -102,8 +102,8 @@ public class DynamicDepositProduct extends SavingsProduct {
             final SavingsInterestCalculationDaysInYearType interestCalculationDaysInYearType, final Integer lockinPeriodFrequency,
             final SavingsPeriodFrequencyType lockinPeriodFrequencyType, final AccountingRuleType accountingRuleType,
             final Set<Charge> charges, final DepositProductTermAndPreClosure productTermAndPreClosure, final Set<InterestRateChart> charts,
-            final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final TaxGroup taxGroup,
-            final boolean allowWithdrawal, final boolean dynamicRateEnabled, final boolean earlyWithdrawalPenaltyEnabled) {
+            final BigDecimal minBalanceForInterestCalculation, final boolean withHoldTax, final TaxGroup taxGroup, final boolean allowWithdrawal,
+            final boolean dynamicRateEnabled) {
 
         final BigDecimal minRequiredOpeningBalance = null;
         final boolean withdrawalFeeApplicableForTransfer = false;
@@ -116,8 +116,7 @@ public class DynamicDepositProduct extends SavingsProduct {
                 accountingRuleType, charges, productTermAndPreClosure, charts, allowOverdraft, overdraftLimit,
                 minBalanceForInterestCalculation, withHoldTax, taxGroup);
 
-        final DepositProductDynamicDetail dynamicDetail = DepositProductDynamicDetail.createNew(product, allowWithdrawal,
-                dynamicRateEnabled, earlyWithdrawalPenaltyEnabled);
+        final DepositProductDynamicDetail dynamicDetail = DepositProductDynamicDetail.createNew(product, allowWithdrawal, dynamicRateEnabled);
         product.dynamicDetail = dynamicDetail;
 
         return product;
@@ -189,10 +188,6 @@ public class DynamicDepositProduct extends SavingsProduct {
 
     public boolean isDynamicRateEnabled() {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
-    }
-
-    public boolean isEarlyWithdrawalPenaltyEnabled() {
-        return this.dynamicDetail != null && this.dynamicDetail.isEarlyWithdrawalPenaltyEnabled();
     }
 
     @Override

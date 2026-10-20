@@ -94,14 +94,15 @@
     </changeSet>
 
     <changeSet author="advancly" id="5">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <not>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
             </not>
         </preConditions>
-        <createTable tableName="m_deposit_interest_charge_application">
+        <createTable tableName="m_savings_interest_charge_application">
             <column autoIncrement="true" name="id" type="BIGINT">
-                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_m_deposit_interest_charge_application"/>
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_m_savings_interest_charge_application"/>
             </column>
             <column name="savings_account_id" type="BIGINT">
                 <constraints nullable="false"/>
@@ -152,17 +153,17 @@
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <sqlCheck expectedResult="0">
                     SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
                      WHERE TABLE_SCHEMA = DATABASE()
-                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
-                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_account'
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_account'
                 </sqlCheck>
             </and>
         </preConditions>
-        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_interest_charge_application"
-                                 constraintName="FK_deposit_interest_charge_app_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_account" onDelete="RESTRICT" onUpdate="RESTRICT"
                                  referencedColumnNames="id" referencedTableName="m_savings_account"/>
     </changeSet>
 
@@ -170,17 +171,17 @@
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <sqlCheck expectedResult="0">
                     SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
                      WHERE TABLE_SCHEMA = DATABASE()
-                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
-                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_charge'
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_charge'
                 </sqlCheck>
             </and>
         </preConditions>
-        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_deposit_interest_charge_application"
-                                 constraintName="FK_deposit_interest_charge_app_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
                                  referencedColumnNames="id" referencedTableName="m_charge"/>
     </changeSet>
 
@@ -188,17 +189,17 @@
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <sqlCheck expectedResult="0">
                     SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
                      WHERE TABLE_SCHEMA = DATABASE()
-                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
-                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_withdrawal_txn'
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_withdrawal_txn'
                 </sqlCheck>
             </and>
         </preConditions>
-        <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_deposit_interest_charge_application"
-                                 constraintName="FK_deposit_interest_charge_app_withdrawal_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+        <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_withdrawal_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
                                  referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
     </changeSet>
 
@@ -206,17 +207,17 @@
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <sqlCheck expectedResult="0">
                     SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
                      WHERE TABLE_SCHEMA = DATABASE()
-                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
-                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_charge_txn'
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_charge_txn'
                 </sqlCheck>
             </and>
         </preConditions>
-        <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_deposit_interest_charge_application"
-                                 constraintName="FK_deposit_interest_charge_app_charge_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+        <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
                                  referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
     </changeSet>
 
@@ -224,31 +225,32 @@
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <sqlCheck expectedResult="0">
                     SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
                      WHERE TABLE_SCHEMA = DATABASE()
-                       AND TABLE_NAME = 'm_deposit_interest_charge_application'
-                       AND CONSTRAINT_NAME = 'FK_deposit_interest_charge_app_correction'
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_correction'
                 </sqlCheck>
             </and>
         </preConditions>
-        <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_deposit_interest_charge_application"
-                                 constraintName="FK_deposit_interest_charge_app_correction" onDelete="RESTRICT" onUpdate="RESTRICT"
-                                 referencedColumnNames="id" referencedTableName="m_deposit_interest_charge_application"/>
+        <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_correction" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_interest_charge_application"/>
     </changeSet>
 
     <changeSet author="advancly" id="11">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <not>
-                    <indexExists indexName="IDX_deposit_interest_charge_app_account_charge_date"/>
+                    <indexExists indexName="IDX_savings_interest_charge_app_account_charge_date"/>
                 </not>
             </and>
         </preConditions>
-        <createIndex indexName="IDX_deposit_interest_charge_app_account_charge_date"
-                     tableName="m_deposit_interest_charge_application">
+        <createIndex indexName="IDX_savings_interest_charge_app_account_charge_date"
+                     tableName="m_savings_interest_charge_application">
             <column name="savings_account_id"/>
             <column name="charge_id"/>
             <column name="transaction_date"/>
@@ -256,16 +258,17 @@
     </changeSet>
 
     <changeSet author="advancly" id="12">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <not>
-                    <indexExists indexName="IDX_deposit_interest_charge_app_selected_period"/>
+                    <indexExists indexName="IDX_savings_interest_charge_app_selected_period"/>
                 </not>
             </and>
         </preConditions>
-        <createIndex indexName="IDX_deposit_interest_charge_app_selected_period"
-                     tableName="m_deposit_interest_charge_application">
+        <createIndex indexName="IDX_savings_interest_charge_app_selected_period"
+                     tableName="m_savings_interest_charge_application">
             <column name="savings_account_id"/>
             <column name="charge_id"/>
             <column name="selected_from_date"/>
@@ -274,111 +277,51 @@
     </changeSet>
 
     <changeSet author="advancly" id="13">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <not>
-                    <indexExists indexName="IDX_deposit_interest_charge_app_withdrawal"/>
+                    <indexExists indexName="IDX_savings_interest_charge_app_withdrawal"/>
                 </not>
             </and>
         </preConditions>
-        <createIndex indexName="IDX_deposit_interest_charge_app_withdrawal"
-                     tableName="m_deposit_interest_charge_application">
+        <createIndex indexName="IDX_savings_interest_charge_app_withdrawal"
+                     tableName="m_savings_interest_charge_application">
             <column name="withdrawal_transaction_id"/>
         </createIndex>
     </changeSet>
 
     <changeSet author="advancly" id="14">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <not>
-                    <indexExists indexName="IDX_deposit_interest_charge_app_charge_txn"/>
+                    <indexExists indexName="IDX_savings_interest_charge_app_charge_txn"/>
                 </not>
             </and>
         </preConditions>
-        <createIndex indexName="IDX_deposit_interest_charge_app_charge_txn"
-                     tableName="m_deposit_interest_charge_application">
+        <createIndex indexName="IDX_savings_interest_charge_app_charge_txn"
+                     tableName="m_savings_interest_charge_application">
             <column name="interest_charge_transaction_id"/>
         </createIndex>
     </changeSet>
 
     <changeSet author="advancly" id="15">
+        <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
-                <tableExists tableName="m_deposit_interest_charge_application"/>
+                <tableExists tableName="m_savings_interest_charge_application"/>
                 <not>
-                    <indexExists indexName="IDX_deposit_interest_charge_app_correction"/>
+                    <indexExists indexName="IDX_savings_interest_charge_app_correction"/>
                 </not>
             </and>
         </preConditions>
-        <createIndex indexName="IDX_deposit_interest_charge_app_correction"
-                     tableName="m_deposit_interest_charge_application">
+        <createIndex indexName="IDX_savings_interest_charge_app_correction"
+                     tableName="m_savings_interest_charge_application">
             <column name="correction_of_application_id"/>
         </createIndex>
-    </changeSet>
-
-    <changeSet author="advancly" id="16-mysql" context="mysql">
-        <preConditions onFail="MARK_RAN">
-            <and>
-                <tableExists tableName="m_adv_charge_interest_rule"/>
-                <tableExists tableName="m_savings_product_early_withdrawal_charge"/>
-            </and>
-        </preConditions>
-        <sql>
-            insert into m_adv_charge_interest_rule
-                (charge_id, interest_basis_mode_enum, custom_period_reapply_policy_enum, created_by, created_on_utc,
-                 last_modified_by, last_modified_on_utc)
-            select spc.charge_id,
-                   case when max(case when spc.early_withdrawal_charge_mode_enum = 2 then 1 else 0 end) = 1 then 1 else 2 end,
-                   case when max(case when spc.early_withdrawal_charge_mode_enum = 2 then 1 else 0 end) = 1 then null else 1 end,
-                   1,
-                   utc_timestamp(),
-                   1,
-                   utc_timestamp()
-              from m_savings_product_early_withdrawal_charge spc
-             where not exists (
-                   select 1
-                     from m_adv_charge_interest_rule rule
-                    where rule.charge_id = spc.charge_id
-             )
-             group by spc.charge_id
-        </sql>
-    </changeSet>
-
-    <changeSet author="advancly" id="16-postgresql" context="postgresql">
-        <preConditions onFail="MARK_RAN">
-            <and>
-                <tableExists tableName="m_adv_charge_interest_rule"/>
-                <tableExists tableName="m_savings_product_early_withdrawal_charge"/>
-            </and>
-        </preConditions>
-        <sql>
-            insert into m_adv_charge_interest_rule
-                (charge_id, interest_basis_mode_enum, custom_period_reapply_policy_enum, created_by, created_on_utc,
-                 last_modified_by, last_modified_on_utc)
-            select spc.charge_id,
-                   case when max(case when spc.early_withdrawal_charge_mode_enum = 2 then 1 else 0 end) = 1 then 1 else 2 end,
-                   case when max(case when spc.early_withdrawal_charge_mode_enum = 2 then 1 else 0 end) = 1 then null else 1 end,
-                   1,
-                   now() at time zone 'UTC',
-                   1,
-                   now() at time zone 'UTC'
-              from m_savings_product_early_withdrawal_charge spc
-             where not exists (
-                   select 1
-                     from m_adv_charge_interest_rule rule
-                    where rule.charge_id = spc.charge_id
-             )
-             group by spc.charge_id
-        </sql>
-    </changeSet>
-
-    <changeSet author="advancly" id="17">
-        <preConditions onFail="MARK_RAN">
-            <tableExists tableName="m_savings_product_early_withdrawal_charge"/>
-        </preConditions>
-        <dropTable tableName="m_savings_product_early_withdrawal_charge" cascadeConstraints="true"/>
     </changeSet>
 
 </databaseChangeLog>

@@ -276,6 +276,79 @@ public class DynamicDepositAccount extends SavingsAccount {
         this.closingAtMaturity = closingAtMaturity;
     }
 
+    public boolean isMatured() {
+        return SavingsAccountStatusType.MATURED.hasStateOf(getStatus());
+    }
+
+    /**
+     * Called when the account reaches its maturity date. From here it is no longer active: core refuses deposits,
+     * withdrawals and transfers on it, and the only thing left to do is close it.
+     */
+    public void markMatured() {
+        setStatus(SavingsAccountStatusType.MATURED.getValue());
+    }
+
+    /**
+     * Core's {@code withdraw} gates on this hook, and Fixed and Recurring Deposits widen it to matured accounts so the
+     * money can leave. A Dynamic Deposit also takes manual withdrawals, so a matured one lets a withdrawal through only
+     * while its own closure is paying it out ({@link #markClosingAtMaturity}). Deposits are gated by
+     * {@code isNotActive()} in core, so a matured account takes none.
+     */
+    @Override
+    public boolean isTransactionsAllowed() {
+        return super.isTransactionsAllowed() || (this.closingAtMaturity && isMatured());
+    }
+
+    /**
+     * Core only closes an account that is active; a matured one is the account a maturity closure closes. It goes
+     * through core's own closing checks as if still active and is left matured if any of them fails.
+     */
+    @Override
+    public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
+        if (!isMatured()) {
+            return super.close(currentUser, command);
+        }
+        setStatus(SavingsAccountStatusType.ACTIVE.getValue());
+        try {
+            return super.close(currentUser, command);
+        } catch (final RuntimeException e) {
+            markMatured();
+            throw e;
+        }
+    }
+
+    /**
+     * Modelled on {@code RecurringDepositAccount#deposit}: a matured account takes no transaction, and none dated on or
+     * after the maturity date, so from then on it can only be closed. The payout of the closure is the one exemption
+     * (see {@link #markClosingAtMaturity}). Matured status enforces the first once the maturity job has run; the date
+     * rule covers the maturity day itself and every day until the job runs. Like core and RD this throws
+     * {@link PlatformApiDataValidationException}, so jobs that process many accounts log it and carry on.
+     */
+    private void validateMaturityAllowsTransaction(final SavingsAccountTransactionDTO transactionDTO) {
+        if (this.closingAtMaturity || transactionDTO.getTransactionDate() == null) {
+            return;
+        }
+        if (isMatured()) {
+            throw maturityValidationError("error.msg." + DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME + ".transaction.account.is.matured",
+                    "Transaction is not allowed. Account is matured.", transactionDTO);
+        }
+        final LocalDate maturityDate = maturityDate();
+        if (maturityDate != null && !DateUtils.isBefore(transactionDTO.getTransactionDate(), maturityDate)) {
+            throw maturityValidationError(
+                    "error.msg." + DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME + ".transaction.date.is.after.account.maturity.date",
+                    "Transaction is not allowed. Transaction date is on or after account maturity date.", transactionDTO);
+        }
+    }
+
+    private static PlatformApiDataValidationException maturityValidationError(final String code, final String defaultUserMessage,
+            final SavingsAccountTransactionDTO transactionDTO) {
+        final ApiParameterError error = ApiParameterError.parameterError(code, defaultUserMessage, "transactionDate",
+                transactionDTO.getTransactionDate().format(transactionDTO.getFormatter()));
+        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
+        dataValidationErrors.add(error);
+        return new PlatformApiDataValidationException(dataValidationErrors);
+    }
+
     /**
      * The one hook core offers a request for carrying its own early-withdrawal charge percentage; this type honours it.
      */
@@ -480,6 +553,7 @@ public class DynamicDepositAccount extends SavingsAccount {
     public SavingsAccountTransaction deposit(final SavingsAccountTransactionDTO transactionDTO,
             final SavingsAccountTransactionType savingsAccountTransactionType, final boolean backdatedTxnsAllowedTill,
             final Long relaxingDaysConfigForPivotDate, final String refNo) {
+        validateMaturityAllowsTransaction(transactionDTO);
         final SavingsAccountTransaction transaction = super.deposit(transactionDTO, savingsAccountTransactionType, backdatedTxnsAllowedTill,
                 relaxingDaysConfigForPivotDate, refNo);
         if (savingsAccountTransactionType == SavingsAccountTransactionType.DEPOSIT) {
@@ -492,6 +566,7 @@ public class DynamicDepositAccount extends SavingsAccount {
     @Override
     public SavingsAccountTransaction withdraw(final SavingsAccountTransactionDTO transactionDTO, final boolean applyWithdrawFee,
             final boolean backdatedTxnsAllowedTill, final Long relaxingDaysConfigForPivotDate, final String refNo) {
+        validateMaturityAllowsTransaction(transactionDTO);
         final SavingsAccountTransaction transaction = super.withdraw(transactionDTO, applyWithdrawFee, backdatedTxnsAllowedTill,
                 relaxingDaysConfigForPivotDate, refNo);
         DynamicDepositServiceLocator.rateHistoryService().recordPrincipalChangeEvent(this, transaction,

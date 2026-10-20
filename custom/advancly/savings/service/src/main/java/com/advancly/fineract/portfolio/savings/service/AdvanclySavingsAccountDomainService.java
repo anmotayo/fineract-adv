@@ -91,12 +91,14 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             final MonetaryCurrency currency, final SavingsAccountTransaction lastBalanceBearingTransaction, boolean isAccountTransfer) {
         account.validateForAccountBlock();
         account.validateForCreditBlock();
+        SavingsTransactionRules.validateDepositAllowed(account, transactionDate);
 
         UUID refNo = UUID.randomUUID();
         final SavingsAccountTransaction deposit = SavingsAccountTransaction.deposit(account, account.office(), paymentDetail,
                 transactionDate, Money.of(currency, transactionAmount), refNo.toString());
 
         account.addTransactionToExisting(deposit);
+        account.clearInactivityOnTransaction();
 
         transactionHelper.updatePreviousTransactionBalanceEndDate(lastBalanceBearingTransaction, transactionDate, currency);
         transactionHelper.setRunningBalanceForAppendPath(deposit, lastRunningBalance, currency);
@@ -127,6 +129,13 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
             boolean isAccountTransfer) {
         account.validateForAccountBlock();
         account.validateForDebitBlock();
+        SavingsTransactionRules.validateWithdrawalAllowed(account, transactionDate);
+        if (applyWithdrawFee && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account)) {
+            // Core pays the withdrawal fee inside the withdrawal; this path does not, so the caller has to send such a
+            // withdrawal to core. Refusing here keeps a caller that forgot from quietly waiving the fee.
+            throw new IllegalStateException(
+                    "Account " + account.getId() + " has a withdrawal fee, which only a withdrawal through core pays.");
+        }
 
         UUID refNo = UUID.randomUUID();
         final SavingsAccountTransaction withdrawal = SavingsAccountTransaction.withdrawal(account, account.office(), paymentDetail,
@@ -134,6 +143,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
 
         transactionHelper.validateBalanceForAppendPath(account, transactionAmount, currency);
         account.addTransactionToExisting(withdrawal);
+        account.clearInactivityOnTransaction();
         transactionHelper.updatePreviousTransactionBalanceEndDate(lastBalanceBearingTransaction, transactionDate, currency);
         transactionHelper.setRunningBalanceForAppendPath(withdrawal, lastRunningBalance, currency);
         transactionHelper.updateSummaryIncremental(account, withdrawal, currency);

@@ -181,16 +181,19 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         final BigDecimal principal = zeroIfNull(summary.getAccountBalance());
         final BigDecimal interestPostedBefore = zeroIfNull(summary.getTotalInterestPosted());
 
-        // The closure's settlement, on this in-memory copy: the closing interest posts (net of withholding tax).
-        final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
-        account.postInterest(mc, closedOnDate, false, this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
-                this.configurationDomainService.retrieveFinancialYearBeginningMonth(),
-                account.interestPostingTransactionDateForClosure(closedOnDate), false, false);
-        // A closure also writes tax configured to be withheld at maturity - unless a cumulative forfeiture settles it,
-        // which
-        // takes its own course - so the preview must too, or it would show more than the closure pays.
-        if (qualifying == null) {
-            account.withholdMaturityTaxAtClosure(account.interestPostingTransactionDateForClosure(closedOnDate));
+        // The settlement, on this in-memory copy: the closing interest posts (net of withholding tax). A matured
+        // account
+        // has had it already - the maturity posted it and closing does not post it again - so there is nothing to add.
+        if (!account.isMatured()) {
+            final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
+            account.postInterest(mc, closedOnDate, false, this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
+                    this.configurationDomainService.retrieveFinancialYearBeginningMonth(),
+                    account.interestPostingTransactionDateForClosure(closedOnDate), false, false);
+            // A closure also writes tax configured to be withheld at maturity - unless a cumulative forfeiture settles
+            // it, which takes its own course - so the preview must too, or it would show more than the closure pays.
+            if (qualifying == null) {
+                account.withholdMaturityTaxAtClosure(account.interestPostingTransactionDateForClosure(closedOnDate));
+            }
         }
 
         final BigDecimal totalInterestPosted = zeroIfNull(summary.getTotalInterestPosted());

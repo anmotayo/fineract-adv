@@ -595,7 +595,11 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         } else {
             this.balanceEndDate = endOfBalanceDate;
         }
-        this.balanceNumberOfDays = LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate();
+        // Same rule for the day count: a window that would end before it starts holds the balance for no days, never a
+        // negative number of them (a transaction dated after the date the balances are being reset up to, e.g. the
+        // business date or a deposit's maturity). Transactions sharing a date still get exactly 0 here.
+        this.balanceNumberOfDays = Math.max(0,
+                LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate());
         this.cumulativeBalance = Money.of(currency, this.runningBalance).multipliedBy(this.balanceNumberOfDays).getAmount();
     }
 

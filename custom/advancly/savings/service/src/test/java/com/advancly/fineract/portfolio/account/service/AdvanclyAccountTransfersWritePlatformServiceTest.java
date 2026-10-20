@@ -485,6 +485,91 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
     }
 
+    // Core pays a withdrawal fee inside the withdrawal - on a transfer too, when the account charges one on transfers.
+    // The
+    // append path does not, so such a transfer takes its withdrawal through core.
+    @Test
+    void aTransferOutOfAnAccountThatChargesAWithdrawalFeeOnTransfersTakesItsWithdrawalThroughCore() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        withWithdrawalFee(fromAccount, true, true, false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(AssembledSavingsAccount.of(fromAccount, fromLastTxn));
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(AssembledSavingsAccount.of(toAccount, toLastTxn));
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), anyBoolean()))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(101L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.transferFunds(dto);
+
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), anyBoolean());
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), any(), any(),
+                any(), anyBoolean());
+    }
+
+    // A fee the account does not charge on transfers is not one core pays on this transfer: it stays on the append
+    // path.
+    @Test
+    void aTransferOutOfAnAccountWhoseWithdrawalFeeDoesNotApplyToTransfersStaysOnTheAppendPath() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        withWithdrawalFee(fromAccount, false, true, false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(AssembledSavingsAccount.of(fromAccount, fromLastTxn));
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(AssembledSavingsAccount.of(toAccount, toLastTxn));
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(101L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.transferFunds(dto);
+
+        verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
+        verify(coreDomainService, never()).handleWithdrawal(any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
     @Test
     void transferFundsIntoDynamicDepositAlwaysUsesCoreDepositEvenWhenAppendPathEligible() {
         // Deposit-type accounts (FD/RD/Dynamic Deposit) never use the optimized append path: it builds the
@@ -730,6 +815,16 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
         when(command.extractLocale()).thenReturn(Locale.ENGLISH);
         when(command.dateFormat()).thenReturn("dd MMMM yyyy");
         return command;
+    }
+
+    private void withWithdrawalFee(SavingsAccount account, boolean feeAppliesToTransfers, boolean active, boolean percentageOfInterest) {
+        org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge charge = Mockito
+                .mock(org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge.class);
+        Mockito.lenient().when(charge.isWithdrawalFee()).thenReturn(true);
+        Mockito.lenient().when(charge.isActive()).thenReturn(active);
+        Mockito.lenient().when(charge.isPercentageOfInterest()).thenReturn(percentageOfInterest);
+        ReflectionTestUtils.setField(account, "charges", new java.util.HashSet<>(java.util.List.of(charge)));
+        ReflectionTestUtils.setField(account, "withdrawalFeeApplicableForTransfer", feeAppliesToTransfers);
     }
 
     private SavingsAccount savingsAccount(Long savingsId, BigDecimal runningBalance) {

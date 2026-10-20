@@ -54,6 +54,13 @@ public interface AdvanclySavingsAccountTransactionRepository extends JpaReposito
             + "order by sat.transaction_date desc, sat.created_date desc, sat.id desc limit 1)", nativeQuery = true)
     List<SavingsAccountTransaction> findLastNonReversedAndBalanceBearingTransactions(Long savingsId);
 
+    // Core reverses the accruals dated on or after a new transaction (SavingsAccount#accrualsForSavingsReverse); the
+    // append path does not, so a transaction with an accrual in its way goes through core instead.
+    @Query("select count(sat) > 0 from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId "
+            + "and sat.typeOf = :accrualType and sat.reversed = false and sat.dateOf >= :date")
+    boolean existsAccrualOnOrAfter(@Param("savingsId") Long savingsId, @Param("accrualType") Integer accrualType,
+            @Param("date") LocalDate date);
+
     // O(1) append path: get just the last transaction date for path decision (excludes accrual type 10)
     @Query("select max(sat.dateOf) from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "
             + "and sat.reversed = false and sat.reversalTransaction = false " + "and sat.typeOf <> 10")

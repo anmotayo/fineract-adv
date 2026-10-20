@@ -247,6 +247,78 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
     }
 
+    // ---- maturing: the interest and tax are settled by the maturity, and the closure that follows settles nothing
+    // ----
+
+    // Tax withheld at each interest posting: the final posting, written when the account matures, is taxed there and
+    // then, like every posting before it.
+    @Test
+    void maturingAnAccountTaxedAtInterestPostingWithholdsTaxOnTheFinalPostingAndMarksItMatured() {
+        withholdingTax(WithHoldTaxPostingType.INTEREST_POSTING, true);
+
+        final boolean matured = this.service.matureAccount(this.account);
+
+        assertThat(matured).isTrue();
+        assertThat(this.account.isMatured()).isTrue();
+        final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+        assertThat(posting.getTransactionDate()).isEqualTo(MATURITY_DATE);
+        assertThat(tax.getTransactionDate()).isEqualTo(MATURITY_DATE);
+        assertThat(tax.getAmount())
+                .isEqualByComparingTo(posting.getAmount().multiply(new BigDecimal("0.1")).setScale(2, java.math.RoundingMode.HALF_UP));
+        assertThat(journalled(SavingsAccountTransactionType.INTEREST_POSTING)).hasSize(1);
+        assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
+    }
+
+    // Tax withheld at maturity: it is written when the account matures, on all the interest posted.
+    @Test
+    void maturingAnAccountTaxedAtMaturityWithholdsTheTaxOnTheInterestPostedOnce() {
+        withholdingTax(WithHoldTaxPostingType.MATURITY, true);
+
+        this.service.matureAccount(this.account);
+
+        final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+        assertThat(tax.getAmount())
+                .isEqualByComparingTo(posting.getAmount().multiply(new BigDecimal("0.1")).setScale(2, java.math.RoundingMode.HALF_UP));
+        assertThat(this.account.isMatured()).isTrue();
+    }
+
+    @Test
+    void maturingAnAccountTwiceSettlesItOnlyOnce() {
+        withholdingTax(WithHoldTaxPostingType.INTEREST_POSTING, true);
+
+        assertThat(this.service.matureAccount(this.account)).isTrue();
+        assertThat(this.service.matureAccount(this.account)).isFalse();
+
+        single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+        single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+    }
+
+    // The closure of a matured account pays out what the maturity left - principal and the interest less tax - and
+    // posts no second interest or tax, whichever way the tax is configured.
+    @Test
+    void closingAMaturedAccountPostsNoSecondInterestOrTaxAndPaysOutPrincipalPlusInterestLessTax() {
+        for (final WithHoldTaxPostingType postingType : new WithHoldTaxPostingType[] { WithHoldTaxPostingType.INTEREST_POSTING,
+                WithHoldTaxPostingType.MATURITY }) {
+            setUp();
+            withholdingTax(postingType, true);
+            this.service.matureAccount(this.account);
+            final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+            final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+
+            this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), closeCommand(WITHDRAW),
+                    new java.util.HashMap<>());
+
+            single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
+            single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
+            assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo)
+                    .containsExactly(PRINCIPAL.add(posting.getAmount()).subtract(tax.getAmount()));
+            assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(SavingsAccountStatusType.CLOSED.hasStateOf(this.account.getStatus())).isTrue();
+        }
+    }
+
     @Test
     void noTaxIsWrittenWhenWithholdingTaxIsOff() {
         withholdingTax(WithHoldTaxPostingType.MATURITY, false);

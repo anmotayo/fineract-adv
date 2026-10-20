@@ -1225,10 +1225,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             addTransaction(transaction);
         }
 
-        if (this.sub_status.equals(SavingsAccountSubStatusEnum.INACTIVE.getValue())
-                || this.sub_status.equals(SavingsAccountSubStatusEnum.DORMANT.getValue())) {
-            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
-        }
+        clearInactivityOnTransaction();
 
         if (backdatedTxnsAllowedTill) {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, transaction,
@@ -1236,6 +1233,17 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
 
         return transaction;
+    }
+
+    /**
+     * A deposit or a withdrawal makes an inactive or dormant account active again. Shared by {@code deposit} and
+     * {@code withdraw} and by the append path, which builds the transaction itself.
+     */
+    public void clearInactivityOnTransaction() {
+        if (SavingsAccountSubStatusEnum.INACTIVE.getValue().equals(this.sub_status)
+                || SavingsAccountSubStatusEnum.DORMANT.getValue().equals(this.sub_status)) {
+            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
+        }
     }
 
     public void validatePivotDateTransaction(LocalDate transactionDate, final boolean backdatedTxnsAllowedTill,
@@ -1365,10 +1373,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             addTransaction(transaction);
         }
 
-        if (this.sub_status.equals(SavingsAccountSubStatusEnum.INACTIVE.getValue())
-                || this.sub_status.equals(SavingsAccountSubStatusEnum.DORMANT.getValue())) {
-            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
-        }
+        clearInactivityOnTransaction();
         if (backdatedTxnsAllowedTill) {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, transaction,
                     this.savingsAccountTransactions);

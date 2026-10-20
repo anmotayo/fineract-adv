@@ -25,7 +25,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
@@ -38,13 +40,17 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
+import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSubStatusEnum;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
@@ -133,6 +139,149 @@ class AdvanclySavingsAccountDomainServiceTest {
         verify(transactionHelper).updatePreviousTransactionBalanceEndDate(any(), eq(today), eq(currency));
         verify(transactionHelper).setRunningBalanceForAppendPath(any(), any(), eq(currency));
         verify(transactionHelper).updateSummaryIncremental(eq(account), any(), eq(currency));
+    }
+
+    // Core refuses a transaction dated after the business date. The append path builds the row itself, so it refuses it
+    // too: a row beyond the business date lies past the date interest is posted up to and got a negative balance
+    // window.
+    @Test
+    void aDepositDatedAfterTheBusinessDateIsRefusedAndWritesNothing() {
+        final LocalDate afterBusinessDate = LocalDate.now().plusDays(3);
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+
+        assertThatThrownBy(() -> domainService.handleDepositOptimized(account, afterBusinessDate, BigDecimal.valueOf(500), null,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(e -> assertThat(((PlatformApiDataValidationException) e).getErrors().get(0).getUserMessageGlobalisationCode())
+                        .isEqualTo("error.msg.savingsaccount.transaction.in.the.future"));
+
+        verify(transactionHelper, never()).setRunningBalanceForAppendPath(any(), any(), any());
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aWithdrawalDatedAfterTheBusinessDateIsRefusedAndWritesNothing() {
+        final LocalDate afterBusinessDate = LocalDate.now().plusDays(3);
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+
+        assertThatThrownBy(() -> domainService.handleWithdrawalOptimized(account, afterBusinessDate, BigDecimal.valueOf(200), null, true,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(e -> assertThat(((PlatformApiDataValidationException) e).getErrors().get(0).getUserMessageGlobalisationCode())
+                        .isEqualTo("error.msg.savingsaccount.transaction.in.the.future"));
+
+        verify(transactionHelper, never()).validateBalanceForAppendPath(any(), any(), any());
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    // What core checks in SavingsAccount#deposit/#withdraw and the append path would otherwise skip.
+    @Test
+    void aDepositIntoAnAccountThatIsNotActiveIsRefusedAndWritesNothing() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        ReflectionTestUtils.setField(account, "status", SavingsAccountStatusType.CLOSED.getValue());
+
+        assertThatThrownBy(() -> domainService.handleDepositOptimized(account, LocalDate.now(), BigDecimal.valueOf(500), null,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(e -> assertThat(((PlatformApiDataValidationException) e).getErrors().get(0).getUserMessageGlobalisationCode())
+                        .isEqualTo("error.msg.savingsaccount.transaction.account.is.not.active"));
+
+        verify(transactionHelper, never()).setRunningBalanceForAppendPath(any(), any(), any());
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aWithdrawalFromAnAccountThatIsNotActiveIsRefusedAndWritesNothing() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        ReflectionTestUtils.setField(account, "status", SavingsAccountStatusType.CLOSED.getValue());
+
+        assertThatThrownBy(() -> domainService.handleWithdrawalOptimized(account, LocalDate.now(), BigDecimal.valueOf(200), null, true,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false))
+                .isInstanceOf(PlatformApiDataValidationException.class);
+
+        verify(transactionHelper, never()).validateBalanceForAppendPath(any(), any(), any());
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aWithdrawalDuringTheLockInPeriodIsRefusedAndWritesNothing() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        ReflectionTestUtils.setField(account, "lockedInUntilDate", LocalDate.now().plusMonths(3));
+
+        assertThatThrownBy(() -> domainService.handleWithdrawalOptimized(account, LocalDate.now(), BigDecimal.valueOf(200), null, true,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(e -> assertThat(((PlatformApiDataValidationException) e).getErrors().get(0).getUserMessageGlobalisationCode())
+                        .isEqualTo("error.msg.savingsaccount.transaction.withdrawals.blocked.during.lockin.period"));
+
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aDepositBeforeTheAccountWasActivatedIsRefused() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+
+        assertThatThrownBy(() -> domainService.handleDepositOptimized(account, LocalDate.of(2024, 12, 31), BigDecimal.valueOf(500), null,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(PlatformApiDataValidationException.class)
+                .satisfies(e -> assertThat(((PlatformApiDataValidationException) e).getErrors().get(0).getUserMessageGlobalisationCode())
+                        .isEqualTo("error.msg.savingsaccount.transaction.before.activation.date"));
+    }
+
+    // A deposit or a withdrawal makes an inactive or dormant account active again, as it does through core.
+    @Test
+    void aDepositOnADormantAccountMakesItActiveAgain() {
+        final SavingsAccount account = accountWithSubStatus(SavingsAccountSubStatusEnum.DORMANT);
+
+        domainService.handleDepositOptimized(account, LocalDate.now(), BigDecimal.valueOf(500), null,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false);
+
+        assertThat(account.getSubStatus()).isEqualTo(SavingsAccountSubStatusEnum.NONE.getValue());
+    }
+
+    @Test
+    void aWithdrawalFromAnInactiveAccountMakesItActiveAgain() {
+        final SavingsAccount account = accountWithSubStatus(SavingsAccountSubStatusEnum.INACTIVE);
+
+        domainService.handleWithdrawalOptimized(account, LocalDate.now(), BigDecimal.valueOf(200), null, true,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false);
+
+        assertThat(account.getSubStatus()).isEqualTo(SavingsAccountSubStatusEnum.NONE.getValue());
+    }
+
+    // Core pays a withdrawal fee inside the withdrawal and this path does not: a caller that sends such a withdrawal
+    // here is refused, not left to waive the fee without anyone noticing.
+    @Test
+    void aWithdrawalCarryingAFeeCorePaysIsRefusedHere() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        final SavingsAccountCharge fee = mock(SavingsAccountCharge.class);
+        when(fee.isWithdrawalFee()).thenReturn(true);
+        when(fee.isActive()).thenReturn(true);
+        when(fee.isPercentageOfInterest()).thenReturn(false);
+        ReflectionTestUtils.setField(account, "charges", new java.util.HashSet<>(java.util.List.of(fee)));
+
+        assertThatThrownBy(() -> domainService.handleWithdrawalOptimized(account, LocalDate.now(), BigDecimal.valueOf(200), null, true,
+                Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false)).isInstanceOf(IllegalStateException.class);
+
+        verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void aWithdrawalWithAPercentOfInterestChargeIsServedHereBecauseItIsAppliedAfterwards() {
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
+        final SavingsAccountCharge earlyWithdrawalCharge = mock(SavingsAccountCharge.class);
+        when(earlyWithdrawalCharge.isWithdrawalFee()).thenReturn(true);
+        when(earlyWithdrawalCharge.isActive()).thenReturn(true);
+        when(earlyWithdrawalCharge.isPercentageOfInterest()).thenReturn(true);
+        ReflectionTestUtils.setField(account, "charges", new java.util.HashSet<>(java.util.List.of(earlyWithdrawalCharge)));
+
+        final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, LocalDate.now(),
+                BigDecimal.valueOf(200), null, true, Money.of(currency, BigDecimal.valueOf(1000)), currency, null, false);
+
+        assertThat(withdrawal).isNotNull();
+    }
+
+    private SavingsAccount accountWithSubStatus(final SavingsAccountSubStatusEnum subStatus) {
+        final SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
+                .withRunningBalanceOnPivotDate(BigDecimal.valueOf(1000)).build();
+        final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).withSummary(summary).build();
+        ReflectionTestUtils.setField(account, "sub_status", subStatus.getValue());
+        return account;
     }
 
     // Fast-path (handleDepositOptimized/handleWithdrawalOptimized) DynamicDepositAccount-specific hooks were removed:

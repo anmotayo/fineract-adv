@@ -34,6 +34,7 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTran
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
 import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
+import com.advancly.fineract.portfolio.savings.service.SavingsTransactionRules;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -68,6 +69,7 @@ import org.apache.fineract.portfolio.loanaccount.exception.InvalidPaidInAdvanceA
 import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.GroupSavingsIndividualMonitoring;
@@ -230,6 +232,12 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         return lastTransactionDate.isEmpty() || !transactionDate.isBefore(lastTransactionDate.get());
     }
 
+    /** Core reverses the accruals dated on or after a new transaction; the append path does not. */
+    private boolean accrualWouldBeReversed(final SavingsAccount account, final LocalDate transactionDate) {
+        return account.savingsProduct().isAccrualBasedAccountingEnabled() && savingsAccountTransactionRepository
+                .existsAccrualOnOrAfter(account.getId(), SavingsAccountTransactionType.ACCRUAL.getValue(), transactionDate);
+    }
+
     private AssembledSavingsAccount assembleSavingsAccount(final Long savingsId, final LocalDate transactionDate,
             final boolean backdatedTxnsAllowedTill, final boolean appendPath) {
         if (appendPath) {
@@ -249,7 +257,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         // Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path - see the equivalent check in
         // AdvanclySavingsAccountWritePlatformService - since this append path builds the transaction directly and
         // would otherwise silently skip their entity-level overrides.
-        if (appendPath && account.depositAccountType().isSavingsDeposit()) {
+        if (appendPath && account.depositAccountType().isSavingsDeposit() && !accrualWouldBeReversed(account, transactionDate)) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             return savingsAccountDomainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
                     lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(),
@@ -281,7 +289,11 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
 
         final SavingsAccountTransaction withdrawal;
         // See the equivalent check in postOptimizedDeposit(...) above.
-        final boolean usesOptimizedAppendPath = appendPath && account.depositAccountType().isSavingsDeposit();
+        // A withdrawal fee is paid by core inside the withdrawal, and core reverses the accruals dated on or after it:
+        // the append path does neither, so a withdrawal that needs either goes through core.
+        final boolean usesOptimizedAppendPath = appendPath && account.depositAccountType().isSavingsDeposit()
+                && !(transactionBooleanValues.isApplyWithdrawFee() && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account))
+                && !accrualWouldBeReversed(account, transactionDate);
         if (usesOptimizedAppendPath) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             withdrawal = savingsAccountDomainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount, paymentDetail,

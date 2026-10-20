@@ -27,6 +27,8 @@ import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSubStatusEnum;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
@@ -110,6 +112,9 @@ public class SavingsAccountTestBuilder {
         ReflectionTestUtils.setField(account, "allowOverdraft", allowOverdraft);
         ReflectionTestUtils.setField(account, "overdraftLimit", overdraftLimit);
         ReflectionTestUtils.setField(account, "activatedOnDate", activatedOnDate);
+        // An account in use: active, and not blocked or dormant.
+        ReflectionTestUtils.setField(account, "status", SavingsAccountStatusType.ACTIVE.getValue());
+        ReflectionTestUtils.setField(account, "sub_status", SavingsAccountSubStatusEnum.NONE.getValue());
         ReflectionTestUtils.setField(account, "currency", currency);
         ReflectionTestUtils.setField(account, "minRequiredBalance", minRequiredBalance);
         ReflectionTestUtils.setField(account, "enforceMinRequiredBalance", enforceMinRequiredBalance);

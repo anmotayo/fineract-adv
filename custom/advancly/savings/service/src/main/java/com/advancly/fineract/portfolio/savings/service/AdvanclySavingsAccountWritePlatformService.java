@@ -56,6 +56,7 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepositor
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -165,9 +166,10 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         // SavingsAccount#deposit(...), so any deposit-type-specific entity override (e.g. DynamicDepositAccount's) is
         // never invoked here. Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path instead,
         // where their entity overrides run correctly; only plain savings uses the optimized path.
-        if (!account.depositAccountType().isSavingsDeposit()) {
+        if (!account.depositAccountType().isSavingsDeposit() || accrualWouldBeReversed(account, transactionDate)) {
             return delegate.deposit(savingsId, command);
         }
+        SavingsTransactionRules.validateClientAndGroupActive(account);
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
@@ -211,11 +213,15 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
         // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
-        if (isBackdated || !account.depositAccountType().isSavingsDeposit()) {
+        // A withdrawal fee is paid by core inside the withdrawal, and core reverses the accruals dated on or after it:
+        // neither happens on the append path, so a withdrawal that needs either goes through core too.
+        if (isBackdated || !account.depositAccountType().isSavingsDeposit() || SavingsTransactionRules.hasAutoPayableWithdrawalFee(account)
+                || accrualWouldBeReversed(account, transactionDate)) {
             final CommandProcessingResult result = delegate.withdrawal(savingsId, command);
             applyInterestChargeIfApplicable(savingsId, result, command);
             return result;
         }
+        SavingsTransactionRules.validateClientAndGroupActive(account);
 
         final Map<String, Object> changes = new LinkedHashMap<>();
         final PaymentDetail paymentDetail = paymentDetailWritePlatformService.createAndPersistPaymentDetail(command, changes);
@@ -237,6 +243,32 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         return new CommandProcessingResultBuilder().withEntityId(withdrawal.getId()).withOfficeId(account.officeId())
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
+    }
+
+    /**
+     * Core reverses the accruals dated on or after a new transaction; the append path does not. Only an account whose
+     * product accounts on an accrual basis has accruals, so no one else pays for the lookup.
+     */
+    private boolean accrualWouldBeReversed(final SavingsAccount account, final LocalDate transactionDate) {
+        return account.savingsProduct().isAccrualBasedAccountingEnabled() && advanclyTransactionRepository
+                .existsAccrualOnOrAfter(account.getId(), SavingsAccountTransactionType.ACCRUAL.getValue(), transactionDate);
+    }
+
+    /** A bulk request that holds a fee-bearing withdrawal, or reaches back over an accrual, is served by core. */
+    private boolean bulkNeedsCore(final SavingsAccount account, final JsonArray transactions, final String dateFormat,
+            final java.util.Locale locale) {
+        boolean hasWithdrawal = false;
+        LocalDate earliest = null;
+        for (int i = 0; i < transactions.size(); i++) {
+            final JsonObject txn = transactions.get(i).getAsJsonObject();
+            hasWithdrawal |= !"deposit".equals(fromApiJsonHelper.extractStringNamed("type", txn));
+            final LocalDate transactionDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", txn, dateFormat, locale);
+            if (earliest == null || transactionDate.isBefore(earliest)) {
+                earliest = transactionDate;
+            }
+        }
+        return (hasWithdrawal && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account))
+                || (earliest != null && accrualWouldBeReversed(account, earliest));
     }
 
     private void applyInterestChargeIfApplicable(final Long savingsId, final CommandProcessingResult result, final JsonCommand command) {
@@ -301,9 +333,10 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         // See the equivalent check in deposit(...)/withdrawal(...) - deposit-type accounts always go through core,
         // one transaction at a time, so their entity-level overrides run correctly.
-        if (!account.depositAccountType().isSavingsDeposit()) {
+        if (!account.depositAccountType().isSavingsDeposit() || bulkNeedsCore(account, transactions, dateFormat, locale)) {
             return delegateBulkTransactionToCore(savingsId, transactions, dateFormat, locale);
         }
+        SavingsTransactionRules.validateClientAndGroupActive(account);
 
         Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
         SavingsAccountTransaction lastBalanceBearingTxn = assembled.getLastBalanceBearingTransaction();

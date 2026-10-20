@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -84,6 +85,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     private static final Long CLIENT_ID = 11L;
     private static final Long GROUP_ID = 21L;
     private static final LocalDate CLOSED_DATE = LocalDate.of(2026, 1, 20);
+    private static final LocalDate MATURITY_DATE = LocalDate.of(2026, 1, 10);
     private static final int WITHDRAW = 100;
     private static final int TRANSFER_TO_SAVINGS = 200;
     private static final int REINVEST_PRINCIPAL_AND_INTEREST = 300;
@@ -137,7 +139,8 @@ class AdvanclyDepositAccountDomainServiceTest {
         when(this.account.interestPostingTransactionDateForClosure(CLOSED_DATE)).thenReturn(CLOSED_DATE);
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(true);
         // Matured before CLOSED_DATE, as every maturity-closure scenario below needs; a premature closure ignores it.
-        when(this.account.maturityDate()).thenReturn(LocalDate.of(2026, 1, 10));
+        when(this.account.maturityDate()).thenReturn(MATURITY_DATE);
+        when(this.account.interestPostingTransactionDateForClosure(MATURITY_DATE)).thenReturn(MATURITY_DATE);
         when(this.account.close(any(AppUser.class), any(JsonCommand.class))).thenAnswer(invocation -> {
             final Map<String, Object> closeChanges = new LinkedHashMap<>();
             closeChanges.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(SavingsAccountStatusType.CLOSED));
@@ -269,7 +272,6 @@ class AdvanclyDepositAccountDomainServiceTest {
     @Test
     void aMaturityClosureKeepsTheClosedStatus() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(true);
         when(this.account.deriveAccountingBridgeData(any(), any(), any(), anyBoolean(), anyBoolean())).thenReturn(Map.of());
 
         this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
@@ -277,6 +279,102 @@ class AdvanclyDepositAccountDomainServiceTest {
         verify(this.account, never()).setStatus(any());
         final SavingsAccountStatusEnumData reported = (SavingsAccountStatusEnumData) this.changes.get(SavingsApiConstants.statusParamName);
         assertThat(reported.isClosed()).isTrue();
+    }
+
+    @Test
+    void aMaturityClosureOfAnActiveAccountPastMaturityMaturesItFirstAndPostsTheFinalInterestOnlyOnce() {
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        when(this.account.deriveAccountingBridgeData(any(), any(), any(), anyBoolean(), anyBoolean())).thenReturn(Map.of());
+
+        this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
+
+        final InOrder order = inOrder(this.account, this.coreDomainService);
+        // The maturity: the interest up to the maturity date, dated on it, and any tax withheld at maturity ...
+        order.verify(this.account).postInterest(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
+                eq(false));
+        order.verify(this.account).withholdMaturityTaxAtClosure(MATURITY_DATE);
+        order.verify(this.account).markMatured();
+        // ... and only then the payout.
+        order.verify(this.coreDomainService).handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, times(1)).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).beginClosureSettlement(any());
+    }
+
+    @Test
+    void aMaturityClosureOfAnAccountThatHasAlreadyMaturedPostsNoInterestAndPaysOutWhatIsThere() {
+        when(this.account.getStatus()).thenReturn(SavingsAccountStatusType.MATURED);
+        when(this.account.isMatured()).thenReturn(true);
+        when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
+        this.balance.set(BigDecimal.valueOf(1050));
+
+        final Long transactionId = this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null),
+                this.changes);
+
+        assertThat(transactionId).isEqualTo(555L);
+        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).beginClosureSettlement(any());
+        verify(this.account, never()).markMatured();
+        final InOrder order = inOrder(this.account, this.coreDomainService);
+        order.verify(this.account).markClosingAtMaturity(true);
+        order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
+                eq(BigDecimal.valueOf(1050)), any(), eq(false), eq(false));
+        order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
+    }
+
+    @Test
+    void aPrematureClosureOfAMaturedAccountIsRejected() {
+        when(this.account.getStatus()).thenReturn(SavingsAccountStatusType.MATURED);
+        when(this.account.isMatured()).thenReturn(true);
+
+        assertThatThrownBy(() -> this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class),
+                command(WITHDRAW, null), this.changes)).isInstanceOf(PlatformApiDataValidationException.class);
+
+        verify(this.account, never()).beginClosureSettlement(any());
+    }
+
+    @Test
+    void matureAccountPostsTheFinalInterestOnTheMaturityDateWithholdsMaturityTaxAndMarksTheAccountMatured() {
+        when(this.account.deriveAccountingBridgeData(any(), any(), any(), anyBoolean(), anyBoolean())).thenReturn(Map.of());
+
+        final boolean matured = this.service.matureAccount(this.account);
+
+        assertThat(matured).isTrue();
+        final InOrder order = inOrder(this.account, this.savingsAccountRepository, this.journalEntryWritePlatformService);
+        order.verify(this.account).postInterest(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
+                eq(false));
+        order.verify(this.account).withholdMaturityTaxAtClosure(MATURITY_DATE);
+        order.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
+        order.verify(this.account).markMatured();
+        verify(this.savingsAccountRepository, times(2)).saveAndFlush(this.account);
+    }
+
+    @Test
+    void matureAccountDoesNothingBeforeTheMaturityDate() {
+        when(this.account.maturityDate()).thenReturn(LocalDate.of(2999, 1, 1));
+
+        assertThat(this.service.matureAccount(this.account)).isFalse();
+
+        verify(this.account, never()).markMatured();
+        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+    }
+
+    @Test
+    void matureAccountDoesNothingForAnAccountWithNoMaturityDate() {
+        when(this.account.maturityDate()).thenReturn(null);
+
+        assertThat(this.service.matureAccount(this.account)).isFalse();
+
+        verify(this.account, never()).markMatured();
+    }
+
+    @Test
+    void matureAccountDoesNothingForAnAccountThatIsNotActive() {
+        when(this.account.getStatus()).thenReturn(SavingsAccountStatusType.MATURED);
+
+        assertThat(this.service.matureAccount(this.account)).isFalse();
+
+        verify(this.account, never()).markMatured();
+        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -310,10 +408,8 @@ class AdvanclyDepositAccountDomainServiceTest {
     @Test
     void reinvestingPrincipalAndInterestWithdrawsTheWholePayoutAndOpensTheNewDepositWithIt() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
-            this.balance.set(BigDecimal.valueOf(1050));
-            return false;
-        });
+        // The balance at maturity is the payout: the interest was posted when the account matured.
+        this.balance.set(BigDecimal.valueOf(1050));
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         final AppUser user = mock(AppUser.class);
         when(this.reinvestmentService.reinvest(this.account, BigDecimal.valueOf(1050), CLOSED_DATE, user)).thenReturn(reinvested);
@@ -324,7 +420,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         assertThat(transactionId).isEqualTo(555L);
         assertThat(this.changes).containsEntry("reinvestedDepositId", 808L);
         final InOrder order = inOrder(this.account, this.coreDomainService, this.reinvestmentService);
-        order.verify(this.account).beginClosureSettlement(CLOSED_DATE);
+        verify(this.account, never()).beginClosureSettlement(any());
         order.verify(this.coreDomainService).handleWithdrawal(eq(this.account), any(DateTimeFormatter.class), eq(CLOSED_DATE),
                 eq(BigDecimal.valueOf(1050)), any(), eq(false), eq(false));
         order.verify(this.reinvestmentService).reinvest(this.account, BigDecimal.valueOf(1050), CLOSED_DATE, user);
@@ -338,10 +434,7 @@ class AdvanclyDepositAccountDomainServiceTest {
     void reinvestingPrincipalOnlyPaysTheInterestOutFirstThenMovesJustThePrincipalAndClosesTheAccount() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
         investedAmountOf("1000");
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenAnswer(invocation -> {
-            this.balance.set(BigDecimal.valueOf(1050));
-            return false;
-        });
+        this.balance.set(BigDecimal.valueOf(1050));
         final AppUser user = mock(AppUser.class);
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         when(this.reinvestmentService.reinvest(eq(this.account), org.mockito.ArgumentMatchers.argThat(amount -> amount.compareTo(BigDecimal.valueOf(1000)) == 0),
@@ -366,7 +459,6 @@ class AdvanclyDepositAccountDomainServiceTest {
     void aPrincipalOnlyReinvestmentNeverCarriesOverMoreThanThePayout() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
         investedAmountOf("5000");
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
 
@@ -427,7 +519,6 @@ class AdvanclyDepositAccountDomainServiceTest {
     void aMaturityClosureIsNotBlockedByTheWithdrawalLockForWithdrawTransferOrReinvest() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
         when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
         investedAmountOf("1000");
         final DynamicDepositAccount reinvested = reinvestedAccount(808L);
         when(this.reinvestmentService.reinvest(any(), any(), any(), any())).thenReturn(reinvested);
@@ -447,7 +538,6 @@ class AdvanclyDepositAccountDomainServiceTest {
     @Test
     void theLockIsLiftedOnlyForTheDurationOfAMaturityClosureAndLiftedAgainEvenWhenItFails() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);
-        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
         final InOrder order = inOrder(this.account, this.coreDomainService);
 
         this.service.handleDynamicDepositClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);

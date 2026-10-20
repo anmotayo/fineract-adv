@@ -110,6 +110,7 @@ import org.apache.fineract.portfolio.savings.exception.DepositAccountTransaction
 import org.apache.fineract.portfolio.savings.exception.SavingsAccountTransactionNotFoundException;
 import org.apache.fineract.portfolio.savings.exception.TransactionUpdateNotAllowedException;
 import org.apache.fineract.useradministration.domain.AppUser;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -139,6 +140,11 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
     private final HolidayRepositoryWrapper holidayRepository;
     private final WorkingDaysRepositoryWrapper workingDaysRepository;
     private final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
+
+    // Not a constructor argument: the bean is built by an explicit @Bean method, and a deployment without any module
+    // supplying an updater must still start. See DepositAccountMaturityUpdater.
+    @Autowired(required = false)
+    private List<DepositAccountMaturityUpdater> maturityUpdaters = List.of();
 
     @Transactional
     @Override
@@ -1315,6 +1321,12 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
     @Transactional
     @Override
     public void updateMaturityDetails(Long depositAccountId, DepositAccountType depositAccountType) {
+        for (final DepositAccountMaturityUpdater maturityUpdater : this.maturityUpdaters) {
+            if (maturityUpdater.supports(depositAccountType)) {
+                maturityUpdater.updateMaturity(depositAccountId);
+                return;
+            }
+        }
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService
                 .isSavingsInterestPostingAtCurrentPeriodEnd();
         final Integer financialYearBeginningMonth = this.configurationDomainService.retrieveFinancialYearBeginningMonth();

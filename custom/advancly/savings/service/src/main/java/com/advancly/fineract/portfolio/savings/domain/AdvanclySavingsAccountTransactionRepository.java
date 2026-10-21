@@ -55,11 +55,16 @@ public interface AdvanclySavingsAccountTransactionRepository extends JpaReposito
     List<SavingsAccountTransaction> findLastNonReversedAndBalanceBearingTransactions(Long savingsId);
 
     // Core reverses the accruals dated on or after a new transaction (SavingsAccount#accrualsForSavingsReverse); the
-    // append path does not, so a transaction with an accrual in its way goes through core instead.
-    @Query("select count(sat) > 0 from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId "
+    // append path does not, so a transaction with an accrual in its way goes through core instead. A plain count:
+    // EclipseLink, the JPA provider here, does not accept a boolean expression such as "count(...) > 0" in a select.
+    @Query("select count(sat) from SavingsAccountTransaction sat where sat.savingsAccount.id = :savingsId "
             + "and sat.typeOf = :accrualType and sat.reversed = false and sat.dateOf >= :date")
-    boolean existsAccrualOnOrAfter(@Param("savingsId") Long savingsId, @Param("accrualType") Integer accrualType,
+    long countAccrualsOnOrAfter(@Param("savingsId") Long savingsId, @Param("accrualType") Integer accrualType,
             @Param("date") LocalDate date);
+
+    default boolean existsAccrualOnOrAfter(final Long savingsId, final Integer accrualType, final LocalDate date) {
+        return countAccrualsOnOrAfter(savingsId, accrualType, date) > 0;
+    }
 
     // O(1) append path: get just the last transaction date for path decision (excludes accrual type 10)
     @Query("select max(sat.dateOf) from SavingsAccountTransaction sat " + "where sat.savingsAccount.id = :savingsId "

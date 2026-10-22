@@ -54,7 +54,6 @@ import org.apache.fineract.portfolio.group.data.GroupGeneralData;
 import org.apache.fineract.portfolio.paymentdetail.data.PaymentDetailData;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
@@ -126,14 +125,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
         this.paginationHelper = paginationHelper;
         this.savingAccountMapperForInterestPosting = new SavingAccountMapperForInterestPosting();
         this.savingAccountAssembler = savingAccountAssembler;
-    }
-
-    private static void appendTotalInterestChargeSubquery(final StringBuilder sqlBuilder) {
-        sqlBuilder.append("(select COALESCE(sum(sat_ibc.amount), 0) ");
-        sqlBuilder.append("from m_savings_account_transaction sat_ibc ");
-        sqlBuilder.append("where sat_ibc.savings_account_id = sa.id and sat_ibc.transaction_type_enum = ");
-        sqlBuilder.append(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
-        sqlBuilder.append(" and sat_ibc.is_reversed = false and sat_ibc.is_reversal = false) as totalInterestCharge, ");
     }
 
     @Override
@@ -314,7 +305,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
-            appendTotalInterestChargeSubquery(sqlBuilder);
             sqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation,");
             sqlBuilder.append("sa.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sa.enforce_min_required_balance as enforceMinRequiredBalance, ");
@@ -542,7 +532,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                             totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                             totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, interestNotPosted,
                             lastInterestCalculationDate, availableBalance, interestPostedTillDate);
-                    summary.setTotalInterestCharge(JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestCharge"));
                     summary.setPrevInterestPostedTillDate(interestPostedTillDate);
 
                     final boolean withHoldTax = rs.getBoolean("withHoldTax");
@@ -813,7 +802,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
             sqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             sqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             sqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
-            appendTotalInterestChargeSubquery(sqlBuilder);
             sqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation,");
             sqlBuilder.append("sa.min_required_balance as minRequiredBalance, ");
             sqlBuilder.append("sa.enforce_min_required_balance as enforceMinRequiredBalance, ");
@@ -1042,7 +1030,6 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
                     totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                     totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, interestNotPosted, lastInterestCalculationDate,
                     availableBalance, interestPostedTillDate);
-            summary.setTotalInterestCharge(JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, "totalInterestCharge"));
 
             final boolean withHoldTax = rs.getBoolean("withHoldTax");
             final Long taxGroupId = JdbcSupport.getLong(rs, "taxGroupId");

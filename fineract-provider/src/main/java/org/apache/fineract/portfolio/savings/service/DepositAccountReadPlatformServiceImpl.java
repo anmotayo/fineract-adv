@@ -133,14 +133,6 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
     private final CalendarReadPlatformService calendarReadPlatformService;
     private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
 
-    private static void appendTotalInterestChargeSubquery(final StringBuilder sqlBuilder) {
-        sqlBuilder.append("(select COALESCE(sum(sat_ibc.amount), 0) ");
-        sqlBuilder.append("from m_savings_account_transaction sat_ibc ");
-        sqlBuilder.append("where sat_ibc.savings_account_id = sa.id and sat_ibc.transaction_type_enum = ");
-        sqlBuilder.append(SavingsAccountTransactionType.INTEREST_CHARGE.getValue());
-        sqlBuilder.append(" and sat_ibc.is_reversed = false and sat_ibc.is_reversal = false) as totalInterestCharge, ");
-    }
-
     @Override
     public Collection<DepositAccountData> retrieveAll(final DepositAccountType depositAccountType,
             final PaginationParameters paginationParameters) {
@@ -614,7 +606,6 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String ACCOUNT_BALANCE = "accountBalance";
         public static final String TOTAL_FEE_CHARGE = "totalFeeCharge";
         public static final String TOTAL_PENALTY_CHARGE = "totalPenaltyCharge";
-        public static final String TOTAL_INTEREST_CHARGE = "totalInterestCharge";
         public static final String TOTAL_WITHHOLD_TAX = "totalWithholdTax";
         public static final String INTEREST_POSTED_TILL_DATE = "interestPostedTillDate";
         public static final String WITH_HOLD_TAX = "withHoldTax";
@@ -672,7 +663,6 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             selectFieldsSqlBuilder.append("sa.account_balance_derived as accountBalance, ");
             selectFieldsSqlBuilder.append("sa.total_fees_charge_derived as totalFeeCharge, ");
             selectFieldsSqlBuilder.append("sa.total_penalty_charge_derived as totalPenaltyCharge, ");
-            appendTotalInterestChargeSubquery(selectFieldsSqlBuilder);
             selectFieldsSqlBuilder.append("sa.total_withhold_tax_derived as totalWithholdTax,");
             selectFieldsSqlBuilder.append("sa.deposit_type_enum as depositTypeId, ");
             selectFieldsSqlBuilder.append("sa.min_balance_for_interest_calculation as minBalanceForInterestCalculation, ");
@@ -816,7 +806,6 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final BigDecimal accountBalance = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, ACCOUNT_BALANCE);
             final BigDecimal totalFeeCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_FEE_CHARGE);
             final BigDecimal totalPenaltyCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_PENALTY_CHARGE);
-            final BigDecimal totalInterestCharge = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_INTEREST_CHARGE);
             final BigDecimal totalWithholdTax = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, TOTAL_WITHHOLD_TAX);
             final BigDecimal totalOverdraftInterestDerived = null;
             final LocalDate interestPostedTillDate = JdbcSupport.getLocalDate(rs, INTEREST_POSTED_TILL_DATE);
@@ -834,7 +823,6 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     totalWithdrawalFees, totalAnnualFees, totalInterestEarned, totalInterestPosted, accountBalance, totalFeeCharge,
                     totalPenaltyCharge, totalOverdraftInterestDerived, totalWithholdTax, null, null, availableBalance,
                     interestPostedTillDate);
-            summary.setTotalInterestCharge(totalInterestCharge);
 
             return DepositAccountData.instance(id, accountNo, externalId, groupId, groupName, clientId, clientName, productId, productName,
                     fieldOfficerId, fieldOfficerName, status, timeline, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,

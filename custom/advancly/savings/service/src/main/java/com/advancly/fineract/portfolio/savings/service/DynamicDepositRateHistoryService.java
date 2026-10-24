@@ -135,9 +135,10 @@ public class DynamicDepositRateHistoryService {
     /**
      * Re-derives every rate-history row of {@code account} - the invested amount after each transaction, and the rate
      * resolved from it - from the account's transactions, then the {@code deposit_amount} cache and the account's live
-     * nominal rate from the latest row, writing only what differs. It runs on every transaction that changes the
-     * principal (and on an undo), so none of these figures can go stale: a backdated transaction, an interest payout, a
-     * closing withdrawal or the correction of an earlier mistake all leave them right.
+     * nominal rate from the latest row, writing only what differs. An account the closing payout has emptied keeps its
+     * last non-zero {@code deposit_amount}. It runs on every transaction that changes the principal (and on an undo),
+     * so none of these figures can go stale: a backdated transaction, an interest payout, a closing withdrawal or the
+     * correction of an earlier mistake all leave them right.
      *
      * @return whether anything was changed
      */
@@ -179,7 +180,13 @@ public class DynamicDepositRateHistoryService {
             }
         }
         if (latest != null) {
-            if (compare(term.depositAmount(), latestInvested) != 0) {
+            // The closing payout empties the account, which would take the deposit amount to zero with it. The deposit
+            // amount is what the account was invested with - what a principal reinvestment carries and what a caller
+            // reads after the account has closed - so an emptied account keeps its last non-zero figure. A zero or
+            // negative figure left by an earlier version is still corrected.
+            final boolean emptied = latestInvested != null && latestInvested.signum() == 0 && term.depositAmount() != null
+                    && term.depositAmount().signum() > 0;
+            if (!emptied && compare(term.depositAmount(), latestInvested) != 0) {
                 term.updateDepositAmount(latestInvested);
                 changed = true;
             }

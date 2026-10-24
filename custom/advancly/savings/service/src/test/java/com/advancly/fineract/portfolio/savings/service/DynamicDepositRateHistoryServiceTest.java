@@ -215,6 +215,25 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("0");
     }
 
+    @Test
+    void recomputeKeepsTheDepositAmountOfAnAccountTheClosingPayoutEmptied() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        closing.setRunningBalance(Money.zero(CURRENCY));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "1000", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("1000"));
+
+        this.service.recompute(this.account);
+
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("0");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1000");
+    }
+
     // The point of recomputing on every transaction: a figure left wrong by an earlier version is repaired the next
     // time
     // anything happens on the account, with no one having to ask for it.

@@ -305,6 +305,23 @@ class InterestCalculationReadPlatformServiceImplTest {
     }
 
     @Test
+    void dynamicDepositMaturityAmountIsTheGrossAmountInvestedPlusInterestNotTheLastClosingBalance() {
+        final DynamicDepositAccount account = dynamicDepositAccount();
+        final LocalDate maturityDate = LocalDate.now().plusMonths(6);
+        when(account.maturityDate()).thenReturn(maturityDate);
+        // The engine's closing balance carries the principal only; the interest is on the summary.
+        final PostingPeriod toMaturity = postingPeriodWithInterest(LocalDate.now().withDayOfMonth(1), maturityDate, new BigDecimal("32.00"),
+                new BigDecimal("1000.00"));
+        when(account.calculateInterestUsing(any(), eq(maturityDate), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
+                .thenReturn(List.of(toMaturity));
+        when(account.grossMaturityAmountAfterProjection()).thenReturn(new BigDecimal("1032.00"));
+
+        final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
+
+        assertThat(result.maturityAmount()).isEqualByComparingTo("1032.00");
+    }
+
+    @Test
     void netWithdrawalPreviewsAWithdrawalEvent() {
         final DynamicDepositAccount account = dynamicDepositAccount();
         when(this.ratePreviewService.preview(eq(account), any(SavingsAccountTransaction.class),

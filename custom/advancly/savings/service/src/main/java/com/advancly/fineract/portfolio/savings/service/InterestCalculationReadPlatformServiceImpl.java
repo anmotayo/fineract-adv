@@ -132,7 +132,13 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
             periods = account.calculateInterestUsing(mc, maturityDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
             asAtMaturitySummary = InterestCalculationSummaryData.from(account.getSummary());
-            maturityAmount = lastClosingBalanceOf(periods, account).getAmount();
+            // The last period's closing balance is built from the principal transactions alone, so for a Dynamic
+            // Deposit
+            // (matured or not) it leaves the interest out: the maturity amount is the amount invested plus all the
+            // interest earned up to maturity, before withholding tax.
+            maturityAmount = account instanceof DynamicDepositAccount dynamicDepositAccount
+                    ? dynamicDepositAccount.grossMaturityAmountAfterProjection()
+                    : lastClosingBalanceOf(periods, account).getAmount();
         }
 
         final List<PostingPeriodData> postingPeriods = new ArrayList<>();

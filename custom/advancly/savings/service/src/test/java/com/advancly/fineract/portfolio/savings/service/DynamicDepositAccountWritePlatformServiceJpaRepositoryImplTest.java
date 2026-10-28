@@ -133,6 +133,9 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
     @Mock
     private AccountTransfersWritePlatformService accountTransfersWritePlatformService;
 
+    @Mock
+    private DynamicDepositMaturityAmountService maturityAmountService;
+
     private DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl service;
 
     @BeforeEach
@@ -143,7 +146,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,
                 savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository,
                 savingsAccountTransactionSummaryWrapper, savingsHelper, chargeInterestRuleValidator, accountAssociationsReadPlatformService,
-                accountTransfersWritePlatformService);
+                accountTransfersWritePlatformService, maturityAmountService);
 
         // The modifyApplication tests exercise the real DynamicDepositAccountDataValidator end-to-end, which reaches
         // account.validateNewApplicationState(...) -> DateUtils.isDateInTheFuture(submittedOnDate) ->
@@ -235,7 +238,8 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
-                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService);
+                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService,
+                maturityAmountService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 
@@ -277,7 +281,8 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 accountNumberFormatRepository, noteRepository, savingsAccountApplicationTransitionApiJsonValidator,
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
-                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService);
+                chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService,
+                maturityAmountService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 

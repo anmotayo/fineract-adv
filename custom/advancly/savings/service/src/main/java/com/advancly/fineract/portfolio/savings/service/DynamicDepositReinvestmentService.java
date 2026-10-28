@@ -85,6 +85,7 @@ public class DynamicDepositReinvestmentService {
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     private final FromJsonHelper fromJsonHelper;
+    private final DynamicDepositMaturityAmountService maturityAmountService;
 
     @Autowired
     public DynamicDepositReinvestmentService(final DynamicDepositAccountAssembler dynamicDepositAccountAssembler,
@@ -93,7 +94,8 @@ public class DynamicDepositReinvestmentService {
             final DepositAccountDataValidator depositAccountDataValidator,
             final AccountAssociationsRepository accountAssociationsRepository,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
-            @Lazy final SavingsAccountWritePlatformService savingsAccountWritePlatformService, final FromJsonHelper fromJsonHelper) {
+            @Lazy final SavingsAccountWritePlatformService savingsAccountWritePlatformService, final FromJsonHelper fromJsonHelper,
+            final DynamicDepositMaturityAmountService maturityAmountService) {
         this.dynamicDepositAccountAssembler = dynamicDepositAccountAssembler;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.accountNumberGenerator = accountNumberGenerator;
@@ -104,6 +106,7 @@ public class DynamicDepositReinvestmentService {
         this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
         this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
         this.fromJsonHelper = fromJsonHelper;
+        this.maturityAmountService = maturityAmountService;
     }
 
     /**
@@ -142,6 +145,7 @@ public class DynamicDepositReinvestmentService {
         reinvested.updateMaturityDate();
         this.savingsAccountWritePlatformService.processPostActiveActions(reinvested, DateTimeFormatter.ofPattern(ISO_DATE), new HashSet<>(),
                 new HashSet<>());
+        this.maturityAmountService.storeProjectedMaturityAmount(reinvested);
         return this.dynamicDepositAccountRepository.saveAndFlush(reinvested);
     }
 

@@ -98,7 +98,7 @@ class DynamicDepositReinvestmentServiceTest {
         this.service = new DynamicDepositReinvestmentService(this.assembler, this.repository, this.accountNumberGenerator,
                 this.accountNumberFormatRepository, this.depositAccountAssembler, this.depositAccountDataValidator,
                 this.accountAssociationsRepository, this.accountAssociationsReadPlatformService, this.savingsAccountWritePlatformService,
-                new FromJsonHelper());
+                new FromJsonHelper(), mock(DynamicDepositMaturityAmountService.class));
 
         this.closing = closingAccount();
         this.reinvested = mock(DynamicDepositAccount.class);

@@ -115,6 +115,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
     private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
+    private final DynamicDepositMaturityAmountService maturityAmountService;
 
     public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
             final DynamicDepositAccountRepository dynamicDepositAccountRepository,
@@ -129,7 +130,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
-            final AccountTransfersWritePlatformService accountTransfersWritePlatformService) {
+            final AccountTransfersWritePlatformService accountTransfersWritePlatformService,
+            final DynamicDepositMaturityAmountService maturityAmountService) {
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -148,6 +150,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
         this.chargeInterestRuleValidator = chargeInterestRuleValidator;
         this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
         this.accountTransfersWritePlatformService = accountTransfersWritePlatformService;
+        this.maturityAmountService = maturityAmountService;
     }
 
     @Transactional
@@ -393,6 +396,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final Set<Long> existingReversedTransactionIds = new HashSet<>();
             this.savingsAccountWritePlatformService.processPostActiveActions(account, fmt, existingTransactionIds,
                     existingReversedTransactionIds);
+            // The opening deposit is in now, so what the account will be worth at maturity can be projected.
+            this.maturityAmountService.storeProjectedMaturityAmount(account);
         }
         return saveAndBuildTransitionResult(account, command, changes);
     }

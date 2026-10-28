@@ -20,6 +20,7 @@ package com.advancly.fineract.portfolio.savings.domain;
 
 import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
 
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositInvestedAmountCalculator;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.DiscriminatorValue;
@@ -66,6 +67,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -435,12 +437,11 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
-     * Persists {@link #calculateMaturityDate()} onto the account's {@link DepositAccountTermAndPreClosure}. Phase 4
-     * deliberately stores the DATE ONLY: {@code FixedDepositAccount} also projects a {@code maturityAmount} via a full
-     * interest projection, which for Dynamic Deposit would mean projecting across every dynamic rate-history interval -
-     * out of scope for this phase and needed by none of its requirements. The currently-stored {@code maturityAmount}
-     * (always {@code null} today, since nothing writes it) is therefore passed straight back through, so this method
-     * never invents an amount.
+     * Persists {@link #calculateMaturityDate()} onto the account's {@link DepositAccountTermAndPreClosure}. The date
+     * only: the maturity amount is stored separately, at activation by
+     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositMaturityAmountService} and at closure by the
+     * payout, so the currently-stored {@code maturityAmount} is passed straight back through and this method never
+     * invents an amount.
      */
     public void updateMaturityDate() {
         final LocalDate maturityDate = calculateMaturityDate();
@@ -448,6 +449,38 @@ public class DynamicDepositAccount extends SavingsAccount {
             return;
         }
         this.accountTermAndPreClosure.updateMaturityDetails(this.accountTermAndPreClosure.maturityAmount(), maturityDate);
+    }
+
+    /**
+     * The amount invested as of the account's latest transaction - what a principal-only reinvestment carries over -
+     * computed from the transactions, so it is right whether or not the interest and tax have been posted yet.
+     */
+    public BigDecimal investedAmount() {
+        final List<SavingsAccountTransaction> transactions = getTransactions();
+        if (transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        final SavingsAccountTransaction last = transactions.stream().max(new SavingsAccountTransactionComparator()).orElseThrow();
+        return DynamicDepositInvestedAmountCalculator
+                .investedAmountAsOf(transactions, getCurrency(), interestTransferTransactionIds(), last).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * What the account is worth at its maturity date before any withholding tax: the amount invested plus all the
+     * interest it earns up to then. Reads the summary, so it is only meaningful straight after
+     * {@link #calculateInterestUsing} has run up to the maturity date. For a closed account the principal is the stored
+     * deposit amount, as the payout has taken it all. It is not the closing balance of the last posting period: that is
+     * built from the principal transactions alone and leaves the interest out.
+     */
+    public BigDecimal grossMaturityAmountAfterProjection() {
+        final BigDecimal interestEarned = getSummary().getTotalInterestEarned();
+        BigDecimal principal = investedAmount();
+        // A closed account has paid its principal out, so none is left to count; the deposit amount keeps the last one.
+        if (principal.signum() == 0 && !isActive() && this.accountTermAndPreClosure != null
+                && this.accountTermAndPreClosure.depositAmount() != null) {
+            principal = this.accountTermAndPreClosure.depositAmount();
+        }
+        return principal.add(interestEarned == null ? BigDecimal.ZERO : interestEarned);
     }
 
     public LocalDate maturityDate() {

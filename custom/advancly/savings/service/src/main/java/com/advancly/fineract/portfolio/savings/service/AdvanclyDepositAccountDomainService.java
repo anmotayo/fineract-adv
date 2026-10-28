@@ -184,9 +184,8 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                 // withholding tax and any forfeiture - the customer's complete payout.
                 final BigDecimal payout = account.getSummary().getAccountBalance();
                 if (payout.signum() > 0) {
-                    // A dynamic deposit never stores a maturity amount while it runs (it moves with every deposit and
-                    // rate change), so the closed account keeps what it paid out - the figure the closure template
-                    // calls the maturity amount.
+                    // The maturity amount stored at activation was a projection; the closed account keeps what it
+                    // actually paid out - the figure the closure template calls the maturity amount.
                     account.accountTermAndPreClosure().updateMaturityDetails(payout, account.maturityDate());
                     if (transferDestination != null) {
                         transferPayout(account, transferDestination, payout, closedDate, fmt, locale,

@@ -23,11 +23,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
 import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
 import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class DynamicDepositAccountMaturityDateTest {
@@ -91,6 +96,31 @@ class DynamicDepositAccountMaturityDateTest {
         final DynamicDepositAccount account = accountWithTerm(6, SavingsPeriodFrequencyType.MONTHS);
 
         assertThat(account.isEarlyWithdrawal(LocalDate.of(2026, 2, 1))).isFalse();
+    }
+
+    @Test
+    void grossMaturityAmountOfAClosedAccountUsesTheStoredDepositAmountForThePrincipal() {
+        final DynamicDepositAccount account = accountWithTerm(3, SavingsPeriodFrequencyType.MONTHS);
+        projectedInterest(account, "4600");
+        account.setStatus(SavingsAccountStatusType.CLOSED.getValue());
+
+        assertThat(account.grossMaturityAmountAfterProjection()).isEqualByComparingTo("104600");
+    }
+
+    @Test
+    void grossMaturityAmountOfAnActiveAccountCountsOnlyThePrincipalStillInvested() {
+        final DynamicDepositAccount account = accountWithTerm(3, SavingsPeriodFrequencyType.MONTHS);
+        projectedInterest(account, "4600");
+        account.setStatus(SavingsAccountStatusType.ACTIVE.getValue());
+
+        assertThat(account.grossMaturityAmountAfterProjection()).isEqualByComparingTo("4600");
+    }
+
+    private static void projectedInterest(final DynamicDepositAccount account, final String totalInterestEarned) {
+        final SavingsAccountSummary summary = Mockito.mock(SavingsAccountSummary.class);
+        Mockito.when(summary.getTotalInterestEarned()).thenReturn(new BigDecimal(totalInterestEarned));
+        ReflectionTestUtils.setField(account, "summary", summary);
+        ReflectionTestUtils.setField(account, "transactions", new ArrayList<SavingsAccountTransaction>());
     }
 
     private DynamicDepositAccount accountWithTerm(final Integer depositPeriod, final SavingsPeriodFrequencyType frequencyType) {

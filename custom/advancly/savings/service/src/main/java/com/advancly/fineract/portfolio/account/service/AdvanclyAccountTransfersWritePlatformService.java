@@ -32,8 +32,10 @@ import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConst
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService;
 import com.advancly.fineract.portfolio.savings.service.SavingsTransactionRules;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -109,6 +111,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     @Qualifier("coreAccountTransfersWritePlatformService")
     private final AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
+    private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
 
     /**
      * The returned {@code resourceId} is the {@code m_account_transfer_details} id, not the
@@ -379,6 +382,22 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             LocalDate selectedToDate) {
     }
 
+    /**
+     * A dynamic deposit works out its invested amount when the withdrawal is posted, but which withdrawals paid
+     * interest out is read from the transfer link, and that is only written once the transfer is saved. Until then the
+     * interest transfer is counted as principal and, being the latest transaction, nothing corrects it until the next
+     * one. Recomputing once the link exists leaves the invested amount and rate right straight away.
+     */
+    private void recomputeDynamicDepositOnceTransferIsLinked(final SavingsAccount fromSavingsAccount,
+            final AccountTransferDTO accountTransferDTO) {
+        // Only an interest transfer is told apart by its link; any other withdrawal is principal either way, and was
+        // already counted when it was posted, so recomputing for it again would be wasted work.
+        if (fromSavingsAccount instanceof DynamicDepositAccount dynamicDepositAccount
+                && AccountTransferType.fromInt(accountTransferDTO.getTransferType()).isInterestTransfer()) {
+            this.dynamicDepositRateHistoryService.recompute(dynamicDepositAccount);
+        }
+    }
+
     private Long transferFunds(final AccountTransferDTO accountTransferDTO,
             final EarlyWithdrawalTransferChargeRequest earlyWithdrawalChargeRequest) {
         Long transferDetailsId;
@@ -413,6 +432,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             accountTransferDetails = this.accountTransferAssembler.assembleSavingsToLoanTransfer(accountTransferDTO, fromSavingsAccount,
                     toLoanAccount, withdrawal, loanTransaction);
             this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
+            recomputeDynamicDepositOnceTransferIsLinked(fromSavingsAccount, accountTransferDTO);
             transferDetailsId = accountTransferDetails.getId();
         } else if (isSavingsToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             LocalDate transactionDate = resolveSavingsToSavingsTransferDate(accountTransferDTO);
@@ -454,6 +474,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
             accountTransferDetails = this.accountTransferAssembler.assembleSavingsToSavingsTransfer(accountTransferDTO, fromSavingsAccount,
                     toSavingsAccount, withdrawal, deposit);
             this.accountTransferDetailRepository.saveAndFlush(accountTransferDetails);
+            recomputeDynamicDepositOnceTransferIsLinked(fromSavingsAccount, accountTransferDTO);
             transferDetailsId = accountTransferDetails.getId();
         } else if (isLoanToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             final Loan fromLoanAccount = resolveFromLoanAccount(accountTransferDTO, accountTransferDetails);

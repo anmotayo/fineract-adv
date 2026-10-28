@@ -161,12 +161,19 @@ public class DynamicDepositRateHistoryService {
         DepositAccountDynamicRateHistory latest = null;
         BigDecimal latestInvested = null;
         BigDecimal latestRate = null;
+        DepositAccountDynamicRateHistory lastPositive = null;
+        BigDecimal lastPositiveInvested = null;
         for (final DepositAccountDynamicRateHistory row : rows) {
             if (row.transaction().isReversed()) {
                 continue;
             }
             final BigDecimal invested = investedAfter.containsKey(row.transaction()) ? investedAfter.get(row.transaction())
                     : computeInvestedAmountAsOf(account, row.transaction());
+            if (invested != null && invested.signum() > 0
+                    && (lastPositive == null || this.transactionComparator.compare(row.transaction(), lastPositive.transaction()) > 0)) {
+                lastPositive = row;
+                lastPositiveInvested = invested;
+            }
             final ResolvedRate rate = rateFor(account, term, activationRow, row, invested);
             if (differs(row, invested, rate)) {
                 row.correct(invested, rate.interestRateChartId(), rate.interestRateSlabId(), rate.baseAnnualInterestRate(),
@@ -182,12 +189,14 @@ public class DynamicDepositRateHistoryService {
         if (latest != null) {
             // The closing payout empties the account, which would take the deposit amount to zero with it. The deposit
             // amount is what the account was invested with - what a principal reinvestment carries and what a caller
-            // reads after the account has closed - so an emptied account keeps its last non-zero figure. A zero or
-            // negative figure left by an earlier version is still corrected.
-            final boolean emptied = latestInvested != null && latestInvested.signum() == 0 && term.depositAmount() != null
-                    && term.depositAmount().signum() > 0;
-            if (!emptied && compare(term.depositAmount(), latestInvested) != 0) {
-                term.updateDepositAmount(latestInvested);
+            // reads after the account has closed - so it is the last positive invested amount whenever the latest
+            // figure is zero or negative. A negative one is a closing payout counted as principal in full (read before
+            // its running balance was set), and a figure left that way by an earlier run is repaired the same way.
+            final BigDecimal depositAmount = latestInvested != null && latestInvested.signum() <= 0 && lastPositiveInvested != null
+                    ? lastPositiveInvested
+                    : latestInvested;
+            if (compare(term.depositAmount(), depositAmount) != 0) {
+                term.updateDepositAmount(depositAmount);
                 changed = true;
             }
             // Business rule 7 / plan Section 8: keep the account's own nominal rate equal to the latest row's resolved

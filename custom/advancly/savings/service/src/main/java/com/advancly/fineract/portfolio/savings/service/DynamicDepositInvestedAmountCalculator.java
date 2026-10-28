@@ -50,7 +50,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionCom
  *
  * Pure: it reads only the transactions it is given (and their running balances), so it is the same on a managed
  * account, a detached one carrying a simulated transaction, and one mid-closure that has not been flushed. A
- * transaction without a running balance is never taken for a closing payout.
+ * transaction without a running balance yet - the closing payout is read before core has set it - has its balance
+ * worked out from the transactions instead, so it is still recognised as the payout that empties the account.
  */
 public final class DynamicDepositInvestedAmountCalculator {
 
@@ -120,6 +121,11 @@ public final class DynamicDepositInvestedAmountCalculator {
         private final Set<Long> interestTransferTransactionIds;
         private BigDecimal principal = BigDecimal.ZERO;
         private BigDecimal interestAvailable = BigDecimal.ZERO;
+        /**
+         * The account balance worked out from the transactions applied so far, for a transaction with no running
+         * balance.
+         */
+        private BigDecimal balance = BigDecimal.ZERO;
 
         Position(final MonetaryCurrency currency, final Collection<Long> interestTransferTransactionIds) {
             this.currency = currency;
@@ -130,6 +136,12 @@ public final class DynamicDepositInvestedAmountCalculator {
         void apply(final List<SavingsAccountTransaction> chronological, final int index) {
             final SavingsAccountTransaction transaction = chronological.get(index);
             final BigDecimal amount = transaction.getAmount(this.currency).getAmount();
+            if (transaction.isDeposit() || transaction.isInterestPostingAndNotReversed()) {
+                this.balance = this.balance.add(amount);
+            } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestChargeAndNotReversed()
+                    || transaction.isWithdrawal()) {
+                this.balance = this.balance.subtract(amount);
+            }
             if (transaction.isDeposit()) {
                 this.principal = this.principal.add(amount);
             } else if (transaction.isInterestPostingAndNotReversed()) {
@@ -167,10 +179,9 @@ public final class DynamicDepositInvestedAmountCalculator {
         }
 
         private boolean leavesNothing(final SavingsAccountTransaction withdrawal, final BigDecimal chargesRightAfter) {
-            if (withdrawal.getRunningBalance() == null) {
-                return false;
-            }
-            final BigDecimal left = withdrawal.getRunningBalance(this.currency).getAmount().subtract(chargesRightAfter);
+            final BigDecimal balanceAfter = withdrawal.getRunningBalance() == null ? this.balance
+                    : withdrawal.getRunningBalance(this.currency).getAmount();
+            final BigDecimal left = balanceAfter.subtract(chargesRightAfter);
             return Money.of(this.currency, left).getAmount().signum() <= 0;
         }
     }

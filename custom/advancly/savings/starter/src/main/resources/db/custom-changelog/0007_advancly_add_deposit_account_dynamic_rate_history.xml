@@ -68,7 +68,7 @@
         </createTable>
     </changeSet>
 
-    <changeSet author="advancly" id="2">
+    <changeSet author="advancly" id="2" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -86,7 +86,22 @@
                                  referencedColumnNames="id" referencedTableName="m_savings_account"/>
     </changeSet>
 
-    <changeSet author="advancly" id="3">
+    <changeSet author="advancly" id="2-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_deposit_account_dynamic_rate_history"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_account_dynamic_rate_history_account" foreignKeyTableName="m_deposit_account_dynamic_rate_history"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_account_dynamic_rate_history"
+                                 constraintName="FK_deposit_account_dynamic_rate_history_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="3" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -97,6 +112,21 @@
                        AND TABLE_NAME = 'm_deposit_account_dynamic_rate_history'
                        AND CONSTRAINT_NAME = 'FK_deposit_account_dynamic_rate_history_transaction'
                 </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_transaction_id" baseTableName="m_deposit_account_dynamic_rate_history"
+                                 constraintName="FK_deposit_account_dynamic_rate_history_transaction" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="3-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_deposit_account_dynamic_rate_history"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_account_dynamic_rate_history_transaction" foreignKeyTableName="m_deposit_account_dynamic_rate_history"/>
+                </not>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_account_transaction_id" baseTableName="m_deposit_account_dynamic_rate_history"

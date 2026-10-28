@@ -51,7 +51,7 @@
         </createTable>
     </changeSet>
 
-    <changeSet author="advancly" id="2">
+    <changeSet author="advancly" id="2" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -62,6 +62,21 @@
                        AND TABLE_NAME = 'm_deposit_account_dynamic_detail'
                        AND CONSTRAINT_NAME = 'FK_deposit_account_dynamic_detail_savings_account'
                 </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_account_dynamic_detail"
+                                 constraintName="FK_deposit_account_dynamic_detail_savings_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="2-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_deposit_account_dynamic_detail"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_deposit_account_dynamic_detail_savings_account" foreignKeyTableName="m_deposit_account_dynamic_detail"/>
+                </not>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_deposit_account_dynamic_detail"

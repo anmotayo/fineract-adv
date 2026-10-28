@@ -42,6 +42,7 @@ import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetai
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
 import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService;
 import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
 import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
@@ -83,6 +84,7 @@ import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -123,6 +125,8 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
     private AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
     @Mock
     private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
+    @Mock
+    private DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
 
     private AdvanclyAccountTransfersWritePlatformService service;
 
@@ -133,7 +137,7 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
                 savingsAccountAssembler, coreSavingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
                 loanAccountDomainService, accountTransferDetailRepository, loanReadPlatformService, gsimRepository,
                 configurationDomainService, externalIdFactory, transactionRepository, coreDomainService,
-                coreAccountTransfersWritePlatformService, interestChargeApplicationService);
+                coreAccountTransfersWritePlatformService, interestChargeApplicationService, dynamicDepositRateHistoryService);
     }
 
     @Test
@@ -391,6 +395,11 @@ class AdvanclyAccountTransfersWritePlatformServiceTest {
 
         assertThat(transferId).isEqualTo(100L);
         verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+        // The interest transfer is only recognised as one once its link is saved, so the invested amount is
+        // re-derived after that.
+        InOrder linkedThenRecomputed = Mockito.inOrder(accountTransferDetailRepository, dynamicDepositRateHistoryService);
+        linkedThenRecomputed.verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+        linkedThenRecomputed.verify(dynamicDepositRateHistoryService).recompute(fromAccount);
     }
 
     @Test

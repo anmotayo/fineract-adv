@@ -52,7 +52,7 @@
     </changeSet>
 
     <!-- Update existing product records to default value (1 = MATURITY) where withhold tax is enabled -->
-    <changeSet author="advancly" id="3">
+    <changeSet author="advancly" id="3" context="mysql">
         <preConditions onFail="MARK_RAN">
             <columnExists tableName="m_deposit_product_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
             <sqlCheck expectedResult="0">
@@ -71,8 +71,27 @@
         </sql>
     </changeSet>
 
+    <changeSet author="advancly" id="3-postgresql" context="postgresql">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_deposit_product_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM m_deposit_product_term_and_preclosure dpt
+                JOIN m_savings_product sp ON dpt.savings_product_id = sp.id
+                WHERE sp.withhold_tax = true
+                AND dpt.withhold_tax_posting_type_enum IS NOT NULL
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE m_deposit_product_term_and_preclosure dpt SET withhold_tax_posting_type_enum = 1
+            FROM m_savings_product sp
+            WHERE dpt.savings_product_id = sp.id
+            AND sp.withhold_tax = true
+            AND dpt.withhold_tax_posting_type_enum IS NULL
+        </sql>
+    </changeSet>
+
     <!-- Update existing account records to default value (1 = MATURITY) where withhold tax is enabled -->
-    <changeSet author="advancly" id="4">
+    <changeSet author="advancly" id="4" context="mysql">
         <preConditions onFail="MARK_RAN">
             <columnExists tableName="m_deposit_account_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
             <sqlCheck expectedResult="0">
@@ -87,6 +106,25 @@
             JOIN m_savings_account sa ON dat.savings_account_id = sa.id
             SET dat.withhold_tax_posting_type_enum = 1
             WHERE sa.withhold_tax = true
+            AND dat.withhold_tax_posting_type_enum IS NULL
+        </sql>
+    </changeSet>
+
+    <changeSet author="advancly" id="4-postgresql" context="postgresql">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="m_deposit_account_term_and_preclosure" columnName="withhold_tax_posting_type_enum"/>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM m_deposit_account_term_and_preclosure dat
+                JOIN m_savings_account sa ON dat.savings_account_id = sa.id
+                WHERE sa.withhold_tax = true
+                AND dat.withhold_tax_posting_type_enum IS NOT NULL
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE m_deposit_account_term_and_preclosure dat SET withhold_tax_posting_type_enum = 1
+            FROM m_savings_account sa
+            WHERE dat.savings_account_id = sa.id
+            AND sa.withhold_tax = true
             AND dat.withhold_tax_posting_type_enum IS NULL
         </sql>
     </changeSet>

@@ -27,7 +27,7 @@
         </createTable>
     </changeSet>
 
-    <changeSet author="advancly" id="2">
+    <changeSet author="advancly" id="2" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -38,6 +38,21 @@
                        AND TABLE_NAME = 'm_adv_charge_interest_rule'
                        AND CONSTRAINT_NAME = 'FK_adv_charge_interest_rule_charge'
                 </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_adv_charge_interest_rule"
+                                 constraintName="FK_adv_charge_interest_rule_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="2-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_adv_charge_interest_rule_charge" foreignKeyTableName="m_adv_charge_interest_rule"/>
+                </not>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_adv_charge_interest_rule"
@@ -149,7 +164,7 @@
         </createTable>
     </changeSet>
 
-    <changeSet author="advancly" id="6">
+    <changeSet author="advancly" id="6" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -167,7 +182,22 @@
                                  referencedColumnNames="id" referencedTableName="m_savings_account"/>
     </changeSet>
 
-    <changeSet author="advancly" id="7">
+    <changeSet author="advancly" id="6-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_account" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="7" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -185,7 +215,22 @@
                                  referencedColumnNames="id" referencedTableName="m_charge"/>
     </changeSet>
 
-    <changeSet author="advancly" id="8">
+    <changeSet author="advancly" id="7-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_charge" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="8" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -203,7 +248,22 @@
                                  referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
     </changeSet>
 
-    <changeSet author="advancly" id="9">
+    <changeSet author="advancly" id="8-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_withdrawal_txn" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_withdrawal_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="9" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -221,7 +281,22 @@
                                  referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
     </changeSet>
 
-    <changeSet author="advancly" id="10">
+    <changeSet author="advancly" id="9-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_charge_txn" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="10" context="mysql">
         <validCheckSum>ANY</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
@@ -232,6 +307,21 @@
                        AND TABLE_NAME = 'm_savings_interest_charge_application'
                        AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_correction'
                 </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_correction" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_interest_charge_application"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="10-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_correction" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
             </and>
         </preConditions>
         <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_savings_interest_charge_application"

@@ -192,6 +192,73 @@ public class JournalEntryWritePlatformServiceJpaRepositoryImpl implements Journa
         }
     }
 
+    @Override
+    public void validateJournalEntry(final JsonCommand command) {
+        final JournalEntryCommand journalEntryCommand = this.fromApiJsonDeserializer.commandFromApiJson(command.json());
+        journalEntryCommand.validateForCreate();
+
+        final Long officeId = command.longValueOfParameterNamed(JournalEntryJsonInputParams.OFFICE_ID.getValue());
+        this.officeRepositoryWrapper.findOneWithNotFoundDetection(officeId);
+        final Long accountRuleId = command.longValueOfParameterNamed(JournalEntryJsonInputParams.ACCOUNTING_RULE.getValue());
+        final String currencyCode = command.stringValueOfParameterNamed(JournalEntryJsonInputParams.CURRENCY_CODE.getValue());
+
+        validateBusinessRulesForJournalEntries(journalEntryCommand);
+
+        final Map<String, Object> changes = new LinkedHashMap<>();
+        this.paymentDetailWritePlatformService.createPaymentDetail(command, changes);
+
+        if (accountRuleId != null) {
+            validateAccountingRuleForJournalEntry(journalEntryCommand, accountRuleId);
+        }
+
+        validateAllDebitOrCreditEntries(currencyCode, journalEntryCommand.getDebits());
+        validateAllDebitOrCreditEntries(currencyCode, journalEntryCommand.getCredits());
+    }
+
+    private void validateAccountingRuleForJournalEntry(final JournalEntryCommand journalEntryCommand, final Long accountRuleId) {
+        final AccountingRule accountingRule = this.accountingRuleRepository.findById(accountRuleId)
+                .orElseThrow(() -> new AccountingRuleNotFoundException(accountRuleId));
+
+        if (accountingRule.getAccountToCredit() == null) {
+            if (journalEntryCommand.getCredits() == null) {
+                throw new JournalEntryInvalidException(GlJournalEntryInvalidReason.NO_DEBITS_OR_CREDITS, null, null, null);
+            }
+            if (journalEntryCommand.getDebits() != null) {
+                checkDebitOrCreditAccountsAreValid(accountingRule, journalEntryCommand.getCredits(), journalEntryCommand.getDebits());
+                checkDebitAndCreditAmounts(journalEntryCommand.getCredits(), journalEntryCommand.getDebits());
+            }
+        } else {
+            final GLAccount creditAccountHead = accountingRule.getAccountToCredit();
+            validateGLAccountForTransaction(creditAccountHead);
+            validateDebitOrCreditArrayForExistingGLAccount(creditAccountHead, journalEntryCommand.getCredits());
+        }
+
+        if (accountingRule.getAccountToDebit() == null) {
+            if (journalEntryCommand.getDebits() == null) {
+                throw new JournalEntryInvalidException(GlJournalEntryInvalidReason.NO_DEBITS_OR_CREDITS, null, null, null);
+            }
+            if (journalEntryCommand.getCredits() != null) {
+                checkDebitOrCreditAccountsAreValid(accountingRule, journalEntryCommand.getCredits(), journalEntryCommand.getDebits());
+                checkDebitAndCreditAmounts(journalEntryCommand.getCredits(), journalEntryCommand.getDebits());
+            }
+        } else {
+            final GLAccount debitAccountHead = accountingRule.getAccountToDebit();
+            validateGLAccountForTransaction(debitAccountHead);
+            validateDebitOrCreditArrayForExistingGLAccount(debitAccountHead, journalEntryCommand.getDebits());
+        }
+    }
+
+    private void validateAllDebitOrCreditEntries(final String currencyCode,
+            final SingleDebitOrCreditEntryCommand[] singleDebitOrCreditEntryCommands) {
+        for (final SingleDebitOrCreditEntryCommand singleDebitOrCreditEntryCommand : singleDebitOrCreditEntryCommands) {
+            final GLAccount glAccount = this.glAccountRepository.findById(singleDebitOrCreditEntryCommand.getGlAccountId())
+                    .orElseThrow(() -> new GLAccountNotFoundException(singleDebitOrCreditEntryCommand.getGlAccountId()));
+
+            validateGLAccountForTransaction(glAccount);
+            this.organisationCurrencyRepository.findOneWithNotFoundDetection(currencyCode);
+        }
+    }
+
     private void validateDebitOrCreditArrayForExistingGLAccount(final GLAccount glaccount,
             final SingleDebitOrCreditEntryCommand[] creditOrDebits) {
         /**

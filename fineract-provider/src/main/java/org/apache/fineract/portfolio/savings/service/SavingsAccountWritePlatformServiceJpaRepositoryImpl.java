@@ -1834,11 +1834,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         final BigDecimal amount = command.bigDecimalValueOfParameterNamed(transactionAmountParamName);
 
         Money runningBalance = Money.of(account.getCurrency(), account.getAccountBalance());
-        if (account.getSavingsHoldAmount() != null) {
-            runningBalance = runningBalance.minus(account.getSavingsHoldAmount()).minus(amount);
-        } else {
-            runningBalance = runningBalance.minus(amount);
-        }
 
         this.savingsAccountTransactionDataValidator.validateHoldAndAssembleForm(command.json(), account, submittedBy,
                 backdatedTxnsAllowedTill);
@@ -1856,7 +1851,10 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         if (backdatedTxnsAllowedTill) {
             // Check again whether transactions are modified
+            account.addTransactionToExisting(transaction);
             this.savingsAccountTransactionRepository.saveAll(account.getSavingsAccountTransactionsWithPivotConfig());
+        } else {
+            account.addTransaction(transaction);
         }
 
         this.savingAccountRepositoryWrapper.saveAndFlush(account);
@@ -1882,12 +1880,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         checkClientOrGroupActive(account);
 
         Money runningBalance = Money.of(account.getCurrency(), account.getAccountBalance());
-
-        Money savingsOnHold = Money.of(account.getCurrency(), account.getSavingsHoldAmount());
-
-        runningBalance = runningBalance.minus(savingsOnHold);
-
-        runningBalance = runningBalance.plus(transaction.getAmount());
         transaction.setRunningBalance(runningBalance);
 
         this.savingsAccountTransactionDataValidator.validateTransactionWithPivotDate(transaction.getTransactionDate(), account);
@@ -1897,6 +1889,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         holdTransaction.updateReleaseId(transaction.getId());
 
         if (backdatedTxnsAllowedTill) {
+            account.addTransactionToExisting(transaction);
             this.savingsAccountTransactionRepository.saveAll(account.getSavingsAccountTransactionsWithPivotConfig());
         } else {
             account.addTransaction(transaction);

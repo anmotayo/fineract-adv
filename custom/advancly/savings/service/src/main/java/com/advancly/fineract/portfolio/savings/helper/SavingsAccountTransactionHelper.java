@@ -98,9 +98,9 @@ public class SavingsAccountTransactionHelper {
                 transaction.zeroBalanceFields();
                 continue;
             }
-            if (transaction.isCredit() || transaction.isAmountRelease()) {
+            if (transaction.isCredit()) {
                 runningBalance = runningBalance.plus(transaction.getAmount(currency));
-            } else if (transaction.isDebit() || transaction.isAmountOnHold()) {
+            } else if (transaction.isDebit()) {
                 runningBalance = runningBalance.minus(transaction.getAmount(currency));
             }
             transaction.setRunningBalance(runningBalance);

@@ -1851,10 +1851,7 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
 
         if (backdatedTxnsAllowedTill) {
             // Check again whether transactions are modified
-            account.addTransactionToExisting(transaction);
             this.savingsAccountTransactionRepository.saveAll(account.getSavingsAccountTransactionsWithPivotConfig());
-        } else {
-            account.addTransaction(transaction);
         }
 
         this.savingAccountRepositoryWrapper.saveAndFlush(account);
@@ -1889,7 +1886,6 @@ public class SavingsAccountWritePlatformServiceJpaRepositoryImpl implements Savi
         holdTransaction.updateReleaseId(transaction.getId());
 
         if (backdatedTxnsAllowedTill) {
-            account.addTransactionToExisting(transaction);
             this.savingsAccountTransactionRepository.saveAll(account.getSavingsAccountTransactionsWithPivotConfig());
         } else {
             account.addTransaction(transaction);

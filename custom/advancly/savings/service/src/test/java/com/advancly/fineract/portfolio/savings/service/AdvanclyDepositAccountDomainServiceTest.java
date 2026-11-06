@@ -504,14 +504,15 @@ class AdvanclyDepositAccountDomainServiceTest {
         return reinvested;
     }
 
+    // allowWithdrawal=false stops manual withdrawals and transfers out; it must not stop a premature closure.
     @Test
-    void aPrematureWithdrawalIsRejectedWhenTheAccountRuleDisallowsWithdrawals() {
+    void aPrematureClosureIsNotRejectedWhenTheAccountRuleDisallowsWithdrawals() {
         when(this.account.isWithdrawalBlockedByAccountRule()).thenReturn(true);
+        when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
 
-        assertThatThrownBy(() -> this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class),
-                command(WITHDRAW, null), this.changes)).isInstanceOf(GeneralPlatformDomainRuleException.class);
+        this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
 
-        verify(this.account, never()).beginClosureSettlement(any());
+        verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
     }
 
     // The lock stops an early exit; it must never stop the account being closed at maturity.
@@ -603,11 +604,15 @@ class AdvanclyDepositAccountDomainServiceTest {
     }
 
     @Test
-    void aPrematureClosureNeverLiftsTheWithdrawalLock() {
+    void aPrematureClosureLiftsTheWithdrawalLockForThePayoutOnlyAndRestoresIt() {
         when(this.account.beginClosureSettlement(CLOSED_DATE)).thenReturn(false);
 
         this.service.handleDynamicDepositPreMatureClosure(this.account, null, mock(AppUser.class), command(WITHDRAW, null), this.changes);
 
+        final InOrder order = inOrder(this.account);
+        order.verify(this.account).markClosingPrematurely(true);
+        order.verify(this.account).markClosingPrematurely(false);
+        // The maturity flag also relaxes the maturity-date transaction rules, which a premature closure must keep.
         verify(this.account, never()).markClosingAtMaturity(anyBoolean());
     }
 

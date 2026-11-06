@@ -135,6 +135,12 @@ public class DynamicDepositAccount extends SavingsAccount {
     private boolean closingAtMaturity = false;
 
     /**
+     * Never persisted; true only while a premature closure pays the account out - see {@link #markClosingPrematurely}.
+     */
+    @Transient
+    private boolean closingPrematurely = false;
+
+    /**
      * Never persisted; the early-withdrawal charge percentage one request asked for in place of the configured one -
      * see {@link #setWithdrawalChargePercentageOverride}. Whoever sets it clears it again in a {@code finally}.
      */
@@ -260,14 +266,23 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
-     * {@code allowWithdrawal = false} stops an early exit: withdrawals, transfers out and premature closure. It must
-     * never stop the account being closed at maturity - the customer has to be able to take the money out, or the
-     * account could never be closed - so a maturity closure lifts it for as long as that closure is in progress (see
-     * {@link #markClosingAtMaturity}).
+     * {@code allowWithdrawal = false} stops manual withdrawals and transfers out. It must never stop the account being
+     * closed, at maturity or prematurely - the customer has to be able to take the money out, or the account could
+     * never be closed - so a closure lifts it for as long as that closure is in progress (see
+     * {@link #markClosingAtMaturity} and {@link #markClosingPrematurely}).
      */
     @Override
     public boolean isWithdrawalBlockedByAccountRule() {
-        return !isAllowWithdrawal() && !this.closingAtMaturity;
+        return !isAllowWithdrawal() && !this.closingAtMaturity && !this.closingPrematurely;
+    }
+
+    /**
+     * Lifts the withdrawal lock for the payout of a premature closure only; unlike {@link #markClosingAtMaturity} it
+     * leaves the maturity-date transaction rules in force. Scoped to one unit of work by whoever sets it, which must
+     * clear it again in a {@code finally}.
+     */
+    public void markClosingPrematurely(final boolean closingPrematurely) {
+        this.closingPrematurely = closingPrematurely;
     }
 
     /**

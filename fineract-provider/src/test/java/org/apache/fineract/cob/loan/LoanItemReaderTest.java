@@ -33,7 +33,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.fineract.cob.common.CustomJobParameterResolver;
-import org.apache.fineract.cob.data.LoanCOBParameter;
+import org.apache.fineract.cob.data.COBParameter;
 import org.apache.fineract.cob.domain.LoanAccountLock;
 import org.apache.fineract.cob.domain.LockOwner;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
@@ -86,7 +86,7 @@ class LoanItemReaderTest {
         LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
                 loanLockingService);
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
-        LoanCOBParameter loanCOBParameter = new LoanCOBParameter(1L, 5L);
+        COBParameter loanCOBParameter = new COBParameter(1L, 5L);
         when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
         when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(List.of(1L, 2L, 3L, 4L, 5L)));
@@ -114,7 +114,7 @@ class LoanItemReaderTest {
         LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
                 loanLockingService);
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
-        LoanCOBParameter loanCOBParameter = new LoanCOBParameter(1L, 5L);
+        COBParameter loanCOBParameter = new COBParameter(1L, 5L);
         when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
         when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(List.of()));
@@ -135,7 +135,7 @@ class LoanItemReaderTest {
         LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
                 loanLockingService);
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
-        LoanCOBParameter loanCOBParameter = new LoanCOBParameter(1L, 100L);
+        COBParameter loanCOBParameter = new COBParameter(1L, 100L);
         when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
         when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf).toList()));
@@ -160,7 +160,7 @@ class LoanItemReaderTest {
         }
         executorService.shutdown();
         boolean b = executorService.awaitTermination(5L, TimeUnit.SECONDS);
-        Assertions.assertTrue(b, "Executor did not terminate successfully");
+        Assertions.assertEquals(true, b, "Executor did not terminate successfully");
 
         // verify that this was called 100times, and for each loan it was called exactly once
         for (long i = 1; i <= 100; i++) {

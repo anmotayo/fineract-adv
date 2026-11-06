@@ -1,3 +1,4 @@
+.worktrees
 *.class
 *.jar
 *.war
@@ -25,8 +26,18 @@ licenses
 **/.asciidoctor/images/*
 **/.asciidoctor/diagram/*
 **/images/diag-*.svg
-fineract-avro-schemas/out/
-fineract-client/out/
+
 fineract-provider/src/main/generated/
-integration-tests/out/
-module/dummy/starter/out/
+
+**/out/
+gradleExp/
+
+.run/
+.java-version
+
+.windsurf/
+.claude/
+CLAUDE.md
+/GEMINI.md
+/mifos documentation/
+docs/

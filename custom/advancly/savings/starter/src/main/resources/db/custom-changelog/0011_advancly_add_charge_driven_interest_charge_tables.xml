@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet author="advancly" id="1">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+            </not>
+        </preConditions>
+        <createTable tableName="m_adv_charge_interest_rule">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_m_adv_charge_interest_rule"/>
+            </column>
+            <column name="charge_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="interest_basis_mode_enum" type="SMALLINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="custom_period_reapply_policy_enum" type="SMALLINT"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="created_on_utc" type="DATETIME"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="last_modified_on_utc" type="DATETIME"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="advancly" id="2" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_adv_charge_interest_rule'
+                       AND CONSTRAINT_NAME = 'FK_adv_charge_interest_rule_charge'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_adv_charge_interest_rule"
+                                 constraintName="FK_adv_charge_interest_rule_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="2-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_adv_charge_interest_rule_charge" foreignKeyTableName="m_adv_charge_interest_rule"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_adv_charge_interest_rule"
+                                 constraintName="FK_adv_charge_interest_rule_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="3-mysql" context="mysql">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.table_constraints
+                     WHERE table_schema = database()
+                       AND table_name = 'm_adv_charge_interest_rule'
+                       AND lower(constraint_name) = 'unq_adv_charge_interest_rule_charge'
+                       AND constraint_type = 'UNIQUE'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addUniqueConstraint columnNames="charge_id" constraintName="UNQ_adv_charge_interest_rule_charge"
+                             tableName="m_adv_charge_interest_rule"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="3-postgresql" context="postgresql">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.table_constraints
+                     WHERE table_schema = current_schema()
+                       AND table_name = 'm_adv_charge_interest_rule'
+                       AND lower(constraint_name) = 'unq_adv_charge_interest_rule_charge'
+                       AND constraint_type = 'UNIQUE'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addUniqueConstraint columnNames="charge_id" constraintName="UNQ_adv_charge_interest_rule_charge"
+                             tableName="m_adv_charge_interest_rule"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="4">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_adv_charge_interest_rule"/>
+                <not>
+                    <indexExists indexName="IDX_adv_charge_interest_rule_mode"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_adv_charge_interest_rule_mode" tableName="m_adv_charge_interest_rule">
+            <column name="interest_basis_mode_enum"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="advancly" id="5">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+            </not>
+        </preConditions>
+        <createTable tableName="m_savings_interest_charge_application">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_m_savings_interest_charge_application"/>
+            </column>
+            <column name="savings_account_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="charge_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="withdrawal_transaction_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="interest_charge_transaction_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="transaction_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="selected_from_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="selected_to_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="interest_basis_mode_enum" type="SMALLINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="custom_period_reapply_policy_enum" type="SMALLINT"/>
+            <column name="percentage" type="DECIMAL(19, 6)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="original_basis_amount" type="DECIMAL(19, 6)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="previously_consumed_amount" type="DECIMAL(19, 6)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="applied_amount" type="DECIMAL(19, 6)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="correction_of_application_id" type="BIGINT"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="created_on_utc" type="DATETIME"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="last_modified_on_utc" type="DATETIME"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="advancly" id="6" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_account'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="6-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_account" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="savings_account_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_account" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="7" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_charge'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="7-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_charge" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="charge_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_charge"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="8" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_withdrawal_txn'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_withdrawal_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="8-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_withdrawal_txn" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="withdrawal_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_withdrawal_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="9" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_charge_txn'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="9-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_charge_txn" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="interest_charge_transaction_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_charge_txn" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_account_transaction"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="10" context="mysql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = 'm_savings_interest_charge_application'
+                       AND CONSTRAINT_NAME = 'FK_savings_interest_charge_app_correction'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_correction" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_interest_charge_application"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="10-postgresql" context="postgresql">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <foreignKeyConstraintExists foreignKeyName="FK_savings_interest_charge_app_correction" foreignKeyTableName="m_savings_interest_charge_application"/>
+                </not>
+            </and>
+        </preConditions>
+        <addForeignKeyConstraint baseColumnNames="correction_of_application_id" baseTableName="m_savings_interest_charge_application"
+                                 constraintName="FK_savings_interest_charge_app_correction" onDelete="RESTRICT" onUpdate="RESTRICT"
+                                 referencedColumnNames="id" referencedTableName="m_savings_interest_charge_application"/>
+    </changeSet>
+
+    <changeSet author="advancly" id="11">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <indexExists indexName="IDX_savings_interest_charge_app_account_charge_date"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_savings_interest_charge_app_account_charge_date"
+                     tableName="m_savings_interest_charge_application">
+            <column name="savings_account_id"/>
+            <column name="charge_id"/>
+            <column name="transaction_date"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="advancly" id="12">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <indexExists indexName="IDX_savings_interest_charge_app_selected_period"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_savings_interest_charge_app_selected_period"
+                     tableName="m_savings_interest_charge_application">
+            <column name="savings_account_id"/>
+            <column name="charge_id"/>
+            <column name="selected_from_date"/>
+            <column name="selected_to_date"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="advancly" id="13">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <indexExists indexName="IDX_savings_interest_charge_app_withdrawal"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_savings_interest_charge_app_withdrawal"
+                     tableName="m_savings_interest_charge_application">
+            <column name="withdrawal_transaction_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="advancly" id="14">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <indexExists indexName="IDX_savings_interest_charge_app_charge_txn"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_savings_interest_charge_app_charge_txn"
+                     tableName="m_savings_interest_charge_application">
+            <column name="interest_charge_transaction_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="advancly" id="15">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="m_savings_interest_charge_application"/>
+                <not>
+                    <indexExists indexName="IDX_savings_interest_charge_app_correction"/>
+                </not>
+            </and>
+        </preConditions>
+        <createIndex indexName="IDX_savings_interest_charge_app_correction"
+                     tableName="m_savings_interest_charge_application">
+            <column name="correction_of_application_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

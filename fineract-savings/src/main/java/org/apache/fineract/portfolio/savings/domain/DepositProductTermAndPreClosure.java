@@ -20,7 +20,12 @@ package org.apache.fineract.portfolio.savings.domain;
 
 import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
@@ -41,7 +46,7 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
 
     @OneToOne
     @JoinColumn(name = "savings_product_id", nullable = false)
-    private FixedDepositProduct product;
+    private SavingsProduct product;
 
     @Embedded
     private DepositProductAmountDetails depositProductAmountDetails;
@@ -70,7 +75,7 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
         this.preClosureDetail = preClosureDetail;
         this.depositTermDetail = depositTermDetail;
         this.depositProductAmountDetails = depositProductMinMaxAmountDetails;
-        this.product = (FixedDepositProduct) product;
+        this.product = product;
         this.withHoldTaxPostingType = (withHoldTaxPostingType == null) ? null : withHoldTaxPostingType.getValue();
     }
 
@@ -109,7 +114,7 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
     }
 
     public void updateProductReference(final SavingsProduct product) {
-        this.product = (FixedDepositProduct) product;
+        this.product = product;
     }
 
     public Integer withHoldTaxPostingType() {

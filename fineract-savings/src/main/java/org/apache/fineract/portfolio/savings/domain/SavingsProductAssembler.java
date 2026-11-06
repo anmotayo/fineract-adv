@@ -57,6 +57,7 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
 import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
@@ -131,10 +132,12 @@ public class SavingsProductAssembler extends SavingsProductBaseAssembler {
         final AccountingRuleType accountingRuleType = AccountingRuleType.fromInt(command.integerValueOfParameterNamed("accountingRule"));
 
         // Savings product charges
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName,
+                DepositAccountType.SAVINGS_DEPOSIT);
 
         // Savings product charges to be accrued
-        final Set<Charge> accrualCharges = assembleListOfSavingsProductCharges(command, currencyCode, accrualChargesParamName);
+        final Set<Charge> accrualCharges = assembleListOfSavingsProductCharges(command, currencyCode, accrualChargesParamName,
+                DepositAccountType.SAVINGS_DEPOSIT);
 
         boolean allowOverdraft = false;
         if (command.parameterExists(allowOverdraftParamName)) {

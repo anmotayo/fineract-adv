@@ -35,7 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.fineract.client.models.PostPaymentTypesRequest;
+import org.apache.fineract.client.models.PaymentTypeRequest;
 import org.apache.fineract.client.models.PostPaymentTypesResponse;
 import org.apache.fineract.integrationtests.common.ClientHelper;
 import org.apache.fineract.integrationtests.common.CommonConstants;
@@ -46,9 +46,11 @@ import org.apache.fineract.integrationtests.common.charges.ChargesHelper;
 import org.apache.fineract.integrationtests.common.savings.SavingsAccountHelper;
 import org.apache.fineract.integrationtests.common.savings.SavingsProductHelper;
 import org.apache.fineract.integrationtests.common.savings.SavingsStatusChecker;
+import org.apache.fineract.integrationtests.common.savings.SavingsTestLifecycleExtension;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +58,7 @@ import org.slf4j.LoggerFactory;
  * Group Savings Integration Test for checking Savings Application.
  */
 @SuppressWarnings({ "rawtypes", "unused" })
+@ExtendWith({ SavingsTestLifecycleExtension.class })
 public class GroupSavingsIntegrationTest {
 
     public static final String DEPOSIT_AMOUNT = "2000";
@@ -181,6 +184,57 @@ public class GroupSavingsIntegrationTest {
 
     @SuppressWarnings("unchecked")
     @Test
+    public void testGsimSavingsAccount_WithTwoClients_ChildCountTwo() {
+
+        // Initialize the helper for savings account operations
+        this.savingsAccountHelper = new SavingsAccountHelper(this.requestSpec, this.responseSpec);
+
+        // Create two clients: one designated as the parent and one as the child
+        final Integer parentClientID = ClientHelper.createClient(this.requestSpec, this.responseSpec);
+        Assertions.assertNotNull(parentClientID);
+
+        final Integer childClientID = ClientHelper.createClient(this.requestSpec, this.responseSpec);
+        Assertions.assertNotNull(childClientID);
+
+        // Create a group and associate both clients with it
+        Integer groupID = GroupHelper.createGroup(this.requestSpec, this.responseSpec, true);
+        Assertions.assertNotNull(groupID);
+
+        // obtain the latest application ID of the gsim accounts
+        // BigDecimal applicationId = GroupHelper.getLastApplicationIdOfGsimSavingAccount(this.requestSpec,
+        // this.responseSpec, groupID).add(BigDecimal.ONE);
+
+        groupID = GroupHelper.associateClient(this.requestSpec, this.responseSpec, groupID.toString(), parentClientID.toString());
+        Assertions.assertNotNull(groupID);
+        groupID = GroupHelper.associateClient(this.requestSpec, this.responseSpec, groupID.toString(), childClientID.toString());
+        Assertions.assertNotNull(groupID);
+
+        // Create a savings product necessary for the GSIM application
+        final String minBalanceForInterestCalculation = null;
+        final String minRequiredBalance = null;
+        final String enforceMinRequiredBalance = "false";
+        final Integer savingsProductID = createSavingsProduct(this.requestSpec, this.responseSpec, MINIMUM_OPENING_BALANCE,
+                minBalanceForInterestCalculation, minRequiredBalance, enforceMinRequiredBalance);
+        Assertions.assertNotNull(savingsProductID);
+
+        // Prepare the client array with two entries:
+        // one for the parent client (isParent = true) and one for the child client (isParent = false)
+        List<Map<String, Object>> clientArray = new ArrayList<>();
+        clientArray.add(clientArray(parentClientID, groupID, savingsProductID, "08 January 2013", true));
+        clientArray.add(clientArray(childClientID, groupID, savingsProductID, "08 January 2013", false));
+
+        // Apply for a GSIM savings account with both clients under the same application
+        final Integer gsimID = this.savingsAccountHelper.applyForGsimApplication(clientArray);
+        Assertions.assertNotNull(gsimID);
+
+        // get child account count
+        final Integer childAccountCount = GroupHelper.getChildAccountCount(this.requestSpec, this.responseSpec, groupID);
+        assertEquals(childAccountCount, 2);
+
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
     public void testSavingsAccount_DELETE_APPLICATION() {
         this.savingsAccountHelper = new SavingsAccountHelper(this.requestSpec, this.responseSpec);
 
@@ -254,7 +308,7 @@ public class GroupSavingsIntegrationTest {
         Assertions.assertNotNull(savingsProductID);
 
         List<Map<String, Object>> clientArray = new ArrayList<>();
-        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013"));
+        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013", true));
 
         final Integer gsimID = this.savingsAccountHelper.applyForGsimApplication(clientArray);
 
@@ -306,7 +360,7 @@ public class GroupSavingsIntegrationTest {
         Assertions.assertNotNull(savingsProductID);
 
         List<Map<String, Object>> clientArray = new ArrayList<>();
-        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013"));
+        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013", true));
         LOG.info("client Array : {} ", clientArray);
 
         final Integer savingsId = this.savingsAccountHelper.applyForSavingsApplication(groupID, savingsProductID, ACCOUNT_TYPE_GROUP);
@@ -318,7 +372,7 @@ public class GroupSavingsIntegrationTest {
         Integer position = 1;
 
         PostPaymentTypesResponse paymentTypesResponse = paymentTypeHelper.createPaymentType(
-                new PostPaymentTypesRequest().name(name).description(description).isCashPayment(isCashPayment).position(position));
+                new PaymentTypeRequest().name(name).description(description).isCashPayment(isCashPayment).position(position));
         Long paymentTypeId = paymentTypesResponse.getResourceId();
         Assertions.assertNotNull(paymentTypeId);
 
@@ -365,7 +419,7 @@ public class GroupSavingsIntegrationTest {
         Assertions.assertNotNull(savingsProductID);
 
         List<Map<String, Object>> clientArray = new ArrayList<>();
-        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013"));
+        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013", true));
 
         final Integer gsimID = this.savingsAccountHelper.applyForGsimApplication(clientArray);
 
@@ -414,7 +468,7 @@ public class GroupSavingsIntegrationTest {
         Assertions.assertNotNull(savingsProductID);
 
         List<Map<String, Object>> clientArray = new ArrayList<>();
-        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013"));
+        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013", true));
 
         final Integer gsimID = this.savingsAccountHelper.applyForGsimApplication(clientArray);
 
@@ -448,7 +502,7 @@ public class GroupSavingsIntegrationTest {
         Assertions.assertNotNull(savingsProductID);
 
         List<Map<String, Object>> clientArray = new ArrayList<>();
-        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013"));
+        clientArray.add(clientArray(clientID, groupID, savingsProductID, "08 January 2013", true));
         final Integer gsimID = this.savingsAccountHelper.applyForGsimApplication(clientArray);
 
         final List<String> retrievedGsimId = GroupHelper.verifyRetrieveGsimAccounts(this.requestSpec, this.responseSpec, groupID);
@@ -797,7 +851,7 @@ public class GroupSavingsIntegrationTest {
     }
 
     private Map<String, Object> clientArray(final Integer clientId, final Integer groupId, final Integer productId,
-            final String submittedOnDate) {
+            final String submittedOnDate, final boolean isParent) {
         Map<String, Object> map = new HashMap<>();
         map.put("clientId", clientId);
         map.put("groupId", groupId);
@@ -805,7 +859,7 @@ public class GroupSavingsIntegrationTest {
         map.put("submittedOnDate", submittedOnDate);
         map.put("dateFormat", CommonConstants.DATE_FORMAT);
         map.put("locale", "en");
-        map.put("isParentAccount", "1");
+        map.put("isParentAccount", isParent);
         map.put("isGSIM", "true");
         return map;
     }

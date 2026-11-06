@@ -86,6 +86,9 @@ public final class SavingsAccountSummary {
     @Transient
     private BigDecimal runningBalanceOnInterestPostingTillDate = BigDecimal.ZERO;
 
+    @Transient
+    private BigDecimal preStartDateInterestEarned = BigDecimal.ZERO;
+
     SavingsAccountSummary() {
         //
     }
@@ -179,6 +182,14 @@ public final class SavingsAccountSummary {
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
                 break;
+                case INTEREST_CHARGE:
+                    if (transaction.isInterestChargeAndNotReversed()) {
+                        // interest charges are always penalty-flagged charges (see eligibility gate); bucket
+                        // with other penalty charges rather than introducing a dedicated summary column.
+                        this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
+                        this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
+                    }
+                break;
                 default:
                 break;
             }
@@ -262,21 +273,19 @@ public final class SavingsAccountSummary {
         this.totalInterestEarned = totalEarned.getAmount();
     }
 
-    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
-            final SavingsAccountTransactionSummaryWrapper wrapper, final List<SavingsAccountTransaction> transactions,
-            final LocalDate startInterestCalculationDate) {
+    public void setPreStartDateInterestEarned(BigDecimal preStartDateInterestEarned) {
+        this.preStartDateInterestEarned = preStartDateInterestEarned != null ? preStartDateInterestEarned : BigDecimal.ZERO;
+    }
 
-        final BigDecimal interestPostedBeforeInterestCalculationDate = wrapper
-                .calculateTotalInterestPostedBeforeStartInterestCalculationDate(currency, transactions, startInterestCalculationDate);
-        Money totalEarned = interestPostedBeforeInterestCalculationDate == null ? Money.zero(currency)
-                : Money.of(currency, interestPostedBeforeInterestCalculationDate);
-        LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final boolean hasStartInterestCalculationDate) {
+        Money totalEarned = hasStartInterestCalculationDate ? Money.of(currency, this.preStartDateInterestEarned) : Money.zero(currency);
         for (final PostingPeriod period : allPostingPeriods) {
             Money interestEarned = period.interest();
             interestEarned = interestEarned == null ? Money.zero(currency) : interestEarned;
             totalEarned = totalEarned.plus(interestEarned);
         }
-        this.lastInterestCalculationDate = interestCalculationDate;
+        this.lastInterestCalculationDate = DateUtils.getBusinessLocalDate();
         this.totalInterestEarned = totalEarned.getAmount();
     }
 
@@ -355,5 +364,45 @@ public final class SavingsAccountSummary {
 
     public BigDecimal getTotalWithholdTax() {
         return this.totalWithholdTax;
+    }
+
+    public void setTotalDeposits(BigDecimal totalDeposits) {
+        this.totalDeposits = totalDeposits;
+    }
+
+    public void setTotalWithdrawals(BigDecimal totalWithdrawals) {
+        this.totalWithdrawals = totalWithdrawals;
+    }
+
+    public void setTotalInterestPosted(BigDecimal totalInterestPosted) {
+        this.totalInterestPosted = totalInterestPosted;
+    }
+
+    public void setTotalWithdrawalFees(BigDecimal totalWithdrawalFees) {
+        this.totalWithdrawalFees = totalWithdrawalFees;
+    }
+
+    public void setTotalAnnualFees(BigDecimal totalAnnualFees) {
+        this.totalAnnualFees = totalAnnualFees;
+    }
+
+    public void setTotalFeeCharge(BigDecimal totalFeeCharge) {
+        this.totalFeeCharge = totalFeeCharge;
+    }
+
+    public void setTotalPenaltyCharge(BigDecimal totalPenaltyCharge) {
+        this.totalPenaltyCharge = totalPenaltyCharge;
+    }
+
+    public void setTotalOverdraftInterestDerived(BigDecimal totalOverdraftInterestDerived) {
+        this.totalOverdraftInterestDerived = totalOverdraftInterestDerived;
+    }
+
+    public void setTotalWithholdTax(BigDecimal totalWithholdTax) {
+        this.totalWithholdTax = totalWithholdTax;
+    }
+
+    public void correctTotalInterestEarned(final MonetaryCurrency currency, Money totalCorrectionAmount) {
+        this.totalInterestEarned = Money.of(currency, this.totalInterestEarned).minus(totalCorrectionAmount).getAmount();
     }
 }

@@ -18,7 +18,9 @@
  */
 package org.apache.fineract.infrastructure.event.external.service.serialization.serializer.loan;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -29,7 +31,9 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -54,6 +58,7 @@ import org.apache.fineract.infrastructure.event.external.service.serialization.m
 import org.apache.fineract.infrastructure.event.external.service.serialization.mapper.loan.LoanChargeDataMapperImpl;
 import org.apache.fineract.infrastructure.event.external.service.serialization.mapper.loan.LoanDelinquencyRangeDataMapperImpl;
 import org.apache.fineract.infrastructure.event.external.service.serialization.mapper.support.AvroDateTimeMapper;
+import org.apache.fineract.infrastructure.event.external.service.serialization.serializer.ExternalEventCustomDataSerializer;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
@@ -77,17 +82,26 @@ import org.apache.fineract.portfolio.delinquency.mapper.LoanDelinquencyTagMapper
 import org.apache.fineract.portfolio.delinquency.service.DelinquencyReadPlatformService;
 import org.apache.fineract.portfolio.delinquency.service.DelinquencyReadPlatformServiceImpl;
 import org.apache.fineract.portfolio.delinquency.service.LoanDelinquencyDomainService;
+import org.apache.fineract.portfolio.delinquency.service.PossibleNextRepaymentCalculationServiceDiscovery;
 import org.apache.fineract.portfolio.loanaccount.data.CollectionData;
 import org.apache.fineract.portfolio.loanaccount.data.LoanAccountData;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanCharge;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanInstallmentCharge;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanLifecycleStateMachine;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepository;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanStatus;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
+import org.apache.fineract.portfolio.loanaccount.serialization.LoanChargeValidator;
+import org.apache.fineract.portfolio.loanaccount.service.LoanBalanceService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanChargeReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanChargeService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanTransactionProcessingService;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,8 +130,17 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
     @Mock
     private AvroDateTimeMapper mapper;
 
+    private final LoanChargeService loanChargeService = new LoanChargeService(mock(LoanChargeValidator.class),
+            mock(LoanTransactionProcessingService.class), mock(LoanLifecycleStateMachine.class), mock(LoanBalanceService.class));
+
+    private MockedStatic<MoneyHelper> moneyHelper = Mockito.mockStatic(MoneyHelper.class);
+
+    private static final String CUSTOM_DATA_PREFIX = "test_data_loan_delinquency_range_business_event";
+
     @BeforeEach
     public void setUp() {
+        moneyHelper.when(MoneyHelper::getMathContext).thenReturn(new MathContext(12, RoundingMode.UP));
+        moneyHelper.when(MoneyHelper::getRoundingMode).thenReturn(RoundingMode.UP);
         ThreadLocalContextUtil.setTenant(new FineractPlatformTenant(1L, "default", "Default", "Asia/Kolkata", null));
         ThreadLocalContextUtil.setActionContext(ActionContext.DEFAULT);
         ThreadLocalContextUtil
@@ -127,6 +150,7 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
     @AfterEach
     public void tearDown() {
         ThreadLocalContextUtil.reset();
+        moneyHelper.close();
     }
 
     @Test
@@ -135,13 +159,13 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         LoanDelinquencyRangeChangeBusinessEventSerializer serializer = new LoanDelinquencyRangeChangeBusinessEventSerializer(
                 loanReadPlatformService, new LoanDelinquencyRangeDataMapperImpl(), loanChargeReadPlatformService,
                 delinquencyReadPlatformService, new LoanChargeDataMapperImpl(null, null, null), new CurrencyDataMapperImpl(), mapper,
-                new LoanInstallmentLevelDelinquencyEventProducer(delinquencyReadPlatformService, new CurrencyDataMapperImpl()));
+                new LoanInstallmentLevelDelinquencyEventProducer(delinquencyReadPlatformService, new CurrencyDataMapperImpl()),
+                createCustomDataForEvents());
 
         Loan loanForProcessing = Mockito.mock(Loan.class);
         LoanAccountData loanAccountData = mock(LoanAccountData.class);
         CollectionData delinquentData = mock(CollectionData.class);
         MonetaryCurrency loanCurrency = new MonetaryCurrency("CODE", 1, 1);
-        MockedStatic<MoneyHelper> moneyHelper = Mockito.mockStatic(MoneyHelper.class);
         String delinquentDateAsStr = "2022-12-01";
         LocalDate delinquentDate = LocalDate.parse(delinquentDateAsStr);
 
@@ -150,8 +174,8 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         when(loanAccountData.getAccountNo()).thenReturn("0001");
         when(loanAccountData.getExternalId()).thenReturn(ExternalIdFactory.produce("externalId"));
         when(loanAccountData.getDelinquencyRange()).thenReturn(new DelinquencyRangeData(1L, "classification", 1, 10));
-        when(loanAccountData.getCurrency()).thenAnswer(a -> new CurrencyData(loanCurrency.getCode(), loanCurrency.getDigitsAfterDecimal(),
-                loanCurrency.getCurrencyInMultiplesOf()));
+        when(loanAccountData.getCurrency()).thenAnswer(
+                a -> new CurrencyData(loanCurrency.getCode(), loanCurrency.getDigitsAfterDecimal(), loanCurrency.getInMultiplesOf()));
         when(loanForProcessing.getCurrency()).thenReturn(loanCurrency);
         when(loanForProcessing.isEnableInstallmentLevelDelinquency()).thenReturn(false);
         when(delinquentData.getDelinquentDate()).thenReturn(delinquentDate);
@@ -167,8 +191,6 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         when(loanForProcessing.getRepaymentScheduleInstallments()).thenReturn(repaymentScheduleInstallments);
         when(loanChargeReadPlatformService.retrieveLoanCharges(anyLong())).thenAnswer(a -> repaymentScheduleInstallments.get(0)
                 .getInstallmentCharges().stream().map(c -> c.getLoanCharge().toData()).collect(Collectors.toList()));
-
-        moneyHelper.when(() -> MoneyHelper.getRoundingMode()).thenReturn(RoundingMode.UP);
 
         // when
         LoanAccountDelinquencyRangeDataV1 data = (LoanAccountDelinquencyRangeDataV1) serializer.toAvroDTO(event);
@@ -191,7 +213,10 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         assertEquals(0, data.getAmount().getPenaltyAmount().compareTo(new BigDecimal("50.0")));
         assertEquals(delinquentDateAsStr, data.getDelinquentDate());
 
-        moneyHelper.close();
+        assertNotNull(data.getCustomData());
+        final Map<String, ByteBuffer> customData = data.getCustomData();
+        assertEquals(CUSTOM_DATA_PREFIX + "_1", new String(customData.get("test_key_1").array(), UTF_8));
+        assertEquals(CUSTOM_DATA_PREFIX + "_2", new String(customData.get("test_key_2").array(), UTF_8));
     }
 
     @Test
@@ -200,13 +225,13 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         LoanDelinquencyRangeChangeBusinessEventSerializer serializer = new LoanDelinquencyRangeChangeBusinessEventSerializer(
                 loanReadPlatformService, new LoanDelinquencyRangeDataMapperImpl(), loanChargeReadPlatformService,
                 delinquencyReadPlatformService, new LoanChargeDataMapperImpl(null, null, null), new CurrencyDataMapperImpl(), mapper,
-                new LoanInstallmentLevelDelinquencyEventProducer(delinquencyReadPlatformService, new CurrencyDataMapperImpl()));
+                new LoanInstallmentLevelDelinquencyEventProducer(delinquencyReadPlatformService, new CurrencyDataMapperImpl()),
+                createCustomDataForEvents());
 
         Loan loanForProcessing = Mockito.mock(Loan.class);
         LoanAccountData loanAccountData = mock(LoanAccountData.class);
         CollectionData delinquentData = mock(CollectionData.class);
         MonetaryCurrency loanCurrency = new MonetaryCurrency("CODE", 1, 1);
-        MockedStatic<MoneyHelper> moneyHelper = Mockito.mockStatic(MoneyHelper.class);
         String delinquentDateAsStr = "2022-12-01";
         LocalDate delinquentDate = LocalDate.parse(delinquentDateAsStr);
         when(loanForProcessing.getId()).thenReturn(1L);
@@ -214,8 +239,8 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         when(loanAccountData.getAccountNo()).thenReturn("0001");
         when(loanAccountData.getExternalId()).thenReturn(ExternalIdFactory.produce("externalId"));
         when(loanAccountData.getDelinquencyRange()).thenReturn(new DelinquencyRangeData(1L, "classification", 1, 10));
-        when(loanAccountData.getCurrency()).thenAnswer(a -> new CurrencyData(loanCurrency.getCode(), loanCurrency.getDigitsAfterDecimal(),
-                loanCurrency.getCurrencyInMultiplesOf()));
+        when(loanAccountData.getCurrency()).thenAnswer(
+                a -> new CurrencyData(loanCurrency.getCode(), loanCurrency.getDigitsAfterDecimal(), loanCurrency.getInMultiplesOf()));
         when(loanForProcessing.getCurrency()).thenReturn(loanCurrency);
         when(loanForProcessing.isEnableInstallmentLevelDelinquency()).thenReturn(true);
         when(delinquentData.getDelinquentDate()).thenReturn(delinquentDate);
@@ -261,9 +286,7 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
                 .thenReturn(installmentDelinquencyTags);
 
         when(loanForProcessing.getLoanCharges()).thenAnswer(a -> repaymentScheduleInstallments.get(0).getInstallmentCharges().stream()
-                .map(c -> c.getLoanCharge()).collect(Collectors.toList()));
-
-        moneyHelper.when(() -> MoneyHelper.getRoundingMode()).thenReturn(RoundingMode.UP);
+                .map(LoanInstallmentCharge::getLoanCharge).collect(Collectors.toSet()));
 
         // when
         LoanAccountDelinquencyRangeDataV1 data = (LoanAccountDelinquencyRangeDataV1) serializer.toAvroDTO(event);
@@ -285,6 +308,11 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         assertEquals(0, data.getAmount().getFeeAmount().compareTo(new BigDecimal("10.0")));
         assertEquals(0, data.getAmount().getPenaltyAmount().compareTo(new BigDecimal("20.0")));
         assertEquals(delinquentDateAsStr, data.getDelinquentDate());
+
+        assertNotNull(data.getCustomData());
+        final Map<String, ByteBuffer> customData = data.getCustomData();
+        assertEquals(CUSTOM_DATA_PREFIX + "_1", new String(customData.get("test_key_1").array(), UTF_8));
+        assertEquals(CUSTOM_DATA_PREFIX + "_2", new String(customData.get("test_key_2").array(), UTF_8));
 
         // check installment delinquency data
         assertEquals(2, data.getInstallmentDelinquencyBuckets().size());
@@ -314,7 +342,6 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         assertEquals(0, installmentDelinquencyBucketDataV1_2.getAmount().getFeeAmount().compareTo(new BigDecimal("0.0")));
         assertEquals(0, installmentDelinquencyBucketDataV1_2.getAmount().getPenaltyAmount().compareTo(new BigDecimal("0.0")));
         assertEquals(0, installmentDelinquencyBucketDataV1_2.getCharges().size());
-        moneyHelper.close();
     }
 
     @Test
@@ -337,10 +364,19 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         DelinquencyReadPlatformService delinquencyReadPlatformService = new DelinquencyReadPlatformServiceImpl(repositoryRange,
                 repositoryBucket, repositoryLoanDelinquencyTagHistory, mapperRange, mapperBucket, mapperLoanDelinquencyTagHistory,
                 loanRepository, loanDelinquencyDomainService, repositoryLoanInstallmentDelinquencyTag, loanDelinquencyActionRepository,
-                delinquencyEffectivePauseHelper, configurationDomainService);
+                delinquencyEffectivePauseHelper, configurationDomainService, Mockito.mock(LoanTransactionRepository.class),
+                Mockito.mock(PossibleNextRepaymentCalculationServiceDiscovery.class));
+
+        LoanProduct loanProduct = Mockito.mock(LoanProduct.class);
+        when(loanProduct.isMultiDisburseLoan()).thenReturn(false);
+
+        LoanProductRelatedDetail loanProductRelatedDetail = Mockito.mock(LoanProductRelatedDetail.class);
+        when(loanProductRelatedDetail.isEnableIncomeCapitalization()).thenReturn(false);
 
         Loan loan = Mockito.spy(Loan.class);
-        ReflectionTestUtils.setField(loan, "loanStatus", 300);
+        ReflectionTestUtils.setField(loan, "loanProduct", loanProduct);
+        ReflectionTestUtils.setField(loan, "loanStatus", LoanStatus.ACTIVE);
+        when(loan.getLoanRepaymentScheduleDetail()).thenReturn(loanProductRelatedDetail);
         LoanTransaction transaction1 = Mockito.mock(LoanTransaction.class);
         LoanTransaction transaction2 = Mockito.mock(LoanTransaction.class);
         CollectionData collectionData = Mockito.mock(CollectionData.class);
@@ -412,9 +448,47 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
     }
 
     private LoanCharge buildLoanCharge(Loan loan, BigDecimal amount, Charge charge) {
-        LoanCharge loanCharge = new LoanCharge(loan, charge, amount, amount, ChargeTimeType.SPECIFIED_DUE_DATE, ChargeCalculationType.FLAT,
-                LocalDate.of(2022, 6, 27), ChargePaymentMode.REGULAR, 1, new BigDecimal(100), ExternalId.generate());
+        LoanCharge loanCharge = loanChargeService.create(loan, charge, amount, amount, ChargeTimeType.SPECIFIED_DUE_DATE,
+                ChargeCalculationType.FLAT, LocalDate.of(2022, 6, 27), ChargePaymentMode.REGULAR, 1, new BigDecimal(100),
+                ExternalId.generate());
         ReflectionTestUtils.setField(loanCharge, "id", 1L);
         return loanCharge;
+    }
+
+    private List<ExternalEventCustomDataSerializer<LoanDelinquencyRangeChangeBusinessEvent>> createCustomDataForEvents() {
+        return List.of(new ExternalEventCustomDataSerializer<>() {
+
+            @Override
+            public ByteBuffer serialize(final LoanDelinquencyRangeChangeBusinessEvent event) {
+                return ByteBuffer.wrap(CUSTOM_DATA_PREFIX.getBytes(UTF_8));
+            }
+
+            @Override
+            public String key() {
+                return "test_key_1";
+            }
+        }, new ExternalEventCustomDataSerializer<>() {
+
+            @Override
+            public ByteBuffer serialize(final LoanDelinquencyRangeChangeBusinessEvent event) {
+                return ByteBuffer.wrap((CUSTOM_DATA_PREFIX + "_1").getBytes(UTF_8));
+            }
+
+            @Override
+            public String key() {
+                return "test_key_1";
+            }
+        }, new ExternalEventCustomDataSerializer<>() {
+
+            @Override
+            public ByteBuffer serialize(final LoanDelinquencyRangeChangeBusinessEvent event) {
+                return ByteBuffer.wrap((CUSTOM_DATA_PREFIX + "_2").getBytes(UTF_8));
+            }
+
+            @Override
+            public String key() {
+                return "test_key_2";
+            }
+        });
     }
 }

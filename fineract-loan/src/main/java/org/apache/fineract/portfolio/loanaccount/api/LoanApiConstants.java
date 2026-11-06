@@ -18,6 +18,9 @@
  */
 package org.apache.fineract.portfolio.loanaccount.api;
 
+import java.util.List;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
+
 public interface LoanApiConstants {
 
     String fixedEmiAmountParameterName = "fixedEmiAmount";
@@ -90,6 +93,7 @@ public interface LoanApiConstants {
     String linkAccountIdParameterName = "linkAccountId";
     String createStandingInstructionAtDisbursementParameterName = "createStandingInstructionAtDisbursement";
     String daysInYearTypeParameterName = "daysInYearType";
+    String daysInYearCustomStrategyParameterName = "daysInYearCustomStrategy";
     String daysInMonthTypeParameterName = "daysInMonthType";
 
     String MULTIDISBURSE_DETAILS_PARAMNAME = "multiDisburseDetails";
@@ -136,6 +140,10 @@ public interface LoanApiConstants {
     String WRITEOFFREASONS = "WriteOffReasons";
     // loan charge-off
     String CHARGE_OFF_REASONS = "ChargeOffReasons";
+    // loan ReAge
+    String REAGE_REASONS = "ReAgeReasons";
+    // loan ReAmortization
+    String REAMORTIZATION_REASONS = "ReAmortizationReasons";
     // fore closure constants
     String transactionDateParamName = "transactionDate";
     String noteParamName = "note";
@@ -145,6 +153,9 @@ public interface LoanApiConstants {
     String isTopup = "isTopup";
     String loanIdToClose = "loanIdToClose";
     String topupAmount = "topupAmount";
+
+    String statusAttributeName = "status";
+    String subStatusAttributeName = "subStatus";
 
     String datatables = "datatables";
 
@@ -170,7 +181,33 @@ public interface LoanApiConstants {
     // Commands
     String CHARGEBACK_TRANSACTION_COMMAND = "chargeback";
     String MARK_AS_FRAUD_COMMAND = "markAsFraud";
+    String CAPITALIZED_INCOME_TRANSACTION_COMMAND = "capitalizedIncome";
+    String CAPITALIZED_INCOME_ADJUSTMENT_TRANSACTION_COMMAND = "capitalizedIncomeAdjustment";
+    String CONTRACT_TERMINATION_COMMAND = "contractTermination";
+    String UNDO_CONTRACT_TERMINATION_COMMAND = "undoContractTermination";
+    String BUY_DOWN_FEE_COMMAND = "buyDownFee";
+    String BUY_DOWN_FEE_ADJUSTMENT_COMMAND = "buyDownFeeAdjustment";
+    String REAGE_COMMAND = "reAge";
+    String REAMORTIZATION_COMMAND = "reAmortization";
 
     // Data Validator names
     String LOAN_FRAUD_DATAVALIDATOR_PREFIX = "loans.fraud";
+
+    String INTEREST_RECOGNITION_ON_DISBURSEMENT_DATE = "interestRecognitionOnDisbursementDate";
+
+    String ALLOW_FULL_TERM_FOR_TRANCHE = "allowFullTermForTranche";
+
+    // Loan Summary Transaction Types
+    List<LoanTransactionType> LOAN_SUMMARY_TRANSACTION_TYPES = List.of(LoanTransactionType.CHARGE_ADJUSTMENT, //
+            LoanTransactionType.CHARGEBACK, //
+            LoanTransactionType.CREDIT_BALANCE_REFUND, //
+            LoanTransactionType.DOWN_PAYMENT, //
+            LoanTransactionType.GOODWILL_CREDIT, //
+            LoanTransactionType.INTEREST_PAYMENT_WAIVER, //
+            LoanTransactionType.INTEREST_REFUND, //
+            LoanTransactionType.MERCHANT_ISSUED_REFUND, //
+            LoanTransactionType.PAYOUT_REFUND, //
+            LoanTransactionType.REPAYMENT //
+    );
+
 }

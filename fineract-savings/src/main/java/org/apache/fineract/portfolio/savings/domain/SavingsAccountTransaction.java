@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.fineract.infrastructure.core.domain.AbstractAuditableWithUTCDateTimeCustom;
-import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
@@ -200,10 +199,9 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
     }
 
     public static SavingsAccountTransaction accrual(final SavingsAccount savingsAccount, final Office office, final LocalDate date,
-            final Money amount, final boolean isManualTransaction) {
+            final Money amount, final boolean isManualTransaction, final String refNo) {
         final boolean isReversed = false;
         final Boolean lienTransaction = false;
-        final String refNo = ExternalId.generate().getValue();
         return new SavingsAccountTransaction(savingsAccount, office, SavingsAccountTransactionType.ACCRUAL.getValue(), date, amount,
                 isReversed, isManualTransaction, lienTransaction, refNo);
     }
@@ -252,6 +250,16 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         final Boolean lienTransaction = false;
         final String refNo = null;
         return new SavingsAccountTransaction(savingsAccount, office, SavingsAccountTransactionType.PAY_CHARGE.getValue(), date, amount,
+                isReversed, isManualTransaction, lienTransaction, refNo);
+    }
+
+    public static SavingsAccountTransaction interestCharge(final SavingsAccount savingsAccount, final Office office, final LocalDate date,
+            final Money amount) {
+        final boolean isReversed = false;
+        final boolean isManualTransaction = false;
+        final Boolean lienTransaction = false;
+        final String refNo = null;
+        return new SavingsAccountTransaction(savingsAccount, office, SavingsAccountTransactionType.INTEREST_CHARGE.getValue(), date, amount,
                 isReversed, isManualTransaction, lienTransaction, refNo);
     }
 
@@ -425,7 +433,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return Money.of(currency, this.overdraftAmount);
     }
 
-    void setOverdraftAmount(Money overdraftAmount) {
+    public void setOverdraftAmount(Money overdraftAmount) {
         this.overdraftAmount = overdraftAmount == null ? null : overdraftAmount.getAmount();
     }
 
@@ -521,6 +529,10 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return this.isDeposit() || this.isWithdrawal() || this.isChargeTransaction() || this.isDividendPayout() || this.isInterestPosting();
     }
 
+    public boolean isAccrual() {
+        return getTransactionType().isAccrual();
+    }
+
     public boolean isInterestPostingAndNotReversed() {
         return getTransactionType().isInterestPosting() && isNotReversed();
     }
@@ -569,10 +581,6 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return isTransferInitiation() || isTransferApproval() || isTransferRejection() || isTransferWithdrawal();
     }
 
-    public boolean isAccrual() {
-        return getTransactionType().isAccrual();
-    }
-
     public void zeroBalanceFields() {
         this.runningBalance = null;
         this.cumulativeBalance = null;
@@ -587,8 +595,24 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         } else {
             this.balanceEndDate = endOfBalanceDate;
         }
-        this.balanceNumberOfDays = LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate();
+        // Same rule for the day count: a window that would end before it starts holds the balance for no days, never a
+        // negative number of them (a transaction dated after the date the balances are being reset up to, e.g. the
+        // business date or a deposit's maturity). Transactions sharing a date still get exactly 0 here.
+        this.balanceNumberOfDays = Math.max(0,
+                LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate());
         this.cumulativeBalance = Money.of(currency, this.runningBalance).multipliedBy(this.balanceNumberOfDays).getAmount();
+    }
+
+    /**
+     * Whether this transaction carries its own balance window (balanceEndDate/balanceNumberOfDays). Interest postings,
+     * overdraft interest, and accrual rows never get windowed - their balance is already reflected in the running
+     * balance of the balance-bearing row that precedes/follows them, so windowing them would double count or fragment
+     * the balance-day calculation. Used both by {@code resetAccountTransactionsEndOfDayBalances} (the O(n)
+     * recalculation loop) and by the O(1) append-path helpers, so the two mechanisms agree on which rows to close.
+     */
+    public boolean isBalanceBearing() {
+        return isNotReversed() && !isReversalTransaction() && !isInterestPostingAndNotReversed() && !isOverdraftInterestAndNotReversed()
+                && !isAccrualAndNotReversed();
     }
 
     public boolean isAcceptableForDailyBalance(final LocalDateInterval interestPeriodInterval) {
@@ -604,7 +628,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return transactionAmount.isNotEqualTo(amountToCheck);
     }
 
-    public Map<String, Object> toMapData(final String currencyCode, final List<Long> accrualChargeIds) {
+    public Map<String, Object> toMapData(final String currencyCode) {
         final Map<String, Object> thisTransactionData = new LinkedHashMap<>();
 
         final SavingsAccountTransactionEnumData transactionType = SavingsEnumerations.transactionType(this.typeOf);
@@ -630,9 +654,7 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
             final List<Map<String, Object>> savingsChargesPaidData = new ArrayList<>();
             for (final SavingsAccountChargePaidBy chargePaidBy : this.savingsAccountChargesPaid) {
                 final Map<String, Object> savingChargePaidData = new LinkedHashMap<>();
-                final Long chargeId = chargePaidBy.getSavingsAccountCharge().getCharge().getId();
-                savingChargePaidData.put("chargeId", chargeId);
-                savingChargePaidData.put("accrualRecognized", accrualChargeIds.contains(chargeId));
+                savingChargePaidData.put("chargeId", chargePaidBy.getSavingsAccountCharge().getCharge().getId());
                 savingChargePaidData.put("isPenalty", chargePaidBy.getSavingsAccountCharge().getCharge().isPenalty());
                 savingChargePaidData.put("savingsChargeId", chargePaidBy.getSavingsAccountCharge().getId());
                 savingChargePaidData.put("amount", chargePaidBy.getAmount());
@@ -795,6 +817,14 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         return getTransactionType().isWithHoldTax() && isNotReversed();
     }
 
+    public boolean isInterestCharge() {
+        return getTransactionType().isInterestCharge();
+    }
+
+    public boolean isInterestChargeAndNotReversed() {
+        return isInterestCharge() && isNotReversed();
+    }
+
     public boolean isOverdraftInterestAndNotReversed() {
         return getTransactionType().isIncomeFromInterest() && isNotReversed();
     }
@@ -895,7 +925,8 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
             boolean isAllowOverDraft) {
         return new SavingsAccountTransactionDetailsForPostingPeriod(getId(), this.dateOf, this.balanceEndDate, this.runningBalance,
                 this.amount, currency, this.balanceNumberOfDays, isDeposit(), isWithdrawal(), isAllowOverDraft,
-                isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed(), isWithHoldTaxAndNotReversed());
+                isChargeTransactionAndNotReversed(), isDividendPayoutAndNotReversed(), isWithHoldTaxAndNotReversed(),
+                isInterestChargeAndNotReversed());
     }
 
     public boolean isAccrualAndNotReversed() {

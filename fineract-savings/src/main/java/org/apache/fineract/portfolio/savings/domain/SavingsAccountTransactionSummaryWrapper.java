@@ -19,9 +19,7 @@
 package org.apache.fineract.portfolio.savings.domain;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
-import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
 import org.springframework.stereotype.Component;
@@ -75,19 +73,6 @@ public final class SavingsAccountTransactionSummaryWrapper {
         return total.getAmountDefaultedToNullIfZero();
     }
 
-    public BigDecimal calculateTotalInterestPostedBeforeStartInterestCalculationDate(final MonetaryCurrency currency,
-            final List<SavingsAccountTransaction> transactions, final LocalDate startInterestCalculationDate) {
-        Money total = Money.zero(currency);
-        for (final SavingsAccountTransaction transaction : transactions) {
-            if (transaction.isInterestPostingAndNotReversed() && transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && (DateUtils.isBefore(transaction.getTransactionDate(), startInterestCalculationDate)
-                            || DateUtils.isEqual(transaction.getTransactionDate(), startInterestCalculationDate))) {
-                total = total.plus(transaction.getAmount());
-            }
-        }
-        return total.getAmountDefaultedToNullIfZero();
-    }
-
     public BigDecimal calculateTotalWithdrawalFees(final MonetaryCurrency currency, final List<SavingsAccountTransaction> transactions) {
         Money total = Money.zero(currency);
         for (final SavingsAccountTransaction transaction : transactions) {
@@ -131,7 +116,8 @@ public final class SavingsAccountTransactionSummaryWrapper {
     public BigDecimal calculateTotalPenaltyCharge(final MonetaryCurrency currency, final List<SavingsAccountTransaction> transactions) {
         Money total = Money.zero(currency);
         for (final SavingsAccountTransaction transaction : transactions) {
-            if (transaction.isPenaltyChargeAndNotReversed() && !transaction.isReversalTransaction()) {
+            if ((transaction.isPenaltyChargeAndNotReversed() || transaction.isInterestChargeAndNotReversed())
+                    && !transaction.isReversalTransaction()) {
                 total = total.plus(transaction.getAmount(currency));
             }
         }

@@ -41,20 +41,24 @@ import org.apache.fineract.portfolio.calendar.domain.CalendarInstance;
 import org.apache.fineract.portfolio.calendar.domain.CalendarInstanceRepository;
 import org.apache.fineract.portfolio.calendar.service.CalendarReadPlatformService;
 import org.apache.fineract.portfolio.calendar.service.CalendarUtils;
+import org.apache.fineract.portfolio.client.domain.Client;
+import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
 import org.apache.fineract.portfolio.floatingrates.data.FloatingRateDTO;
 import org.apache.fineract.portfolio.floatingrates.data.FloatingRatePeriodData;
 import org.apache.fineract.portfolio.floatingrates.exception.FloatingRateNotFoundException;
 import org.apache.fineract.portfolio.floatingrates.service.FloatingRatesReadPlatformService;
 import org.apache.fineract.portfolio.group.domain.Group;
+import org.apache.fineract.portfolio.group.exception.GroupNotActiveException;
 import org.apache.fineract.portfolio.loanaccount.data.HolidayDetailDTO;
 import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleGeneratorFactory;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
+import org.apache.fineract.portfolio.note.domain.NoteRepository;
 
 @RequiredArgsConstructor
-public class LoanUtilService {
+public class LoanUtilService implements ILoanUtilService {
 
     private final ApplicationCurrencyRepositoryWrapper applicationCurrencyRepository;
     private final CalendarInstanceRepository calendarInstanceRepository;
@@ -64,13 +68,23 @@ public class LoanUtilService {
     private final LoanScheduleGeneratorFactory loanScheduleFactory;
     private final FloatingRatesReadPlatformService floatingRatesReadPlatformService;
     private final CalendarReadPlatformService calendarReadPlatformService;
+    private final NoteRepository noteRepository;
 
+    @Override
     public ScheduleGeneratorDTO buildScheduleGeneratorDTO(final Loan loan, final LocalDate recalculateFrom) {
         final HolidayDetailDTO holidayDetailDTO = null;
-        return buildScheduleGeneratorDTO(loan, recalculateFrom, holidayDetailDTO);
+        return buildScheduleGeneratorDTO(loan, recalculateFrom, null, holidayDetailDTO);
     }
 
+    @Override
     public ScheduleGeneratorDTO buildScheduleGeneratorDTO(final Loan loan, final LocalDate recalculateFrom,
+            final LocalDate rescheduleTill) {
+        final HolidayDetailDTO holidayDetailDTO = null;
+        return buildScheduleGeneratorDTO(loan, recalculateFrom, rescheduleTill, holidayDetailDTO);
+    }
+
+    @Override
+    public ScheduleGeneratorDTO buildScheduleGeneratorDTO(final Loan loan, final LocalDate recalculateFrom, final LocalDate recalculateTill,
             final HolidayDetailDTO holidayDetailDTO) {
         HolidayDetailDTO holidayDetails = holidayDetailDTO;
         if (holidayDetailDTO == null) {
@@ -78,7 +92,7 @@ public class LoanUtilService {
         }
         final MonetaryCurrency currency = loan.getCurrency();
         ApplicationCurrency applicationCurrency = this.applicationCurrencyRepository.findOneWithNotFoundDetection(currency);
-        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstaneByEntityId(loan.getId(),
+        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstanceByEntityId(loan.getId(),
                 CalendarEntityType.LOANS.getValue());
         Calendar calendar = null;
         CalendarHistoryDataWrapper calendarHistoryDataWrapper = null;
@@ -92,11 +106,11 @@ public class LoanUtilService {
         CalendarInstance restCalendarInstance = null;
         CalendarInstance compoundingCalendarInstance = null;
         Long overdurPenaltyWaitPeriod = null;
-        if (loan.repaymentScheduleDetail().isInterestRecalculationEnabled()) {
-            restCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(loan.loanInterestRecalculationDetailId(),
+        if (loan.isInterestBearingAndInterestRecalculationEnabled()) {
+            restCalendarInstance = calendarInstanceRepository.findCalendarInstanceByEntityId(loan.loanInterestRecalculationDetailId(),
                     CalendarEntityType.LOAN_RECALCULATION_REST_DETAIL.getValue());
-            compoundingCalendarInstance = calendarInstanceRepository.findCalendarInstaneByEntityId(loan.loanInterestRecalculationDetailId(),
-                    CalendarEntityType.LOAN_RECALCULATION_COMPOUNDING_DETAIL.getValue());
+            compoundingCalendarInstance = calendarInstanceRepository.findCalendarInstanceByEntityId(
+                    loan.loanInterestRecalculationDetailId(), CalendarEntityType.LOAN_RECALCULATION_COMPOUNDING_DETAIL.getValue());
             overdurPenaltyWaitPeriod = this.configurationDomainService.retrievePenaltyWaitPeriod();
         }
         final Boolean isInterestChargedFromDateAsDisbursementDateEnabled = this.configurationDomainService
@@ -122,9 +136,9 @@ public class LoanUtilService {
         boolean isPrincipalCompoundingDisabledForOverdueLoans = this.configurationDomainService
                 .isPrincipalCompoundingDisabledForOverdueLoans();
 
-        ScheduleGeneratorDTO scheduleGeneratorDTO = new ScheduleGeneratorDTO(loanScheduleFactory, applicationCurrency,
+        ScheduleGeneratorDTO scheduleGeneratorDTO = new ScheduleGeneratorDTO(loanScheduleFactory, applicationCurrency.toData(),
                 calculatedRepaymentsStartingFromDate, holidayDetails, restCalendarInstance, compoundingCalendarInstance, recalculateFrom,
-                overdurPenaltyWaitPeriod, floatingRateDTO, calendar, calendarHistoryDataWrapper,
+                recalculateTill, overdurPenaltyWaitPeriod, floatingRateDTO, calendar, calendarHistoryDataWrapper,
                 isInterestChargedFromDateAsDisbursementDateEnabled, numberOfDays, isSkipRepaymentOnFirstMonth,
                 isChangeEmiIfRepaymentDateSameAsDisbursementDateEnabled, isFirstRepaymentDateAllowedOnHoliday,
                 isInterestToBeRecoveredFirstWhenGreaterThanEMI, isPrincipalCompoundingDisabledForOverdueLoans);
@@ -132,6 +146,7 @@ public class LoanUtilService {
         return scheduleGeneratorDTO;
     }
 
+    @Override
     public Boolean isLoanRepaymentsSyncWithMeeting(final Group group, final Calendar calendar) {
         Boolean isSkipRepaymentOnFirstMonth = false;
         Long entityId = null;
@@ -155,8 +170,9 @@ public class LoanUtilService {
         return isSkipRepaymentOnFirstMonth;
     }
 
+    @Override
     public LocalDate getCalculatedRepaymentsStartingFromDate(final Loan loan) {
-        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstaneByEntityId(loan.getId(),
+        final CalendarInstance calendarInstance = this.calendarInstanceRepository.findCalendarInstanceByEntityId(loan.getId(),
                 CalendarEntityType.LOANS.getValue());
         final CalendarHistoryDataWrapper calendarHistoryDataWrapper = null;
         return this.getCalculatedRepaymentsStartingFromDate(loan.getDisbursementDate(), loan, calendarInstance, calendarHistoryDataWrapper);
@@ -175,6 +191,7 @@ public class LoanUtilService {
         return holidayDetailDTO;
     }
 
+    @Override
     public HolidayDetailDTO constructHolidayDTO(final Long officeId, LocalDate localDate) {
         final boolean isHolidayEnabled = this.configurationDomainService.isRescheduleRepaymentsOnHolidaysEnabled();
         final List<Holiday> holidays = this.holidayRepository.findByOfficeIdAndGreaterThanDate(officeId, localDate,
@@ -210,16 +227,6 @@ public class LoanUtilService {
         return calculateRepaymentStartingFromDate(actualDisbursementDate, loan, calendar, calendarHistoryDataWrapper);
     }
 
-    public LocalDate getCalculatedRepaymentsStartingFromDate(final LocalDate actualDisbursementDate, final Loan loan,
-            final Calendar calendar) {
-        final CalendarHistoryDataWrapper calendarHistoryDataWrapper = null;
-        if (calendar == null) {
-            return getCalculatedRepaymentsStartingFromDate(loan);
-        }
-        return calculateRepaymentStartingFromDate(actualDisbursementDate, loan, calendar, calendarHistoryDataWrapper);
-
-    }
-
     private LocalDate calculateRepaymentStartingFromDate(final LocalDate actualDisbursementDate, final Loan loan, final Calendar calendar,
             final CalendarHistoryDataWrapper calendarHistoryDataWrapper) {
         LocalDate calculatedRepaymentsStartingFromDate = loan.getExpectedFirstRepaymentOnDate();
@@ -240,7 +247,7 @@ public class LoanUtilService {
                 // immediately after disbursement date,
                 // need to have minimum number of days gap between disbursement
                 // and first repayment date.
-                final LoanProductRelatedDetail repaymentScheduleDetails = loan.repaymentScheduleDetail();
+                final LoanProductRelatedDetail repaymentScheduleDetails = loan.getLoanProductRelatedDetail();
                 // Not expecting to be null
                 if (repaymentScheduleDetails != null) {
                     final Integer repayEvery = repaymentScheduleDetails.getRepayEvery();
@@ -264,7 +271,7 @@ public class LoanUtilService {
 
     private LocalDate generateCalculatedRepaymentStartDate(final CalendarHistoryDataWrapper calendarHistoryDataWrapper,
             LocalDate actualDisbursementDate, Loan loan) {
-        final LoanProductRelatedDetail repaymentScheduleDetails = loan.repaymentScheduleDetail();
+        final LoanProductRelatedDetail repaymentScheduleDetails = loan.getLoanProductRelatedDetail();
         final WorkingDays workingDays = this.workingDaysRepository.findOne();
         LocalDate calculatedRepaymentsStartingFromDate = null;
 
@@ -290,11 +297,24 @@ public class LoanUtilService {
         return calculatedRepaymentsStartingFromDate;
     }
 
+    @Override
     public void validateRepaymentTransactionType(LoanTransactionType repaymentTransactionType) {
         if (!repaymentTransactionType.isRepaymentType()) {
             throw new PlatformServiceUnavailableException("error.msg.repaymentTransactionType.provided.not.a.repayment.type",
                     "Loan :" + repaymentTransactionType.getCode() + " Repayment Transaction Type provided is not a Repayment Type",
                     repaymentTransactionType.getCode());
+        }
+    }
+
+    @Override
+    public void checkClientOrGroupActive(final Loan loan) {
+        final Client client = loan.client();
+        if (client != null && client.isNotActive()) {
+            throw new ClientNotActiveException(client.getId());
+        }
+        final Group group = loan.group();
+        if (group != null && group.isNotActive()) {
+            throw new GroupNotActiveException(group.getId());
         }
     }
 

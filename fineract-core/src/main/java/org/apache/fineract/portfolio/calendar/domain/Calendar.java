@@ -359,7 +359,7 @@ public class Calendar extends AbstractAuditableWithUTCDateTimeCustom<Long> {
             this.secondReminder = newValue;
         }
 
-        final String timeFormat = command.stringValueOfParameterNamed(CalendarSupportedParameters.Time_Format.getValue());
+        final String timeFormat = command.stringValueOfParameterNamed(CalendarSupportedParameters.TIME_FORMAT.getValue());
         final String time = CalendarSupportedParameters.MEETING_TIME.getValue();
         if (command.isChangeInTimeParameterNamed(CalendarSupportedParameters.MEETING_TIME.getValue(), this.meetingtime, timeFormat)) {
             final String newValue = command.stringValueOfParameterNamed(CalendarSupportedParameters.MEETING_TIME.getValue());
@@ -558,14 +558,14 @@ public class Calendar extends AbstractAuditableWithUTCDateTimeCustom<Long> {
     public boolean isValidRecurringDate(final LocalDate compareDate, Boolean isSkipRepaymentOnFirstMonth, Integer numberOfDays) {
 
         if (isBetweenStartAndEndDate(compareDate)) {
-            return CalendarUtils.isValidRedurringDate(getRecurrence(), getStartDateLocalDate(), compareDate, isSkipRepaymentOnFirstMonth,
+            return CalendarUtils.isValidRecurringDate(getRecurrence(), getStartDateLocalDate(), compareDate, isSkipRepaymentOnFirstMonth,
                     numberOfDays);
         }
 
         // validate with history details.
         for (CalendarHistory history : history()) {
             if (history.isBetweenStartAndEndDate(compareDate)) {
-                return CalendarUtils.isValidRedurringDate(history.getRecurrence(), history.getStartDate(), compareDate,
+                return CalendarUtils.isValidRecurringDate(history.getRecurrence(), history.getStartDate(), compareDate,
                         isSkipRepaymentOnFirstMonth, numberOfDays);
             }
         }

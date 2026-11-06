@@ -25,6 +25,7 @@ dependencies {
     // implementation dependencies are directly used (compiled against) in src/main (and src/test)
     //
     implementation(project(path: ':fineract-core'))
+    implementation(project(path: ':fineract-cob'))
     implementation(project(path: ':fineract-accounting'))
     implementation(project(path: ':fineract-charge'))
     implementation(project(path: ':fineract-rates'))
@@ -56,9 +57,14 @@ dependencies {
 
             'io.github.resilience4j:resilience4j-spring-boot3',
             'org.apache.httpcomponents:httpcore',
-            'org.apache.commons:commons-collections4:4.4'
+            'org.apache.commons:commons-collections4'
 
             )
+    implementation ('org.mnode.ical4j:ical4j') {
+        exclude group: 'commons-logging'
+        exclude group: 'javax.activation'
+        exclude group: 'com.sun.mail', module: 'javax.mail'
+    }
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     annotationProcessor 'org.mapstruct:mapstruct-processor'

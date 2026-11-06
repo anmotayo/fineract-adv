@@ -23,8 +23,13 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
     <changeSet author="acme" id="1">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM job WHERE name = 'Acme Noop Job'</sqlCheck>
+        </preConditions>
         <insert tableName="job">
             <column name="name" value="Acme Noop Job"/>
+            <column name="short_name" value="ACM_NOOP"/>
             <column name="display_name" value="Acme Noop Job"/>
             <column name="cron_expression" value="0 1 0 1/1 * ? *"/>
             <column name="create_time" valueDate="${current_datetime}"/>
@@ -41,5 +46,15 @@
             <column name="node_id" valueNumeric="1"/>
             <column name="is_mismatched_job" valueBoolean="true"/>
         </insert>
+    </changeSet>
+    <changeSet author="acme" id="2">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">SELECT COUNT(*) FROM job WHERE name = 'Acme Noop Job'</sqlCheck>
+        </preConditions>
+        <update tableName="job">
+            <column name="short_name" value="ACM_NOOP"/>
+            <where>name='Acme Noop Job'</where>
+        </update>
     </changeSet>
 </databaseChangeLog>

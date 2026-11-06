@@ -50,7 +50,9 @@ public enum SavingsAccountTransactionType {
     WITHHOLD_TAX(18, "savingsAccountTransactionType.withholdTax", TransactionEntryType.DEBIT), //
     ESCHEAT(19, "savingsAccountTransactionType.escheat", TransactionEntryType.DEBIT), //
     AMOUNT_HOLD(20, "savingsAccountTransactionType.onHold", TransactionEntryType.DEBIT), //
-    AMOUNT_RELEASE(21, "savingsAccountTransactionType.release", TransactionEntryType.CREDIT); //
+    AMOUNT_RELEASE(21, "savingsAccountTransactionType.release", TransactionEntryType.CREDIT), //
+    // 100+ reserved for Advancly-specific custom transaction types, kept clear of core Fineract's own id range.
+    INTEREST_CHARGE(100, "savingsAccountTransactionType.interestCharge", TransactionEntryType.DEBIT); //
 
     private static final Map<Integer, SavingsAccountTransactionType> BY_ID = Arrays.stream(values())
             .collect(Collectors.toMap(SavingsAccountTransactionType::getValue, v -> v));
@@ -118,6 +120,7 @@ public enum SavingsAccountTransactionType {
             case 19 -> SavingsAccountTransactionType.ESCHEAT;
             case 20 -> SavingsAccountTransactionType.AMOUNT_HOLD;
             case 21 -> SavingsAccountTransactionType.AMOUNT_RELEASE;
+            case 100 -> SavingsAccountTransactionType.INTEREST_CHARGE;
             default -> SavingsAccountTransactionType.INVALID;
         };
     }
@@ -150,6 +153,10 @@ public enum SavingsAccountTransactionType {
         return this == WITHHOLD_TAX;
     }
 
+    public boolean isInterestCharge() {
+        return this == INTEREST_CHARGE;
+    }
+
     public boolean isWithdrawalFee() {
         return this == WITHDRAWAL_FEE;
     }
@@ -163,7 +170,10 @@ public enum SavingsAccountTransactionType {
     }
 
     public boolean isChargeTransaction() {
-        return isPayCharge() || isWithdrawalFee() || isAnnualFee();
+        // INTEREST_CHARGE is included here (unlike WITHHOLD_TAX) because it is attributed to a SavingsAccountCharge via
+        // SavingsAccountChargePaidBy and needs the same pay/undoPayment lifecycle symmetry core provides for charge
+        // transactions (see SavingsAccount.undoTransaction(Long)).
+        return isPayCharge() || isWithdrawalFee() || isAnnualFee() || isInterestCharge();
     }
 
     public boolean isWaiveCharge() {

@@ -55,7 +55,7 @@ public class PortfolioCommandSourceWritePlatformServiceImpl implements Portfolio
         boolean isApprovedByChecker = false;
 
         // check if is update of own account details
-        if (wrapper.isUpdateOfOwnUserDetails(this.context.authenticatedUser(wrapper).getId())) {
+        if (wrapper.isChangeOfOwnUserDetails(this.context.authenticatedUser(wrapper).getId())) {
             // then allow this operation to proceed.
             // maker checker doesnt mean anything here.
             isApprovedByChecker = true; // set to true in case permissions have
@@ -73,7 +73,7 @@ public class PortfolioCommandSourceWritePlatformServiceImpl implements Portfolio
         JsonCommand command = JsonCommand.from(json, parsedCommand, this.fromApiJsonHelper, wrapper.getEntityName(), wrapper.getEntityId(),
                 wrapper.getSubentityId(), wrapper.getGroupId(), wrapper.getClientId(), wrapper.getLoanId(), wrapper.getSavingsId(),
                 wrapper.getTransactionId(), wrapper.getHref(), wrapper.getProductId(), wrapper.getCreditBureauId(),
-                wrapper.getOrganisationCreditBureauId(), wrapper.getJobName());
+                wrapper.getOrganisationCreditBureauId(), wrapper.getJobName(), wrapper.getLoanExternalId());
 
         return this.processAndLogCommandService.executeCommand(wrapper, command, isApprovedByChecker);
     }
@@ -88,14 +88,16 @@ public class PortfolioCommandSourceWritePlatformServiceImpl implements Portfolio
                 commandSourceInput.getResourceGetUrl(), commandSourceInput.getProductId(), commandSourceInput.getOfficeId(),
                 commandSourceInput.getGroupId(), commandSourceInput.getClientId(), commandSourceInput.getLoanId(),
                 commandSourceInput.getSavingsId(), commandSourceInput.getTransactionId(), commandSourceInput.getCreditBureauId(),
-                commandSourceInput.getOrganisationCreditBureauId(), commandSourceInput.getIdempotencyKey());
-        final JsonElement parsedCommand = this.fromApiJsonHelper.parse(commandSourceInput.getCommandJson());
-        final JsonCommand command = JsonCommand.fromExistingCommand(makerCheckerId, commandSourceInput.getCommandJson(), parsedCommand,
+                commandSourceInput.getOrganisationCreditBureauId(), commandSourceInput.getIdempotencyKey(),
+                commandSourceInput.getLoanExternalId());
+        final JsonElement parsedCommand = this.fromApiJsonHelper.parse(commandSourceInput.getCommandAsJson());
+        final JsonCommand command = JsonCommand.fromExistingCommand(makerCheckerId, commandSourceInput.getCommandAsJson(), parsedCommand,
                 this.fromApiJsonHelper, commandSourceInput.getEntityName(), commandSourceInput.getResourceId(),
                 commandSourceInput.getSubResourceId(), commandSourceInput.getGroupId(), commandSourceInput.getClientId(),
                 commandSourceInput.getLoanId(), commandSourceInput.getSavingsId(), commandSourceInput.getTransactionId(),
                 commandSourceInput.getResourceGetUrl(), commandSourceInput.getProductId(), commandSourceInput.getCreditBureauId(),
-                commandSourceInput.getOrganisationCreditBureauId(), commandSourceInput.getJobName());
+                commandSourceInput.getOrganisationCreditBureauId(), commandSourceInput.getJobName(),
+                commandSourceInput.getLoanExternalId());
 
         return this.processAndLogCommandService.executeCommand(wrapper, command, true);
     }
@@ -115,7 +117,7 @@ public class PortfolioCommandSourceWritePlatformServiceImpl implements Portfolio
     private CommandSource validateMakerCheckerTransaction(final Long makerCheckerId) {
         final CommandSource commandSource = this.commandSourceRepository.findById(makerCheckerId)
                 .orElseThrow(() -> new CommandNotFoundException(makerCheckerId));
-        if (!commandSource.isMarkedAsAwaitingApproval()) {
+        if (!commandSource.isAwaitingApproval()) {
             throw new CommandNotAwaitingApprovalException(makerCheckerId);
         }
         AppUser appUser = this.context.authenticatedUser();

@@ -1,0 +1,882 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.account.service;
+
+import static org.apache.fineract.portfolio.account.AccountDetailConstants.fromAccountIdParamName;
+import static org.apache.fineract.portfolio.account.AccountDetailConstants.fromAccountTypeParamName;
+import static org.apache.fineract.portfolio.account.AccountDetailConstants.toAccountIdParamName;
+import static org.apache.fineract.portfolio.account.AccountDetailConstants.toAccountTypeParamName;
+import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConstants.transferAmountParamName;
+import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConstants.transferDateParamName;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
+import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
+import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.service.AdvanclyInterestChargeApplicationService;
+import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountDomainService;
+import com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService;
+import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
+import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountSummaryTestBuilder;
+import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTestBuilder;
+import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
+import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Locale;
+import java.util.Optional;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
+import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.account.PortfolioAccountType;
+import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
+import org.apache.fineract.portfolio.account.data.AccountTransfersDataValidator;
+import org.apache.fineract.portfolio.account.domain.AccountTransferAssembler;
+import org.apache.fineract.portfolio.account.domain.AccountTransferDetailRepository;
+import org.apache.fineract.portfolio.account.domain.AccountTransferDetails;
+import org.apache.fineract.portfolio.account.domain.AccountTransferType;
+import org.apache.fineract.portfolio.account.exception.DifferentCurrenciesException;
+import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
+import org.apache.fineract.portfolio.loanaccount.domain.Loan;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanAccountDomainService;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
+import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
+import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class AdvanclyAccountTransfersWritePlatformServiceTest {
+
+    @Mock
+    private AccountTransfersDataValidator accountTransfersDataValidator;
+    @Mock
+    private AccountTransferAssembler accountTransferAssembler;
+    @Mock
+    private AdvanclySavingsAccountAssembler savingsAccountAssembler;
+    @Mock
+    private SavingsAccountAssembler coreSavingsAccountAssembler;
+    @Mock
+    private AdvanclySavingsAccountDomainService savingsAccountDomainService;
+    @Mock
+    private LoanAssembler loanAccountAssembler;
+    @Mock
+    private LoanAccountDomainService loanAccountDomainService;
+    @Mock
+    private AccountTransferDetailRepository accountTransferDetailRepository;
+    @Mock
+    private LoanReadPlatformService loanReadPlatformService;
+    @Mock
+    private GSIMRepositoy gsimRepository;
+    @Mock
+    private ConfigurationDomainService configurationDomainService;
+    @Mock
+    private ExternalIdFactory externalIdFactory;
+    @Mock
+    private AdvanclySavingsAccountTransactionRepository transactionRepository;
+    @Mock
+    private SavingsAccountDomainService coreDomainService;
+    @Mock
+    private AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
+    @Mock
+    private AdvanclyInterestChargeApplicationService interestChargeApplicationService;
+    @Mock
+    private DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
+
+    private AdvanclyAccountTransfersWritePlatformService service;
+
+    @BeforeEach
+    void setUp() {
+        MoneyHelperInitializer.initialize();
+        service = new AdvanclyAccountTransfersWritePlatformService(accountTransfersDataValidator, accountTransferAssembler,
+                savingsAccountAssembler, coreSavingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
+                loanAccountDomainService, accountTransferDetailRepository, loanReadPlatformService, gsimRepository,
+                configurationDomainService, externalIdFactory, transactionRepository, coreDomainService,
+                coreAccountTransfersWritePlatformService, interestChargeApplicationService, dynamicDepositRateHistoryService);
+    }
+
+    @Test
+    void createSavingsToSavingsUsesOptimizedWithdrawalAndDepositForSameDayAppendPath() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+        JsonCommand command = savingsToSavingsCommand(transferDate, amount, fromSavingsId, toSavingsId);
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(99L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(command, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        CommandProcessingResult result = service.create(command);
+
+        assertThat(result.getResourceId()).isEqualTo(99L);
+        verify(savingsAccountAssembler).assembleForAppendPath(fromSavingsId);
+        verify(savingsAccountAssembler).assembleForAppendPath(toSavingsId);
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void createSavingsToSavingsAppliesEarlyWithdrawalInterestChargeOnlyForSourceAccount() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        BigDecimal override = new BigDecimal("12.5");
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+        JsonCommand command = savingsToSavingsCommand(transferDate, amount, fromSavingsId, toSavingsId, true, override);
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(98L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(command, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.create(command);
+
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(true), eq(false), eq(false));
+    }
+
+    @Test
+    void createSavingsToSavingsAppliesEarlyWithdrawalInterestChargeAfterSourceWithdrawal() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        BigDecimal override = new BigDecimal("12.5");
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+        JsonCommand command = savingsToSavingsCommand(transferDate, amount, fromSavingsId, toSavingsId, true, override);
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(97L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(command, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.create(command);
+
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(true), eq(false), eq(false));
+    }
+
+    @Test
+    void createSavingsToSavingsChecksCurrencyBeforeOptimizedPostings() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        JsonCommand command = savingsToSavingsCommand(transferDate, BigDecimal.valueOf(1000), 10L, 20L);
+
+        SavingsAccount fromAccount = savingsAccount(10L, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(20L, BigDecimal.valueOf(2000));
+        ReflectionTestUtils.setField(toAccount, "currency", new MonetaryCurrency("NGN", 2, null));
+
+        when(transactionRepository.findLastTransactionDate(10L)).thenReturn(Optional.empty());
+        when(transactionRepository.findLastTransactionDate(20L)).thenReturn(Optional.empty());
+        when(savingsAccountAssembler.assembleForAppendPath(10L)).thenReturn(AssembledSavingsAccount.of(fromAccount, null));
+        when(savingsAccountAssembler.assembleForAppendPath(20L)).thenReturn(AssembledSavingsAccount.of(toAccount, null));
+
+        assertThatThrownBy(() -> service.create(command)).isInstanceOf(DifferentCurrenciesException.class);
+
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), any(), any(),
+                any(), anyBoolean());
+        verify(savingsAccountDomainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void transferFundsSavingsToSavingsDerivesPathIdsFromSavingsEntitiesWhenDtoIdsAreAbsent() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Transfer to savings", null, null, null, null, null, null, null,
+                AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(100L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        Long transferId = service.transferFunds(dto);
+
+        assertThat(transferId).isEqualTo(100L);
+        verify(transactionRepository, atLeastOnce()).findLastTransactionDate(fromSavingsId);
+        verify(transactionRepository, atLeastOnce()).findLastTransactionDate(toSavingsId);
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void transferFundsBlocksRegularTransferWhenDynamicDepositDisallowsWithdrawal() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        DynamicDepositAccount fromAccount = dynamicDepositAccount(fromSavingsId, BigDecimal.valueOf(5000), false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        assertThatThrownBy(() -> service.transferFunds(dto)).isInstanceOf(GeneralPlatformDomainRuleException.class);
+
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), any(), any(),
+                any(), anyBoolean());
+        verify(savingsAccountDomainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+        verify(accountTransferDetailRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void transferFundsAllowsInterestTransferEvenWhenDynamicDepositDisallowsWithdrawal() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        DynamicDepositAccount fromAccount = dynamicDepositAccount(fromSavingsId, BigDecimal.valueOf(5000), false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Interest transfer", null, null, null, null, null, null, null, AccountTransferType.INTEREST_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(100L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        Long transferId = service.transferFunds(dto);
+
+        assertThat(transferId).isEqualTo(100L);
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+        // The interest transfer is only recognised as one once its link is saved, so the invested amount is
+        // re-derived after that.
+        InOrder linkedThenRecomputed = Mockito.inOrder(accountTransferDetailRepository, dynamicDepositRateHistoryService);
+        linkedThenRecomputed.verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+        linkedThenRecomputed.verify(dynamicDepositRateHistoryService).recompute(fromAccount);
+    }
+
+    @Test
+    void interestTransferJobMovementBypassesWithdrawalLockButMatchingRegularTransferDoesNot() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long linkedSavingsId = 20L;
+
+        DynamicDepositAccount fromAccount = dynamicDepositAccount(fromSavingsId, BigDecimal.valueOf(5000), false, true);
+        SavingsAccount linkedAccount = savingsAccount(linkedSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO regularDto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS,
+                PortfolioAccountType.SAVINGS, null, null, "Regular transfer", null, null, null, null, null, null, null,
+                AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(), null, linkedAccount, fromAccount, true,
+                false);
+        AccountTransferDTO interestTransferDto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS,
+                PortfolioAccountType.SAVINGS, null, null, "Interest transfer", null, null, null, null, null, null, null,
+                AccountTransferType.INTEREST_TRANSFER.getValue(), null, null, ExternalId.empty(), null, linkedAccount, fromAccount, true,
+                false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction linkedLastTxn = transaction(201L, linkedAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount linkedAssembly = AssembledSavingsAccount.of(linkedAccount, linkedLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(linkedSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(linkedSavingsId)).thenReturn(linkedAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, linkedAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(linkedAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(linkedAccount.getCurrency()), eq(linkedLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(104L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(interestTransferDto, fromAccount, linkedAccount, withdrawal,
+                deposit)).thenReturn(transferDetails);
+
+        assertThatThrownBy(() -> service.transferFunds(regularDto)).isInstanceOf(GeneralPlatformDomainRuleException.class);
+
+        Long transferId = service.transferFunds(interestTransferDto);
+
+        assertThat(transferId).isEqualTo(104L);
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void transferFundsAllowsRegularTransferForPlainSavingsAccountRegardlessOfGuard() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(101L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        Long transferId = service.transferFunds(dto);
+
+        assertThat(transferId).isEqualTo(101L);
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    // Core pays a withdrawal fee inside the withdrawal - on a transfer too, when the account charges one on transfers.
+    // The
+    // append path does not, so such a transfer takes its withdrawal through core.
+    @Test
+    void aTransferOutOfAnAccountThatChargesAWithdrawalFeeOnTransfersTakesItsWithdrawalThroughCore() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        withWithdrawalFee(fromAccount, true, true, false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(AssembledSavingsAccount.of(fromAccount, fromLastTxn));
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(AssembledSavingsAccount.of(toAccount, toLastTxn));
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), anyBoolean()))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(101L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.transferFunds(dto);
+
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), anyBoolean());
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), anyBoolean(), any(), any(),
+                any(), anyBoolean());
+    }
+
+    // A fee the account does not charge on transfers is not one core pays on this transfer: it stays on the append
+    // path.
+    @Test
+    void aTransferOutOfAnAccountWhoseWithdrawalFeeDoesNotApplyToTransfersStaysOnTheAppendPath() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        withWithdrawalFee(fromAccount, false, true, false);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Regular transfer", null, null, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(),
+                null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(AssembledSavingsAccount.of(fromAccount, fromLastTxn));
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(AssembledSavingsAccount.of(toAccount, toLastTxn));
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(101L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.transferFunds(dto);
+
+        verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
+        verify(coreDomainService, never()).handleWithdrawal(any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void transferFundsIntoDynamicDepositAlwaysUsesCoreDepositEvenWhenAppendPathEligible() {
+        // Deposit-type accounts (FD/RD/Dynamic Deposit) never use the optimized append path: it builds the
+        // transaction directly and would silently skip DynamicDepositAccount's entity-level overrides. This
+        // supersedes the old expectation that a same-day transfer into a Dynamic Deposit account used
+        // handleDepositOptimized - it must now go through coreDomainService.handleDeposit(...) instead, regardless of
+        // append-path eligibility.
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        DynamicDepositAccount toAccount = dynamicDepositAccount(toSavingsId, BigDecimal.valueOf(2000), false, true);
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Top up dynamic deposit", null, null, null, null, null, null, null,
+                AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+        when(coreDomainService.handleDeposit(eq(toAccount), any(), eq(transferDate), eq(amount), isNull(), eq(true), eq(true), eq(false)))
+                .thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(102L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        Long transferId = service.transferFunds(dto);
+
+        assertThat(transferId).isEqualTo(102L);
+        verify(coreDomainService).handleDeposit(eq(toAccount), any(), eq(transferDate), eq(amount), isNull(), eq(true), eq(true),
+                eq(false));
+        verify(savingsAccountDomainService, never()).handleDepositOptimized(eq(toAccount), any(), any(), any(), any(), any(), any(),
+                anyBoolean());
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void transferFundsOutOfDynamicDepositWithWithdrawalsAllowedAlwaysUsesCoreWithdrawal() {
+        // See transferFundsIntoDynamicDepositAlwaysUsesCoreDepositEvenWhenAppendPathEligible above - the same
+        // deposit-type gating applies to the withdrawal side.
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+
+        DynamicDepositAccount fromAccount = dynamicDepositAccount(fromSavingsId, BigDecimal.valueOf(5000), true, true);
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        AccountTransferDTO dto = new AccountTransferDTO(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS,
+                null, null, "Transfer out dynamic deposit", null, null, null, null, null, null, null,
+                AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(), null, toAccount, fromAccount, true, false);
+
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(103L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(dto, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        Long transferId = service.transferFunds(dto);
+
+        assertThat(transferId).isEqualTo(103L);
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
+        verify(savingsAccountDomainService, never()).handleWithdrawalOptimized(eq(fromAccount), any(), any(), any(), anyBoolean(), any(),
+                any(), any(), anyBoolean());
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void createTransferOutOfDynamicDepositAppliesInterestChargeAfterCoreWithdrawal() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        BigDecimal override = new BigDecimal("12.5");
+        Long fromSavingsId = 10L;
+        Long toSavingsId = 20L;
+        JsonCommand command = savingsToSavingsCommand(transferDate, amount, fromSavingsId, toSavingsId, true, override);
+
+        DynamicDepositAccount fromAccount = Mockito.spy(dynamicDepositAccount(fromSavingsId, BigDecimal.valueOf(5000), true, true));
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(coreDomainService.handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false)))
+                .thenReturn(withdrawal);
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(96L);
+        when(accountTransferAssembler.assembleSavingsToSavingsTransfer(command, fromAccount, toAccount, withdrawal, deposit))
+                .thenReturn(transferDetails);
+
+        service.create(command);
+
+        verify(coreDomainService).handleWithdrawal(eq(fromAccount), any(), eq(transferDate), eq(amount), isNull(), any(), eq(false));
+        verify(interestChargeApplicationService).applyIfApplicable(eq(fromAccount), eq(withdrawal), eq(true), eq(override), isNull(),
+                isNull(), eq(false), eq(false), eq(false));
+    }
+
+    @Test
+    void createSavingsToLoanUsesOptimizedWithdrawalForSourceSavings() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromSavingsId = 10L;
+        Long toLoanId = 30L;
+        JsonCommand command = transferCommand(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.LOAN, fromSavingsId,
+                toLoanId);
+
+        SavingsAccount fromAccount = savingsAccount(fromSavingsId, BigDecimal.valueOf(5000));
+        SavingsAccountTransaction fromLastTxn = transaction(101L, fromAccount, BigDecimal.valueOf(5000));
+        AssembledSavingsAccount fromAssembly = AssembledSavingsAccount.of(fromAccount, fromLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(fromSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(fromSavingsId)).thenReturn(fromAssembly);
+
+        SavingsAccountTransaction withdrawal = transaction(301L, fromAccount, BigDecimal.valueOf(4000));
+        when(savingsAccountDomainService.handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true))).thenReturn(withdrawal);
+
+        Loan toLoan = Mockito.mock(Loan.class);
+        LoanTransaction repayment = Mockito.mock(LoanTransaction.class);
+        when(repayment.getLoan()).thenReturn(toLoan);
+        when(loanAccountAssembler.assembleFrom(toLoanId)).thenReturn(toLoan);
+        when(externalIdFactory.create()).thenReturn(ExternalId.generate());
+        when(loanAccountDomainService.makeRepayment(eq(LoanTransactionType.REPAYMENT), eq(toLoan), eq(transferDate), eq(amount), isNull(),
+                isNull(), any(), eq(false), isNull(), eq(true), isNull(), eq(false))).thenReturn(repayment);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(88L);
+        when(accountTransferAssembler.assembleSavingsToLoanTransfer(command, fromAccount, toLoan, withdrawal, repayment))
+                .thenReturn(transferDetails);
+
+        CommandProcessingResult result = service.create(command);
+
+        assertThat(result.getResourceId()).isEqualTo(88L);
+        verify(savingsAccountDomainService).handleWithdrawalOptimized(eq(fromAccount), eq(transferDate), eq(amount), isNull(), eq(false),
+                any(Money.class), eq(fromAccount.getCurrency()), eq(fromLastTxn), eq(true));
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    @Test
+    void createLoanToSavingsUsesOptimizedDepositForDestinationSavings() {
+        LocalDate transferDate = LocalDate.of(2026, 5, 27);
+        BigDecimal amount = BigDecimal.valueOf(1000);
+        Long fromLoanId = 30L;
+        Long toSavingsId = 20L;
+        JsonCommand command = transferCommand(transferDate, amount, PortfolioAccountType.LOAN, PortfolioAccountType.SAVINGS, fromLoanId,
+                toSavingsId);
+
+        SavingsAccount toAccount = savingsAccount(toSavingsId, BigDecimal.valueOf(2000));
+        SavingsAccountTransaction toLastTxn = transaction(201L, toAccount, BigDecimal.valueOf(2000));
+        AssembledSavingsAccount toAssembly = AssembledSavingsAccount.of(toAccount, toLastTxn);
+
+        when(transactionRepository.findLastTransactionDate(toSavingsId)).thenReturn(Optional.of(transferDate));
+        when(savingsAccountAssembler.assembleForAppendPath(toSavingsId)).thenReturn(toAssembly);
+
+        SavingsAccountTransaction deposit = transaction(302L, toAccount, BigDecimal.valueOf(3000));
+        when(savingsAccountDomainService.handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true))).thenReturn(deposit);
+
+        Loan fromLoan = Mockito.mock(Loan.class);
+        LoanTransaction refund = Mockito.mock(LoanTransaction.class);
+        when(loanAccountAssembler.assembleFrom(fromLoanId)).thenReturn(fromLoan);
+        when(externalIdFactory.create()).thenReturn(ExternalId.generate());
+        when(loanAccountDomainService.makeRefund(eq(fromLoanId), any(), eq(transferDate), eq(amount), isNull(), isNull(), any()))
+                .thenReturn(refund);
+
+        AccountTransferDetails transferDetails = Mockito.mock(AccountTransferDetails.class);
+        when(transferDetails.getId()).thenReturn(77L);
+        when(accountTransferAssembler.assembleLoanToSavingsTransfer(command, fromLoan, toAccount, deposit, refund))
+                .thenReturn(transferDetails);
+
+        CommandProcessingResult result = service.create(command);
+
+        assertThat(result.getResourceId()).isEqualTo(77L);
+        verify(savingsAccountDomainService).handleDepositOptimized(eq(toAccount), eq(transferDate), eq(amount), isNull(), any(Money.class),
+                eq(toAccount.getCurrency()), eq(toLastTxn), eq(true));
+        verify(accountTransferDetailRepository).saveAndFlush(transferDetails);
+    }
+
+    private JsonCommand savingsToSavingsCommand(LocalDate transferDate, BigDecimal amount, Long fromSavingsId, Long toSavingsId) {
+        return transferCommand(transferDate, amount, PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS, fromSavingsId,
+                toSavingsId);
+    }
+
+    private JsonCommand savingsToSavingsCommand(LocalDate transferDate, BigDecimal amount, Long fromSavingsId, Long toSavingsId,
+            boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage) {
+        JsonCommand command = savingsToSavingsCommand(transferDate, amount, fromSavingsId, toSavingsId);
+        when(command.booleanPrimitiveValueOfParameterNamed("applyEarlyWithdrawalCharge")).thenReturn(applyEarlyWithdrawalCharge);
+        when(command.parameterExists("earlyWithdrawalChargePercentage")).thenReturn(true);
+        when(command.bigDecimalValueOfParameterNamed("earlyWithdrawalChargePercentage")).thenReturn(earlyWithdrawalChargePercentage);
+        return command;
+    }
+
+    private JsonCommand transferCommand(LocalDate transferDate, BigDecimal amount, PortfolioAccountType fromAccountType,
+            PortfolioAccountType toAccountType, Long fromAccountId, Long toAccountId) {
+        JsonCommand command = Mockito.mock(JsonCommand.class);
+        when(command.localDateValueOfParameterNamed(transferDateParamName)).thenReturn(transferDate);
+        when(command.bigDecimalValueOfParameterNamed(transferAmountParamName)).thenReturn(amount);
+        when(command.integerValueSansLocaleOfParameterNamed(fromAccountTypeParamName)).thenReturn(fromAccountType.getValue());
+        when(command.integerValueSansLocaleOfParameterNamed(toAccountTypeParamName)).thenReturn(toAccountType.getValue());
+        when(command.longValueOfParameterNamed(fromAccountIdParamName)).thenReturn(fromAccountId);
+        when(command.longValueOfParameterNamed(toAccountIdParamName)).thenReturn(toAccountId);
+        when(command.extractLocale()).thenReturn(Locale.ENGLISH);
+        when(command.dateFormat()).thenReturn("dd MMMM yyyy");
+        return command;
+    }
+
+    private void withWithdrawalFee(SavingsAccount account, boolean feeAppliesToTransfers, boolean active, boolean percentageOfInterest) {
+        org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge charge = Mockito
+                .mock(org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge.class);
+        Mockito.lenient().when(charge.isWithdrawalFee()).thenReturn(true);
+        Mockito.lenient().when(charge.isActive()).thenReturn(active);
+        Mockito.lenient().when(charge.isPercentageOfInterest()).thenReturn(percentageOfInterest);
+        ReflectionTestUtils.setField(account, "charges", new java.util.HashSet<>(java.util.List.of(charge)));
+        ReflectionTestUtils.setField(account, "withdrawalFeeApplicableForTransfer", feeAppliesToTransfers);
+    }
+
+    private SavingsAccount savingsAccount(Long savingsId, BigDecimal runningBalance) {
+        return new SavingsAccountTestBuilder().withId(savingsId).withSummary(new SavingsAccountSummaryTestBuilder()
+                .withAccountBalance(runningBalance).withRunningBalanceOnPivotDate(runningBalance).build()).build();
+    }
+
+    /**
+     * Minimal DynamicDepositAccount test double, mirroring SavingsAccountTestBuilder's reflective construction (this
+     * module has no equivalent builder for the subclass) - only the fields postOptimizedWithdrawal's guard and its
+     * surrounding transfer path actually touch: id, currency, summary and the DepositAccountDynamicDetail carrying
+     * allowWithdrawal.
+     */
+    private DynamicDepositAccount dynamicDepositAccount(Long savingsId, BigDecimal runningBalance, boolean allowWithdrawal) {
+        return dynamicDepositAccount(savingsId, runningBalance, allowWithdrawal, false);
+    }
+
+    private DynamicDepositAccount dynamicDepositAccount(Long savingsId, BigDecimal runningBalance, boolean allowWithdrawal,
+            boolean dynamicRateEnabled) {
+        DynamicDepositAccount account = createInstance(DynamicDepositAccount.class);
+        ReflectionTestUtils.setField(account, "id", savingsId);
+        ReflectionTestUtils.setField(account, "currency", new MonetaryCurrency("USD", 2, null));
+        ReflectionTestUtils.setField(account, "summary", new SavingsAccountSummaryTestBuilder().withAccountBalance(runningBalance)
+                .withRunningBalanceOnPivotDate(runningBalance).build());
+        DepositAccountDynamicDetail dynamicDetail = DepositAccountDynamicDetail.createNew(account, allowWithdrawal, dynamicRateEnabled);
+        ReflectionTestUtils.setField(account, "dynamicDetail", dynamicDetail);
+        SavingsProduct product = Mockito.mock(SavingsProduct.class);
+        Mockito.lenient().when(product.getId()).thenReturn(1L);
+        ReflectionTestUtils.setField(account, "product", product);
+        return account;
+    }
+
+    private static <T> T createInstance(Class<T> clazz) {
+        try {
+            Constructor<T> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create instance of " + clazz.getName(), e);
+        }
+    }
+
+    private SavingsAccountTransaction transaction(Long id, SavingsAccount account, BigDecimal runningBalance) {
+        return new SavingsAccountTransactionTestBuilder().withId(id).withSavingsAccount(account).withRunningBalance(runningBalance).build();
+    }
+}

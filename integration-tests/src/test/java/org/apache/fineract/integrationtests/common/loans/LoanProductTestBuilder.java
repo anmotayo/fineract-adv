@@ -31,6 +31,7 @@ import org.apache.fineract.client.models.AdvancedPaymentData;
 import org.apache.fineract.client.models.CreditAllocationData;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.apache.fineract.integrationtests.common.accounting.Account;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanChargeOffBehaviour;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleProcessingType;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType;
 
@@ -65,6 +66,7 @@ public class LoanProductTestBuilder {
     public static final String RECALCULATION_STRATEGY_RESCHEDULE_NEXT_REPAYMENTS = "1";
     public static final String RECALCULATION_STRATEGY_REDUCE_NUMBER_OF_INSTALLMENTS = "2";
     public static final String RECALCULATION_STRATEGY_REDUCE_EMI_AMOUN = "3";
+    public static final String RECALCULATION_STRATEGY_ADJUST_LAST_UNPAID_PERIOD = "4";
 
     public static final String RECALCULATION_COMPOUNDING_METHOD_NONE = "0";
     public static final String RECALCULATION_COMPOUNDING_METHOD_INTEREST = "1";
@@ -107,9 +109,11 @@ public class LoanProductTestBuilder {
 
     private List<Map<String, Long>> feeToIncomeAccountMappings = null;
     private List<Map<String, Long>> penaltyToIncomeAccountMappings = null;
+    private List<Map<String, Long>> chargeOffReasonToExpenseAccountMappings = null;
     private Account feeAndPenaltyAssetAccount;
 
     private Boolean multiDisburseLoan = false;
+    private Boolean allowFullTermForTranche = false;
     private final String outstandingLoanBalance = "35000";
     private String maxTrancheCount = "3";
     private Boolean disallowExpectedDisbursements = false;
@@ -124,8 +128,8 @@ public class LoanProductTestBuilder {
     private String interestRecalculationCompoundingMethod = "0";
     private String preCloseInterestCalculationStrategy = INTEREST_APPLICABLE_STRATEGY_ON_PRE_CLOSE_DATE;
     private String rescheduleStrategyMethod = "1";
-    private String recalculationRestFrequencyType = "1";
-    private String recalculationRestFrequencyInterval = "0";
+    private String recalculationRestFrequencyType = "2";
+    private String recalculationRestFrequencyInterval = "1";
     private String recalculationCompoundingFrequencyType = null;
     private String recalculationCompoundingFrequencyInterval = null;
     private String minimumDaysBetweenDisbursalAndFirstRepayment = null;
@@ -134,8 +138,8 @@ public class LoanProductTestBuilder {
     private String minimumGuaranteeFromOwnFunds = null;
     private String minimumGuaranteeFromGuarantor = null;
     private String isArrearsBasedOnOriginalSchedule = null;
-    private String graceOnPrincipalPayment = "1";
-    private String graceOnInterestPayment = "1";
+    private String graceOnPrincipalPayment = null;
+    private String graceOnInterestPayment = null;
     private JsonObject allowAttributeOverrides = null;
     private Boolean allowPartialPeriodInterestCalcualtion = false;
 
@@ -160,6 +164,12 @@ public class LoanProductTestBuilder {
     private String loanScheduleType = LoanScheduleType.CUMULATIVE.name();
     private String loanScheduleProcessingType = LoanScheduleProcessingType.HORIZONTAL.name();
     private FullAccountingConfig fullAccountingConfig;
+    private List<String> supportedInterestRefundTypes = null;
+    private String chargeOffBehaviour;
+    private boolean interestRecognitionOnDisbursementDate = false;
+    private Boolean enableBuyDownFee = false;
+    private Boolean merchantBuyDownFee = false;
+    private String buyDownFeeCalculationType;
 
     public String build() {
         final HashMap<String, Object> map = build(null, null);
@@ -216,6 +226,7 @@ public class LoanProductTestBuilder {
         }
         if (this.multiDisburseLoan) {
             map.put("multiDisburseLoan", this.multiDisburseLoan);
+            map.put("allowFullTermForTranche", this.allowFullTermForTranche);
             map.put("maxTrancheCount", this.maxTrancheCount);
             map.put("outstandingLoanBalance", this.outstandingLoanBalance);
             map.put("disallowExpectedDisbursements", this.disallowExpectedDisbursements);
@@ -232,6 +243,10 @@ public class LoanProductTestBuilder {
             map.put("multiDisburseLoan", this.multiDisburseLoan);
             map.put("maxTrancheCount", this.maxTrancheCount);
             map.put("outstandingLoanBalance", this.outstandingLoanBalance);
+        }
+        // Always send allowFullTermForTranche when it's true (for validation testing of single-disburse scenarios)
+        if (this.allowFullTermForTranche && !this.multiDisburseLoan) {
+            map.put("allowFullTermForTranche", this.allowFullTermForTranche);
         }
 
         if (this.fullAccountingConfig != null) {
@@ -302,6 +317,10 @@ public class LoanProductTestBuilder {
             map.put("penaltyToIncomeAccountMappings", this.penaltyToIncomeAccountMappings);
         }
 
+        if (this.chargeOffReasonToExpenseAccountMappings != null) {
+            map.put("chargeOffReasonToExpenseAccountMappings", this.chargeOffReasonToExpenseAccountMappings);
+        }
+
         if (this.dueDaysForRepaymentEvent != null) {
             map.put("dueDaysForRepaymentEvent", this.dueDaysForRepaymentEvent);
         }
@@ -315,9 +334,28 @@ public class LoanProductTestBuilder {
         if (enableAutoRepaymentForDownPayment) {
             map.put("enableAutoRepaymentForDownPayment", enableAutoRepaymentForDownPayment);
         }
+        if (interestRecognitionOnDisbursementDate) {
+            map.put("interestRecognitionOnDisbursementDate", interestRecognitionOnDisbursementDate);
+        }
 
         if (this.repaymentStartDateType != null) {
             map.put("repaymentStartDateType", repaymentStartDateType);
+        }
+
+        if (this.supportedInterestRefundTypes != null) {
+            map.put("supportedInterestRefundTypes", supportedInterestRefundTypes);
+        }
+
+        if (this.chargeOffBehaviour != null) {
+            map.put("chargeOffBehaviour", chargeOffBehaviour);
+        }
+
+        if (this.enableBuyDownFee != null) {
+            map.put("enableBuyDownFee", this.enableBuyDownFee);
+        }
+
+        if (this.merchantBuyDownFee != null) {
+            map.put("merchantBuyDownFee", this.merchantBuyDownFee);
         }
 
         return map;
@@ -492,6 +530,11 @@ public class LoanProductTestBuilder {
         return this;
     }
 
+    public LoanProductTestBuilder withDisallowExpectedDisbursements() {
+        this.disallowExpectedDisbursements = true;
+        return this;
+    }
+
     public LoanProductTestBuilder withFullAccountingConfig(String accountingRule, FullAccountingConfig fullAccountingConfig) {
         this.accountingRule = accountingRule;
         this.fullAccountingConfig = fullAccountingConfig;
@@ -635,6 +678,11 @@ public class LoanProductTestBuilder {
         return this;
     }
 
+    public LoanProductTestBuilder withRecalculationRestFrequencyType(final String recalculationRestFrequencyType) {
+        this.recalculationRestFrequencyType = recalculationRestFrequencyType;
+        return this;
+    }
+
     public LoanProductTestBuilder withInterestRecalculationCompoundingFrequencyDetails(final String recalculationCompoundingFrequencyType,
             final String recalculationCompoundingFrequencyInterval, final Integer recalculationCompoundingFrequencyOnDayType,
             final Integer recalculationCompoundingFrequencyDayOfWeekType) {
@@ -697,6 +745,11 @@ public class LoanProductTestBuilder {
 
     public LoanProductTestBuilder withMaxTrancheCount(String maxTrancheCount) {
         this.maxTrancheCount = maxTrancheCount;
+        return this;
+    }
+
+    public LoanProductTestBuilder withAllowFullTermForTranche(boolean allowFullTermForTranche) {
+        this.allowFullTermForTranche = allowFullTermForTranche;
         return this;
     }
 
@@ -773,6 +826,27 @@ public class LoanProductTestBuilder {
 
     public LoanProductTestBuilder withLoanScheduleProcessingType(LoanScheduleProcessingType loanScheduleProcessingType) {
         this.loanScheduleProcessingType = loanScheduleProcessingType.name();
+        return this;
+    }
+
+    public LoanProductTestBuilder withSupportedInterestRefundTypes(String... refundTypes) {
+        this.supportedInterestRefundTypes = List.of(refundTypes);
+        return this;
+    }
+
+    public LoanProductTestBuilder withChargeOffBehaviour(LoanChargeOffBehaviour chargeOffBehaviour) {
+        this.chargeOffBehaviour = chargeOffBehaviour.name();
+        return this;
+    }
+
+    public LoanProductTestBuilder withchargeOffReasonToExpenseAccountMappings(final Long reasonId, final Long accountId) {
+        if (this.chargeOffReasonToExpenseAccountMappings == null) {
+            this.chargeOffReasonToExpenseAccountMappings = new ArrayList<>();
+        }
+        Map<String, Long> newMap = new HashMap<>();
+        newMap.put("chargeOffReasonCodeValueId", reasonId);
+        newMap.put("expenseAccountId", accountId);
+        this.chargeOffReasonToExpenseAccountMappings.add(newMap);
         return this;
     }
 
@@ -854,4 +928,18 @@ public class LoanProductTestBuilder {
         }
     }
 
+    public LoanProductTestBuilder withEnableBuyDownFee(final Boolean enableBuyDownFee) {
+        this.enableBuyDownFee = enableBuyDownFee;
+        return this;
+    }
+
+    public LoanProductTestBuilder withMerchantBuyDownFee(final Boolean merchantBuyDownFee) {
+        this.merchantBuyDownFee = merchantBuyDownFee;
+        return this;
+    }
+
+    public LoanProductTestBuilder withBuyDownFeeCalculationType(final String buyDownFeeCalculationType) {
+        this.buyDownFeeCalculationType = buyDownFeeCalculationType;
+        return this;
+    }
 }

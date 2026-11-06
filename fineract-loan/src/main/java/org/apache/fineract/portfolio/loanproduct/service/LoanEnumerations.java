@@ -33,7 +33,7 @@ import org.apache.fineract.portfolio.loanproduct.domain.AmortizationMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestCalculationPeriodMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestMethod;
 import org.apache.fineract.portfolio.loanproduct.domain.InterestRecalculationCompoundingMethod;
-import org.apache.fineract.portfolio.loanproduct.domain.LoanPreClosureInterestCalculationStrategy;
+import org.apache.fineract.portfolio.loanproduct.domain.LoanPreCloseInterestCalculationStrategy;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductParamType;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductValueConditionType;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanRescheduleStrategyMethod;
@@ -319,6 +319,35 @@ public final class LoanEnumerations {
                     "Re-age");
             case REAMORTIZE -> new LoanTransactionEnumData(LoanTransactionType.REAMORTIZE.getValue().longValue(),
                     LoanTransactionType.REAMORTIZE.getCode(), "Re-amortize");
+            case ACCRUAL_ACTIVITY -> new LoanTransactionEnumData(LoanTransactionType.ACCRUAL_ACTIVITY.getValue().longValue(),
+                    LoanTransactionType.ACCRUAL_ACTIVITY.getCode(), "Accrual Activity");
+            case INTEREST_REFUND -> new LoanTransactionEnumData(LoanTransactionType.INTEREST_REFUND.getValue().longValue(),
+                    LoanTransactionType.INTEREST_REFUND.getCode(), "Interest Refund");
+            case ACCRUAL_ADJUSTMENT -> new LoanTransactionEnumData(LoanTransactionType.ACCRUAL_ADJUSTMENT.getValue().longValue(),
+                    LoanTransactionType.ACCRUAL_ADJUSTMENT.getCode(), "Accrual Adjustment");
+            case CAPITALIZED_INCOME -> new LoanTransactionEnumData(LoanTransactionType.CAPITALIZED_INCOME.getValue().longValue(),
+                    LoanTransactionType.CAPITALIZED_INCOME.getCode(), "Capitalized Income");
+            case CAPITALIZED_INCOME_AMORTIZATION ->
+                new LoanTransactionEnumData(LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION.getValue().longValue(),
+                        LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION.getCode(), "Capitalized Income Amortization");
+            case CAPITALIZED_INCOME_ADJUSTMENT ->
+                new LoanTransactionEnumData(LoanTransactionType.CAPITALIZED_INCOME_ADJUSTMENT.getValue().longValue(),
+                        LoanTransactionType.CAPITALIZED_INCOME_ADJUSTMENT.getCode(), "Capitalized Income Adjustment");
+            case CONTRACT_TERMINATION -> new LoanTransactionEnumData(LoanTransactionType.CONTRACT_TERMINATION.getValue().longValue(),
+                    LoanTransactionType.CONTRACT_TERMINATION.getCode(), "Contract Termination");
+            case CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT -> new LoanTransactionEnumData(
+                    LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT.getValue().longValue(),
+                    LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT.getCode(), "Capitalized Income Amortization Adjustment");
+            case BUY_DOWN_FEE -> new LoanTransactionEnumData(LoanTransactionType.BUY_DOWN_FEE.getValue().longValue(),
+                    LoanTransactionType.BUY_DOWN_FEE.getCode(), "Buy Down Fee");
+            case BUY_DOWN_FEE_ADJUSTMENT -> new LoanTransactionEnumData(LoanTransactionType.BUY_DOWN_FEE_ADJUSTMENT.getValue().longValue(),
+                    LoanTransactionType.BUY_DOWN_FEE_ADJUSTMENT.getCode(), "Buy Down Fee Adjustment");
+            case BUY_DOWN_FEE_AMORTIZATION ->
+                new LoanTransactionEnumData(LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION.getValue().longValue(),
+                        LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION.getCode(), "Buy Down Fee Amortization");
+            case BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT ->
+                new LoanTransactionEnumData(LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT.getValue().longValue(),
+                        LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT.getCode(), "Buy Down Fee Amortization Adjustment");
         };
     }
 
@@ -419,6 +448,8 @@ public final class LoanEnumerations {
             case INTEREST_RATE_FROM_INSTALLMENT ->
                 new EnumOptionData(LoanTermVariationType.INTEREST_RATE_FROM_INSTALLMENT.getValue().longValue(),
                         LoanTermVariationType.INTEREST_RATE_FROM_INSTALLMENT.getCode(), "interestRateForInstallment");
+            case INTEREST_PAUSE -> new EnumOptionData(LoanTermVariationType.INTEREST_PAUSE.getValue().longValue(),
+                    LoanTermVariationType.INTEREST_PAUSE.getCode(), "interestPause");
             default -> new EnumOptionData(LoanTermVariationType.INVALID.getValue().longValue(), LoanTermVariationType.INVALID.getCode(),
                     "Invalid");
         };
@@ -488,6 +519,9 @@ public final class LoanEnumerations {
             case RESCHEDULE_NEXT_REPAYMENTS ->
                 new EnumOptionData(LoanRescheduleStrategyMethod.RESCHEDULE_NEXT_REPAYMENTS.getValue().longValue(),
                         LoanRescheduleStrategyMethod.RESCHEDULE_NEXT_REPAYMENTS.getCode(), "Reschedule next repayments");
+            case ADJUST_LAST_UNPAID_PERIOD ->
+                new EnumOptionData(LoanRescheduleStrategyMethod.ADJUST_LAST_UNPAID_PERIOD.getValue().longValue(),
+                        LoanRescheduleStrategyMethod.ADJUST_LAST_UNPAID_PERIOD.getCode(), "Adjust last, unpaid period");
             default -> new EnumOptionData(LoanRescheduleStrategyMethod.INVALID.getValue().longValue(),
                     LoanRescheduleStrategyMethod.INVALID.getCode(), "Invalid");
         };
@@ -513,19 +547,19 @@ public final class LoanEnumerations {
     }
 
     public static EnumOptionData preCloseInterestCalculationStrategy(final int id) {
-        return preCloseInterestCalculationStrategy(LoanPreClosureInterestCalculationStrategy.fromInt(id));
+        return preCloseInterestCalculationStrategy(LoanPreCloseInterestCalculationStrategy.fromInt(id));
     }
 
-    public static EnumOptionData preCloseInterestCalculationStrategy(final LoanPreClosureInterestCalculationStrategy type) {
+    public static EnumOptionData preCloseInterestCalculationStrategy(final LoanPreCloseInterestCalculationStrategy type) {
         EnumOptionData optionData = null;
         switch (type) {
             case TILL_PRE_CLOSURE_DATE:
-                optionData = new EnumOptionData(LoanPreClosureInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE.getValue().longValue(),
-                        LoanPreClosureInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE.getCode(), "Till Pre-Close Date");
+                optionData = new EnumOptionData(LoanPreCloseInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE.getValue().longValue(),
+                        LoanPreCloseInterestCalculationStrategy.TILL_PRE_CLOSURE_DATE.getCode(), "Till Pre-Close Date");
             break;
             case TILL_REST_FREQUENCY_DATE:
-                optionData = new EnumOptionData(LoanPreClosureInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE.getValue().longValue(),
-                        LoanPreClosureInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE.getCode(), "Till Rest Frequency Date");
+                optionData = new EnumOptionData(LoanPreCloseInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE.getValue().longValue(),
+                        LoanPreCloseInterestCalculationStrategy.TILL_REST_FREQUENCY_DATE.getCode(), "Till Rest Frequency Date");
             break;
             case NONE:
             break;

@@ -24,7 +24,6 @@ import static org.mockito.Mockito.mock;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.List;
-import javax.sql.DataSource;
 import liquibase.change.custom.CustomTaskChange;
 import okhttp3.OkHttpClient;
 import org.apache.fineract.infrastructure.core.config.FineractProperties;
@@ -33,6 +32,7 @@ import org.apache.fineract.infrastructure.core.service.database.DatabaseIndepend
 import org.apache.fineract.infrastructure.core.service.database.DatabasePasswordEncryptor;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseType;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseTypeResolver;
+import org.apache.fineract.infrastructure.core.service.database.RoutingDataSource;
 import org.apache.fineract.infrastructure.core.service.migration.ExtendedSpringLiquibaseFactory;
 import org.apache.fineract.infrastructure.core.service.migration.TenantDataSourceFactory;
 import org.apache.fineract.infrastructure.core.service.migration.TenantDatabaseStateVerifier;
@@ -42,7 +42,6 @@ import org.apache.fineract.infrastructure.dataqueries.service.GenericDataService
 import org.apache.fineract.infrastructure.jobs.ScheduledJobRunnerConfig;
 import org.apache.fineract.infrastructure.jobs.service.JobRegisterService;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -66,6 +65,7 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.PropertySource;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -87,6 +87,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
         @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = ScheduledJobRunnerConfig.class) })
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@PropertySource("classpath:application-test.properties")
 public class TestConfiguration {
 
     @Bean
@@ -94,8 +95,8 @@ public class TestConfiguration {
         return new TenantDataSourceFactory(null, databasePasswordEncryptor) {
 
             @Override
-            public DataSource create(FineractPlatformTenant tenant) {
-                return mock(DataSource.class);
+            public HikariDataSource create(FineractPlatformTenant tenant) {
+                return mock(HikariDataSource.class);
             }
         };
     }
@@ -103,7 +104,7 @@ public class TestConfiguration {
     @Primary
     @Bean
     public HikariDataSource tenantDataSource() {
-        HikariDataSource mockDataSource = mock(HikariDataSource.class, Mockito.RETURNS_MOCKS);
+        HikariDataSource mockDataSource = mock(HikariDataSource.class, RETURNS_MOCKS);
         return mockDataSource;
     }
 
@@ -111,8 +112,8 @@ public class TestConfiguration {
      * DataSource with Mockito RETURNS_MOCKS black magic.
      */
     @Bean
-    public DataSource hikariTenantDataSource() {
-        HikariDataSource mockDataSource = mock(HikariDataSource.class, Mockito.RETURNS_MOCKS);
+    public RoutingDataSource hikariTenantDataSource() {
+        RoutingDataSource mockDataSource = mock(RoutingDataSource.class, RETURNS_MOCKS);
         return mockDataSource;
     }
 
@@ -128,23 +129,23 @@ public class TestConfiguration {
     @Primary
     @Bean
     public TenantDetailsService tenantDetailsService() {
-        return mock(TenantDetailsService.class, Mockito.RETURNS_MOCKS);
+        return mock(TenantDetailsService.class, RETURNS_MOCKS);
     }
 
     @Bean
     public ExtendedSpringLiquibaseFactory liquibaseFactory() {
-        return mock(ExtendedSpringLiquibaseFactory.class, Mockito.RETURNS_MOCKS);
+        return mock(ExtendedSpringLiquibaseFactory.class, RETURNS_MOCKS);
     }
 
     @Bean
     public DatabaseIndependentQueryService databaseIndependentQueryService() {
-        return mock(DatabaseIndependentQueryService.class, Mockito.RETURNS_MOCKS);
+        return mock(DatabaseIndependentQueryService.class, RETURNS_MOCKS);
     }
 
     @Bean
     public TenantDatabaseStateVerifier tenantDatabaseStateVerifier(DatabaseIndependentQueryService databaseIndependentQueryService,
-            LiquibaseProperties liquibaseProperties) {
-        return new TenantDatabaseStateVerifier(liquibaseProperties, databaseIndependentQueryService);
+            LiquibaseProperties liquibaseProperties, DatabaseTypeResolver databaseTypeResolver) {
+        return new TenantDatabaseStateVerifier(liquibaseProperties, databaseIndependentQueryService, databaseTypeResolver);
     }
 
     /**

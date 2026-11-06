@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.fineract.infrastructure.configuration.api.GlobalConfigurationConstants;
 import org.apache.fineract.infrastructure.configuration.service.ConfigurationReadPlatformService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
@@ -224,9 +225,9 @@ public final class ClientDataValidator {
             baseDataValidator.reset().parameter("isStaff").value(isStaffFlag).notNull();
         }
 
-        if (this.configurationReadPlatformService.retrieveGlobalConfiguration("Enable-Address").isEnabled()) {
+        if (this.configurationReadPlatformService.retrieveGlobalConfiguration(GlobalConfigurationConstants.ENABLE_ADDRESS).isEnabled()) {
             final JsonArray address = this.fromApiJsonHelper.extractJsonArrayNamed(ClientApiConstants.address, element);
-            baseDataValidator.reset().parameter(ClientApiConstants.address).value(address).notNull().jsonArrayNotEmpty();
+            baseDataValidator.reset().parameter(ClientApiConstants.address).value(address).ignoreIfNull().jsonArrayNotEmpty();
         }
 
         List<ApiParameterError> dataValidationErrorsForClientNonPerson = getDataValidationErrorsForCreateOnClientNonPerson(
@@ -264,8 +265,8 @@ public final class ClientDataValidator {
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.constitutionIdParamName, element)) {
             final Integer constitution = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(ClientApiConstants.constitutionIdParamName,
                     element);
-            baseDataValidator.reset().parameter(ClientApiConstants.constitutionIdParamName).value(constitution).ignoreIfNull()
-                    .integerGreaterThanZero();
+            baseDataValidator.reset().parameter(ClientApiConstants.constitutionIdParamName).value(constitution).integerGreaterThanZero()
+                    .notBlank();
         }
 
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.mainBusinessLineIdParamName, element)) {
@@ -560,8 +561,8 @@ public final class ClientDataValidator {
             atLeastOneParameterPassedForUpdate = true;
             final Integer constitutionId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(ClientApiConstants.constitutionIdParamName,
                     element);
-            baseDataValidator.reset().parameter(ClientApiConstants.constitutionIdParamName).value(constitutionId).ignoreIfNull()
-                    .integerGreaterThanZero();
+            baseDataValidator.reset().parameter(ClientApiConstants.constitutionIdParamName).value(constitutionId).integerGreaterThanZero()
+                    .notBlank();
         }
 
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.mainBusinessLineIdParamName, element)) {

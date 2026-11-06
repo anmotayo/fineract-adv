@@ -23,8 +23,12 @@ import java.util.Map;
 
 public enum EntityAccountType {
 
-    CLIENT(1, "accountType.client"), LOAN(2, "accountType.loan"), SAVINGS(3, "accountType.savings"), CENTER(4,
-            "accountType.center"), GROUP(5, "accountType.group"), SHARES(6, "accountType.shares");
+    CLIENT(1, "accountType.client"), //
+    LOAN(2, "accountType.loan"), //
+    SAVINGS(3, "accountType.savings"), //
+    CENTER(4, "accountType.center"), //
+    GROUP(5, "accountType.group"), //
+    SHARES(6, "accountType.shares"); //
 
     private final Integer value;
     private final String code;
@@ -64,8 +68,7 @@ public enum EntityAccountType {
     }
 
     public static EntityAccountType fromInt(final int i) {
-        final EntityAccountType type = intToEnumMap.get(Integer.valueOf(i));
-        return type;
+        return intToEnumMap.get(i);
     }
 
     public static int getMinValue() {
@@ -78,7 +81,7 @@ public enum EntityAccountType {
 
     @Override
     public String toString() {
-        return name().toString();
+        return name();
     }
 
     public boolean isClientAccount() {

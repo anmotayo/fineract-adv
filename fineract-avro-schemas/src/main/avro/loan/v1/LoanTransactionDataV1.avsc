@@ -244,6 +244,33 @@
                 "null",
                 "string"
             ]
+        },
+        {
+            "default": null,
+            "name": "customData",
+            "type": [
+                "null",
+                {
+                    "values": "bytes",
+                    "type": "map"
+                }
+            ]
+        },
+        {
+            "default": null,
+            "name": "reversed",
+            "type": [
+                "null",
+                "boolean"
+            ]
+        },
+        {
+            "default": null,
+            "name": "classification",
+            "type": [
+                "null",
+                "org.apache.fineract.avro.generic.v1.CodeValueDataV1"
+            ]
         }
     ]
 }

@@ -288,8 +288,14 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 this.amountWrittenOff = null;
             break;
             case PERCENT_OF_INTEREST:
-                this.percentage = null;
-                this.amount = null;
+                // The configured percentage MUST be preserved (it is this charge's only configuration), and both
+                // `amount` and `amount_outstanding_derived` are NOT NULL columns - so they are zero, not null.
+                // Leaving `amount` null also made the constructor's own determineIfFullyPaid() ->
+                // calculateOutstanding() dereference throw. There is no amount until an interest period is posted;
+                // Advancly's interest-charge application ledger tracks the real figures and never consults these
+                // fields.
+                this.percentage = chargeAmount;
+                this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;
                 this.amountPaid = null;
                 this.amountOutstanding = BigDecimal.ZERO;
@@ -364,6 +370,32 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         updateToPreviousDueDate();
     }
 
+    /**
+     * Applies and immediately fully pays an externally-computed charge amount - for charge types (e.g.
+     * {@code PERCENT_OF_INTEREST}) whose payable amount per application is computed by the caller rather than derived
+     * from a fixed {@code amount}/{@code percentage} on this row, which instead stays pinned at zero between
+     * applications (see {@code populateDerivedFields(...)}).
+     * <p>
+     * {@code amount}/{@code amountOutstanding} are refreshed to this application's amount before paying - mirroring
+     * {@link #updateWithdralFeeAmount} before {@link #pay} for withdrawal fees - so {@code amountOutstanding} lands on
+     * exactly zero instead of drifting negative, and {@code paid} correctly reflects this one application.
+     * {@code amountPaid}, however, is preserved as a running lifetime total across every application on this reused
+     * row: it is set aside before the reset and added back afterward, rather than being reset to just this
+     * application's amount, so it still answers "how much has ever been paid via this charge" instead of only "how much
+     * was paid this time."
+     */
+    public Money payExternallyComputedCharge(final MonetaryCurrency currency, final BigDecimal amount) {
+        final Money priorAmountPaid = getAmountPaid(currency);
+        this.amount = amount;
+        this.amountPaid = BigDecimal.ZERO;
+        this.amountOutstanding = amount;
+
+        final Money remainingOutstanding = pay(currency, Money.of(currency, amount));
+
+        this.amountPaid = priorAmountPaid.plus(this.amountPaid).getAmount();
+        return remainingOutstanding;
+    }
+
     public Money pay(final MonetaryCurrency currency, final Money amountPaid) {
         Money amountPaidToDate = Money.of(currency, this.amountPaid);
         Money amountOutstanding = Money.of(currency, this.amountOutstanding);
@@ -429,9 +461,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = amount;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -504,9 +536,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = newValue;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -562,6 +594,16 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         }
 
         return percentageOf;
+    }
+
+    /**
+     * The configured percentage for percentage-based calculation types (column {@code calculation_percentage}), or
+     * {@code null} for types that do not use one (e.g. {@code FLAT}). For a {@code PERCENT_OF_INTEREST} charge this is
+     * the account-level override when one was supplied at attachment time, and the charge definition's own amount
+     * otherwise - exactly the precedence implementation plan Section 11 requires.
+     */
+    public BigDecimal getPercentage() {
+        return this.percentage;
     }
 
     public BigDecimal amount() {
@@ -718,6 +760,10 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
 
     public boolean isWithdrawalFee() {
         return ChargeTimeType.fromInt(this.chargeTime).isWithdrawalFee();
+    }
+
+    public boolean isPercentageOfInterest() {
+        return this.chargeCalculation != null && ChargeCalculationType.fromInt(this.chargeCalculation).isPercentageOfInterest();
     }
 
     public boolean isOverdraftFee() {
@@ -886,7 +932,7 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         return DateUtils.isAfter(getDueDate(), nextDueDate) && MathUtil.isGreaterThanZero(amountPaid());
     }
 
-    private BigDecimal amountPaid() {
+    public BigDecimal amountPaid() {
         return this.amountPaid;
     }
 

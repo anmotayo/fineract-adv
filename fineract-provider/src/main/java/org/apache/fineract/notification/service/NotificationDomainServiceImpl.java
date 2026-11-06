@@ -186,6 +186,10 @@ public class NotificationDomainServiceImpl implements NotificationDomainService 
 
                 buildNotification("ACTIVATE_SAVINGSACCOUNT", "savingsAccount", savingsAccount.getId(), "Savings account approved",
                         "approved", context.authenticatedUser().getId(), savingsAccount.officeId());
+            } else if (savingsAccount.depositAccountType().equals(DepositAccountType.DYNAMIC_DEPOSIT)) {
+
+                buildNotification("ACTIVATE_DYNAMICDEPOSITACCOUNT", "dynamicDepositAccount", savingsAccount.getId(),
+                        "Dynamic deposit account approved", "approved", context.authenticatedUser().getId(), savingsAccount.officeId());
             }
         }
     }

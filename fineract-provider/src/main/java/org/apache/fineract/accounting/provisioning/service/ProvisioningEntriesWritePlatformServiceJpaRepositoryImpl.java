@@ -132,7 +132,7 @@ public class ProvisioningEntriesWritePlatformServiceJpaRepositoryImpl implements
         try {
             Collection<ProvisioningCriteriaData> criteriaCollection = this.provisioningCriteriaReadPlatformService
                     .retrieveAllProvisioningCriterias();
-            if (criteriaCollection == null || criteriaCollection.size() == 0) {
+            if (criteriaCollection == null || criteriaCollection.isEmpty()) {
                 throw new NoProvisioningCriteriaDefinitionFound();
             }
             ProvisioningEntry requestedEntry = createProvisioningEntry(createdDate, addJournalEntries);
@@ -186,7 +186,7 @@ public class ProvisioningEntriesWritePlatformServiceJpaRepositoryImpl implements
             GLAccount expenseAccount = glAccountRepository.findById(data.getExpenseAccount()).orElseThrow();
             MonetaryCurrency currency = loanProduct.getPrincipalAmount().getCurrency();
             Money money = Money.of(currency, data.getBalance());
-            Money amountToReserve = money.percentageOf(data.getPercentage(), MoneyHelper.getRoundingMode());
+            Money amountToReserve = money.percentageOf(data.getPercentage(), MoneyHelper.getMathContext());
             Long criteraId = data.getCriteriaId();
             LoanProductProvisioningEntry entry = new LoanProductProvisioningEntry().setLoanProduct(loanProduct).setOffice(office)
                     .setCurrencyCode(data.getCurrencyCode()).setProvisioningCategory(provisioningCategory)

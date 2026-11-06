@@ -21,6 +21,7 @@ package org.apache.fineract.portfolio.loanaccount.serialization;
 import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
+import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
@@ -71,7 +73,10 @@ public final class LoanScheduleValidator {
             LoanApiConstants.repaymentFrequencyDayOfWeekTypeParameterName, LoanApiConstants.isTopup, LoanApiConstants.loanIdToClose,
             LoanApiConstants.datatables, LoanApiConstants.isEqualAmortizationParam, LoanProductConstants.RATES_PARAM_NAME,
             LoanApiConstants.daysInYearTypeParameterName, LoanApiConstants.fixedPrincipalPercentagePerInstallmentParamName,
-            LoanProductConstants.FIXED_LENGTH, LoanProductConstants.ENABLE_INSTALLMENT_LEVEL_DELINQUENCY));
+            LoanProductConstants.FIXED_LENGTH, LoanProductConstants.ENABLE_INSTALLMENT_LEVEL_DELINQUENCY,
+            LoanProductConstants.ENABLE_DOWN_PAYMENT, LoanProductConstants.DISBURSED_AMOUNT_PERCENTAGE_DOWN_PAYMENT,
+            LoanProductConstants.ENABLE_AUTO_REPAYMENT_DOWN_PAYMENT, LoanProductConstants.INTEREST_RECOGNITION_ON_DISBURSEMENT_DATE,
+            LoanProductConstants.ALLOW_FULL_TERM_FOR_TRANCHE_PARAM_NAME));
 
     private final FromJsonHelper fromApiJsonHelper;
 
@@ -176,4 +181,22 @@ public final class LoanScheduleValidator {
             dataValidationErrors.add(error);
         }
     }
+
+    public void validateDownPaymentAttribute(final boolean isDownPaymentEnabledInLoanProduct, final JsonElement element) {
+        final Boolean inputIsDownPaymentEnabled = this.fromApiJsonHelper.extractBooleanNamed(LoanProductConstants.ENABLE_DOWN_PAYMENT,
+                element);
+        final Boolean inputIsAutoDownPaymentEnabled = this.fromApiJsonHelper
+                .extractBooleanNamed(LoanProductConstants.ENABLE_AUTO_REPAYMENT_DOWN_PAYMENT, element);
+        final BigDecimal disbursedAmountPercentageDownPayment = this.fromApiJsonHelper
+                .extractBigDecimalWithLocaleNamed(LoanProductConstants.DISBURSED_AMOUNT_PERCENTAGE_DOWN_PAYMENT, element);
+
+        if (!isDownPaymentEnabledInLoanProduct && (Boolean.TRUE.equals(inputIsDownPaymentEnabled)
+                || Boolean.TRUE.equals(inputIsAutoDownPaymentEnabled) || disbursedAmountPercentageDownPayment != null)) {
+            throw new GeneralPlatformDomainRuleException("error.msg.downpayment.is.not.enabled.in.loan.product",
+                    "The Loan can not override the downpayment properties because in the Loan Product the downpayment is disabled",
+                    inputIsDownPaymentEnabled, inputIsAutoDownPaymentEnabled);
+        }
+
+    }
+
 }

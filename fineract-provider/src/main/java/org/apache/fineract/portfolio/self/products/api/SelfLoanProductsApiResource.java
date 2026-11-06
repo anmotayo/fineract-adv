@@ -33,6 +33,8 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.portfolio.loanaccount.api.LoanApiConstants;
 import org.apache.fineract.portfolio.loanproduct.api.LoanProductsApiResource;
 import org.apache.fineract.portfolio.self.client.service.AppuserClientMapperReadService;
+import org.apache.fineract.portfolio.self.config.SelfServiceModuleIsEnabledCondition;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 @Path("/v1/self/loanproducts")
@@ -99,7 +101,7 @@ import org.springframework.stereotype.Component;
         + "Specifies which amount portion should be added to principal for interest recalculation. \n"
         + "Example Values:0=NONE(Only on principal), 1=INTEREST(Principal+Interest), 2=FEE(Principal+Fee), 3=FEE And INTEREST (Principal+Fee+Interest)\n"
         + "rescheduleStrategyMethod\n" + "Specifies what action should perform on loan repayment schedule for advance payments. \n"
-        + "Example Values:1=Reschedule next repayments, 2=Reduce number of installments, 3=Reduce EMI amount\n"
+        + "Example Values:1=Reschedule next repayments, 2=Reduce number of installments, 3=Reduce EMI amount, 4=Adjust last, unpaid period\n"
         + "recalculationCompoundingFrequencyType\n"
         + "Specifies effective date from which the compounding of interest or fee amounts will be considered in recalculation on late payment.\n"
         + "Example Values:1=Same as repayment period, 2=Daily, 3=Weekly, 4=Monthly\n" + "recalculationCompoundingFrequencyInterval\n"
@@ -114,6 +116,7 @@ import org.springframework.stereotype.Component;
         + "If Specified as true, arrears will be identified based on original schedule.\n" + "allowAttributeOverrides\n"
         + "Specifies if select attributes may be overridden for individual loan accounts.")
 @RequiredArgsConstructor
+@Conditional(SelfServiceModuleIsEnabledCondition.class)
 public class SelfLoanProductsApiResource {
 
     private final LoanProductsApiResource loanProductsApiResource;

@@ -33,7 +33,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.springframework.data.domain.Auditable;
 import org.springframework.data.jpa.domain.AbstractAuditable;
 
@@ -53,24 +52,21 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
 
     private static final long serialVersionUID = 141481953116476081L;
 
-    @Column(name = CREATED_BY_DB_FIELD, nullable = false)
-    @Setter(onMethod = @__(@Override))
+    @Column(name = CREATED_BY_DB_FIELD, updatable = false, nullable = false)
+    @Setter(onMethod_ = @Override)
     private Long createdBy;
 
-    @Column(name = CREATED_DATE_DB_FIELD, nullable = false)
-    @Setter(onMethod = @__(@Override))
+    @Column(name = CREATED_DATE_DB_FIELD, updatable = false, nullable = false)
+    @Setter(onMethod_ = @Override)
     private OffsetDateTime createdDate;
 
     @Column(name = LAST_MODIFIED_BY_DB_FIELD, nullable = false)
-    @Setter(onMethod = @__(@Override))
+    @Setter(onMethod_ = @Override)
     private Long lastModifiedBy;
 
     @Column(name = LAST_MODIFIED_DATE_DB_FIELD, nullable = false)
-    @Setter(onMethod = @__(@Override))
+    @Setter(onMethod_ = @Override)
     private OffsetDateTime lastModifiedDate;
-
-    private transient OffsetDateTime transientCreatedDateTime;
-    private transient OffsetDateTime transientLastModifiedDateTime;
 
     @Override
     @NotNull
@@ -84,17 +80,6 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
         return Optional.ofNullable(createdDate);
     }
 
-    @NotNull
-    public OffsetDateTime getCreatedDateTime() {
-        if (createdDate != null) {
-            return createdDate;
-        }
-        if (transientCreatedDateTime == null) {
-            transientCreatedDateTime = DateUtils.getAuditOffsetDateTime();
-        }
-        return transientCreatedDateTime;
-    }
-
     @Override
     @NotNull
     public Optional<Long> getLastModifiedBy() {
@@ -105,16 +90,5 @@ public abstract class AbstractAuditableWithUTCDateTimeCustom<T extends Serializa
     @NotNull
     public Optional<OffsetDateTime> getLastModifiedDate() {
         return Optional.ofNullable(lastModifiedDate);
-    }
-
-    @NotNull
-    public OffsetDateTime getLastModifiedDateTime() {
-        if (lastModifiedDate != null) {
-            return lastModifiedDate;
-        }
-        if (transientLastModifiedDateTime == null) {
-            transientLastModifiedDateTime = DateUtils.getAuditOffsetDateTime();
-        }
-        return transientLastModifiedDateTime;
     }
 }

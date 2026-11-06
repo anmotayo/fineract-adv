@@ -23,7 +23,13 @@ import java.util.Collection;
 import java.util.List;
 import lombok.NoArgsConstructor;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
-import org.apache.fineract.portfolio.savings.*;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsWithdrawalFeesType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 
 @NoArgsConstructor
 public class SavingsDropdownReadPlatformServiceImpl implements SavingsDropdownReadPlatformService {
@@ -87,6 +93,15 @@ public class SavingsDropdownReadPlatformServiceImpl implements SavingsDropdownRe
         final List<EnumOptionData> allowedOptions = Arrays.asList(
                 SavingsEnumerations.interestCalculationDaysInYearType(SavingsInterestCalculationDaysInYearType.DAYS_360),
                 SavingsEnumerations.interestCalculationDaysInYearType(SavingsInterestCalculationDaysInYearType.DAYS_365));
+
+        return allowedOptions;
+    }
+
+    @Override
+    public Collection<EnumOptionData> retrieveWithHoldTaxPostingTypeOptions() {
+        final List<EnumOptionData> allowedOptions = Arrays.asList(
+                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.MATURITY),
+                SavingsEnumerations.withHoldTaxPostingType(WithHoldTaxPostingType.INTEREST_POSTING));
 
         return allowedOptions;
     }

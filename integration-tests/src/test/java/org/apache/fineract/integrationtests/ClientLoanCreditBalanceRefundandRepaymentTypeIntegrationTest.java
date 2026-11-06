@@ -31,11 +31,9 @@ import io.restassured.specification.ResponseSpecification;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.client.models.AdvancedPaymentData;
@@ -245,7 +243,8 @@ public class ClientLoanCreditBalanceRefundandRepaymentTypeIntegrationTest extend
 
     @ParameterizedTest
     @MethodSource("loanProductFactory")
-    public void fullRefundChangesStatusToClosedObligationMetTest(LoanProductTestBuilder loanProductTestBuilder) {
+    public void fullRefundChangesStatusToClosedObligationMetAndSetBackToOverpayAfterReverseTest(
+            LoanProductTestBuilder loanProductTestBuilder) {
         disburseLoanOfAccountingRule(ACCRUAL_PERIODIC, loanProductTestBuilder);
         HashMap loanStatusHashMap = makeRepayment("06 January 2022", 20000.00f); // overpayment
         LoanStatusChecker.verifyLoanAccountIsOverPaid(loanStatusHashMap);
@@ -255,7 +254,8 @@ public class ClientLoanCreditBalanceRefundandRepaymentTypeIntegrationTest extend
 
         final String creditBalanceRefundDate = "09 January 2022";
         final String externalId = null;
-        loanTransactionHelper.creditBalanceRefund(creditBalanceRefundDate, totalOverpaid, externalId, disbursedLoanID, null);
+        Integer resourceId = (Integer) loanTransactionHelper.creditBalanceRefund(creditBalanceRefundDate, totalOverpaid, externalId,
+                disbursedLoanID, "resourceId");
         loanStatusHashMap = (HashMap) this.loanTransactionHelper.getLoanDetail(this.requestSpec, this.responseSpec, disbursedLoanID,
                 "status");
         LoanStatusChecker.verifyLoanAccountIsClosed(loanStatusHashMap);
@@ -267,6 +267,18 @@ public class ClientLoanCreditBalanceRefundandRepaymentTypeIntegrationTest extend
             totalOverpaidAtEnd = floatZero;
         }
         assertEquals(totalOverpaidAtEnd, floatZero);
+
+        loanTransactionHelper.reverseLoanTransaction(disbursedLoanID, resourceId.longValue(), creditBalanceRefundDate, responseSpec);
+
+        loanStatusHashMap = (HashMap) this.loanTransactionHelper.getLoanDetail(this.requestSpec, this.responseSpec, disbursedLoanID,
+                "status");
+
+        LoanStatusChecker.verifyLoanAccountIsOverPaid(loanStatusHashMap);
+
+        Float totalOverpaidAfterReverse = (Float) this.loanTransactionHelper.getLoanDetail(this.requestSpec, this.responseSpec,
+                disbursedLoanID, "totalOverpaid");
+
+        assertEquals(totalOverpaidAfterReverse, totalOverpaid);
     }
 
     @ParameterizedTest
@@ -892,31 +904,6 @@ public class ClientLoanCreditBalanceRefundandRepaymentTypeIntegrationTest extend
 
         advancedPaymentData.setPaymentAllocationOrder(paymentAllocationOrders);
         return advancedPaymentData;
-    }
-
-    private static AdvancedPaymentData createDefaultPaymentAllocation() {
-        AdvancedPaymentData advancedPaymentData = new AdvancedPaymentData();
-        advancedPaymentData.setTransactionType("DEFAULT");
-        advancedPaymentData.setFutureInstallmentAllocationRule("NEXT_INSTALLMENT");
-
-        List<PaymentAllocationOrder> paymentAllocationOrders = getPaymentAllocationOrder(PaymentAllocationType.PAST_DUE_PENALTY,
-                PaymentAllocationType.PAST_DUE_FEE, PaymentAllocationType.PAST_DUE_PRINCIPAL, PaymentAllocationType.PAST_DUE_INTEREST,
-                PaymentAllocationType.DUE_PENALTY, PaymentAllocationType.DUE_FEE, PaymentAllocationType.DUE_PRINCIPAL,
-                PaymentAllocationType.DUE_INTEREST, PaymentAllocationType.IN_ADVANCE_PENALTY, PaymentAllocationType.IN_ADVANCE_FEE,
-                PaymentAllocationType.IN_ADVANCE_PRINCIPAL, PaymentAllocationType.IN_ADVANCE_INTEREST);
-
-        advancedPaymentData.setPaymentAllocationOrder(paymentAllocationOrders);
-        return advancedPaymentData;
-    }
-
-    private static List<PaymentAllocationOrder> getPaymentAllocationOrder(PaymentAllocationType... paymentAllocationTypes) {
-        AtomicInteger integer = new AtomicInteger(1);
-        return Arrays.stream(paymentAllocationTypes).map(pat -> {
-            PaymentAllocationOrder paymentAllocationOrder = new PaymentAllocationOrder();
-            paymentAllocationOrder.setPaymentAllocationRule(pat.name());
-            paymentAllocationOrder.setOrder(integer.getAndIncrement());
-            return paymentAllocationOrder;
-        }).toList();
     }
 
     private static Stream<Arguments> loanProductFactory() {

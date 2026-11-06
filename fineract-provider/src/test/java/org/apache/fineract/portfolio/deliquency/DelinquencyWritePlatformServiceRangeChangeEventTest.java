@@ -26,11 +26,13 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -50,6 +52,7 @@ import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.event.business.domain.loan.LoanAccountDelinquencyPauseChangedBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.loan.LoanDelinquencyRangeChangeBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
+import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyAction;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucket;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucketMappingsRepository;
@@ -79,18 +82,23 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleIns
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRepository;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 public class DelinquencyWritePlatformServiceRangeChangeEventTest {
+
+    private static final MockedStatic<MoneyHelper> MONEY_HELPER = mockStatic(MoneyHelper.class);
 
     @Mock
     private DelinquencyBucketParseAndValidator dataValidatorBucket;
@@ -127,6 +135,11 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
 
     private DelinquencyWritePlatformServiceImpl underTest;
 
+    @BeforeAll
+    static void init() {
+        MONEY_HELPER.when(MoneyHelper::getRoundingMode).thenReturn(RoundingMode.HALF_EVEN);
+    }
+
     @BeforeEach
     public void setUp() {
         ThreadLocalContextUtil.setTenant(new FineractPlatformTenant(1L, "default", "Default", "Asia/Kolkata", null));
@@ -141,6 +154,11 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
                 loanInstallmentDelinquencyTagRepository, delinquencyReadPlatformService, loanDelinquencyActionRepository,
                 delinquencyActionParseAndValidator, delinquencyEffectivePauseHelper, businessEventNotifierService,
                 delinquencyWritePlatformServiceHelper);
+    }
+
+    @AfterAll
+    static void cleanUp() {
+        MONEY_HELPER.close();
     }
 
     @AfterEach
@@ -167,8 +185,9 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
         LocalDate overDueSinceDate = DateUtils.getBusinessLocalDate().minusDays(2);
         LoanScheduleDelinquencyData loanScheduleDelinquencyData = new LoanScheduleDelinquencyData(1L, overDueSinceDate, 1L,
                 loanForProcessing);
-        CollectionData collectionData = new CollectionData(BigDecimal.ZERO, 2L, null, 2L, overDueSinceDate, BigDecimal.ZERO, null, null,
-                null, null, null, null);
+        final BigDecimal zero = BigDecimal.ZERO;
+        CollectionData collectionData = new CollectionData(zero, zero, 2L, null, zero, 2L, overDueSinceDate, zero, null, null, null, null,
+                null, null, zero, zero, zero, zero);
 
         Map<Long, CollectionData> installmentsCollection = new HashMap<>();
 
@@ -221,11 +240,11 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
         LocalDate overDueSinceDate = DateUtils.getBusinessLocalDate().minusDays(2);
         LoanScheduleDelinquencyData loanScheduleDelinquencyData = new LoanScheduleDelinquencyData(1L, overDueSinceDate, 1L,
                 loanForProcessing);
-        CollectionData collectionData = new CollectionData(BigDecimal.ZERO, 2L, null, 2L, overDueSinceDate, BigDecimal.ZERO, null, null,
-                null, null, null, null);
+        CollectionData collectionData = new CollectionData(zeroAmount, zeroAmount, 2L, null, zeroAmount, 2L, overDueSinceDate, zeroAmount,
+                null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
-        CollectionData installmentCollectionData = new CollectionData(BigDecimal.ZERO, 2L, null, 2L, overDueSinceDate,
-                installmentPrincipalAmount, null, null, null, null, null, null);
+        CollectionData installmentCollectionData = new CollectionData(zeroAmount, zeroAmount, 2L, null, zeroAmount, 2L, overDueSinceDate,
+                installmentPrincipalAmount, null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
         Map<Long, CollectionData> installmentsCollection = new HashMap<>();
         installmentsCollection.put(1L, installmentCollectionData);
@@ -349,11 +368,12 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
         LocalDate overDueSinceDate = DateUtils.getBusinessLocalDate().minusDays(2);
         LoanScheduleDelinquencyData loanScheduleDelinquencyData = new LoanScheduleDelinquencyData(1L, overDueSinceDate, 1L,
                 loanForProcessing);
-        CollectionData collectionData = new CollectionData(BigDecimal.ZERO, 2L, null, 2L, overDueSinceDate, BigDecimal.ZERO, null, null,
-                null, null, null, null);
 
-        CollectionData installmentCollectionData = new CollectionData(BigDecimal.ZERO, 2L, null, 2L, overDueSinceDate,
-                installmentPrincipalAmount, null, null, null, null, null, null);
+        CollectionData collectionData = new CollectionData(zeroAmount, zeroAmount, 2L, null, zeroAmount, 2L, overDueSinceDate, zeroAmount,
+                null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
+
+        CollectionData installmentCollectionData = new CollectionData(zeroAmount, zeroAmount, 2L, null, zeroAmount, 2L, overDueSinceDate,
+                installmentPrincipalAmount, null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
         Map<Long, CollectionData> installmentsCollection = new HashMap<>();
         installmentsCollection.put(1L, installmentCollectionData);
@@ -426,11 +446,11 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
         LocalDate overDueSinceDate = DateUtils.getBusinessLocalDate().minusDays(29);
         LoanScheduleDelinquencyData loanScheduleDelinquencyData = new LoanScheduleDelinquencyData(1L, overDueSinceDate, 1L,
                 loanForProcessing);
-        CollectionData collectionData = new CollectionData(BigDecimal.ZERO, 29L, null, 29L, overDueSinceDate, BigDecimal.ZERO, null, null,
-                null, null, null, null);
+        CollectionData collectionData = new CollectionData(zeroAmount, zeroAmount, 29L, null, zeroAmount, 29L, overDueSinceDate, zeroAmount,
+                null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
-        CollectionData installmentCollectionData = new CollectionData(BigDecimal.ZERO, 29L, null, 29L, overDueSinceDate,
-                installmentPrincipalAmount, null, null, null, null, null, null);
+        CollectionData installmentCollectionData = new CollectionData(zeroAmount, zeroAmount, 29L, null, zeroAmount, 29L, overDueSinceDate,
+                installmentPrincipalAmount, null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
         Map<Long, CollectionData> installmentsCollection = new HashMap<>();
         installmentsCollection.put(1L, installmentCollectionData);
@@ -514,14 +534,15 @@ public class DelinquencyWritePlatformServiceRangeChangeEventTest {
         LocalDate overDueSinceDate = DateUtils.getBusinessLocalDate().minusDays(29);
         LoanScheduleDelinquencyData loanScheduleDelinquencyData = new LoanScheduleDelinquencyData(1L, overDueSinceDate, 1L,
                 loanForProcessing);
-        CollectionData collectionData = new CollectionData(BigDecimal.ZERO, 29L, null, 29L, overDueSinceDate, BigDecimal.ZERO, null, null,
-                null, null, null, null);
+        CollectionData collectionData = new CollectionData(zeroAmount, zeroAmount, 29L, null, zeroAmount, 29L, overDueSinceDate, zeroAmount,
+                null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
-        CollectionData installmentCollectionData_1 = new CollectionData(BigDecimal.ZERO, 29L, null, 29L, overDueSinceDate,
-                installmentPrincipalAmount, null, null, null, null, null, null);
+        CollectionData installmentCollectionData_1 = new CollectionData(zeroAmount, zeroAmount, 29L, null, zeroAmount, 29L,
+                overDueSinceDate, installmentPrincipalAmount, null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount,
+                zeroAmount);
 
-        CollectionData installmentCollectionData_2 = new CollectionData(BigDecimal.ZERO, 0L, null, 0L, null, installmentPrincipalAmount,
-                null, null, null, null, null, null);
+        CollectionData installmentCollectionData_2 = new CollectionData(zeroAmount, zeroAmount, 0L, null, zeroAmount, 0L, null,
+                installmentPrincipalAmount, null, null, null, null, null, null, zeroAmount, zeroAmount, zeroAmount, zeroAmount);
 
         Map<Long, CollectionData> installmentsCollection = new HashMap<>();
         installmentsCollection.put(1L, installmentCollectionData_1);

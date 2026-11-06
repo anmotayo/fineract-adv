@@ -141,9 +141,9 @@ public class SavingsProductWritePlatformServiceJpaRepositoryImpl implements Savi
 
             if (changes.containsKey(chargesParamName) || changes.containsKey(accrualChargesParamName)) {
                 product.setCharges(savingsProductAssembler.assembleListOfSavingsProductCharges(command, product.currency().getCode(),
-                        chargesParamName));
+                        chargesParamName, DepositAccountType.SAVINGS_DEPOSIT));
                 product.setAccrualCharges(savingsProductAssembler.assembleListOfSavingsProductCharges(command, product.currency().getCode(),
-                        accrualChargesParamName));
+                        accrualChargesParamName, DepositAccountType.SAVINGS_DEPOSIT));
             }
 
             if (changes.containsKey(taxGroupIdParamName)) {

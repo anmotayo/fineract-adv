@@ -44,6 +44,7 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
     private final boolean isChargeTransactionAndNotReversed;
     private final boolean isDividendPayoutAndNotReversed;
     private final boolean isWithHoldTaxAndNotReversed;
+    private final boolean isInterestChargeAndNotReversed;
 
     public boolean fallsWithin(final LocalDateInterval periodInterval) {
         final LocalDateInterval balanceInterval = LocalDateInterval.create(getTransactionDate(), getEndOfBalanceDate());
@@ -134,6 +135,14 @@ public class SavingsAccountTransactionDetailsForPostingPeriod {
         }
 
         return EndOfDayBalance.from(balanceStartDate, openingBalance, endOfDayBalance, numberOfDaysOfBalance);
+    }
+
+    public SavingsAccountTransactionDetailsForPostingPeriod withEndOfBalanceDate(final LocalDate newEndOfBalanceDate) {
+        final int numberOfDays = LocalDateInterval.create(this.transactionDate, newEndOfBalanceDate).daysInPeriodInclusiveOfEndDate();
+        return new SavingsAccountTransactionDetailsForPostingPeriod(this.id, this.transactionDate, newEndOfBalanceDate, this.runningBalance,
+                this.amount, this.currency, numberOfDays, this.isDeposit, this.isWithdrawal, this.isAllowOverdraft,
+                this.isChargeTransactionAndNotReversed, this.isDividendPayoutAndNotReversed, this.isWithHoldTaxAndNotReversed,
+                this.isInterestChargeAndNotReversed);
     }
 
     private Money getAmount(MonetaryCurrency currency) {

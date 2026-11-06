@@ -20,23 +20,31 @@
 -->
 Hello everyone,
 
-... we have created Apache Fineract ${project['fineract.release.version']} release, with the artifacts below up for a vote.
+We are proud to present Apache Fineract ${project['fineract.release.version']}, with the artifacts below up for a vote. Releases are important for a number of reasons: They put a stamp of approval on a set of code changes and they build momentum for future improvements.
 
-It fixes the following issues: https://cwiki.apache.org/confluence/display/FINERACT/${project['fineract.release.version']}+-+Apache+Fineract
+Release notes and ChangeLog: https://cwiki.apache.org/confluence/display/FINERACT/${project['fineract.release.version']}+-+Apache+Fineract
 
-Source & Binary files : https://dist.apache.org/repos/dist/dev/fineract/${project['fineract.release.version']}/
+Source and binary artifacts: https://dist.apache.org/repos/dist/dev/fineract/${project['fineract.release.version']}/
 
-Tag to be voted on (rc#): https://gitbox.apache.org/repos/asf?p=fineract.git;a=commit;h=refs/heads/${project['fineract.release.version']}
+Tagged as ${project['fineract.release.version']}
 
-Fineract's KEYS containing the PGP key we used to sign the release: https://dist.apache.org/repos/dist/dev/fineract/KEYS
+Committer PGP keys, including the release signing key: https://dist.apache.org/repos/dist/dev/fineract/KEYS
 
-Note that this release contains source and binary artifacts.
+Note that this release candidate contains source and binary artifacts.
 
 This vote will be open for 72 hours:
 
 [ ] +1 approve
 [ ] +0 no opinion
 [ ] -1 disapprove (and reason why)
+
+Please indicate if yours is a binding vote, and "Verified: YES/NO/PARTIAL".
+
+Verified: YES ... Verified integrity and signatures of release artifacts locally, built from source, ran jar/war: Did everything mentioned in the current release candidate verification guidance ( https://fineract.apache.org/docs/rc/#_artifact_verification ). If you did more than that, please specify. "Verified: YES" is required for binding votes.
+
+Verified: NO ... No testing performed on release candidate, e.g. relying on testing performed by other contributors and/or output of GitHub Actions, while exercising your right to vote.
+
+Verified: PARTIAL ... Please specify.
 
 Cheers,
 

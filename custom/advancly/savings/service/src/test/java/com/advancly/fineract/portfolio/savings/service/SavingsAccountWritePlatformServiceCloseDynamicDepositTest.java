@@ -790,11 +790,12 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEqualByComparingTo(singleInterestPosting().getAmount().multiply(new BigDecimal("0.5")));
     }
 
-    // Task 3 (Phase 5): the account-rule withdrawal lock must reject a premature closure that would withdraw funds
-    // OUTRIGHT - before any settlement (interest posting, charge collection) or the withdrawal itself runs - rather
-    // than partially settling the account and only then refusing the payout.
+    // This is the generic savings close route (core SavingsAccountWritePlatformServiceJpaRepositoryImpl#close), which
+    // still rejects a fund-withdrawing closure of an account whose withdrawals are disabled, outright - before any
+    // settlement (interest posting, charge collection) or the withdrawal itself runs. The dedicated
+    // /dynamicdepositaccounts prematureClose route (AdvanclyDepositAccountDomainService) deliberately allows it.
     @Test
-    void closingEarlyWithAFundWithdrawalIsRejectedWhenWithdrawalIsDisallowed() {
+    void closingEarlyWithAFundWithdrawalIsRejectedOnTheGenericSavingsRouteWhenWithdrawalIsDisallowed() {
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE);
         this.account.setDynamicDetail(DepositAccountDynamicDetail.createNew(this.account, false, false));
 

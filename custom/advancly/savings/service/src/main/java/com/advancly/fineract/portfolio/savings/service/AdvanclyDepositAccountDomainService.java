@@ -167,9 +167,11 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         if (hasPercentageOverride) {
             account.setWithdrawalChargePercentageOverride(command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
         }
-        // allowWithdrawal=false stops an early exit, not the closure at maturity: lift it for the payout (the transfer
-        // wrapper checks it too), and put it back whatever happens.
-        if (!isPreMatureClosure) {
+        // allowWithdrawal=false stops manual withdrawals and transfers out, not the closure of the account (at maturity
+        // or premature): lift it for the payout (the transfer wrapper checks it too), and put it back whatever happens.
+        if (isPreMatureClosure) {
+            account.markClosingPrematurely(true);
+        } else {
             account.markClosingAtMaturity(true);
         }
         try {
@@ -220,7 +222,9 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                 }
             }
         } finally {
-            if (!isPreMatureClosure) {
+            if (isPreMatureClosure) {
+                account.markClosingPrematurely(false);
+            } else {
                 account.markClosingAtMaturity(false);
             }
             if (hasPercentageOverride) {
@@ -322,10 +326,6 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                 throw new GeneralPlatformDomainRuleException("error.msg.dynamicdepositaccount.closure.nothing.to.reinvest",
                         "The Dynamic Deposit account has no balance to reinvest.", account.getId());
             }
-        }
-        if (isPreMatureClosure && account.getSummary().getAccountBalance().signum() > 0 && account.isWithdrawalBlockedByAccountRule()) {
-            throw new GeneralPlatformDomainRuleException("error.msg.savings.account.close.withdrawal.not.allowed.account.rule",
-                    "This account cannot be closed with a fund withdrawal while withdrawals are disabled for it.", account.getId());
         }
     }
 

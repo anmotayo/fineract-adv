@@ -2904,9 +2904,13 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     /**
      * Whether this account currently refuses to have funds withdrawn from it via a regular cash withdrawal, a regular
-     * transfer-out, or a premature closure that withdraws funds (implementation plan Section 7). No-op ({@code false})
-     * for every account type except Dynamic Deposit, which overrides it to reflect its {@code allowWithdrawal}
-     * product/account setting - see {@code DynamicDepositAccount#isWithdrawalBlockedByAccountRule()}.
+     * transfer-out, or a closure through the generic savings close route that withdraws the balance (implementation
+     * plan Section 7). No-op ({@code false}) for every account type except Dynamic Deposit, which overrides it to
+     * reflect its {@code allowWithdrawal} product/account setting - see
+     * {@code DynamicDepositAccount#isWithdrawalBlockedByAccountRule()}.
+     *
+     * A Dynamic Deposit's own closures (maturity and premature, via the dynamic deposit account API) lift the lock for
+     * the duration of the payout, so this hook does not stop them.
      *
      * Deliberately NOT consulted for transfer-in, top-up, interest calculation, interest posting, or a configured
      * transfer-interest-to-savings movement - none of those are withdrawals from this account's own perspective, and

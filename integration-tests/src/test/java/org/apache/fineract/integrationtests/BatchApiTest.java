@@ -2603,12 +2603,11 @@ public class BatchApiTest extends BaseLoanIntegrationTest {
         final HashMap<String, Object> transactionWithdrawal1 = transactions.get(1);
         final HashMap<String, Object> transactionWithdrawal2 = transactions.get(0);
 
-        assertEquals(runningBalanceBeforeBatch + holdAmount, transactionRelease.get("runningBalance"),
-                "Verify running balance after release amount");
-        assertEquals(runningBalanceBeforeBatch + holdAmount - withdrawalAmount, transactionWithdrawal1.get("runningBalance"),
+        assertEquals(runningBalanceBeforeBatch, transactionRelease.get("runningBalance"), "Verify running balance after release amount");
+        assertEquals(runningBalanceBeforeBatch - withdrawalAmount, transactionWithdrawal1.get("runningBalance"),
                 "Verify running balance after first withdrawal");
-        assertEquals(runningBalanceBeforeBatch + holdAmount - withdrawalAmount - withdrawalAmount,
-                transactionWithdrawal2.get("runningBalance"), "Verify running balance after second withdrawal");
+        assertEquals(runningBalanceBeforeBatch - withdrawalAmount - withdrawalAmount, transactionWithdrawal2.get("runningBalance"),
+                "Verify running balance after second withdrawal");
     }
 
     @Test

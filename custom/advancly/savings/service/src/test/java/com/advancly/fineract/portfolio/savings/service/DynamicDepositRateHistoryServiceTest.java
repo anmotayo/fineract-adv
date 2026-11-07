@@ -55,12 +55,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Verifies this correction: invested amount is derived by summing the account's own transactions (never an
- * incrementally-mutated cache), and a backdated transaction retroactively corrects every already-written
- * {@link DepositAccountDynamicRateHistory} row dated after it - since backdating can change what was true for the
- * interval each of those rows represents.
- */
+/** Invested amount is summed from transactions, and a backdated transaction corrects every later row. */
 class DynamicDepositRateHistoryServiceTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
@@ -137,18 +132,14 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1500");
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1500");
 
-        // backdated deposit, chronologically between activation and laterDeposit
         final SavingsAccountTransaction backdatedDeposit = transaction(3L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 2, 1),
                 BigDecimal.valueOf(300));
         this.service.recordPrincipalChangeEvent(this.account, backdatedDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
 
-        // the backdated event's own invested amount only reflects transactions up to its own date
         assertThat(rowFor(backdatedDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1300");
-        // the already-written later row is retroactively corrected to include the backdated deposit
         assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1800");
-        // the cache reflects the true, corrected, chronologically-latest invested amount
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1800");
-        // dynamic_rate_enabled = false: the rate never changes from what activation resolved (business rule 7)
+        // dynamic_rate_enabled = false: rate stays at activation's
         assertThat(rowFor(backdatedDeposit).resolvedAnnualInterestRate()).isEqualByComparingTo("2");
         assertThat(rowFor(laterDeposit).resolvedAnnualInterestRate()).isEqualByComparingTo("2");
     }
@@ -170,7 +161,7 @@ class DynamicDepositRateHistoryServiceTest {
         this.service.recordPrincipalChangeEvent(this.account, backdatedDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
         assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1800");
 
-        // simulate core SavingsAccount#undoTransaction already having marked it reversed before this hook runs
+        // core's undoTransaction marks it reversed before this hook runs
         ReflectionTestUtils.setField(backdatedDeposit, "reversed", true);
         this.service.reverseInvestedAmountForUndo(this.account, backdatedDeposit);
 
@@ -194,7 +185,7 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("600");
     }
 
-    // ---- recompute: the figures are re-derived from the transactions whenever one happens ----
+    // ---- recompute ----
 
     @Test
     void recomputeCorrectsAClosedAccountsNegativeInvestedAmountAndTheDepositAmountCache() {
@@ -252,9 +243,6 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1000");
     }
 
-    // The point of recomputing on every transaction: a figure left wrong by an earlier version is repaired the next
-    // time
-    // anything happens on the account, with no one having to ask for it.
     @Test
     void recordingAnyPrincipalEventRepairsAStaleEarlierRow() {
         this.account = buildAccount(false, BigDecimal.valueOf(2));
@@ -276,8 +264,6 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1500");
     }
 
-    // transferInterestToSavings paid interest out; the old rule counted that as principal leaving and dropped the
-    // account into a lower slab than its principal earns.
     @Test
     void recomputeRestoresTheRateSlabTheRealPrincipalEarns() {
         final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
@@ -291,7 +277,7 @@ class DynamicDepositRateHistoryServiceTest {
                 LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
         markAsInterestTransfers(interestTransfer);
         staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "10");
-        // Stale: counted the interest transfer as 22.44 of principal leaving, so 977.56 - the lower slab.
+        // Stale row counted the interest transfer as principal: 977.56, the lower slab.
         staleRow(interestTransfer, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "5");
         this.account.updateNominalAnnualInterestRate(BigDecimal.valueOf(5));
 
@@ -320,7 +306,6 @@ class DynamicDepositRateHistoryServiceTest {
         assertThat(this.service.recompute(this.account)).isFalse();
     }
 
-    /** What the transfer records say: these withdrawals sent interest to the linked account. */
     private void markAsInterestTransfers(final SavingsAccountTransaction... transfers) {
         final SavingsHelper savingsHelper = mock(SavingsHelper.class);
         lenient().when(savingsHelper.fetchPostInterestTransactionIds(anyLong()))

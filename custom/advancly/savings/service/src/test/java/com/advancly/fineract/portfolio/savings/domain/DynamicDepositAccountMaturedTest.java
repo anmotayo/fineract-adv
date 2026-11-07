@@ -36,11 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Modelled on how Recurring Deposits guard maturity: a Dynamic Deposit that has reached its maturity date is matured
- * and takes no deposit or withdrawal, and none dated on or after the maturity date, so it can only be closed. Like core
- * and RD these are {@link PlatformApiDataValidationException}s.
- */
+/** A matured Dynamic Deposit (like RD) takes no deposit or withdrawal on or after maturity; it can only be closed. */
 class DynamicDepositAccountMaturedTest {
 
     private static final LocalDate MATURITY_DATE = LocalDate.of(2026, 7, 1);
@@ -77,8 +73,7 @@ class DynamicDepositAccountMaturedTest {
         assertThat(this.account.isTransactionsAllowed()).isFalse();
     }
 
-    // Unlike FD and RD, a Dynamic Deposit takes manual withdrawals, so the hook core's withdraw gates on is not simply
-    // widened to matured accounts: it is open only while the account's own maturity closure is paying it out.
+    // Unlike FD/RD, DD allows manual withdrawals, so the core withdraw hook opens only during its own maturity closure.
     @Test
     void aMaturedAccountAllowsTransactionsOnlyWhileItsMaturityClosureIsPayingOut() {
         this.account.markMatured();
@@ -139,8 +134,7 @@ class DynamicDepositAccountMaturedTest {
                 .isInstanceOf(PlatformApiDataValidationException.class).satisfies(e -> assertThat(codeOf(e)).isEqualTo(DATE_CODE));
     }
 
-    // The maturity day is the first day the account only closes: nothing is accepted on it, not even for the few hours
-    // before the maturity job has run.
+    // Nothing is accepted on the maturity day, even before the maturity job has run.
     @Test
     void aDepositOnTheMaturityDayIsRejected() {
         assertThatThrownBy(() -> this.account.deposit(dto(MATURITY_DATE), SavingsAccountTransactionType.DEPOSIT, false, null, null))
@@ -153,8 +147,7 @@ class DynamicDepositAccountMaturedTest {
                 .isInstanceOf(PlatformApiDataValidationException.class).satisfies(e -> assertThat(codeOf(e)).isEqualTo(DATE_CODE));
     }
 
-    // The day before maturity is an ordinary day. Whatever else the withdrawal trips over on this bare account, it is
-    // not a maturity rule.
+    // The day before maturity is ordinary; whatever the withdrawal trips over here, it is not a maturity rule.
     @Test
     void aTransactionTheDayBeforeMaturityIsNotRejectedByTheMaturityRules() {
         assertThatThrownBy(() -> this.account.withdraw(dto(MATURITY_DATE.minusDays(1)), false, false, null, null))

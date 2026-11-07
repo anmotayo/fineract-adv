@@ -41,11 +41,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Guards the PERCENT_OF_INTEREST arms of {@link SavingsAccountCharge}. Enabling that calculation type for savings
- * (commit f51316b8f) made a previously unreachable code path reachable: it nulled {@code amount}, which the constructor
- * immediately dereferences through {@code determineIfFullyPaid()} -> {@code calculateOutstanding()}.
- */
+/** PERCENT_OF_INTEREST charges have a null amount, which the constructor would otherwise dereference. */
 class SavingsAccountChargePercentOfInterestTest {
 
     private FineractPlatformTenant originalTenant;
@@ -116,9 +112,7 @@ class SavingsAccountChargePercentOfInterestTest {
         final SavingsAccountCharge charge = percentOfInterestCharge(new BigDecimal("50"));
         final MonetaryCurrency currency = new MonetaryCurrency("USD", 2, null);
 
-        // amountOutstanding is pinned at 0 between applications (see amountAndOutstandingAreZeroRatherThanNull...
-        // above) - paying an externally-computed amount straight against that, without refreshing it first, is
-        // exactly the bug: it goes negative instead of landing on zero.
+        // amountOutstanding is pinned at 0, so a plain pay() goes negative.
         charge.pay(currency, Money.of(currency, new BigDecimal("37.50")));
 
         assertThat(charge.amoutOutstanding()).isEqualByComparingTo("-37.50");
@@ -144,9 +138,7 @@ class SavingsAccountChargePercentOfInterestTest {
         charge.payExternallyComputedCharge(currency, new BigDecimal("42.00"));
         charge.payExternallyComputedCharge(currency, new BigDecimal("10.00"));
 
-        // amount/amountOutstanding only ever reflect the latest application, but amountPaid keeps the running
-        // lifetime total across all three - the tracking amountPaid alone would lose if it were reset per
-        // application.
+        // amount/amountOutstanding reflect the latest application; amountPaid is the lifetime total.
         assertThat(charge.amount()).isEqualByComparingTo("10.00");
         assertThat(charge.amoutOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(charge.amountPaid()).isEqualByComparingTo("89.50");

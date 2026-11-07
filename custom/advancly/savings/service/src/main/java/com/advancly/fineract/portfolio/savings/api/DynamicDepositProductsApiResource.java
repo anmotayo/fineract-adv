@@ -49,11 +49,7 @@ import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSer
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.springframework.stereotype.Component;
 
-/**
- * REST resource for the Dynamic Deposit product (deposit_type_enum = 500). A fully independent, parallel vertical slice
- * - own path, own {@code CommandWrapperBuilder.createProduct("DYNAMICDEPOSIT")}-generated entity code
- * ({@code DYNAMICDEPOSITPRODUCT}), no core changes required beyond the two documented in the implementation report.
- */
+/** REST resource for the Dynamic Deposit product (deposit_type_enum = 500). */
 @Path("/v1/dynamicdepositproducts")
 @Component
 public class DynamicDepositProductsApiResource {
@@ -114,9 +110,7 @@ public class DynamicDepositProductsApiResource {
     @Produces({ MediaType.APPLICATION_JSON })
     public String delete(@PathParam("productId") final Long productId) {
 
-        // No generic "delete product" builder method exists on CommandWrapperBuilder (only type-specific ones, e.g.
-        // deleteFixedDepositProduct) - constructing CommandWrapper directly here avoids adding one to the shared
-        // core builder class, keeping this feature's core footprint to the two documented file edits.
+        // CommandWrapperBuilder has no generic delete-product method; built directly to avoid changing core.
         final CommandWrapper commandRequest = new CommandWrapper(null, null, null, null, null, "DELETE", "DYNAMICDEPOSITPRODUCT", productId,
                 null, "/products/" + PRODUCT_TYPE + "/" + productId, null, null, productId, null, null, null, null, null, null, null);
 

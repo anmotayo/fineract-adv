@@ -24,10 +24,8 @@ import java.time.LocalDate;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 
 /**
- * A snapshot of the account's summary taken right after one {@code calculateInterestUsing(...)} run of the
- * interest-calculation preview - either the run bounded by today ({@code asAtTodaySummary}) or the run projected
- * through maturity ({@code asAtMaturitySummary}). The engine rewrites the one in-memory summary on every run, so each
- * run's figures must be copied out before the next run overwrites them.
+ * Copy of the account summary after one preview calculation run; the engine rewrites the in-memory summary on each run,
+ * so its figures must be copied out first.
  */
 public class InterestCalculationSummaryData implements Serializable {
 

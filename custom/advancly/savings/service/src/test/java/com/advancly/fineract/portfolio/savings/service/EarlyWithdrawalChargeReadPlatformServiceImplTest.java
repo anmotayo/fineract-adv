@@ -63,18 +63,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-/**
- * Covers the {@code earlyWithdrawalChargePercentage} override on the early-withdrawal-charge preview endpoint: when the
- * request body carries it, the preview must compute the charge at that percentage rather than the one configured on the
- * charge, and when it is absent the configured percentage must stay in force.
- *
- * <p>
- * The cumulative-mode cases share {@link CumulativeInterestForfeitureService}'s real percentage resolution through a
- * stubbed resolver (whose answer is asserted), while the custom-period cases let the real
- * {@link AdvanclyInterestChargeApplicationService#validatePercentageOverride} and
- * {@link AdvanclyInterestChargeApplicationService#resolvePercentage(BigDecimal, SavingsAccountCharge)} run via a
- * {@code CALLS_REAL_METHODS} partial mock, so the arithmetic asserted is genuinely the production arithmetic.
- */
+/** Covers the {@code earlyWithdrawalChargePercentage} override on the early-withdrawal-charge preview. */
 class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
     private static final Long ACCOUNT_ID = 1L;
@@ -86,7 +75,6 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
     private static final LocalDate SELECTED_FROM = LocalDate.of(2026, 9, 1);
     private static final LocalDate SELECTED_TO = LocalDate.of(2026, 9, 15);
 
-    /** What the charge itself is configured at - the value an override has to beat. */
     private static final BigDecimal CONFIGURED_PERCENTAGE = new BigDecimal("25");
 
     private PlatformSecurityContext context;
@@ -119,8 +107,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         this.cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
         this.interestChargeApplicationRepository = mock(DepositInterestChargeApplicationRepository.class);
 
-        // Partial mock: validatePercentageOverride(...) and resolvePercentage(...) keep their real bodies (that is the
-        // behaviour under test), while the lookups they need are stubbed below.
+        // Partial mock: validatePercentageOverride/resolvePercentage run for real; their lookups are stubbed.
         this.advanclyInterestChargeApplicationService = mock(AdvanclyInterestChargeApplicationService.class,
                 withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
 
@@ -135,8 +122,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
     @Test
     void cumulativeModeUsesRequestPercentageInsteadOfTheOneConfiguredOnTheCharge() {
         final SavingsAccount account = cumulativeAccount();
-        // The real resolver prefers the override and falls back to the configured percentage - mirrored here so the
-        // assertion below proves the preview passes the override in, and reports back what it resolved.
+        // Mirrors the real resolver: override first, then the configured percentage.
         when(this.cumulativeInterestForfeitureService.resolveQualifyingChargeWithPercentage(eq(account), any())).thenAnswer(invocation -> {
             final BigDecimal override = invocation.getArgument(1);
             return new CumulativeInterestForfeitureService.QualifyingCharge(accountChargeMock(),
@@ -189,7 +175,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
     void acceptsTheBoundaryPercentages() {
         cumulativeAccount();
 
-        // 0 and 100 are the inclusive bounds the validator documents; both must get past it.
+        // 0 and 100 are inclusive bounds.
         assertThat(this.service.calculate(ACCOUNT_ID, query("\"earlyWithdrawalChargePercentage\": 0"))).isNotNull();
         assertThat(this.service.calculate(ACCOUNT_ID, query("\"earlyWithdrawalChargePercentage\": 100"))).isNotNull();
     }
@@ -249,8 +235,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         this.service.calculate(ACCOUNT_ID, query("\"forClosure\": true"));
 
         verify(this.cumulativeInterestForfeitureService).forcedPostingDate(account, closureDate, true);
-        // the accrual is bounded by the closure date, not today's business date: a backdated closure earns nothing
-        // after it
+        // accrual stops at the closure date, not today's business date
         verify(account).postInterest(any(), eq(closureDate), anyBoolean(), anyBoolean(), any(), eq(closureDate), anyBoolean(),
                 anyBoolean());
     }
@@ -300,7 +285,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
         final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID, query());
 
-        // the balance after the simulated posting: what a full liquidation pays out of, before the charge
+        // balance after the simulated posting, before the charge
         assertThat(result.accountBalanceAfterPosting()).isEqualByComparingTo("1000");
     }
 
@@ -373,10 +358,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         return account;
     }
 
-    /**
-     * An account whose product's single rule is cumulative, with 1000 posted (once the exit posts) and nothing withheld
-     * or forfeited.
-     */
+    /** Cumulative-rule account with 1000 posted on exit and nothing withheld or forfeited. */
     private SavingsAccount cumulativeAccount() {
         final SavingsAccount account = accountWith(summaryWith(new BigDecimal("1000"), BigDecimal.ZERO));
         cumulativeRule(account);
@@ -386,8 +368,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
     private void cumulativeRule(final SavingsAccount account) {
         final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
         lenient().when(rule.isCumulative()).thenReturn(true);
-        // doReturn(...).when(...), not when(...).thenReturn(...): on a CALLS_REAL_METHODS partial mock the latter would
-        // invoke the real lookup (and NPE on the unset repository) while merely *recording* the stub.
+        // doReturn, not when(): on a CALLS_REAL_METHODS mock when() would call the real lookup and NPE.
         lenient().doReturn(rule).when(this.advanclyInterestChargeApplicationService).resolveSingleRule(account);
         lenient().when(this.cumulativeInterestForfeitureService.forcedPostingDate(eq(account), any(), anyBoolean()))
                 .thenReturn(WITHDRAWAL_DATE);
@@ -418,10 +399,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         return account;
     }
 
-    /**
-     * A request body carrying the {@code withdrawalDate} every case needs, the {@code locale}/{@code dateFormat} pair
-     * Fineract requires alongside any date parameter, plus whatever {@code extraFields} the case under test adds.
-     */
+    /** Request body with {@code withdrawalDate}, locale/dateFormat and any {@code extraFields}. */
     private JsonQuery query(final String... extraFields) {
         final StringBuilder json = new StringBuilder(
                 "{\"locale\": \"en\", \"dateFormat\": \"yyyy-MM-dd\", \"withdrawalDate\": \"2026-09-20\"");
@@ -433,7 +411,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         return JsonQuery.from(body, this.fromJsonHelper.parse(body), this.fromJsonHelper);
     }
 
-    /** Guards the field name the endpoint documents, so the constant and the wire format cannot drift apart. */
+    /** Guards the documented field name against drift. */
     @Test
     void overrideFieldIsNamedAsDocumented() {
         assertThat(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE).isEqualTo("earlyWithdrawalChargePercentage");

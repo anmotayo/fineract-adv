@@ -50,12 +50,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * The {@code close} and {@code prematureClose} commands of a Dynamic Deposit account - the counterpart of
- * {@code DepositAccountWritePlatformServiceJpaRepositoryImpl#closeFDAccount}/{@code prematureCloseFDAccount}. It
- * validates the request and runs the surrounding checks; settlement and payout live in
- * {@link AdvanclyDepositAccountDomainService}.
- */
+/** Dynamic Deposit close/prematureClose; settlement and payout live in {@link AdvanclyDepositAccountDomainService}. */
 @Service
 public class DynamicDepositAccountClosureWritePlatformService {
 

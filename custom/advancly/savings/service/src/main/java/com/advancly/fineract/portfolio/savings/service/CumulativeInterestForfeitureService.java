@@ -49,30 +49,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Cumulative early-withdrawal interest forfeiture: an early withdrawal takes back the configured percentage of net
- * interest still available in the account, computed and charged immediately rather than deferred to the next interest
- * posting the way per-period mode is.
- *
- * Runs at the write-platform layer, not from an entity hook, because it force-posts interest - and that posting does
- * saveAndFlush and writes journal entries, which would be re-entrant if invoked from inside a withdrawal already in
- * progress. Premature closure establishes the same shape at the same layer.
- *
- * Forced interest posting runs with the account's real withholding-tax configuration intact. If interest has already
- * posted on the forced posting date, this service reuses that posting instead of posting again.
- *
- * This service owns the summary refresh and the GL journal entries for everything it writes, because neither its
- * withdrawal caller nor its closure caller can do either for it:
- * <ul>
- * <li><b>Summary</b> - the forced posting call refreshes the summary as its own last step, so the forfeiture and
- * deferred-tax transactions this service adds AFTERWARDS are invisible to it. Premature closure reads
- * {@code account.getSummary().getAccountBalance()} the moment this method returns, to decide the settlement payout, so
- * the refresh has to happen here (see {@code SavingsAccount#refreshSummary(boolean)}).</li>
- * <li><b>Journal entries</b> - every caller journals only the transactions that are NOT in a "transaction ids that
- * already existed" snapshot it takes for itself, and every one of those snapshots is taken AFTER this method returns.
- * The rows this service writes are flushed (and so have database ids) by then, so they would be silently classified as
- * pre-existing and never journaled. Taking the snapshot here, before writing anything, and posting the entries here is
- * what keeps them out of the caller's "new" set and in this one - journaled exactly once.</li>
- * </ul>
+ * Cumulative early-withdrawal interest forfeiture, charged immediately (not deferred to the next posting). Runs at the
+ * write-platform layer because the forced interest posting flushes and journals, which would be re-entrant from an
+ * entity hook. Refreshes the summary and journals its own rows: callers snapshot existing ids only after this returns.
  */
 @Component
 public class CumulativeInterestForfeitureService {
@@ -86,9 +65,7 @@ public class CumulativeInterestForfeitureService {
     private final SavingsAccountRepositoryWrapper savingsAccountRepository;
     private final JournalEntryWritePlatformService journalEntryWritePlatformService;
 
-    // @Lazy breaks a genuine bean cycle: AdvanclySavingsAccountWritePlatformService (@Primary) injects this service to
-    // trigger forfeiture, and this service injects it back to force-post interest. Without @Lazy the context fails to
-    // start with a circular-reference error. The proxy resolves on first use, long after startup.
+    // @Lazy breaks the bean cycle with AdvanclySavingsAccountWritePlatformService, which injects this service.
     public CumulativeInterestForfeitureService(final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository,
             final DepositInterestChargeApplicationRepository interestChargeApplicationRepository,
             @Lazy final SavingsAccountWritePlatformService savingsAccountWritePlatformService, final NoteRepository noteRepository,
@@ -106,18 +83,7 @@ public class CumulativeInterestForfeitureService {
         return resolveQualifyingChargeWithPercentage(account, chargePercentageOverride) != null;
     }
 
-    /**
-     * @param exitDate
-     *            the date of the early exit this forfeiture belongs to - the withdrawal date, or, for a premature
-     *            closure, the closure date.
-     * @param isPrematureClosure
-     *            whether this exit is a premature closure rather than an ordinary withdrawal. It decides only which
-     *            date the forced interest posting transaction is dated - see
-     *            {@link #forcedPostingDate(SavingsAccount, LocalDate, boolean)}.
-     * @return the forfeiture transaction, or {@code null} when there was nothing to forfeit (no qualifying charge, or
-     *         no interest posted yet - the latter being how a withdrawal taken before the first posting correctly costs
-     *         the customer nothing rather than eating into principal).
-     */
+    /** Returns {@code null} when nothing is forfeited (no qualifying charge or no interest posted yet). */
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction forfeitIfApplicable(final SavingsAccount account, final LocalDate exitDate,
             final boolean backdatedTxnsAllowedTill, final boolean isPrematureClosure) {
@@ -139,11 +105,7 @@ public class CumulativeInterestForfeitureService {
             return null;
         }
 
-        // Force-post first so the accrual up to this exit becomes real, credited interest before any of it is taken
-        // back. postInterestAs=true is load-bearing: it persists is_manual=true, which later recalculations re-derive
-        // as a genuine posting-period boundary, so the next scheduled run posts only the increment instead of
-        // re-posting the whole period on top of this one.
-        //
+        // postInterestAs=true persists is_manual=true, so the next scheduled run posts only the increment.
         final LocalDate forcedPostingDate = forcedPostingDate(account, exitDate, isPrematureClosure);
         SavingsAccountTransaction interestPostingOnForcedDate = latestInterestPostingOn(account, forcedPostingDate);
         if (interestPostingOnForcedDate == null) {
@@ -152,10 +114,7 @@ public class CumulativeInterestForfeitureService {
             noteOn(account, interestPostingOnForcedDate, "Interest accrued on pro rata basis from period start to day before withdrawal");
         }
 
-        // Snapshotted HERE - after the forced posting (which journals and flushes everything it wrote itself) and
-        // before this method writes anything of its own - so that the forfeiture transaction below
-        // are the only ones this method's own journal-posting step at the end treats as new. See the class javadoc for
-        // why the caller's later snapshot cannot do this job.
+        // Snapshot after the forced posting (which journals itself) so only the forfeiture below is journaled here.
         final Set<Long> existingTransactionIds = new HashSet<>(
                 backdatedTxnsAllowedTill ? account.findCurrentTransactionIdsWithPivotDateConfig() : account.findExistingTransactionIds());
         final Set<Long> existingReversedTransactionIds = new HashSet<>(
@@ -176,10 +135,7 @@ public class CumulativeInterestForfeitureService {
         }
 
         if (wroteAnything) {
-            // Order matters: the summary must be current before the account is flushed (its derived columns are
-            // persisted by that flush), the flush must happen before the journal entries (they carry the transaction
-            // ids the flush assigns), and the flush is also what puts those ids into the caller's later snapshot so
-            // the caller does not journal them a second time.
+            // Order matters: refresh before flush (persists summary), flush before journaling (assigns ids).
             account.refreshSummary(backdatedTxnsAllowedTill);
             this.savingsAccountRepository.saveAndFlush(account);
             postJournalEntries(account, existingTransactionIds, existingReversedTransactionIds, backdatedTxnsAllowedTill);
@@ -189,23 +145,8 @@ public class CumulativeInterestForfeitureService {
     }
 
     /**
-     * Where the forced interest posting transaction lands - which is what makes the shared period-splitting logic cap
-     * the ACCRUAL at the day before it (see {@code SavingsHelper#determineInterestPostingPeriods}).
-     *
-     * A premature closure uses exactly the date core's own per-period closure path uses,
-     * {@code SavingsAccount#interestPostingTransactionDateForClosure(closedDate)}, so both modes post the closing
-     * interest for the identical span. The two are NOT interchangeable: for the early closure this service handles that
-     * method returns {@code closedDate} itself, so dating the posting {@code closedDate - 1} instead would silently
-     * drop the closure day's predecessor from the accrual - invisible at 100% forfeiture (all of it is taken back
-     * anyway) but a real shortfall in what the customer keeps at any partial percentage.
-     *
-     * An ordinary withdrawal has no such core helper and deliberately keeps {@code withdrawalDate - 1}: the forced
-     * posting must sort strictly BEFORE the withdrawal in the balance walk, which a same-dated transaction does not
-     * guarantee. A closure is unaffected by that concern because its own settlement withdrawal is issued afterwards by
-     * core, from the already-refreshed balance, exactly as the per-period closure path does.
-     */
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same cutoff.
+     * A closure uses core's closure posting date so both modes accrue the same span; a withdrawal uses the day before
+     * so the posting sorts strictly before it. Package-private for EarlyWithdrawalChargeReadPlatformServiceImpl.
      */
     LocalDate forcedPostingDate(final SavingsAccount account, final LocalDate exitDate, final boolean isPrematureClosure) {
         return isPrematureClosure ? account.interestPostingTransactionDateForClosure(exitDate) : exitDate.minusDays(1);
@@ -219,11 +160,7 @@ public class CumulativeInterestForfeitureService {
                 Money.of(account.getCurrency(), amount));
         final BigDecimal appliedAmount = forfeiture.getAmount();
 
-        // accountCharge is a persistent, reusable rule definition (amount/amountOutstanding pinned at 0 between
-        // applications for PERCENT_OF_INTEREST charges), not a per-application ledger entry, so paying a bare
-        // externally-computed amount against it would drive amountOutstanding negative - see
-        // SavingsAccountCharge#payExternallyComputedCharge for why and how it stays symmetric with
-        // undoTransaction's undoPayment(...) while still tracking amountPaid as a running lifetime total.
+        // A plain payment would drive amountOutstanding negative; see SavingsAccountCharge#payExternallyComputedCharge.
         accountCharge.payExternallyComputedCharge(account.getCurrency(), appliedAmount);
         forfeiture.getSavingsAccountChargesPaid().add(SavingsAccountChargePaidBy.instance(forfeiture, accountCharge, appliedAmount));
         if (backdatedTxnsAllowedTill) {
@@ -242,7 +179,6 @@ public class CumulativeInterestForfeitureService {
         return forfeiture;
     }
 
-    /** Same two lines both {@code SavingsAccountDomainService#postJournalEntries} implementations run. */
     private void postJournalEntries(final SavingsAccount account, final Set<Long> existingTransactionIds,
             final Set<Long> existingReversedTransactionIds, final boolean backdatedTxnsAllowedTill) {
         final boolean isAccountTransfer = false;
@@ -251,9 +187,7 @@ public class CumulativeInterestForfeitureService {
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same basis.
-     */
+    /** Package-private: also used by EarlyWithdrawalChargeReadPlatformServiceImpl. */
     BigDecimal sumActiveAppliedAmount(final Long accountId) {
         final BigDecimal amount = this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId);
         return amount == null ? BigDecimal.ZERO : amount;
@@ -272,9 +206,7 @@ public class CumulativeInterestForfeitureService {
         return startInterestCalculationDate != null ? startInterestCalculationDate : exitDate;
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same check.
-     */
+    /** Package-private: also used by EarlyWithdrawalChargeReadPlatformServiceImpl. */
     SavingsAccountTransaction latestInterestPostingOn(final SavingsAccount account, final LocalDate date) {
         SavingsAccountTransaction found = null;
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {
@@ -292,9 +224,7 @@ public class CumulativeInterestForfeitureService {
         this.noteRepository.save(Note.savingsTransactionNote(account, transaction, text));
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same charge.
-     */
+    /** Package-private: also used by EarlyWithdrawalChargeReadPlatformServiceImpl. */
     QualifyingCharge resolveQualifyingChargeWithPercentage(final SavingsAccount account, final BigDecimal chargePercentageOverride) {
         final List<AdvanclyChargeInterestRule> rules = this.chargeInterestRuleRepository.findBySavingsProductId(account.productId());
         if (rules.size() != 1 || !rules.get(0).isCumulative()) {

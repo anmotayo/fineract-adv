@@ -141,9 +141,7 @@ class AdvanclySavingsAccountDomainServiceTest {
         verify(transactionHelper).updateSummaryIncremental(eq(account), any(), eq(currency));
     }
 
-    // Core refuses a transaction dated after the business date. The append path builds the row itself, so it refuses it
-    // too: a row beyond the business date lies past the date interest is posted up to and got a negative balance
-    // window.
+    // The append path must refuse future-dated rows as core does.
     @Test
     void aDepositDatedAfterTheBusinessDateIsRefusedAndWritesNothing() {
         final LocalDate afterBusinessDate = LocalDate.now().plusDays(3);
@@ -172,7 +170,6 @@ class AdvanclySavingsAccountDomainServiceTest {
         verify(savingsAccountTransactionRepository, never()).saveAndFlush(any());
     }
 
-    // What core checks in SavingsAccount#deposit/#withdraw and the append path would otherwise skip.
     @Test
     void aDepositIntoAnAccountThatIsNotActiveIsRefusedAndWritesNothing() {
         final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
@@ -223,7 +220,6 @@ class AdvanclySavingsAccountDomainServiceTest {
                         .isEqualTo("error.msg.savingsaccount.transaction.before.activation.date"));
     }
 
-    // A deposit or a withdrawal makes an inactive or dormant account active again, as it does through core.
     @Test
     void aDepositOnADormantAccountMakesItActiveAgain() {
         final SavingsAccount account = accountWithSubStatus(SavingsAccountSubStatusEnum.DORMANT);
@@ -244,8 +240,7 @@ class AdvanclySavingsAccountDomainServiceTest {
         assertThat(account.getSubStatus()).isEqualTo(SavingsAccountSubStatusEnum.NONE.getValue());
     }
 
-    // Core pays a withdrawal fee inside the withdrawal and this path does not: a caller that sends such a withdrawal
-    // here is refused, not left to waive the fee without anyone noticing.
+    // The append path doesn't pay withdrawal fees, so it must refuse rather than silently waive them.
     @Test
     void aWithdrawalCarryingAFeeCorePaysIsRefusedHere() {
         final SavingsAccount account = new SavingsAccountTestBuilder().withId(1L).build();
@@ -284,12 +279,6 @@ class AdvanclySavingsAccountDomainServiceTest {
         return account;
     }
 
-    // Fast-path (handleDepositOptimized/handleWithdrawalOptimized) DynamicDepositAccount-specific hooks were removed:
-    // AdvanclySavingsAccountWritePlatformService now routes every deposit-type account (including Dynamic Deposit)
-    // through the core path instead, so these methods are only ever called with a plain savings account and no
-    // longer special-case DynamicDepositAccount. See AdvanclySavingsAccountWritePlatformServiceTest for the routing
-    // coverage.
-
     @Test
     void aReversalOnADynamicDepositAccountRecordsRateHistoryEvent() {
         final SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000))
@@ -307,12 +296,7 @@ class AdvanclySavingsAccountDomainServiceTest {
                 DynamicDepositRateHistoryEventType.REVERSAL);
     }
 
-    /**
-     * Mirrors {@link SavingsAccountTestBuilder#build()}, but for the {@link DynamicDepositAccount} subclass: that
-     * builder is hard-coded to {@code SavingsAccount.class}, so a {@code DynamicDepositAccount} fixture (needed here
-     * for the reversal test's {@code instanceof DynamicDepositAccount} branch) is built the same way, by reflection,
-     * directly in this test.
-     */
+    /** SavingsAccountTestBuilder only builds SavingsAccount, so the subclass is built by reflection here. */
     private DynamicDepositAccount buildDynamicDepositAccount(final SavingsAccountSummary summary) {
         final DynamicDepositAccount account = createInstance(DynamicDepositAccount.class);
         ReflectionTestUtils.setField(account, "id", 1L);

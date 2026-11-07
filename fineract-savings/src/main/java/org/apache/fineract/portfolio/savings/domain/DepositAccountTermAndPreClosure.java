@@ -90,9 +90,7 @@ public class DepositAccountTermAndPreClosure extends AbstractPersistableCustom<L
     @Column(name = "transfer_to_savings_account_id")
     private Long transferToSavingsAccountId;
 
-    /**
-     * A value from the {@link WithHoldTaxPostingType} enumeration.
-     */
+    /** A {@link WithHoldTaxPostingType} value. */
     @Column(name = "withhold_tax_posting_type_enum", nullable = true)
     private Integer withHoldTaxPostingType;
 

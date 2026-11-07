@@ -22,12 +22,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * The rate a Dynamic Deposit account would resolve to if the simulated top-up/withdrawal were real, as projected by the
- * interest-calculation preview. Only present when a simulation was requested on a Dynamic Deposit account.
- * {@code rateChanged} is {@code false} (and the rates equal) when the account's rate is fixed
- * ({@code dynamic_rate_enabled = false}) or the new amount stays in the same slab.
- */
+/** Rate a Dynamic Deposit would resolve to after the simulated top-up/withdrawal in the interest preview. */
 public class SimulatedRateData implements Serializable {
 
     private final BigDecimal annualInterestRate;

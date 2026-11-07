@@ -53,13 +53,8 @@ import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates {@code close} and {@code prematureClose} requests for the {@code DYNAMICDEPOSITACCOUNT} entity.
- *
- * Takes the request shape Fixed and Recurring Deposit closure takes
- * ({@code DepositAccountTransactionDataValidator#validateClosing}) so every deposit type closes the same way. A
- * premature closure additionally accepts {@code earlyWithdrawalChargePercentage}, the override a Dynamic Deposit
- * withdrawal already accepts for the early-withdrawal charge. Like Fixed and Recurring Deposit, reinvesting is only
- * offered on a maturity closure.
+ * Validates Dynamic Deposit {@code close}/{@code prematureClose} with the same shape as FD/RD closure; a premature
+ * closure also accepts {@code earlyWithdrawalChargePercentage}.
  */
 @Component
 public class DynamicDepositAccountClosureDataValidator {

@@ -113,7 +113,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     void testBulkTransaction_twoDeposits_returnsReceiptToIdMap() {
         Long savingsId = 1L;
         SavingsAccount account = new SavingsAccountTestBuilder().withId(savingsId).build();
-        AssembledSavingsAccount assembled = new AssembledSavingsAccount(account, null);
+        AssembledSavingsAccount assembled = AssembledSavingsAccount.of(account, null);
 
         when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.empty());
         when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);

@@ -68,17 +68,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Direct coverage for the withdrawal-lock guard added to {@link AdvanclySavingsAccountWritePlatformService#withdrawal}
- * (Phase 5 Task 2). Mirrors the mocking pattern already used by
- * {@link AdvanclySavingsAccountWritePlatformServiceBulkTest} for this same class.
- *
- * Covers both the same-day (append-path) and BACKDATED routes through {@code withdrawal(...)}: the guard was originally
- * placed AFTER the backdated early-return to {@code delegate.withdrawal(...)}, which let a backdated cash withdrawal on
- * a locked Dynamic Deposit account bypass the rule entirely (core Fineract has no notion of it). The backdated test
- * below is the regression test for that fix - it fails without the fix (the exception is never thrown,
- * {@code delegate.withdrawal(...)} is invoked instead) and passes with it.
- */
+/** Withdrawal-lock guard on both the same-day (append) and backdated (core) routes. */
 @ExtendWith(MockitoExtension.class)
 class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
 
@@ -155,8 +145,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
 
         JsonCommand command = withdrawalCommand(transactionDate, BigDecimal.valueOf(1000));
 
-        // Backdated: findLastTransactionDate returns a date AFTER transactionDate, so the method's isBackdated
-        // branch would (pre-fix) route straight to delegate.withdrawal(...) before the guard ever ran.
+        // A later last-transaction date makes this backdated, so it routes to core.
         when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.of(lastTxnDate));
         when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
 
@@ -217,6 +206,29 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
     }
 
     @Test
+    void withdrawalMadeBackdatedByAConcurrentWriterDelegatesToCore() {
+        Long savingsId = 10L;
+        LocalDate transactionDate = LocalDate.of(2026, 5, 27);
+        SavingsAccount account = new SavingsAccountTestBuilder().withId(savingsId).build();
+        // The pre-lock check saw nothing later, but under the lock there is a transaction dated after this one.
+        AssembledSavingsAccount assembled = AssembledSavingsAccount.of(account, null, transactionDate.plusDays(1));
+
+        JsonCommand command = withdrawalCommand(transactionDate, BigDecimal.valueOf(1000));
+
+        when(advanclyTransactionRepository.findLastTransactionDate(savingsId)).thenReturn(Optional.of(transactionDate));
+        when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
+
+        CommandProcessingResult delegateResult = new CommandProcessingResultBuilder().withEntityId(999L).build();
+        when(delegate.withdrawal(savingsId, command)).thenReturn(delegateResult);
+
+        CommandProcessingResult result = service.withdrawal(savingsId, command);
+
+        assertThat(result).isSameAs(delegateResult);
+        verify(domainService, never()).handleWithdrawalOptimized(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(),
+                any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
     void backdatedWithdrawalAppliesChargeUsingCorePivotConfigStatusNotThisTransactionsOwnBackdatedFlag() {
         Long savingsId = 10L;
         LocalDate lastTxnDate = LocalDate.of(2026, 5, 27);
@@ -235,10 +247,7 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         SavingsAccountTransaction withdrawal = new SavingsAccountTransactionTestBuilder().withId(999L).withSavingsAccount(account).build();
         when(advanclyTransactionRepository.findById(999L)).thenReturn(Optional.of(withdrawal));
 
-        // This transaction IS backdated relative to the account's own history (transactionDate < lastTxnDate) -
-        // that must NOT be what decides the charge's collection. Only the tenant's pivot-date config, which is what
-        // core's own delegate.withdrawal(...) actually used internally, may decide it. Deliberately false here,
-        // opposite of the transaction's own backdated-ness, to prove the two are not conflated.
+        // Pivot config, not the transaction's own backdated-ness, decides charge collection; false proves they differ.
         when(configurationDomainService.retrievePivotDateConfig()).thenReturn(false);
 
         service.withdrawal(savingsId, command);
@@ -253,11 +262,6 @@ class AdvanclySavingsAccountWritePlatformServiceWithdrawalLockTest {
         return command;
     }
 
-    /**
-     * Minimal DynamicDepositAccount test double - mirrors the reflective-construction pattern used by
-     * DynamicDepositAccountWithdrawalLockTest (Task 1) and the equivalent helper added to
-     * AdvanclyAccountTransfersWritePlatformServiceTest for Task 2's transfer-guard tests.
-     */
     private DynamicDepositAccount dynamicDepositAccount(Long savingsId, BigDecimal runningBalance, boolean allowWithdrawal) {
         DynamicDepositAccount account = createInstance(DynamicDepositAccount.class);
         ReflectionTestUtils.setField(account, "id", savingsId);

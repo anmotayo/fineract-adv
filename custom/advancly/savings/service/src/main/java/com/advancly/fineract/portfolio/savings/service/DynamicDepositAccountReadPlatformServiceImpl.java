@@ -51,11 +51,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
-/**
- * Lean, self-contained read-side implementation for the Dynamic Deposit account (deposit_type_enum = 500). Joins the
- * reused {@code m_deposit_account_term_and_preclosure} table (fixed tenor / invested amount, exactly as
- * {@code FixedDepositAccount} does) and the new {@code m_deposit_account_dynamic_detail} table.
- */
+/** Read side for Dynamic Deposit accounts (deposit_type_enum = 500). */
 @Service
 public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepositAccountReadPlatformService {
 
@@ -119,21 +115,16 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
 
         final BigDecimal grossInterestEarnedAsAtToday = defaultToZero(summary.getTotalInterestEarned());
         final BigDecimal interestPosted = defaultToZero(summary.getTotalInterestPosted());
-        // The current period's unposted accrual: total earned to date minus what has already been posted.
+        // Current period's unposted accrual.
         final BigDecimal totalInterestForPeriod = grossInterestEarnedAsAtToday.subtract(interestPosted);
         final BigDecimal withholdingTax = defaultToZero(summary.getTotalWithholdTax());
         final BigDecimal interestCharges = defaultToZero(
                 this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(accountId));
         final BigDecimal interestWithdrawn = BigDecimal.ZERO;
-        // Phase 5 (Transfers And Withdrawal Lock) owns this field; it stays zero for now.
+        // Not tracked yet.
         final BigDecimal interestTransferredToSavings = BigDecimal.ZERO;
 
-        // Life-to-date scope, consistent with withholdingTax and interestCharges (both life-to-date; charges are
-        // read from the application ledger) - not totalInterestForPeriod, which is the current unposted accrual.
-        // Phase 5's Transfer Interest To Savings Job computes its own period-scoped net interest directly from
-        // per-transaction data and does not read this DTO, so this field is a reporting convenience only; a correct
-        // per-period WHT figure isn't computable this phase anyway since WHT is only known once a period is actually
-        // posted.
+        // Life-to-date, like withholdingTax and interestCharges; a reporting figure only.
         final BigDecimal netInterest = interestPosted.subtract(withholdingTax).subtract(interestCharges);
 
         final List<DepositAccountDynamicRateHistory> rateHistoryRows = this.rateHistoryRepository
@@ -156,12 +147,6 @@ public class DynamicDepositAccountReadPlatformServiceImpl implements DynamicDepo
         this.context.authenticatedUser();
         final Collection<com.advancly.fineract.portfolio.savings.data.DynamicDepositProductData> productOptions = this.dynamicDepositProductReadPlatformService
                 .retrieveAll();
-        // id, accountNo, externalId, clientId, clientName, groupId, groupName, savingsProductId, savingsProductName,
-        // fieldOfficerId, status, currency, nominalAnnualInterestRate, interestCompoundingPeriodType,
-        // interestPostingPeriodType,
-        // interestCalculationType, interestCalculationDaysInYearType, depositAmount, depositPeriod,
-        // depositPeriodFrequencyType,
-        // expectedFirstDepositOnDate, maturityDate, maturityAmount, submittedOnDate, approvedOnDate, activatedOnDate
         final DynamicDepositAccountData data = new DynamicDepositAccountData(null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 // allowWithdrawal, dynamicRateEnabled, transferInterestToSavings

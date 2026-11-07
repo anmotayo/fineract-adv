@@ -49,10 +49,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Optimized domain service for savings deposits and withdrawals. Uses O(1) append path for current-date transactions.
- * Backdated transactions are delegated to the core domain service.
- */
+/** O(1) append path for current-date deposits/withdrawals; backdated ones are delegated to core. */
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
@@ -83,9 +80,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         this.dynamicDepositRateHistoryService = dynamicDepositRateHistoryService;
     }
 
-    /**
-     * O(1) append-only deposit handler. The caller (WritePlatformService) must ensure the transaction is not backdated.
-     */
+    /** Caller must ensure the transaction is not backdated. */
     public SavingsAccountTransaction handleDepositOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final Money lastRunningBalance,
             final MonetaryCurrency currency, final SavingsAccountTransaction lastBalanceBearingTransaction, boolean isAccountTransfer) {
@@ -117,11 +112,8 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
     }
 
     /**
-     * O(1) append-only withdrawal handler. The caller (WritePlatformService) must ensure the transaction is not
-     * backdated. The caller also guarantees {@code account} is a plain savings account: deposit-type accounts
-     * (FD/RD/Dynamic Deposit) are always routed to the core path instead, since this append path builds
-     * {@code SavingsAccountTransaction} rows directly rather than calling {@code SavingsAccount#deposit()}/
-     * {@code #withdraw()} and would otherwise silently skip their entity-level overrides.
+     * Caller must ensure the transaction is not backdated and the account is plain savings: rows are built directly, so
+     * deposit-type entity overrides of {@code withdraw()} would be skipped.
      */
     public SavingsAccountTransaction handleWithdrawalOptimized(final SavingsAccount account, final LocalDate transactionDate,
             final BigDecimal transactionAmount, final PaymentDetail paymentDetail, final boolean applyWithdrawFee,
@@ -131,8 +123,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         account.validateForDebitBlock();
         SavingsTransactionRules.validateWithdrawalAllowed(account, transactionDate);
         if (applyWithdrawFee && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account)) {
-            // Core pays the withdrawal fee inside the withdrawal; this path does not, so the caller has to send such a
-            // withdrawal to core. Refusing here keeps a caller that forgot from quietly waiving the fee.
+            // Only core pays the withdrawal fee; refuse rather than silently waive it.
             throw new IllegalStateException(
                     "Account " + account.getId() + " has a withdrawal fee, which only a withdrawal through core pays.");
         }
@@ -159,8 +150,6 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         businessEventNotifierService.notifyPostBusinessEvent(new SavingsWithdrawalBusinessEvent(withdrawal));
         return withdrawal;
     }
-
-    // === Interface method implementations — delegate to core ===
 
     @Transactional
     @Override
@@ -208,8 +197,7 @@ public class AdvanclySavingsAccountDomainService implements SavingsAccountDomain
         final SavingsAccountTransaction reversalTransaction = coreDomainService.handleReversal(account, savingsAccountTransactions,
                 backdatedTxnsAllowedTill);
         if (account instanceof DynamicDepositAccount dynamicDepositAccount && reversalTransaction != null) {
-            // A reversal creates a new correcting transaction (it does not call SavingsAccount.deposit()/withdraw()),
-            // so it is hooked here rather than via DynamicDepositAccount's entity-level override.
+            // Reversals bypass deposit()/withdraw(), so the entity-level rate-history hook doesn't fire.
             dynamicDepositRateHistoryService.recordPrincipalChangeEvent(dynamicDepositAccount, reversalTransaction,
                     DynamicDepositRateHistoryEventType.REVERSAL);
         }

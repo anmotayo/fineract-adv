@@ -30,6 +30,7 @@ import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConst
 import static org.apache.fineract.portfolio.account.api.AccountTransfersApiConstants.transferDateParamName;
 
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountAssembler;
+import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountLockRepository;
 import com.advancly.fineract.portfolio.savings.domain.AdvanclySavingsAccountTransactionRepository;
 import com.advancly.fineract.portfolio.savings.domain.AssembledSavingsAccount;
 import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
@@ -71,7 +72,6 @@ import org.apache.fineract.portfolio.loanaccount.exception.InvalidPaidInAdvanceA
 import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.SavingsTransactionBooleanValues;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.GroupSavingsIndividualMonitoring;
@@ -112,11 +112,9 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     private final AccountTransfersWritePlatformService coreAccountTransfersWritePlatformService;
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
+    private final AdvanclySavingsAccountLockRepository savingsAccountLockRepository;
 
-    /**
-     * The returned {@code resourceId} is the {@code m_account_transfer_details} id, not the
-     * {@code m_account_transfer_transaction} id of the individual transfer leg.
-     */
+    /** Returns the {@code m_account_transfer_details} id, not the transfer leg id. */
     @Transactional
     @Override
     public CommandProcessingResult create(final JsonCommand command) {
@@ -143,12 +141,13 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
 
         if (isSavingsToSavingsAccountTransfer(fromAccountType, toAccountType)) {
             final Long fromSavingsAccountId = command.longValueOfParameterNamed(fromAccountIdParamName);
+            final Long toSavingsId = command.longValueOfParameterNamed(toAccountIdParamName);
+            lockInIdOrder(fromSavingsAccountId, toSavingsId);
             final boolean fromAppendPath = isAppendPath(fromSavingsAccountId, transactionDate);
             final AssembledSavingsAccount fromAssembled = assembleSavingsAccount(fromSavingsAccountId, transactionDate,
                     backdatedTxnsAllowedTill, fromAppendPath);
             final SavingsAccount fromSavingsAccount = fromAssembled.getAccount();
 
-            final Long toSavingsId = command.longValueOfParameterNamed(toAccountIdParamName);
             final boolean toAppendPath = isAppendPath(toSavingsId, transactionDate);
             final AssembledSavingsAccount toAssembled = assembleSavingsAccount(toSavingsId, transactionDate, backdatedTxnsAllowedTill,
                     toAppendPath);
@@ -235,10 +234,18 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         return lastTransactionDate.isEmpty() || !transactionDate.isBefore(lastTransactionDate.get());
     }
 
-    /** Core reverses the accruals dated on or after a new transaction; the append path does not. */
     private boolean accrualWouldBeReversed(final SavingsAccount account, final LocalDate transactionDate) {
-        return account.savingsProduct().isAccrualBasedAccountingEnabled() && savingsAccountTransactionRepository
-                .existsAccrualOnOrAfter(account.getId(), SavingsAccountTransactionType.ACCRUAL.getValue(), transactionDate);
+        return SavingsTransactionRules.accrualWouldBeReversed(account, transactionDate);
+    }
+
+    /** Locks both accounts lower id first, so A->B and B->A transfers queue instead of deadlocking. */
+    private void lockInIdOrder(final Long firstAccountId, final Long secondAccountId) {
+        final long lower = Math.min(firstAccountId, secondAccountId);
+        final long higher = Math.max(firstAccountId, secondAccountId);
+        savingsAccountLockRepository.findByIdForUpdate(lower);
+        if (higher != lower) {
+            savingsAccountLockRepository.findByIdForUpdate(higher);
+        }
     }
 
     private AssembledSavingsAccount assembleSavingsAccount(final Long savingsId, final LocalDate transactionDate,
@@ -257,10 +264,10 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         final SavingsAccount account = assembled.getAccount();
         final PaymentDetail paymentDetail = null;
 
-        // Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path - see the equivalent check in
-        // AdvanclySavingsAccountWritePlatformService - since this append path builds the transaction directly and
-        // would otherwise silently skip their entity-level overrides.
-        if (appendPath && account.depositAccountType().isSavingsDeposit() && !accrualWouldBeReversed(account, transactionDate)) {
+        // Deposit-type accounts go through core so their entity overrides run.
+        // isBackdated(...) re-checks under the lock: isAppendPath(...) can miss a concurrent writer's transaction.
+        if (appendPath && !assembled.isBackdated(transactionDate) && account.depositAccountType().isSavingsDeposit()
+                && !accrualWouldBeReversed(account, transactionDate)) {
             Money lastRunningBalance = Money.of(account.getCurrency(), account.getSummary().getRunningBalanceOnPivotDate());
             return savingsAccountDomainService.handleDepositOptimized(account, transactionDate, transactionAmount, paymentDetail,
                     lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(),
@@ -291,10 +298,9 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         final PaymentDetail paymentDetail = null;
 
         final SavingsAccountTransaction withdrawal;
-        // See the equivalent check in postOptimizedDeposit(...) above.
-        // A withdrawal fee is paid by core inside the withdrawal, and core reverses the accruals dated on or after it:
-        // the append path does neither, so a withdrawal that needs either goes through core.
-        final boolean usesOptimizedAppendPath = appendPath && account.depositAccountType().isSavingsDeposit()
+        // As in postOptimizedDeposit(...); withdrawal fees and accrual reversal also only happen in core.
+        final boolean usesOptimizedAppendPath = appendPath && !assembled.isBackdated(transactionDate)
+                && account.depositAccountType().isSavingsDeposit()
                 && !(transactionBooleanValues.isApplyWithdrawFee() && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account))
                 && !accrualWouldBeReversed(account, transactionDate);
         if (usesOptimizedAppendPath) {
@@ -308,9 +314,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         }
 
         if (!transactionBooleanValues.isInterestTransfer()) {
-            // `withdrawal` was appended via addTransactionToExisting(...) (the pivot-config transient list) whenever
-            // usesOptimizedAppendPath is true. Otherwise handleWithdrawal(...) above already decided which
-            // collection to use based on backdatedTxnsAllowedTill, so the charge defers to that same flag.
+            // The charge goes to the same collection the withdrawal was added to.
             this.interestChargeApplicationService.applyIfApplicable(account, withdrawal,
                     earlyWithdrawalChargeRequest.applyEarlyWithdrawalCharge(),
                     earlyWithdrawalChargeRequest.earlyWithdrawalChargePercentage(), earlyWithdrawalChargeRequest.selectedFromDate(),
@@ -354,44 +358,28 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         coreAccountTransfersWritePlatformService.reverseTransfersWithFromAccountType(accountNumber, accountTypeId);
     }
 
-    /**
-     * Returns the {@code m_account_transfer_details} id of the transfer, not the id of the individual transfer leg.
-     */
+    /** Returns the {@code m_account_transfer_details} id, not the transfer leg id. */
     @Transactional
     @Override
     public Long transferFunds(final AccountTransferDTO accountTransferDTO) {
         return transferFunds(accountTransferDTO, EarlyWithdrawalTransferChargeRequest.none());
     }
 
-    /**
-     * Moves the closing payout of a savings account to another savings account and applies the account's
-     * early-withdrawal charge to the withdrawal leg, the way a withdrawal does. Differs from
-     * {@link #transferFunds(AccountTransferDTO)} only in the charge: a cumulative rule posts the closing interest on
-     * the closure date itself (see {@link AdvanclyInterestChargeApplicationService#applyIfApplicable}).
-     *
-     * @return the id of the transfer details
-     */
+    /** Like {@link #transferFunds(AccountTransferDTO)}, plus the early-withdrawal charge on the withdrawal leg. */
     @Transactional
     public Long transferClosurePayout(final AccountTransferDTO accountTransferDTO, final ClosureCharge charge) {
         return transferFunds(accountTransferDTO, new EarlyWithdrawalTransferChargeRequest(charge.applyEarlyWithdrawalCharge(),
                 charge.earlyWithdrawalChargePercentage(), charge.selectedFromDate(), charge.selectedToDate(), true));
     }
 
-    /** The early-withdrawal charge to apply to a closure payout; see {@link #transferClosurePayout}. */
     public record ClosureCharge(boolean applyEarlyWithdrawalCharge, BigDecimal earlyWithdrawalChargePercentage, LocalDate selectedFromDate,
             LocalDate selectedToDate) {
     }
 
-    /**
-     * A dynamic deposit works out its invested amount when the withdrawal is posted, but which withdrawals paid
-     * interest out is read from the transfer link, and that is only written once the transfer is saved. Until then the
-     * interest transfer is counted as principal and, being the latest transaction, nothing corrects it until the next
-     * one. Recomputing once the link exists leaves the invested amount and rate right straight away.
-     */
+    /** The interest-transfer link is only written after the transfer is saved, so recompute the invested amount now. */
     private void recomputeDynamicDepositOnceTransferIsLinked(final SavingsAccount fromSavingsAccount,
             final AccountTransferDTO accountTransferDTO) {
-        // Only an interest transfer is told apart by its link; any other withdrawal is principal either way, and was
-        // already counted when it was posted, so recomputing for it again would be wasted work.
+        // Only interest transfers are identified by the link; other withdrawals were already counted as principal.
         if (fromSavingsAccount instanceof DynamicDepositAccount dynamicDepositAccount
                 && AccountTransferType.fromInt(accountTransferDTO.getTransferType()).isInterestTransfer()) {
             this.dynamicDepositRateHistoryService.recompute(dynamicDepositAccount);
@@ -437,16 +425,15 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         } else if (isSavingsToSavingsAccountTransfer(accountTransferDTO.getFromAccountType(), accountTransferDTO.getToAccountType())) {
             LocalDate transactionDate = resolveSavingsToSavingsTransferDate(accountTransferDTO);
             final Long fromSavingsAccountId = fromSavingsAccountId(accountTransferDTO, accountTransferDetails);
-            // A closure takes its charge from the interest posted so far, read from the account summary; the optimized
-            // append
-            // path does not keep that summary whole, so the account being closed goes through core's full path.
+            final Long toSavingsAccountId = toSavingsAccountId(accountTransferDTO, accountTransferDetails);
+            lockInIdOrder(fromSavingsAccountId, toSavingsAccountId);
+            // A closure's charge reads the account summary, which the append path does not keep whole.
             final boolean fromAppendPath = !earlyWithdrawalChargeRequest.postAtClosureDate()
                     && isAppendPath(fromSavingsAccountId, transactionDate);
             final AssembledSavingsAccount fromAssembled = assembleSavingsAccount(fromSavingsAccountId, transactionDate,
                     backdatedTxnsAllowedTill, fromAppendPath);
             final SavingsAccount fromSavingsAccount = fromAssembled.getAccount();
 
-            final Long toSavingsAccountId = toSavingsAccountId(accountTransferDTO, accountTransferDetails);
             final boolean toAppendPath = isAppendPath(toSavingsAccountId, transactionDate);
             final AssembledSavingsAccount toAssembled = assembleSavingsAccount(toSavingsAccountId, transactionDate,
                     backdatedTxnsAllowedTill, toAppendPath);
@@ -513,10 +500,7 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
         coreAccountTransfersWritePlatformService.reverseAllTransactions(accountId, accountTypeId);
     }
 
-    /**
-     * The returned {@code resourceId} is the {@code m_account_transfer_details} id, not the
-     * {@code m_account_transfer_transaction} id of the individual transfer leg.
-     */
+    /** Returns the {@code m_account_transfer_details} id, not the transfer leg id. */
     @Transactional
     @Override
     public CommandProcessingResult refundByTransfer(final JsonCommand command) {

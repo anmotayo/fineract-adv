@@ -42,9 +42,6 @@ import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClos
 import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
 import org.springframework.stereotype.Component;
 
-/**
- * Validates create/update requests for the {@code DYNAMICDEPOSITACCOUNT} entity.
- */
 @Component
 public class DynamicDepositAccountDataValidator {
 
@@ -104,13 +101,7 @@ public class DynamicDepositAccountDataValidator {
         this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, DYNAMIC_DEPOSIT_ACCOUNT_REQUEST_DATA_PARAMETERS);
     }
 
-    /**
-     * A linked savings account is required whenever {@code transferInterestToSavings} is enabled, since interest cannot
-     * be transferred anywhere without one. This does NOT depend on {@code allowWithdrawal} -
-     * transfer-interest-to-savings is not a regular (withdrawal-style) transaction, so disabling withdrawals must never
-     * force this off. Mirrors {@code DepositAccountDataValidator}'s {@code isLinkedAccRequired} /
-     * {@code throwLinkedAccountRequiredError()} pattern for FD/RD accounts.
-     */
+    /** Independent of {@code allowWithdrawal}: interest transfer is not a withdrawal-style transaction. */
     public void validateLinkedAccountRequiredWhenTransferInterestEnabled(final boolean transferInterestToSavings,
             final Long linkedAccountId) {
         if (transferInterestToSavings && linkedAccountId == null) {
@@ -124,11 +115,7 @@ public class DynamicDepositAccountDataValidator {
         }
     }
 
-    /**
-     * Range-checks the account's chosen deposit amount and term against the product's configured min/max (mirrors
-     * FD/RD's account-level range validation). The product's ranges may be entirely unconfigured (both null), in which
-     * case no check applies to that dimension.
-     */
+    /** An unconfigured (null) product range skips that check. */
     public void validateDepositAmountAndTermWithinProductRange(final BigDecimal depositAmount, final Integer depositPeriod,
             final SavingsPeriodFrequencyType depositPeriodFrequency, final DepositProductTermAndPreClosure productTermAndPreClosure) {
         if (productTermAndPreClosure == null) {

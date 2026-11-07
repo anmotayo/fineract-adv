@@ -30,11 +30,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Adds Advancly charge-driven interest-rule validation around core Savings product writes. The legacy
- * {@code earlyWithdrawalCharge*} product-level selection is no longer part of the supported backend contract; a product
- * participates in early-withdrawal interest charging by attaching a charge that has an Advancly interest rule.
- */
+/** Validates Advancly charge interest rules around core savings product writes. */
 @Service
 @Primary
 public class AdvanclySavingsProductWritePlatformService implements SavingsProductWritePlatformService {

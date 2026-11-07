@@ -177,7 +177,7 @@ class SavingsAccrualWritePlatformServiceImplTest {
         verify(account).addTransaction(accrualCaptor.capture());
         final BigDecimal totalAccrual = accrualCaptor.getAllValues().stream().map(SavingsAccountTransaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        // Unrounded daily-balance interest is 797.295342466; this tenant truncates monetary amounts to currency scale.
+        // Unrounded 797.295342466, truncated to currency scale.
         assertThat(totalAccrual).isEqualByComparingTo("797.29");
         assertThat(accrualCaptor.getValue().getTransactionDate()).isEqualTo(accrualThroughDate);
         verify(account).setAccruedTillDate(accrualThroughDate);

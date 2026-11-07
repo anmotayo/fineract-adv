@@ -33,17 +33,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 
 /**
- * Captures the interest rate resolved and used for the interval starting at one principal-changing transaction, for a
- * Dynamic Deposit account (deposit_type_enum = 500) - see implementation plan Section 4.
- *
- * One row is written per principal-changing event (initial funding/activation, top-up, withdrawal, transfer-in,
- * transfer-out, and the replacement transaction created by an adjustment). A plain reversal of an existing transaction
- * does not need its own row updated or deleted - per plan Section 8 step 5, rows are pure link/marker rows keyed to a
- * transaction that already owns reversal state (mirroring {@code m_loan_transaction_relation}); a reversed
- * transaction's row is simply excluded later by the interest engine joining back to
- * {@code m_savings_account_transaction.is_reversed}. The reversal itself creates a *new* transaction (a correcting
- * entry) which gets its own row (event type {@link DynamicDepositRateHistoryEventType#REVERSAL}), since it changes the
- * invested amount going forward from that point.
+ * The rate resolved for the interval starting at one principal-changing Dynamic Deposit transaction. Reversed
+ * transactions' rows are excluded via {@code is_reversed}, not deleted.
  */
 @Entity
 @Table(name = "m_deposit_account_dynamic_rate_history")
@@ -53,11 +44,7 @@ public class DepositAccountDynamicRateHistory extends AbstractAuditableWithUTCDa
     @JoinColumn(name = "savings_account_id", nullable = false)
     private SavingsAccount account;
 
-    // cascade = PERSIST: the transaction that triggered this row may not yet be flushed/have a generated id at the
-    // point this row is created (e.g. the plain, non-backdated SavingsAccount.deposit()/withdraw() path only appends
-    // to an in-memory list - persistence is driven by the caller afterward). Cascading persist here is safe and
-    // idempotent even when the same transaction is also reachable via the account's own transaction collection,
-    // since it is the same managed Java instance within the current persistence context.
+    // PERSIST: the transaction may not be flushed yet when this row is created.
     @ManyToOne(optional = false, cascade = CascadeType.PERSIST)
     @JoinColumn(name = "savings_account_transaction_id", nullable = false)
     private SavingsAccountTransaction transaction;
@@ -167,11 +154,7 @@ public class DepositAccountDynamicRateHistory extends AbstractAuditableWithUTCDa
         return this.rateSource;
     }
 
-    /**
-     * Corrects this row's invested amount and resolved rate after a backdated principal-changing transaction (or the
-     * undo of one) changes what was true as of this row's transaction date. See
-     * {@code DynamicDepositRateHistoryService#reconcileFollowingRows}.
-     */
+    /** Re-derives this row after a backdated principal change; see reconcileFollowingRows. */
     public void correct(final BigDecimal investedAmountAfterTransaction, final Long interestRateChartId, final Long interestRateSlabId,
             final BigDecimal baseAnnualInterestRate, final BigDecimal resolvedAnnualInterestRate,
             final DynamicDepositRateSource rateSource) {

@@ -74,11 +74,8 @@ public class SavingsAccrualWritePlatformServiceImpl implements SavingsAccrualWri
     private static final int PROGRESS_LOG_INTERVAL = 100;
 
     /**
-     * Accrues every eligible account in its own transaction. A single transaction (and persistence context) spanning
-     * all accounts keeps every loaded account graph in memory and makes every flush re-scan all of them, which exhausts
-     * the heap on large tenants. A transaction per account bounds both, isolates failures and keeps each account's
-     * accrual and journal entries atomic. Re-runs resume from the account's accrued-till date, so partial progress is
-     * safe.
+     * One transaction per account: a single one spanning all accounts exhausts the heap on large tenants. Re-runs
+     * resume from each account's accrued-till date.
      */
     @Override
     public void addAccrualEntries(LocalDate tillDate) throws JobExecutionException {

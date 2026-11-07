@@ -36,25 +36,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Single entry point for recording a Dynamic Deposit account's principal-changing events (implementation plan, Section
- * 6): recomputes the invested amount from the account's own transactions, updates the
- * {@code m_deposit_account_term_and_preclosure.deposit_amount} quick-read cache, resolves (or carries forward) the
- * applicable interest rate off the account's own chart snapshot, writes the
- * {@code m_deposit_account_dynamic_rate_history} row, and - since backdating is supported - retroactively corrects
- * every already-written row whose invested amount/rate is now stale as a result.
- *
- * Called from every hook that can create a principal-changing transaction for a Dynamic Deposit account: the entity
- * level {@code DynamicDepositAccount#deposit(...)}/{@code #withdraw(...)} overrides (covers backdated top-up,
- * withdrawal, transfer-in/out, and an adjustment's replacement transaction - all of which route through those entity
- * methods) and {@code AdvanclySavingsAccountDomainService}'s optimized append-path and reversal methods (which build
- * transactions directly, bypassing the entity methods).
- *
- * The invested amount is always recomputed by summing the account's own transactions (never an incrementally maintained
- * cache), because backdating means a transaction can be inserted out of chronological order: naively adding/subtracting
- * this transaction's amount to the last-cached total would get the running TOTAL right (addition commutes) but would
- * resolve this event's own rate against the wrong invested-amount-as-of-its-date, and would leave every already-written
- * row for a later date silently stale (both its invested amount and, potentially, which rate slab it should have
- * matched). {@link #recompute} re-derives those.
+ * Records Dynamic Deposit principal changes in the rate history. Invested amounts are always recomputed from the
+ * transactions, never incrementally, because a backdated transaction can make later rows' amount and slab stale.
  */
 @Component
 public class DynamicDepositRateHistoryService {
@@ -69,10 +52,6 @@ public class DynamicDepositRateHistoryService {
         this.rateResolutionService = rateResolutionService;
     }
 
-    /**
-     * Records one principal-changing event for {@code account}. Safe to call unconditionally from a shared hook -
-     * callers are expected to gate on {@code account instanceof DynamicDepositAccount} before calling.
-     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordPrincipalChangeEvent(final DynamicDepositAccount account, final SavingsAccountTransaction transaction,
             final DynamicDepositRateHistoryEventType eventType) {
@@ -102,16 +81,7 @@ public class DynamicDepositRateHistoryService {
         recompute(account);
     }
 
-    /**
-     * Re-derives the invested amount and rate history following a transaction being undone (the rare "hard undo" admin
-     * action, or just before an adjustment's replacement transaction is recorded separately via
-     * {@link #recordPrincipalChangeEvent}). By the time this is called, {@code undoneTransaction} is already marked
-     * reversed on the account (core {@code SavingsAccount#undoTransaction} calls {@code transaction.reverse()} before
-     * this hook runs), so it is automatically excluded from {@link #computeInvestedAmountAsOf} - no inverse-delta math
-     * is needed. Per plan Section 8 step 5, the undone transaction's own rate-history row is left untouched (a reversed
-     * transaction's row is simply excluded later by the interest engine joining back to
-     * {@code m_savings_account_transaction.is_reversed}); only rows dated after it can now be stale.
-     */
+    /** The undone transaction is already reversed, so a recompute excludes it; its own history row is left as is. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseInvestedAmountForUndo(final DynamicDepositAccount account, final SavingsAccountTransaction undoneTransaction) {
         final DepositAccountTermAndPreClosure accountTermAndPreClosure = account.accountTermAndPreClosure();
@@ -121,27 +91,12 @@ public class DynamicDepositRateHistoryService {
         recompute(account);
     }
 
-    /**
-     * The amount invested as of {@code uptoAndIncluding}'s position in chronological order (reusing core's own
-     * {@link SavingsAccountTransactionComparator} - transaction date, then created date, then id): deposits less the
-     * principal part of withdrawals - see {@link DynamicDepositInvestedAmountCalculator} for why that is not simply
-     * deposits less withdrawals.
-     */
     public BigDecimal computeInvestedAmountAsOf(final DynamicDepositAccount account, final SavingsAccountTransaction uptoAndIncluding) {
         return DynamicDepositInvestedAmountCalculator.investedAmountAsOf(account.getTransactions(), account.getCurrency(),
                 account.interestTransferTransactionIds(), uptoAndIncluding);
     }
 
-    /**
-     * Re-derives every rate-history row of {@code account} - the invested amount after each transaction, and the rate
-     * resolved from it - from the account's transactions, then the {@code deposit_amount} cache and the account's live
-     * nominal rate from the latest row, writing only what differs. An account the closing payout has emptied keeps its
-     * last non-zero {@code deposit_amount}. It runs on every transaction that changes the principal (and on an undo),
-     * so none of these figures can go stale: a backdated transaction, an interest payout, a closing withdrawal or the
-     * correction of an earlier mistake all leave them right.
-     *
-     * @return whether anything was changed
-     */
+    /** Re-derives history rows, the {@code deposit_amount} cache and nominal rate; returns whether anything changed. */
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean recompute(final DynamicDepositAccount account) {
         final DepositAccountTermAndPreClosure term = account.accountTermAndPreClosure();
@@ -187,11 +142,7 @@ public class DynamicDepositRateHistoryService {
             }
         }
         if (latest != null) {
-            // The closing payout empties the account, which would take the deposit amount to zero with it. The deposit
-            // amount is what the account was invested with - what a principal reinvestment carries and what a caller
-            // reads after the account has closed - so it is the last positive invested amount whenever the latest
-            // figure is zero or negative. A negative one is a closing payout counted as principal in full (read before
-            // its running balance was set), and a figure left that way by an earlier run is repaired the same way.
+            // Keep the last positive invested amount once the closing payout empties the account.
             final BigDecimal depositAmount = latestInvested != null && latestInvested.signum() <= 0 && lastPositiveInvested != null
                     ? lastPositiveInvested
                     : latestInvested;
@@ -199,8 +150,6 @@ public class DynamicDepositRateHistoryService {
                 term.updateDepositAmount(depositAmount);
                 changed = true;
             }
-            // Business rule 7 / plan Section 8: keep the account's own nominal rate equal to the latest row's resolved
-            // rate.
             if (compare(account.getNominalAnnualInterestRate(), latestRate) != 0) {
                 account.updateNominalAnnualInterestRate(latestRate);
                 changed = true;
@@ -209,9 +158,7 @@ public class DynamicDepositRateHistoryService {
         return changed;
     }
 
-    /**
-     * The rate a row should carry: the activation row keeps its own; later rows are resolved from the invested amount.
-     */
+    /** The activation row keeps its own rate; later rows are resolved from the invested amount. */
     private ResolvedRate rateFor(final DynamicDepositAccount account, final DepositAccountTermAndPreClosure term,
             final DepositAccountDynamicRateHistory activationRow, final DepositAccountDynamicRateHistory row, final BigDecimal invested) {
         if (row == activationRow || !account.isDynamicRateEnabled()) {
@@ -258,7 +205,7 @@ public class DynamicDepositRateHistoryService {
             return this.rateResolutionService.resolve(account.chart(), nominalAnnualInterestRate, investedAmount, asOfDate,
                     accountTermAndPreClosure.depositPeriod(), accountTermAndPreClosure.depositPeriodFrequencyType());
         }
-        // dynamic_rate_enabled = false: carry the last resolved rate forward unchanged (business rule 7).
+        // Dynamic rate disabled: carry the last resolved rate forward.
         return new ResolvedRate(lastRow.resolvedAnnualInterestRate(), lastRow.resolvedAnnualInterestRate(), lastRow.rateSource(),
                 lastRow.interestRateChartId(), lastRow.interestRateSlabId());
     }

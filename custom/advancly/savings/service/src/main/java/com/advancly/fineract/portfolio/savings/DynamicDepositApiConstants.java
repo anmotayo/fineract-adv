@@ -22,12 +22,7 @@ import java.util.Set;
 import org.apache.fineract.accounting.common.AccountingConstants.SavingProductAccountingParams;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
 
-/**
- * API constants for the Dynamic Deposit product/account (deposit_type_enum = 500). Kept in the custom module so that no
- * core Fineract class needs to change to support this product type - see {@code DepositAccountType} and
- * {@code DepositsApiConstants} in fineract-core for the two constants that were added there (the discriminator value
- * and the resource-name strings), which is the only core change this feature required.
- */
+/** API constants for the Dynamic Deposit product/account (deposit_type_enum = 500). */
 public final class DynamicDepositApiConstants {
 
     private DynamicDepositApiConstants() {
@@ -42,14 +37,10 @@ public final class DynamicDepositApiConstants {
     public static final String linkedAccountParamName = "linkAccountId";
     public static final String dynamicRateEnabledParamName = "dynamicRateEnabled";
 
-    // optional withdraw-command parameter: overrides the account's snapshotted early-withdrawal charge percentage for
-    // that single withdrawal only. Allow-listed in core's SavingsAccountConstant (not here) because the shared
-    // SavingsAccountTransactionDataValidator gates the withdraw payload before this module is ever consulted.
+    // Per-withdrawal charge % override; allow-listed in core's SavingsAccountConstant, which validates first.
     public static final String earlyWithdrawalChargePercentageParamName = "earlyWithdrawalChargePercentage";
 
-    // term / amount / withholding-tax-posting-type parameters, reused verbatim from the core Deposits API so JSON
-    // payloads stay consistent across Fixed/Recurring/Dynamic deposit product and account types. Persisted in the same
-    // m_deposit_product_term_and_preclosure / m_deposit_account_term_and_preclosure tables FD/RD already use.
+    // Reused from the core Deposits API so payloads match FD/RD.
     public static final String minDepositTermParamName = DepositsApiConstants.minDepositTermParamName;
     public static final String maxDepositTermParamName = DepositsApiConstants.maxDepositTermParamName;
     public static final String minDepositTermTypeIdParamName = DepositsApiConstants.minDepositTermTypeIdParamName;

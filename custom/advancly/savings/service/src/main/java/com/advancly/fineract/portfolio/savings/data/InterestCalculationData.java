@@ -26,20 +26,9 @@ import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 
 /**
- * Response for {@code GET /interestcalculation/{savingsAccountId}} - a read-only interest-calculation preview that
- * works across plain Savings, Fixed Deposit, Recurring Deposit and Dynamic Deposit accounts. Runs the same
- * {@code calculateInterestUsing(...)} engine each account type already uses for its own interest posting, but never
- * persists anything - the loaded account is detached before (and remains detached throughout) the calculation, so this
- * is safe to call as often as needed, including with a simulated top-up or withdrawal.
- *
- * {@code maturityDate}/{@code maturityAmount}/{@code asAtMaturitySummary} are {@code null} for plain Savings accounts,
- * which have no maturity concept. {@code asAtMaturitySummary} and {@code maturityAmount} project forward from the
- * amount actually invested to date (including any simulated top-up/withdrawal) - not from the account's originally
- * approved schedule - so they correctly reflect principal shifts from real top-ups/withdrawals over the account's life
- * (Dynamic Deposit and Recurring Deposit can both add/remove principal after opening).
- *
- * {@code asAtTodaySummary} and {@code asAtMaturitySummary} carry the account's whole summary as it stands after each of
- * those two calculation runs; the latter is {@code null} when there is no maturity date.
+ * Response for {@code GET /interestcalculation/{savingsAccountId}}: a never-persisted interest preview for Savings, FD,
+ * RD and DD accounts. Maturity fields are {@code null} for plain Savings and project from the amount actually invested
+ * to date (including any simulated top-up/withdrawal).
  */
 public class InterestCalculationData implements Serializable {
 
@@ -53,24 +42,20 @@ public class InterestCalculationData implements Serializable {
     private final CurrencyData currency;
     private final LocalDate maturityDate;
 
-    // the account's current nominal annual rate (%), populated for every account type, not just Dynamic Deposit
     private final BigDecimal nominalAnnualInterestRate;
 
     private final BigDecimal maturityAmount;
 
-    // the account's whole summary after each calculation run; asAtMaturitySummary is null for accounts with no maturity
-    // date
     private final InterestCalculationSummaryData asAtTodaySummary;
     private final InterestCalculationSummaryData asAtMaturitySummary;
 
     private final Collection<InterestCalculationTransactionData> transactions;
     private final Collection<PostingPeriodData> postingPeriods;
 
-    // echoes back what the caller asked to simulate, so the response is unambiguous when both are null
     private final BigDecimal simulatedTopUpAmount;
     private final BigDecimal simulatedWithdrawalAmount;
 
-    // Dynamic Deposit only, and only when a simulation was requested: the rate the simulated net amount resolves to
+    // Dynamic Deposit only, when a simulation was requested
     private final SimulatedRateData simulatedRate;
 
     public InterestCalculationData(final Long accountId, final String accountNo, final String externalId, final Long clientId,

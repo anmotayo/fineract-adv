@@ -23,17 +23,6 @@ import java.math.BigDecimal;
 
 public interface InterestCalculationReadPlatformService {
 
-    /**
-     * Read-only interest-calculation preview for any savings-family account (plain Savings, Fixed Deposit, Recurring
-     * Deposit, Dynamic Deposit). Never persists anything, regardless of the account type or whether a simulated
-     * top-up/withdrawal is supplied.
-     *
-     * @param savingsAccountId
-     *            the account to preview
-     * @param topUpAmount
-     *            optional - simulates an additional deposit of this amount, dated today, before running the calculation
-     * @param withdrawalAmount
-     *            optional - simulates a withdrawal of this amount, dated today, before running the calculation
-     */
+    /** Read-only interest preview; optional top-up/withdrawal amounts are simulated as of today and never persisted. */
     InterestCalculationData calculate(Long savingsAccountId, BigDecimal topUpAmount, BigDecimal withdrawalAmount);
 }

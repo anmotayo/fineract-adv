@@ -56,38 +56,15 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Advancly override for scheduled savings interest posting. It keeps the core DTO/JDBC batch-posting behavior while
- * attaching Dynamic Deposit scheduled rate history before interest is calculated.
- *
- * <p>
- * Two access-modifier constraints on the superclass shape this whole class:
- *
- * <ol>
- * <li>{@code SavingsSchedularInterestPoster} is {@code @Setter}-annotated (Lombok, class-level) - it generates public
- * *setters* for {@code savingAccounts}/{@code backdatedTxnsAllowedTill}, but no getters. This subclass can call
- * {@code super.setSavingAccounts(...)} but cannot read {@code super}'s copy back, so it keeps its own shadow copy
- * ({@link #savingAccountsShadow}/{@link #backdatedTxnsAllowedTillShadow}), populated by overriding both setters to
- * write to both the superclass (for any code that only knows about the supertype) and this subclass's own field.</li>
- * <li>{@code batchUpdate(...)}, {@code batchUpdateJournalEntries(...)} and their SQL-builder helpers are
- * {@code private} on the superclass, not {@code protected} - so {@code postInterest()} cannot be composed as "our new
- * logic, then {@code super.postInterest()}" (that would run the DTO interest engine twice per account, double-posting
- * interest), nor as "call some batch-write-only half of {@code super}" (no such method exists). The only viable
- * approach is to copy those private methods into this subclass verbatim and call this class's own copies - the same
- * "vendor and extend" tradeoff {@code AdvanclySavingsAccountWritePlatformService} already takes for
- * {@code deposit}/{@code withdrawal} relative to core. Those copied methods reference
- * {@code this.jdbcTemplate}/{@code this.platformSecurityContext}/{@code this.savingsAccountReadPlatformService}/
- * {@code this.savingsAccountWritePlatformService}, all of which are likewise {@code private} on the superclass and so
- * are shadowed here too, under the exact same names so the copied method bodies resolve them unchanged.</li>
- * </ol>
+ * Core scheduled interest posting plus Dynamic Deposit rate history. Core's batch-write helpers are private, so they
+ * are copied here rather than calling super.postInterest() (which would post interest twice).
  */
 @Slf4j
 public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInterestPoster {
 
     private static final String SAVINGS_TRANSACTION_IDENTIFIER = "S";
 
-    // Shadow fields for the superclass's private constructor-injected dependencies (see class javadoc point 2). Named
-    // identically to the superclass's own private fields so the nine methods copied verbatim below - which reference
-    // them unqualified or via `this.` - resolve to these without any changes to their bodies.
+    // Shadow the superclass's private fields under the same names so the copied methods compile unchanged.
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     private final JdbcTemplate jdbcTemplate;
     private final SavingsAccountReadPlatformService savingsAccountReadPlatformService;
@@ -95,7 +72,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     private final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService;
 
-    // Shadow fields for the superclass's private, setter-only state (see class javadoc point 1).
+    // Shadows of the superclass's setter-only state, which has no getters.
     private Collection<SavingsAccountData> savingAccountsShadow = new ArrayList<>();
     private boolean backdatedTxnsAllowedTillShadow;
 
@@ -143,9 +120,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         }
         if (errors.isEmpty()) {
             try {
-                batchUpdate(postedAccounts); // this class's own copy (see class javadoc), not the superclass's
-                                             // private
-                                             // one
+                batchUpdate(postedAccounts); // this class's copy; the superclass's is private
             } catch (final Exception e) {
                 errors.add(e);
             }
@@ -174,12 +149,8 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         return DepositAccountType.fromInt(savingsAccountData.getDepositTypeId()).isDynamicDeposit();
     }
 
-    // ---------------------------------------------------------------------------------------------------------
-    // The nine methods below are copied verbatim from core's SavingsSchedularInterestPoster (fineract-savings),
-    // which declares them all `private` with no getters for the fields they close over - see this class's javadoc.
-    // Do not "clean up" or restructure them independently of core; any behavioral fix belongs in core first and then
-    // ported here, to keep this vendored copy from silently drifting out of parity.
-    // ---------------------------------------------------------------------------------------------------------
+    // The methods below are copied verbatim from core's SavingsSchedularInterestPoster (private there).
+    // Keep them in parity with core; fix behavior in core first.
 
     private void batchUpdateJournalEntries(final List<SavingsAccountData> savingsAccountDataList,
             final HashMap<String, SavingsAccountTransactionData> savingsAccountTransactionDataHashMap)

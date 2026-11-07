@@ -21,10 +21,8 @@ package com.advancly.fineract.portfolio.savings.service;
 import java.math.BigDecimal;
 
 /**
- * Carries a single withdrawal request's early-withdrawal charge percentage override across the Advancly wrapper into
- * delegated core withdrawal flows. Dynamic Deposit withdrawals intentionally route through core so their entity-level
- * hooks run, and core loads a fresh account instance; this context lets that fresh instance resolve the same request
- * override without keeping Advancly-specific parsing in core.
+ * Carries a request's charge percentage override into core withdrawal flows, which reload the account and can't parse
+ * Advancly params.
  */
 public final class EarlyWithdrawalChargePercentageOverrideContext {
 

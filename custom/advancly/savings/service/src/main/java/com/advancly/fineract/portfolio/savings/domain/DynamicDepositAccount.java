@@ -73,18 +73,7 @@ import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
 import org.apache.fineract.useradministration.domain.AppUser;
 
-/**
- * The Dynamic Deposit account (deposit_type_enum = 500).
- *
- * Deliberately lean for Phase 1 - a valid {@code SavingsAccount} subclass composing the reused, generic
- * {@link DepositAccountTermAndPreClosure} (fixed tenor + invested amount, exactly as {@code FixedDepositAccount} does)
- * and the new {@link DepositAccountDynamicDetail} (allow-withdrawal / dynamic-rate-enabled). It intentionally does NOT
- * port {@code FixedDepositAccount}'s ~900 lines of preclosure-penalty / maturity-date business logic - that is out of
- * scope for Phase 1 (see the implementation plan, phases 2-5) and this class relies on {@code SavingsAccount}'s own
- * default behaviour (e.g. {@code getEffectiveInterestRateAsFraction} simply uses {@code nominalAnnualInterestRate},
- * which {@code DynamicDepositAccountAssembler} resolves once at submission time per business rule 6 of the plan) until
- * the dynamic rate history / interest engine land in later phases.
- */
+/** Dynamic Deposit account (deposit_type_enum = 500). */
 @Entity
 @DiscriminatorValue("500")
 public class DynamicDepositAccount extends SavingsAccount {
@@ -95,55 +84,31 @@ public class DynamicDepositAccount extends SavingsAccount {
     @OneToOne(mappedBy = "account", cascade = CascadeType.ALL)
     private DepositAccountDynamicDetail dynamicDetail;
 
-    /**
-     * The account's own snapshot of the product's interest rate chart at submission time, mirroring
-     * {@code FixedDepositAccount}/{@code RecurringDepositAccount}'s {@code chart} field - so a later edit to the
-     * product's chart never retroactively changes the rate an already-open account resolves against. Rate resolution
-     * ({@link com.advancly.fineract.portfolio.savings.service.DynamicDepositRateResolutionService}) reads this, never
-     * the product's chart directly.
-     */
+    /** Snapshot of the product's rate chart at submission, so later product chart edits never affect this account. */
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, mappedBy = "account", orphanRemoval = true)
     private DepositAccountInterestRateChart chart;
 
-    /**
-     * Never persisted. Lets the read-only interest-calculation preview inject "what if" rate-history rows (see
-     * {@code DynamicDepositRatePreviewService}) that {@link #calculateInterestUsing} treats as if they were saved, so a
-     * simulated top-up/withdrawal that would move the account into a different rate slab is projected at the new rate.
-     * Always empty on any real posting/COB path.
-     */
+    /** Preview-only "what if" rate-history rows, treated as persisted; always empty on real posting/COB paths. */
     @Transient
     private List<DepositAccountDynamicRateHistory> simulatedRateHistory = new ArrayList<>();
 
-    /** Never persisted; only lives for the duration of the activation command. */
     @Transient
     private boolean openingDepositFundedByLinkedTransfer = false;
 
     /**
-     * Never persisted; the date of the early closure whose charge settlement {@link #beginClosureSettlement} has
-     * already dealt with in this unit of work. A closure whose payout is an account transfer withdraws through the
-     * transfer wrapper, which would otherwise treat that withdrawal as a fresh early withdrawal: forfeiting a second
-     * time under a cumulative rule, or charging (or failing on missing selected dates) under a per-period rule, which a
-     * closure deliberately does not apply.
+     * Early closure whose charges are already settled, so the closing transfer's withdrawal isn't treated as a fresh
+     * early withdrawal (double forfeiture or charge).
      */
     @Transient
     private LocalDate closureSettledOn;
 
-    /**
-     * Never persisted; true only while a maturity closure pays the account out - see {@link #markClosingAtMaturity}.
-     */
     @Transient
     private boolean closingAtMaturity = false;
 
-    /**
-     * Never persisted; true only while a premature closure pays the account out - see {@link #markClosingPrematurely}.
-     */
     @Transient
     private boolean closingPrematurely = false;
 
-    /**
-     * Never persisted; the early-withdrawal charge percentage one request asked for in place of the configured one -
-     * see {@link #setWithdrawalChargePercentageOverride}. Whoever sets it clears it again in a {@code finally}.
-     */
+    /** Per-request early-withdrawal charge % override; the caller clears it in a {@code finally}. */
     @Transient
     private BigDecimal withdrawalChargePercentageOverride;
 
@@ -155,11 +120,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         this.simulatedRateHistory = simulatedRateHistory == null ? new ArrayList<>() : new ArrayList<>(simulatedRateHistory);
     }
 
-    /**
-     * Persisted rows plus any simulated ones, ascending by transaction date. The sort is stable and simulated rows are
-     * appended last, so a simulated row wins a same-date tie with a persisted row (the splitter takes the last row at
-     * or before a date).
-     */
+    /** Simulated rows are appended last and the sort is stable, so they win a same-date tie with a persisted row. */
     private List<DepositAccountDynamicRateHistory> withSimulatedRateHistory(final List<DepositAccountDynamicRateHistory> persisted) {
         if (this.simulatedRateHistory == null || this.simulatedRateHistory.isEmpty()) {
             return persisted;
@@ -231,30 +192,13 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.chart;
     }
 
-    /**
-     * Without this override, {@code depositAccountType()} would fall through to the {@code SavingsAccount} base
-     * implementation, which is hard-coded to {@code SAVINGS_DEPOSIT} - mirrors the equivalent overrides on
-     * {@code FixedDepositAccount}/{@code RecurringDepositAccount}. Core code (e.g. the interest-charge gate in
-     * {@code SavingsAccountChargeAssembler}/{@code SavingsAccountWritePlatformServiceJpaRepositoryImpl}) relies on this
-     * to tell a Dynamic Deposit account apart from a plain savings account without depending on this custom-module
-     * class directly.
-     */
+    /** Base hard-codes SAVINGS_DEPOSIT; core relies on this to tell a Dynamic Deposit apart from plain savings. */
     @Override
     public DepositAccountType depositAccountType() {
         return DepositAccountType.fromInt(500);
     }
 
-    /**
-     * Structural mirror of {@code FixedDepositAccount}/{@code RecurringDepositAccount}#withHoldTaxPostingType(),
-     * reading the same {@code withhold_tax_posting_type_enum} config off the reused, generic
-     * {@link DepositAccountTermAndPreClosure} this class already composes. {@code DynamicDepositAccountAssembler}
-     * populates this from the account's own {@code withHoldTaxPostingTypeId} param, defaulting from the product's
-     * configured posting type when the account does not send one. No longer hard-coded to {@code null}: this class no
-     * longer overrides {@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)}, so the inherited
-     * {@code SavingsAccount} gate - {@code withHoldTax() && (depositAccountType().isSavingsDeposit() ||
-     * (withHoldTaxPostingType != null && withHoldTaxPostingType.isInterestPosting()))} - now applies exactly as it does
-     * for FD/RD, using the value this method returns.
-     */
+    /** Same withhold_tax_posting_type config as FD/RD; feeds the inherited isWithHoldTaxApplicable gate. */
     @Override
     protected WithHoldTaxPostingType withHoldTaxPostingType() {
         final Integer withHoldTaxPostingTypeId = this.accountTermAndPreClosure.getWithHoldTaxPostingType();
@@ -265,30 +209,18 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isAllowWithdrawal();
     }
 
-    /**
-     * {@code allowWithdrawal = false} stops manual withdrawals and transfers out. It must never stop the account being
-     * closed, at maturity or prematurely - the customer has to be able to take the money out, or the account could
-     * never be closed - so a closure lifts it for as long as that closure is in progress (see
-     * {@link #markClosingAtMaturity} and {@link #markClosingPrematurely}).
-     */
+    /** allowWithdrawal=false blocks manual withdrawals/transfers but never a closure's payout. */
     @Override
     public boolean isWithdrawalBlockedByAccountRule() {
         return !isAllowWithdrawal() && !this.closingAtMaturity && !this.closingPrematurely;
     }
 
-    /**
-     * Lifts the withdrawal lock for the payout of a premature closure only; unlike {@link #markClosingAtMaturity} it
-     * leaves the maturity-date transaction rules in force. Scoped to one unit of work by whoever sets it, which must
-     * clear it again in a {@code finally}.
-     */
+    /** Lifts the withdrawal lock for a premature closure payout only; the caller must clear it in a {@code finally}. */
     public void markClosingPrematurely(final boolean closingPrematurely) {
         this.closingPrematurely = closingPrematurely;
     }
 
-    /**
-     * Lifts the withdrawal lock for the payout of a maturity closure. Scoped to one unit of work by whoever sets it,
-     * which must clear it again in a {@code finally}.
-     */
+    /** Lifts the withdrawal lock for a maturity closure payout; the caller must clear it in a {@code finally}. */
     public void markClosingAtMaturity(final boolean closingAtMaturity) {
         this.closingAtMaturity = closingAtMaturity;
     }
@@ -297,29 +229,17 @@ public class DynamicDepositAccount extends SavingsAccount {
         return SavingsAccountStatusType.MATURED.hasStateOf(getStatus());
     }
 
-    /**
-     * Called when the account reaches its maturity date. From here it is no longer active: core refuses deposits,
-     * withdrawals and transfers on it, and the only thing left to do is close it.
-     */
     public void markMatured() {
         setStatus(SavingsAccountStatusType.MATURED.getValue());
     }
 
-    /**
-     * Core's {@code withdraw} gates on this hook, and Fixed and Recurring Deposits widen it to matured accounts so the
-     * money can leave. A Dynamic Deposit also takes manual withdrawals, so a matured one lets a withdrawal through only
-     * while its own closure is paying it out ({@link #markClosingAtMaturity}). Deposits are gated by
-     * {@code isNotActive()} in core, so a matured account takes none.
-     */
+    /** A matured account allows a withdrawal only while its own maturity closure pays it out. */
     @Override
     public boolean isTransactionsAllowed() {
         return super.isTransactionsAllowed() || (this.closingAtMaturity && isMatured());
     }
 
-    /**
-     * Core only closes an account that is active; a matured one is the account a maturity closure closes. It goes
-     * through core's own closing checks as if still active and is left matured if any of them fails.
-     */
+    /** Core only closes active accounts: close a matured one as active and revert to matured on failure. */
     @Override
     public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
         if (!isMatured()) {
@@ -335,11 +255,8 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
-     * Modelled on {@code RecurringDepositAccount#deposit}: a matured account takes no transaction, and none dated on or
-     * after the maturity date, so from then on it can only be closed. The payout of the closure is the one exemption
-     * (see {@link #markClosingAtMaturity}). Matured status enforces the first once the maturity job has run; the date
-     * rule covers the maturity day itself and every day until the job runs. Like core and RD this throws
-     * {@link PlatformApiDataValidationException}, so jobs that process many accounts log it and carry on.
+     * Blocks transactions on a matured account or dated on/after maturity (covers the gap before the maturity job
+     * runs), except the maturity closure payout.
      */
     private void validateMaturityAllowsTransaction(final SavingsAccountTransactionDTO transactionDTO) {
         if (this.closingAtMaturity || transactionDTO.getTransactionDate() == null) {
@@ -366,9 +283,6 @@ public class DynamicDepositAccount extends SavingsAccount {
         return new PlatformApiDataValidationException(dataValidationErrors);
     }
 
-    /**
-     * The one hook core offers a request for carrying its own early-withdrawal charge percentage; this type honours it.
-     */
     @Override
     public void setWithdrawalChargePercentageOverride(final BigDecimal percentage) {
         this.withdrawalChargePercentageOverride = percentage;
@@ -379,13 +293,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.withdrawalChargePercentageOverride;
     }
 
-    /**
-     * Withholds tax on the interest posted so far, for an account whose tax is configured to be withheld at MATURITY.
-     * An account taxed at each INTEREST_POSTING has its tax written as every posting is written, so this does nothing
-     * for it. Fixed and Recurring Deposits do exactly this at closure ({@code applyWithholdTaxForDepositAccounts});
-     * without it a Dynamic Deposit configured to withhold at maturity would close with interest and no tax at all.
-     * Idempotent: a tax transaction already on {@code closureDate} is updated, never duplicated.
-     */
+    /** Withholds tax at closure when configured for MATURITY, as FD/RD do. Idempotent per closure date. */
     public void withholdMaturityTaxAtClosure(final LocalDate closureDate) {
         final WithHoldTaxPostingType postingType = withHoldTaxPostingType();
         if (!withHoldTax() || postingType == null || !postingType.isMaturity()) {
@@ -402,12 +310,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.dynamicDetail != null && this.dynamicDetail.isDynamicRateEnabled();
     }
 
-    /**
-     * Mirrors {@code FixedDepositAccount#activateWithBalance()} - without this override, activation would use the
-     * generic {@code SavingsAccount} default (no opening balance), and {@code processPostActiveActions} would never
-     * create the opening-funding transaction this account's first rate-history row needs to key to (see
-     * {@code DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl#activate}).
-     */
+    /** Opening deposit posted at activation, unless it was already funded by a linked-account transfer. */
     @Override
     public Money activateWithBalance() {
         if (this.openingDepositFundedByLinkedTransfer) {
@@ -416,22 +319,11 @@ public class DynamicDepositAccount extends SavingsAccount {
         return Money.of(getCurrency(), this.accountTermAndPreClosure.depositAmount());
     }
 
-    /**
-     * Called once the opening deposit has been posted by a transfer from the linked savings account, so that
-     * {@code processPostActiveActions} (which deposits {@link #activateWithBalance()}) does not credit it again.
-     */
     public void markOpeningDepositFundedByLinkedTransfer() {
         this.openingDepositFundedByLinkedTransfer = true;
     }
 
-    /**
-     * Phase 4 prerequisite. Mirrors {@code FixedDepositAccount#calculateMaturityDate()}: the fixed tenor
-     * ({@code depositPeriod} in {@code depositPeriodFrequencyType} units, held on the reused, generic
-     * {@link DepositAccountTermAndPreClosure}) added to {@code accountSubmittedOrActivationDate()} - so the anchor is
-     * the submitted-on date while the application is still pending and the activation date once the account is live.
-     * Unlike FD this returns {@code null} rather than NPE-ing when the term is unusable (FD dereferences its own result
-     * unguarded); {@link #updateMaturityDate()} treats {@code null} as "nothing to persist".
-     */
+    /** Tenor added to the submitted/activation date; unlike FD returns null when the term is incomplete. */
     public LocalDate calculateMaturityDate() {
         if (this.accountTermAndPreClosure == null) {
             return null;
@@ -451,13 +343,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         };
     }
 
-    /**
-     * Persists {@link #calculateMaturityDate()} onto the account's {@link DepositAccountTermAndPreClosure}. The date
-     * only: the maturity amount is stored separately, at activation by
-     * {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositMaturityAmountService} and at closure by the
-     * payout, so the currently-stored {@code maturityAmount} is passed straight back through and this method never
-     * invents an amount.
-     */
+    /** Persists the maturity date only; the stored maturity amount is left unchanged. */
     public void updateMaturityDate() {
         final LocalDate maturityDate = calculateMaturityDate();
         if (maturityDate == null) {
@@ -466,10 +352,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         this.accountTermAndPreClosure.updateMaturityDetails(this.accountTermAndPreClosure.maturityAmount(), maturityDate);
     }
 
-    /**
-     * The amount invested as of the account's latest transaction - what a principal-only reinvestment carries over -
-     * computed from the transactions, so it is right whether or not the interest and tax have been posted yet.
-     */
+    /** Invested principal as of the latest transaction, whether or not interest/tax has been posted yet. */
     public BigDecimal investedAmount() {
         final List<SavingsAccountTransaction> transactions = getTransactions();
         if (transactions.isEmpty()) {
@@ -480,17 +363,11 @@ public class DynamicDepositAccount extends SavingsAccount {
                 .investedAmountAsOf(transactions, getCurrency(), interestTransferTransactionIds(), last).max(BigDecimal.ZERO);
     }
 
-    /**
-     * What the account is worth at its maturity date before any withholding tax: the amount invested plus all the
-     * interest it earns up to then. Reads the summary, so it is only meaningful straight after
-     * {@link #calculateInterestUsing} has run up to the maturity date. For a closed account the principal is the stored
-     * deposit amount, as the payout has taken it all. It is not the closing balance of the last posting period: that is
-     * built from the principal transactions alone and leaves the interest out.
-     */
+    /** Invested amount plus interest earned; only valid right after {@link #calculateInterestUsing} up to maturity. */
     public BigDecimal grossMaturityAmountAfterProjection() {
         final BigDecimal interestEarned = getSummary().getTotalInterestEarned();
         BigDecimal principal = investedAmount();
-        // A closed account has paid its principal out, so none is left to count; the deposit amount keeps the last one.
+        // A closed account has paid its principal out; fall back to the stored deposit amount.
         if (principal.signum() == 0 && !isActive() && this.accountTermAndPreClosure != null
                 && this.accountTermAndPreClosure.depositAmount() != null) {
             principal = this.accountTermAndPreClosure.depositAmount();
@@ -502,25 +379,14 @@ public class DynamicDepositAccount extends SavingsAccount {
         return this.accountTermAndPreClosure == null ? null : this.accountTermAndPreClosure.getMaturityDate();
     }
 
-    /**
-     * The binding Phase 4 definition of "early withdrawal": any withdrawal transaction dated strictly before the
-     * account's maturity date. Premature closure is covered by the same predicate, because every close-with-withdrawal
-     * path converges on a withdrawal transaction dated before maturity (see the plan's Global Constraints). Returns
-     * {@code false} when no maturity date has been computed, so an unactivated or misconfigured account can never be
-     * penalised.
-     */
+    /** Any withdrawal (incl. premature closure) dated before maturity; false when no maturity date is set. */
     @Override
     public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
         final LocalDate maturityDate = maturityDate();
         return maturityDate != null && transactionDate != null && DateUtils.isBefore(transactionDate, maturityDate);
     }
 
-    /**
-     * Caps closure interest at {@code maturityDate.minusDays(1)} once {@code closedDate} is at or after maturity
-     * (mirrors {@code FixedDepositAccount}'s "interest should not be calculated for maturity day" rule). A premature
-     * closure - {@link #isEarlyWithdrawal(LocalDate)} true for {@code closedDate} - is left uncapped: it keeps posting
-     * through the actual {@code closedDate}, unchanged from before this override existed.
-     */
+    /** A matured closure caps interest at the day before maturity (as FD); a premature closure is uncapped. */
     @Override
     public LocalDate interestPostingUpToForClosure(final LocalDate closedDate) {
         final LocalDate maturityDate = maturityDate();
@@ -530,11 +396,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return maturityDate.minusDays(1);
     }
 
-    /**
-     * A normal (matured) closure forces the final interest posting onto the maturity date itself, not the later
-     * administrative {@code closedDate} - see the base class javadoc for why. A premature closure is unaffected: it
-     * keeps posting on {@code closedDate}, unchanged from before either of these overrides existed.
-     */
+    /** A matured closure posts its final interest on the maturity date, not the later closedDate. */
     @Override
     public LocalDate interestPostingTransactionDateForClosure(final LocalDate closedDate) {
         final LocalDate maturityDate = maturityDate();
@@ -544,11 +406,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return maturityDate;
     }
 
-    /**
-     * Lets core close-with-withdraw-balance post Dynamic Deposit's final interest. Cumulative early-withdrawal rules
-     * are the exception: the charge-ledger forfeiture service force-posts and forfeits before core reads the balance,
-     * so core must not post the same closing interest a second time.
-     */
+    /** Returns false when cumulative forfeiture has already posted the closing interest, so core must not repost it. */
     @Override
     public boolean beginClosureSettlement(final LocalDate closedDate) {
         if (!isEarlyWithdrawal(closedDate)) {
@@ -569,32 +427,18 @@ public class DynamicDepositAccount extends SavingsAccount {
         return false;
     }
 
-    /**
-     * True once an early closure dated {@code date} has settled this account's charges, so no withdrawal charge may
-     * follow.
-     */
     public boolean isClosureSettledOn(final LocalDate date) {
         return date != null && date.equals(this.closureSettledOn);
     }
 
-    /**
-     * Lets {@link com.advancly.fineract.portfolio.savings.service.DynamicDepositRateHistoryService} keep the account's
-     * own rate current between Phase 2 (this class) and the Phase 3 interest engine landing (see implementation plan,
-     * Section 8) - {@code SavingsAccount.nominalAnnualInterestRate} is {@code protected}, so a same-hierarchy setter is
-     * needed since callers of this class live outside the {@code org.apache.fineract.portfolio.savings.domain} package.
-     */
+    /** nominalAnnualInterestRate is protected, so callers outside the core package need this setter. */
     public void updateNominalAnnualInterestRate(final BigDecimal nominalAnnualInterestRate) {
         this.nominalAnnualInterestRate = nominalAnnualInterestRate;
     }
 
     /*
-     * Phase 2 principal-changing-transaction hooks (implementation plan, Section 6). Overridden here rather than hooked
-     * purely at the service layer because a few write paths call these entity methods directly, with no domain-service
-     * in between: SavingsAccountWritePlatformServiceJpaRepositoryImpl#adjustSavingsTransaction (the replacement
-     * transaction) and backdated account transfers (core SavingsAccountDomainServiceJpa, which bypasses the Advancly
-     * wrapper). AdvanclySavingsAccountDomainService separately hooks the optimized append-path and reversal cases,
-     * which never reach these entity methods at all - see that class's own override notes. Entities are not
-     * Spring-managed, hence the static service locator instead of constructor injection.
+     * Some write paths (transaction adjustment, backdated transfers) call these entity methods directly, bypassing the
+     * service layer. Entities aren't Spring-managed, hence the static service locator.
      */
 
     @Override
@@ -632,30 +476,14 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
     }
 
-    /**
-     * Phase 3 interest engine (implementation plan Section 8). {@code SavingsAccount.postInterest(...)} - inherited
-     * here unmodified - calls this method to get the list of {@code PostingPeriod}s it then turns into transactions,
-     * corrections, and withholding tax exactly as it does for every other account type. The only thing this override
-     * changes is which interest rate each {@code PostingPeriod} is built with: instead of one account-wide
-     * {@code nominalAnnualInterestRate} for every period (core's behaviour), each core posting-period interval is first
-     * split at every {@link DepositAccountDynamicRateHistory} transaction date that falls inside it
-     * ({@link DynamicDepositInterestIntervalSplitter}), and each resulting sub-interval gets its own captured
-     * {@code resolvedAnnualInterestRate}. Everything else - daily balance recalculation, the summary update, backdated
-     * transaction handling - is copied from {@code SavingsAccount.calculateInterestUsing} unchanged; this account type
-     * has no overdraft support (see the constructor, {@code allowOverdraft} is always {@code false}), so the
-     * overdraft-related parameters core threads through are omitted entirely.
-     */
+    /** Splits each core posting period at rate-history dates so each sub-interval gets its own rate; else as core. */
     @Override
     public List<PostingPeriod> calculateInterestUsing(final MathContext mc, final LocalDate upToInterestCalculationDate,
             final boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
             final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
             final boolean postReversals) {
 
-        // Capped independently of the caller (mirrors FixedDepositAccount#calculateInterestUsing calling its own
-        // interestPostingUpToDate(postingDate)): whatever raw date is requested - "today" from a COB job, or the
-        // closure date from #postInterest below - accrual must never include the maturity day itself. This is the
-        // ONLY date used for the calculation; the caller-supplied raw date remains untouched for anything outside
-        // this method (see #postInterest's guard, which deliberately keeps using the raw parameter).
+        // Never accrue the maturity day itself; the caller's raw date is kept for anything outside this method.
         final LocalDate cappedUpToInterestCalculationDate = interestPostingUpToForClosure(upToInterestCalculationDate);
 
         final Money openingAccountBalance = backdatedTxnsAllowedTill ? Money.of(this.currency, getSummary().getRunningBalanceOnPivotDate())
@@ -738,10 +566,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         return runningBalanceOnPivotDate == null ? Money.zero(this.currency) : Money.of(this.currency, runningBalanceOnPivotDate);
     }
 
-    /**
-     * The withdrawals that paid this account's interest out to its linked account (transfer type interest transfer).
-     * Empty for an account that has no helper or is not saved yet, such as the detached copy a rate preview works on.
-     */
+    /** Interest-transfer withdrawal ids; empty for an unsaved account such as a rate preview copy. */
     public Set<Long> interestTransferTransactionIds() {
         if (this.savingsHelper == null || getId() == null) {
             return Set.of();
@@ -750,37 +575,16 @@ public class DynamicDepositAccount extends SavingsAccount {
     }
 
     /**
-     * Design correction (see implementation plan, Task 3): {@code SavingsAccount.postInterest(...)} writes one
-     * transaction per <em>distinct</em> {@code PostingPeriod.dateOfPostingTransaction()} it sees in the list
-     * {@link #calculateInterestUsing} returns. Since that override now returns one {@code PostingPeriod} per
-     * rate-history sub-interval - not one per core posting-period boundary - calling the inherited {@code postInterest}
-     * unmodified would write multiple, fragmented interest-posting transactions for a single posting period whenever a
-     * rate change falls inside it (confirmed empirically during this task's first implementation attempt). This
-     * override recomputes the same core posting-period boundaries that {@link #calculateInterestUsing} used internally
-     * (a pure function of the same inputs, so recomputing it here is safe - it is not a race, and requires no change to
-     * {@code calculateInterestUsing}'s inherited return type), groups the returned rate-varying sub-periods back into
-     * those boundaries using {@code PostingPeriod.getPeriodInterval()} (public - each sub-period's interval start date
-     * falls inside exactly one boundary, so this containment check is immune to any boundary/sub-period count mismatch
-     * - no positional index is involved), sums each boundary's sub-periods into a single amount, and replicates
-     * {@code SavingsAccount.postInterest}'s own transaction create-or-correct/withholding-tax branch and tail exactly,
-     * substituting only the per-boundary summed amount and date for the per-{@code PostingPeriod} equivalents core
-     * uses.
+     * Regroups the rate sub-periods into core posting boundaries so one interest transaction is written per period; the
+     * create/correct/withhold logic mirrors {@code SavingsAccount#postInterest}.
      */
     @Override
     public void postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
             final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
             final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
 
-        // interestPostingUpToDate here is the RAW date the caller asked for (e.g. the actual closedDate on a normal,
-        // matured closure) and is deliberately left untouched below for the guard at the bottom of this method - a
-        // posting transaction dated on the maturity day itself must still be allowed through, exactly as
-        // FixedDepositAccount's own final maturity posting (postMaturityInterest) keeps its guard at the raw
-        // maturity date while only the accrual math is capped one day earlier. Only the value used to determine core
-        // posting-period BOUNDARIES is capped (mirroring the same distinction #calculateInterestUsing makes
-        // internally); capping this value too and reusing it for the guard was the bug this comment replaces - it
-        // silently dropped the final period's interest transaction, because the transaction naturally lands one day
-        // after the last period boundary (see PostingPeriod#dateOfPostingTransaction), which is always after a capped
-        // bound.
+        // Only the boundaries are capped: the guard below needs the raw date, as the final posting lands the day
+        // after the last boundary.
         final LocalDate cappedInterestPostingUpToDate = interestPostingUpToForClosure(interestPostingUpToDate);
 
         final List<PostingPeriod> ratedSubPeriods = calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
@@ -812,9 +616,6 @@ public class DynamicDepositAccount extends SavingsAccount {
 
         Money totalCorrectionAmount = Money.zero(this.currency);
         for (final LocalDateInterval coreBoundary : coreBoundaries) {
-            // Group the rate-varying sub-periods calculateInterestUsing(...) returned back into this core boundary
-            // using PostingPeriod.getPeriodInterval() (public) directly - no positional-index recomputation needed,
-            // and therefore no way for a boundary/sub-period count mismatch to silently misattribute interest.
             Money interestEarnedToBePostedForPeriod = Money.zero(this.currency);
             final List<PostingPeriod> boundarySubPeriods = new ArrayList<>();
             for (final PostingPeriod subPeriod : ratedSubPeriods) {
@@ -824,10 +625,7 @@ public class DynamicDepositAccount extends SavingsAccount {
                 }
             }
             final boolean isUserPosting = postedAsOnDates.contains(coreBoundary.endDate().plusDays(1));
-            // Mirrors core's PostingPeriod construction: dateOfPostingTransaction is endDate() when
-            // isSavingsInterestPostingAtCurrentPeriodEnd is true, endDate().plusDays(1) otherwise. isUserPosting above
-            // stays keyed to endDate().plusDays(1) unconditionally - core computes it that way regardless of the flag
-            // too (SavingsAccount.java:911).
+            // As in core: the posting date depends on the period-end flag, isUserPosting does not.
             final LocalDate interestPostingTransactionDate = isSavingsInterestPostingAtCurrentPeriodEnd ? coreBoundary.endDate()
                     : coreBoundary.endDate().plusDays(1);
 
@@ -974,11 +772,7 @@ public class DynamicDepositAccount extends SavingsAccount {
         }
     }
 
-    /**
-     * The base implementation re-activates a {@code CLOSED} account whose balance became non-zero again (for example
-     * when the closing withdrawal is undone). A Dynamic Deposit that was closed prematurely ends up in
-     * {@code PRE_MATURE_CLOSURE} rather than {@code CLOSED}, so the same re-activation is applied to that status.
-     */
+    /** Also re-activates a PRE_MATURE_CLOSURE account whose balance became non-zero again (e.g. closing undone). */
     @Override
     public void activateAccountBasedOnBalance() {
         super.activateAccountBasedOnBalance();

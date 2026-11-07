@@ -51,7 +51,7 @@ public enum SavingsAccountTransactionType {
     ESCHEAT(19, "savingsAccountTransactionType.escheat", TransactionEntryType.DEBIT), //
     AMOUNT_HOLD(20, "savingsAccountTransactionType.onHold", TransactionEntryType.DEBIT), //
     AMOUNT_RELEASE(21, "savingsAccountTransactionType.release", TransactionEntryType.CREDIT), //
-    // 100+ reserved for Advancly-specific custom transaction types, kept clear of core Fineract's own id range.
+    // 100+ reserved for Advancly custom types.
     INTEREST_CHARGE(100, "savingsAccountTransactionType.interestCharge", TransactionEntryType.DEBIT); //
 
     private static final Map<Integer, SavingsAccountTransactionType> BY_ID = Arrays.stream(values())
@@ -170,9 +170,7 @@ public enum SavingsAccountTransactionType {
     }
 
     public boolean isChargeTransaction() {
-        // INTEREST_CHARGE is included here (unlike WITHHOLD_TAX) because it is attributed to a SavingsAccountCharge via
-        // SavingsAccountChargePaidBy and needs the same pay/undoPayment lifecycle symmetry core provides for charge
-        // transactions (see SavingsAccount.undoTransaction(Long)).
+        // INTEREST_CHARGE is paid against a SavingsAccountCharge, so it needs the same undoPayment symmetry.
         return isPayCharge() || isWithdrawalFee() || isAnnualFee() || isInterestCharge();
     }
 

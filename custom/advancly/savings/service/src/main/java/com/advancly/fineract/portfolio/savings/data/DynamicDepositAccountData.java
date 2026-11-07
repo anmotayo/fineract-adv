@@ -33,13 +33,7 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountSubStatusEnumDat
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 
-/**
- * Read-side representation of a Dynamic Deposit account (deposit_type_enum = 500). Deliberately lean for Phase 1:
- * exposes account identity/status, the reused {@code m_deposit_account_term_and_preclosure} fields (invested amount /
- * fixed tenor) and the new {@code allowWithdrawal} / {@code dynamicRateEnabled} fields. Interest-summary / rate-history
- * fields called for in the implementation plan's read-API section land with the Phase 2/3 rate-history and
- * interest-engine work.
- */
+/** Read-side Dynamic Deposit account (deposit_type_enum = 500). */
 public class DynamicDepositAccountData implements Serializable {
 
     private final Long id;

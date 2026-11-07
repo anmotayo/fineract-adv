@@ -64,15 +64,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 
 /**
- * The Dynamic Deposit product (deposit_type_enum = 500): a fixed-tenor deposit product whose interest rate can be
- * resolved dynamically, per account, from an {@link InterestRateChart} based on the invested amount and the account's
- * fixed tenor. See {@code DynamicDepositProductAssembler} for how accounts are created from this product, and
- * {@code DepositProductDynamicDetail} for the allow-withdrawal / dynamic-rate-enabled configuration.
- *
- * Composes the same {@code DepositProductTermAndPreClosure} entity FD/RD use (persisted in
- * {@code m_deposit_product_term_and_preclosure}) for min/max deposit term, min/default/max deposit amount and the
- * withholding-tax posting type. Nominal interest is not modeled at all here - the rate always comes from the
- * {@link InterestRateChart}.
+ * The Dynamic Deposit product (deposit_type_enum = 500): a fixed-tenor deposit whose rate is resolved per account from
+ * an {@link InterestRateChart} by invested amount and tenor. There is no nominal rate.
  */
 @Entity
 @DiscriminatorValue("500")

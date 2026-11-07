@@ -21,19 +21,9 @@ package com.advancly.fineract.portfolio.savings.service;
 import com.advancly.fineract.portfolio.savings.data.DynamicDepositClosureData;
 import org.apache.fineract.infrastructure.core.api.JsonQuery;
 
-/**
- * Read side of closing a Dynamic Deposit: the template the {@code close} screen is built from, and the preview of what
- * a premature closure on a chosen date would pay out. Neither writes anything.
- */
 public interface DynamicDepositAccountClosureReadPlatformService {
 
-    /** Options for closing the account at maturity, with the projected payout at maturity (or today, once matured). */
     DynamicDepositClosureData retrieveClosureTemplate(Long accountId);
 
-    /**
-     * What a premature closure dated {@code closedOnDate} (request body, with an optional
-     * {@code earlyWithdrawalChargePercentage}) would pay out after the final interest and the early-withdrawal
-     * forfeiture - exactly what {@code prematureClose} on the same date would withdraw or transfer.
-     */
     DynamicDepositClosureData calculatePrematureAmount(Long accountId, JsonQuery query);
 }

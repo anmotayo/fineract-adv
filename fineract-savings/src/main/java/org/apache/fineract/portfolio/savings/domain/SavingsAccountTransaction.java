@@ -595,20 +595,15 @@ public final class SavingsAccountTransaction extends AbstractAuditableWithUTCDat
         } else {
             this.balanceEndDate = endOfBalanceDate;
         }
-        // Same rule for the day count: a window that would end before it starts holds the balance for no days, never a
-        // negative number of them (a transaction dated after the date the balances are being reset up to, e.g. the
-        // business date or a deposit's maturity). Transactions sharing a date still get exactly 0 here.
+        // Likewise never negative days (e.g. a transaction dated after the reset-up-to date); same-date rows get 0.
         this.balanceNumberOfDays = Math.max(0,
                 LocalDateInterval.create(getTransactionDate(), endOfBalanceDate).daysInPeriodInclusiveOfEndDate());
         this.cumulativeBalance = Money.of(currency, this.runningBalance).multipliedBy(this.balanceNumberOfDays).getAmount();
     }
 
     /**
-     * Whether this transaction carries its own balance window (balanceEndDate/balanceNumberOfDays). Interest postings,
-     * overdraft interest, and accrual rows never get windowed - their balance is already reflected in the running
-     * balance of the balance-bearing row that precedes/follows them, so windowing them would double count or fragment
-     * the balance-day calculation. Used both by {@code resetAccountTransactionsEndOfDayBalances} (the O(n)
-     * recalculation loop) and by the O(1) append-path helpers, so the two mechanisms agree on which rows to close.
+     * Whether this row gets its own balance window. Interest postings, overdraft interest and accruals don't: windowing
+     * them would double count. Shared by the O(n) reset loop and the O(1) append path so both close the same rows.
      */
     public boolean isBalanceBearing() {
         return isNotReversed() && !isReversalTransaction() && !isInterestPostingAndNotReversed() && !isOverdraftInterestAndNotReversed()

@@ -56,19 +56,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Opens the Dynamic Deposit a closing Dynamic Deposit is reinvested into - the counterpart of
- * {@code FixedDepositAccount#reInvest}.
- *
- * The new account is not hand-built: the closing account's terms are rewritten as the request that would have submitted
- * it and run through {@link DynamicDepositAccountAssembler#assembleFrom}, so everything a normal submission enforces
- * applies to a reinvestment too - the product's amount and term range, the rate resolved from the product's chart for
- * the NEW amount (a dynamic deposit's rate depends on how much is invested, so it is deliberately not copied), the
- * early-withdrawal charge the product maps, the maturity date. It is then approved and activated on the closure date,
- * and its opening deposit is credited exactly as an activation credits it, so the money that left the closing account
- * arrives in the new one.
- *
- * The opening deposit is never funded from the linked savings account here (as activation does): the funds are the
- * closing account's own payout. The link itself is carried over, so interest transfers keep working.
+ * Reinvests a closing Dynamic Deposit (counterpart of {@code FixedDepositAccount#reInvest}). The new account goes
+ * through the normal submission assembler so product limits apply and the rate is re-resolved for the new amount.
  */
 @Service
 public class DynamicDepositReinvestmentService {
@@ -109,15 +98,6 @@ public class DynamicDepositReinvestmentService {
         this.maturityAmountService = maturityAmountService;
     }
 
-    /**
-     * @param closing
-     *            the account being closed; only read
-     * @param amount
-     *            what is reinvested - becomes the new account's opening deposit
-     * @param activationDate
-     *            the closure date: the new account is submitted, approved and activated on it
-     * @return the new, active account
-     */
     @Transactional(propagation = Propagation.MANDATORY)
     public DynamicDepositAccount reinvest(final DynamicDepositAccount closing, final BigDecimal amount, final LocalDate activationDate,
             final AppUser user) {
@@ -141,7 +121,6 @@ public class DynamicDepositReinvestmentService {
         }
 
         reinvested.approveAndActivateApplication(activationDate, user);
-        // Re-anchor the maturity date on the activation date, as activating a Dynamic Deposit does.
         reinvested.updateMaturityDate();
         this.savingsAccountWritePlatformService.processPostActiveActions(reinvested, DateTimeFormatter.ofPattern(ISO_DATE), new HashSet<>(),
                 new HashSet<>());
@@ -168,7 +147,7 @@ public class DynamicDepositReinvestmentService {
         json.addProperty("depositAmount", amount);
         json.addProperty("depositPeriod", term.depositPeriod());
         json.addProperty("depositPeriodFrequencyId", term.depositPeriodFrequency());
-        // The rate is deliberately not copied: it is resolved from the product's chart for the new amount.
+        // Rate not copied: it is resolved from the chart for the new amount.
         json.addProperty("interestCompoundingPeriodType", closing.getInterestCompoundingPeriodType());
         json.addProperty("interestPostingPeriodType", closing.getInterestPostingPeriodType());
         json.addProperty("interestCalculationType", closing.getInterestCalculationType());

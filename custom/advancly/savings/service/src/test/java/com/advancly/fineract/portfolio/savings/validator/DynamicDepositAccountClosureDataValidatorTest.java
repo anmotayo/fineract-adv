@@ -33,11 +33,7 @@ import org.apache.fineract.infrastructure.core.exception.UnsupportedParameterExc
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.junit.jupiter.api.Test;
 
-/**
- * Closing a Dynamic Deposit takes the same request shape as closing a Fixed or Recurring Deposit
- * ({@code onAccountClosureId}, {@code toSavingsAccountId}, ...). A premature closure also accepts
- * {@code earlyWithdrawalChargePercentage}.
- */
+/** Same close request shape as FD/RD; a premature closure also accepts {@code earlyWithdrawalChargePercentage}. */
 class DynamicDepositAccountClosureDataValidatorTest {
 
     private static final Long ACCOUNT_ID = 7L;

@@ -38,13 +38,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/**
- * {@code PERCENT_OF_INTEREST} is a valid savings charge calculation type under the charge-driven early-withdrawal
- * model. The Advancly charge-rule layer decides whether such a charge has custom interest-basis behavior; this core
- * assembler only enforces generic savings-charge validity. {@code PERCENT_OF_AMOUNT_AND_INTEREST} remains out of scope
- * for savings charges altogether (it can become principal-based unless capped/carry-forward rules are added) and must
- * be rejected for every savings product type, Dynamic Deposit included.
- */
 @ExtendWith(MockitoExtension.class)
 class SavingsProductBaseAssemblerTest {
 
@@ -120,8 +113,6 @@ class SavingsProductBaseAssemblerTest {
 
     @Test
     void percentOfAmountAndInterestCharge_onDynamicDepositProduct_isRejected() {
-        // PERCENT_OF_AMOUNT_AND_INTEREST is out of scope for savings charges entirely - not even Dynamic Deposit
-        // may use it.
         final Charge unsupportedCharge = mockCharge(ChargeCalculationType.PERCENT_OF_AMOUNT_AND_INTEREST);
         when(chargeRepository.findOneWithNotFoundDetection(CHARGE_ID)).thenReturn(unsupportedCharge);
 
@@ -159,9 +150,7 @@ class SavingsProductBaseAssemblerTest {
 
     private Charge mockCharge(final ChargeCalculationType calculationType) {
         final Charge charge = org.mockito.Mockito.mock(Charge.class);
-        // getId() and getChargeCalculation() are only reached on some code paths (error-message construction, and
-        // the interest-charge check is short-circuited away entirely for Dynamic Deposit) - stub leniently so every
-        // test can share this helper without tripping Mockito's strict-stub checks.
+        // Lenient: only some paths read these.
         org.mockito.Mockito.lenient().when(charge.getId()).thenReturn(CHARGE_ID);
         when(charge.isSavingsCharge()).thenReturn(true);
         when(charge.getCurrencyCode()).thenReturn(CURRENCY_CODE);

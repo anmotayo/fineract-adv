@@ -168,17 +168,11 @@ public class SavingsAccountChargeAssembler {
         return savingsAccountCharges;
     }
 
-    /**
-     * Static so it can be reused from {@link org.apache.fineract.portfolio.savings.service} write-service classes that
-     * resolve the {@link Charge} themselves rather than going through
-     * {@link #fromParsedJson(JsonElement, String, DepositAccountType)}.
-     */
     public static void validateChargeAllowedForDepositAccountType(final Charge charge, final DepositAccountType depositAccountType) {
         final ChargeCalculationType calculationType = ChargeCalculationType.fromInt(charge.getChargeCalculation());
 
-        // Defense in depth (see the equivalent check in SavingsProductBaseAssembler): unreachable today because
-        // PERCENT_OF_AMOUNT_AND_INTEREST can never be created with appliesTo = SAVINGS in the first place, but kept
-        // in case that invariant is ever loosened elsewhere without this attachment point being revisited.
+        // Defense in depth (see SavingsProductBaseAssembler): unreachable while PERCENT_OF_AMOUNT_AND_INTEREST
+        // charges cannot apply to SAVINGS.
         if (calculationType.isPercentageOfAmountAndInterest()) {
             final String errorMessage = "Charge with identifier " + charge.getId()
                     + " uses a calculation type that is not supported for Savings products.";

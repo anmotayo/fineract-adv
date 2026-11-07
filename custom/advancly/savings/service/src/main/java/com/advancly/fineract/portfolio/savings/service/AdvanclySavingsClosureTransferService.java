@@ -71,30 +71,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Closes a plain savings account and moves what is left to another savings account in one transaction, the way the
- * caller used to do it in four separate calls: post the closing interest, read the balance, transfer
- * {@code balance - early-withdrawal charge}, close. Doing it here means the payout is sized from the same exact balance
- * the charge is taken from, so it can neither overdraw the account nor leave dust behind.
- *
- * Only used when the close request carries {@code toSavingsAccountId}; every other close is core's, unchanged.
- *
- * <b>Closing interest.</b> Posted once, dated {@code closedDate}. A forced posting dated D covers the accrual through D
- * - 1 (see {@code SavingsHelper#determineInterestPostingPeriods}), so the closure day itself earns nothing. It is
- * posted before the payout is sized because the charge of a cumulative rule is a percentage of the interest posted.
- *
- * <b>Charge.</b> Only taken when {@code applyEarlyWithdrawalCharge} is true: a plain savings account has no maturity
- * date, so nothing here can tell by itself that a closure is early. Which charge applies is the product's single
- * interest-charge rule's business ({@link AdvanclyInterestChargeApplicationService}); with no rule the charge is zero.
- *
- * <b>Persistence context.</b> The phases are written for the three separate requests they replace: a plain read path
- * (interest posting), the optimized append path (the transfer) and core's close each expect to load the account fresh.
- * Each phase therefore flushes and clears the persistence context before the next one starts.
+ * Closes a plain savings account and transfers the balance less the early-withdrawal charge in one transaction, so the
+ * payout is sized from the exact balance the charge is taken from. Each phase expects a freshly loaded account, so the
+ * persistence context is flushed and cleared between phases.
  */
 @Service
 @RequiredArgsConstructor
 public class AdvanclySavingsClosureTransferService {
 
-    /** What core's close accepts, plus what this closure adds. Core rejects anything else before it can be read. */
     private static final Set<String> CLOSE_WITH_TRANSFER_REQUEST_DATA_PARAMETERS = new HashSet<>(Arrays.asList(
             SavingsApiConstants.localeParamName, SavingsApiConstants.dateFormatParamName, SavingsApiConstants.closedOnDateParamName,
             SavingsApiConstants.noteParamName, SavingsApiConstants.paymentTypeIdParamName, SavingsApiConstants.withdrawBalanceParamName,
@@ -103,11 +87,10 @@ public class AdvanclySavingsClosureTransferService {
             SavingsApiConstants.postInterestValidationOnClosure, APPLY_EARLY_WITHDRAWAL_CHARGE, toSavingsAccountIdParamName,
             transferDescriptionParamName, EARLY_WITHDRAWAL_CHARGE_PERCENTAGE, SELECTED_FROM_DATE, SELECTED_TO_DATE));
 
-    /** What core's close would reject: they are read here and not passed on. */
+    /** Stripped before delegating to core's close, which would reject them. */
     private static final Set<String> CLOSURE_ONLY_PARAMETERS = Set.of(toSavingsAccountIdParamName, transferDescriptionParamName,
             EARLY_WITHDRAWAL_CHARGE_PERCENTAGE, SELECTED_FROM_DATE, SELECTED_TO_DATE);
 
-    /** Reported back in the {@code changes} of the closure response. */
     public static final String TRANSFER_DETAILS_ID_CHANGE = "transferDetailsId";
     public static final String TRANSFER_AMOUNT_CHANGE = "transferAmount";
     public static final String EARLY_WITHDRAWAL_CHARGE_AMOUNT_CHANGE = "earlyWithdrawalChargeAmount";
@@ -154,19 +137,16 @@ public class AdvanclySavingsClosureTransferService {
         validateAccount(account, toSavingsAccountId, closedDate);
         account.refreshSummary(false);
 
-        // What the caller cannot work out for itself: how much left the account, and what the charge took.
         final Map<String, Object> closureChanges = new LinkedHashMap<>();
 
         if (account.getSummary().getAccountBalance().signum() > 0) {
-            // 1. Post the closing interest, so the balance read next is the complete payout before the charge.
+            // 1. Post closing interest first: a cumulative charge is a percentage of interest posted.
             postClosureInterest(account, closedDate);
             startNextPhase();
 
-            // 2. Size the payout from the settled balance, less the charge the transfer is about to take.
+            // 2. Size the payout.
             account = this.savingsAccountAssembler.assembleFrom(savingsId, false);
-            // The summary columns the quote reads are only as good as the last full write of them; rebuild them from
-            // the
-            // transactions so the balance and the interest posted are exact.
+            // Rebuild the summary from transactions so the quote reads exact figures.
             account.refreshSummary(false);
             final BigDecimal balance = account.getSummary().getAccountBalance();
             final BigDecimal charge = this.interestChargeApplicationService.quoteClosureCharge(account, closedDate,
@@ -177,7 +157,7 @@ public class AdvanclySavingsClosureTransferService {
                         "The early-withdrawal charge takes the whole balance, so there is nothing to transfer.", savingsId);
             }
 
-            // 3. One transfer: the payout out and the charge on top of it, leaving the account at zero.
+            // 3. Transfer the payout plus charge, leaving zero.
             if (balance.signum() > 0) {
                 final SavingsAccount destination = this.savingsAccountAssembler.assembleFrom(toSavingsAccountId, false);
                 final boolean isRegularTransaction = true;
@@ -195,9 +175,7 @@ public class AdvanclySavingsClosureTransferService {
             }
         }
 
-        // 4. Core closes it: its checks, events and standing-instruction clean-up all stay core's. withdrawBalance
-        // sweeps
-        // whatever the transfer left, which is nothing unless the balance carried fractions the currency cannot hold.
+        // 4. Core close; withdrawBalance sweeps any sub-currency-unit remainder.
         final CommandProcessingResult closed = this.coreSavingsAccountWritePlatformService.close(savingsId, coreCloseCommand(command));
         final Map<String, Object> changes = new LinkedHashMap<>();
         if (closed.getChanges() != null) {
@@ -261,11 +239,7 @@ public class AdvanclySavingsClosureTransferService {
         }
     }
 
-    /**
-     * Posts the interest accrued through {@code closedDate - 1} as one transaction dated {@code closedDate}, bounded by
-     * the closure date rather than today so a backdated closure cannot earn interest for days after it. The same
-     * posting core's own close runs for a deposit account it settles.
-     */
+    /** Bounded by the closure date, not today, so a backdated closure earns no extra days. */
     private void postClosureInterest(final SavingsAccount account, final LocalDate closedDate) {
         if (account.getNominalAnnualInterestRate().signum() <= 0) {
             return;
@@ -302,7 +276,6 @@ public class AdvanclySavingsClosureTransferService {
         this.entityManager.clear();
     }
 
-    /** The request as core's close understands it: the closure-only parameters dropped, and a balance withdrawn. */
     private JsonCommand coreCloseCommand(final JsonCommand command) {
         final JsonObject json = command.parsedJson().getAsJsonObject().deepCopy();
         CLOSURE_ONLY_PARAMETERS.forEach(json::remove);

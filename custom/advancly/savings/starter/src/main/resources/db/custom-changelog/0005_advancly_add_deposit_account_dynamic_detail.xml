@@ -23,8 +23,6 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
-    <!-- Dynamic Deposit account-level configuration: resolved allow-withdrawal / dynamic-rate-enabled -->
-    <!-- values (inherited from the product at submission time, overridable per account). -->
     <changeSet author="advancly" id="1">
         <preConditions onFail="MARK_RAN">
             <not>

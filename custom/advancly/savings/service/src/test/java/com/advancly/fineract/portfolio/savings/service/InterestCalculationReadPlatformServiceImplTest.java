@@ -103,13 +103,7 @@ class InterestCalculationReadPlatformServiceImplTest {
         return account.getSummary();
     }
 
-    /**
-     * A spy, not a plain built object: {@code calculateInterestUsing(...)} is entirely mocked out in these tests (no
-     * real interest math runs), so {@code getTotalInterestEarned()} needs per-test sequential stubbing to simulate what
-     * each of the two real {@code calculateInterestUsing} calls (today-bounded, then maturity-bounded) would have left
-     * behind - a spy lets tests override just that one method while every other summary getter keeps its normal,
-     * builder-set behaviour.
-     */
+    /** The summary is a spy so tests can stub getTotalInterestEarned() per calculateInterestUsing run. */
     private void commonStubs(final SavingsAccount account, final DepositAccountType depositAccountType) {
         final SavingsAccountSummary summary = Mockito
                 .spy(new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build());
@@ -143,9 +137,7 @@ class InterestCalculationReadPlatformServiceImplTest {
     void plainSavingsHasNoMaturityFieldsAndReadsInterestEarnedOffTheSummary() {
         final SavingsAccount account = plainSavingsAccount();
         final LocalDate today = org.apache.fineract.infrastructure.core.service.DateUtils.getBusinessLocalDate();
-        // Simulates a mid-month, not-yet-posted partial period: its interval's own end date is month-end (in the
-        // future), which is exactly why asAtTodaySummary must come from the summary rather than from filtering
-        // periods by their interval end date - see the regression this guards against in the class javadoc.
+        // A partial period whose interval ends in the future; asAtTodaySummary must still include it.
         final PostingPeriod currentPartialPeriod = postingPeriodWithInterest(today.withDayOfMonth(1), today.plusDays(10),
                 new BigDecimal("5.00"), new BigDecimal("1005.00"));
         when(account.calculateInterestUsing(any(), eq(today.minusDays(1)), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(),
@@ -181,20 +173,18 @@ class InterestCalculationReadPlatformServiceImplTest {
                 anyBoolean())).thenReturn(List.of(partialToday));
         when(account.calculateInterestUsing(any(), eq(maturityDate), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of(fullPeriodProjectedToMaturity));
-        // First call (today-bounded) leaves totalInterestEarned=2.00; second call (maturity-bounded) overwrites it to
-        // 32.00 - exactly what two real, sequential calculateInterestUsing invocations would do.
+        // Today-bounded run, then maturity-bounded run.
         when(summaryOf(account).getTotalInterestEarned()).thenReturn(new BigDecimal("2.00"), new BigDecimal("32.00"));
 
         final InterestCalculationData result = this.service.calculate(ACCOUNT_ID, null, null);
 
         assertThat(result.maturityDate()).isEqualTo(maturityDate);
         assertThat(result.maturityAmount()).isEqualByComparingTo("1032.00");
-        // Each run's full summary is snapshotted before the next run overwrites it.
         assertThat(result.asAtTodaySummary().totalInterestEarned()).isEqualByComparingTo("2.00");
         assertThat(result.asAtMaturitySummary().totalInterestEarned()).isEqualByComparingTo("32.00");
         assertThat(result.asAtTodaySummary().accountBalance()).isEqualByComparingTo("1000");
         assertThat(result.asAtMaturitySummary().accountBalance()).isEqualByComparingTo("1000");
-        // The posting-period breakdown reflects the maturity-bounded (second) run, not the today-bounded one.
+        // Periods come from the maturity-bounded run.
         assertThat(result.postingPeriods()).hasSize(1);
         assertThat(result.postingPeriods().iterator().next().toDate()).isEqualTo(maturityDate);
         verify(account, org.mockito.Mockito.times(2)).calculateInterestUsing(any(), any(), anyBoolean(), anyBoolean(), any(), any(),

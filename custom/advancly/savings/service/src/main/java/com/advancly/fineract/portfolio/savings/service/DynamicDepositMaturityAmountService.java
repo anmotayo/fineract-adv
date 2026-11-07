@@ -33,14 +33,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Stores a Dynamic Deposit's maturity amount when it is activated: what the account is worth at its maturity date
- * before withholding tax - the amount invested plus the interest it earns up to then (see
- * {@link DynamicDepositAccount#grossMaturityAmountAfterProjection}), the figure the interest simulation returns. It is
- * not kept up to date afterwards: deposits, withdrawals and rate changes move it, and a closure replaces it with the
- * amount actually paid out.
- *
- * The projection overwrites the account's daily balances and summary with their figures as at maturity, so the engine
- * is run again up to today afterwards to leave the account exactly as the caller found it.
+ * Stores a Dynamic Deposit's gross maturity amount at activation; not kept up to date afterwards. The projection
+ * overwrites daily balances and summary, so the engine is re-run up to today to restore them.
  */
 @Component
 @RequiredArgsConstructor
@@ -48,10 +42,7 @@ public class DynamicDepositMaturityAmountService {
 
     private final ConfigurationDomainService configurationDomainService;
 
-    /**
-     * @return whether the stored maturity amount was changed: {@code false} for an account that is not active or has no
-     *         maturity date
-     */
+    /** Returns whether the stored amount changed; false if the account is inactive or has no maturity date. */
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean storeProjectedMaturityAmount(final DynamicDepositAccount account) {
         final DepositAccountTermAndPreClosure term = account.accountTermAndPreClosure();

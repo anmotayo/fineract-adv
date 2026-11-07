@@ -51,9 +51,7 @@ public class DepositProductTermAndPreClosure extends AbstractPersistableCustom<L
     @Embedded
     private DepositProductAmountDetails depositProductAmountDetails;
 
-    /**
-     * A value from the {@link WithHoldTaxPostingType} enumeration.
-     */
+    /** A {@link WithHoldTaxPostingType} value. */
     @Column(name = "withhold_tax_posting_type_enum", nullable = true)
     private Integer withHoldTaxPostingType;
 

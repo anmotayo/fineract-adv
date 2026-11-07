@@ -35,13 +35,7 @@ import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.savings.data.DepositProductData;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
 
-/**
- * Read-side representation of a Dynamic Deposit product (deposit_type_enum = 500). Mirrors the shape of
- * {@code FixedDepositProductData} for the fields this product has, plus {@code allowWithdrawal} /
- * {@code dynamicRateEnabled}. No nominal interest rate is modeled - the rate always comes from the interest rate chart.
- * Min/max deposit term, min/default/max deposit amount and the withholding-tax posting type are read from the same
- * {@code m_deposit_product_term_and_preclosure} table FD/RD use.
- */
+/** Read-side Dynamic Deposit product (deposit_type_enum = 500); the rate always comes from the interest rate chart. */
 public class DynamicDepositProductData implements Serializable {
 
     private final Long id;
@@ -59,10 +53,7 @@ public class DynamicDepositProductData implements Serializable {
     private final BigDecimal minBalanceForInterestCalculation;
     private final boolean withHoldTax;
     private final Long taxGroupId;
-    // The tax GROUP's name has to come from a JOIN in the read-platform-service SQL - unlike activeChart, it can't be
-    // derived from anything else already on this object, so it's threaded through as its own constructor parameter
-    // (mirroring FixedDepositProductData's `taxGroup` field) rather than computed. Without it, the view screen has
-    // nothing but the raw id to display.
+    // Comes from a JOIN in the read SQL; the view screen needs the group name, not just the id.
     private final TaxGroupData taxGroup;
     private final boolean allowWithdrawal;
     private final boolean dynamicRateEnabled;
@@ -76,10 +67,7 @@ public class DynamicDepositProductData implements Serializable {
     private final EnumOptionData withHoldTaxPostingType;
     private final Collection<ChargeData> charges;
     private final Collection<InterestRateChartData> charts;
-    // Derived from `charts` (see DepositProductData.activeChart(...)) - the chart whose date range is currently
-    // effective. FD/RD's view and edit-chart-step frontend code both key off this field name (via
-    // DepositProductData), not `charts`; without it here, Dynamic Deposit's chart never renders on view and the
-    // edit-chart-step never pre-populates from the existing chart, so every edit looks like adding a brand new one.
+    // The currently effective chart; the FD/RD frontend view and edit-chart code key off this field, not `charts`.
     private final InterestRateChartData activeChart;
     private final Map<String, Object> accountingMappings;
     private final Collection<PaymentTypeToGLAccountMapper> paymentChannelToFundSourceMappings;

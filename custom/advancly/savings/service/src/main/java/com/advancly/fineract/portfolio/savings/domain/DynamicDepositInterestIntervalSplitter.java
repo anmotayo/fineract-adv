@@ -25,13 +25,7 @@ import java.util.List;
 import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 
-/**
- * Splits each core interest-posting-period interval (from {@code SavingsHelper.determineInterestPostingPeriods}) at
- * every {@code DepositAccountDynamicRateHistory} transaction date that falls strictly inside it, since a rate change
- * mid-period (e.g. a top-up crossing a chart slab) means part of that period earned one rate and the rest earned
- * another. Pure function - no JPA/Spring dependency - so it is unit-testable in isolation from
- * {@code DynamicDepositAccount#calculateInterestUsing}, which is the only caller.
- */
+/** Splits core posting periods at rate-history dates so each sub-interval earns the rate in force. */
 public final class DynamicDepositInterestIntervalSplitter {
 
     private DynamicDepositInterestIntervalSplitter() {
@@ -53,8 +47,7 @@ public final class DynamicDepositInterestIntervalSplitter {
                     subIntervalStart = changeDate;
                     currentRate = row.resolvedAnnualInterestRate();
                 } else if (changeDate.equals(subIntervalStart) && DateUtils.isAfter(changeDate, corePeriod.startDate())) {
-                    // A later row sharing the date of the split just made (two principal changes on the same day, or a
-                    // simulated row on the same day as a real one): the last row of the day wins, no empty interval.
+                    // Same-day rows: the last one wins, no empty interval.
                     currentRate = row.resolvedAnnualInterestRate();
                 }
             }

@@ -24,49 +24,40 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
-import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
+import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundException;
 import org.springframework.stereotype.Service;
 
-/**
- * Optimized assembler that loads only the data needed for the O(1) append path instead of the full transaction history.
- */
+/** Loads only what the O(1) append path needs, not the full transaction history. */
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdvanclySavingsAccountAssembler {
 
-    private final SavingsAccountRepositoryWrapper savingsAccountRepository;
+    private final AdvanclySavingsAccountLockRepository savingsAccountLockRepository;
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
     private final SavingsHelper savingsHelper;
 
-    // Mirrors the query's own "order by transaction_date desc, created_date desc, id desc" exactly, so role
-    // resolution below agrees with the database's own tie-breaking when two rows share a transaction date.
+    // Must match the queries' ORDER BY so same-date tie-breaking agrees with the database.
     private static final Comparator<SavingsAccountTransaction> MOST_RECENT_FIRST = Comparator
             .comparing(SavingsAccountTransaction::getTransactionDate)
             .thenComparing(txn -> txn.getCreatedDate().orElse(null), Comparator.nullsFirst(Comparator.naturalOrder()))
             .thenComparing(SavingsAccountTransaction::getId);
 
-    /**
-     * O(1) append path — loads account with NO transactions from history. Only fetches the last running balance.
-     */
     public AssembledSavingsAccount assembleForAppendPath(final Long savingsId) {
-        SavingsAccount account = savingsAccountRepository.findSavingsWithNotFoundDetection(savingsId, true);
+        // Locked read without transaction history; see AdvanclySavingsAccountLockRepository.
+        SavingsAccount account = savingsAccountLockRepository.findByIdForUpdate(savingsId)
+                .orElseThrow(() -> new SavingsAccountNotFoundException(savingsId));
 
-        // Single round trip: findLastNonReversedAndBalanceBearingTransactions(...) returns at most 2 rows - the
-        // last non-reversed transaction (excluding accrual) and the last balance-bearing one - deduped by the
-        // database to 1 row whenever they're the same transaction (the common case). See its javadoc for why role
-        // resolution below (by attribute, not by result order) is always correct regardless of which case applies.
-        List<SavingsAccountTransaction> recentTransactions = advanclyTransactionRepository
-                .findLastNonReversedAndBalanceBearingTransactions(savingsId);
+        List<SavingsAccountTransaction> recentTransactions = hasNoTransactions(account) ? List.of()
+                : advanclyTransactionRepository.findLastNonReversedAndBalanceBearingTransactions(savingsId);
 
-        // The running-balance seed must come from the true latest row (a posting moves the balance too), so it's
-        // simply the most recent of the (at most 2) rows returned - never the window-closing target below, which
-        // closing a posting/accrual/overdraft-interest row would wrongly give a window core never intends it to have.
+        // Seed from the true latest row (postings move the balance), not the balance-bearing window target.
         SavingsAccountTransaction lastTransaction = recentTransactions.stream().max(MOST_RECENT_FIRST).orElse(null);
         if (lastTransaction != null) {
             BigDecimal lastBalance = lastTransaction.getRunningBalance(account.getCurrency()).getAmount();
@@ -79,6 +70,26 @@ public class AdvanclySavingsAccountAssembler {
                 .filter(SavingsAccountTransaction::isBalanceBearing).findFirst().orElse(null);
 
         account.setHelpers(summaryWrapper, savingsHelper);
-        return AssembledSavingsAccount.of(account, lastBalanceBearingTransaction);
+        return AssembledSavingsAccount.of(account, lastBalanceBearingTransaction,
+                lastTransaction == null ? null : lastTransaction.getTransactionDate());
+    }
+
+    /**
+     * Skips the locking lookups (and their deadlock-prone gap lock) for an account with no transactions. The locked
+     * row's totals catch a first transaction committed after our snapshot; the existence check catches types that move
+     * no total.
+     */
+    private boolean hasNoTransactions(final SavingsAccount account) {
+        final SavingsAccountSummary summary = account.getSummary();
+        return isZero(summary.getAccountBalance()) && isZero(summary.getTotalDeposits()) && isZero(summary.getTotalWithdrawals())
+                && isZero(summary.getTotalInterestPosted()) && isZero(summary.getTotalWithdrawalFees())
+                && isZero(summary.getTotalFeeCharge()) && isZero(summary.getTotalPenaltyCharge()) && isZero(summary.getTotalAnnualFees())
+                && isZero(summary.getTotalOverdraftInterestDerived()) && isZero(summary.getTotalWithholdTax())
+                && isZero(account.getSavingsHoldAmount()) && isZero(account.getOnHoldFunds())
+                && !advanclyTransactionRepository.existsBySavingsAccountId(account.getId());
+    }
+
+    private static boolean isZero(final BigDecimal value) {
+        return value == null || value.signum() == 0;
     }
 }

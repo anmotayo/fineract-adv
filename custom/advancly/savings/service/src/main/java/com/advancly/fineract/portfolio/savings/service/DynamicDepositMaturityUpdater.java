@@ -29,10 +29,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Brings Dynamic Deposits into the "Update Deposit Accounts Maturity Details" job, which core runs for Fixed and
- * Recurring Deposits only. An account that has reached its maturity date is matured: its final interest (and any tax
- * configured to be withheld at maturity) is posted on the maturity date and it stops taking transactions, leaving only
- * its closure. See {@link AdvanclyDepositAccountDomainService#matureAccount}.
+ * Adds Dynamic Deposits to the maturity job, which core runs only for Fixed and Recurring Deposits. See
+ * {@link AdvanclyDepositAccountDomainService#matureAccount}.
  */
 @Component
 @RequiredArgsConstructor

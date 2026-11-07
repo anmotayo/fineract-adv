@@ -27,17 +27,7 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClos
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Dynamic Deposit's withholding-tax posting type is now a real, populated field: {@code DynamicDepositAccountAssembler}
- * sets {@code withHoldTaxPostingType} on the account's {@code accountTermAndPreClosure} from the account's own
- * {@code withHoldTaxPostingTypeId} request param, defaulting from the product's configured posting type when the
- * account sends none. {@code DynamicDepositAccount} no longer overrides {@code isWithHoldTaxApplicable(...)}, so it now
- * uses the same gate every other {@code SavingsAccount} subtype (FD/RD) uses:
- * {@code withHoldTax() && (depositAccountType().isSavingsDeposit() || (withHoldTaxPostingType
- * != null && withHoldTaxPostingType.isInterestPosting()))}. Since Dynamic Deposit's {@code depositAccountType()} is
- * never {@code SAVINGS_DEPOSIT}, WHT is only applicable when a posting type of {@code INTEREST_POSTING} is actually
- * configured.
- */
+/** As for FD/RD, withholding tax applies to a Dynamic Deposit only with an INTEREST_POSTING posting type. */
 class DynamicDepositAccountWithHoldTaxTest {
 
     @Test

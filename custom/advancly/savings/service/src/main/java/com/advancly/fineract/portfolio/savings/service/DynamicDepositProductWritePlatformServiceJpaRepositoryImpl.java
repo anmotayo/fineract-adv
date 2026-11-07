@@ -44,11 +44,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Lean, self-contained write-side implementation for the {@code DYNAMICDEPOSITPRODUCT} entity. Structurally mirrors
- * {@code FixedDepositProductWritePlatformServiceJpaRepositoryImpl}, without GL-account-mapping (deferred - see the
- * implementation report).
- */
+/** Write side for Dynamic Deposit products, mirroring the Fixed Deposit one without GL-account mapping. */
 @Service
 public class DynamicDepositProductWritePlatformServiceJpaRepositoryImpl implements DynamicDepositProductWritePlatformService {
 

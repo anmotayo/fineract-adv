@@ -739,13 +739,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return isTaxAdded;
     }
 
-    /**
-     * Withholds tax on {@code amount} exactly as an ordinary interest posting would - same gating
-     * ({@link #isWithHoldTaxApplicable(WithHoldTaxPostingType)}), same {@code TaxUtils} split, same WITHHOLD_TAX
-     * transaction shape - for a caller that has already computed a smaller, capped amount itself (cumulative forfeiture
-     * taxing only the interest that survives forfeiture) rather than relying on postInterest's own automatic
-     * application to the full posted amount.
-     */
+    /** Withholds tax on an already-capped amount (e.g. interest surviving cumulative forfeiture). */
     public void withholdTaxIfApplicable(final BigDecimal amount, final LocalDate date, final boolean backdatedTxnsAllowedTill) {
         if (isWithHoldTaxApplicable(withHoldTaxPostingType())) {
             createWithHoldTransaction(amount, date, backdatedTxnsAllowedTill);
@@ -1235,10 +1229,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return transaction;
     }
 
-    /**
-     * A deposit or a withdrawal makes an inactive or dormant account active again. Shared by {@code deposit} and
-     * {@code withdraw} and by the append path, which builds the transaction itself.
-     */
+    /** Shared by deposit, withdraw and the append path, which builds the transaction itself. */
     public void clearInactivityOnTransaction() {
         if (SavingsAccountSubStatusEnum.INACTIVE.getValue().equals(this.sub_status)
                 || SavingsAccountSubStatusEnum.DORMANT.getValue().equals(this.sub_status)) {
@@ -2819,123 +2810,56 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     /**
-     * Closure-settlement extension point, called by
-     * {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} on the close-with-withdraw-balance path
-     * BEFORE the account balance is read and withdrawn. A deposit type whose charges are derived from interest (today:
-     * Dynamic Deposit, see {@code DynamicDepositAccount}) uses it to work out - and remember for
-     * {@link #completeClosureSettlement(SavingsAccountTransaction)} - what the closure itself contributes to that
-     * period's interest charge, so the final interest posting that follows can collect it together with any other
-     * pending charge from the same period, and the single withdrawal below it pays out the true final balance.
-     *
-     * A no-op for every other account type: an account that settles nothing at closure simply ignores both hooks, and
-     * closure behaves exactly as it always has.
+     * Closure-settlement hook, called before the balance is read and withdrawn so interest-derived charges (Dynamic
+     * Deposit) are folded into the final posting. No-op by default.
      */
     public void prepareClosureSettlement(final LocalDate closedDate) {
-        // no-op by default - see javadoc.
+        // no-op by default
     }
 
-    /**
-     * The other half of {@link #prepareClosureSettlement(LocalDate)}, called immediately after the single closure
-     * withdrawal transaction exists (and therefore has a real id) so an implementation can record its own
-     * already-applied charge row against it. A no-op by default.
-     */
+    /** Called once the closure withdrawal has an id, so an implementation can record its charge row against it. */
     public void completeClosureSettlement(final SavingsAccountTransaction closureWithdrawal) {
-        // no-op by default - see javadoc.
+        // no-op by default
     }
 
     /**
-     * Begins a premature-closure settlement dated {@code closedDate}, returning whether the caller must still post the
-     * closing interest itself.
-     *
-     * Replaces a hard-coded {@code isDynamicDeposit()} check at the close call site: core no longer knows which
-     * settlement an account type uses, only whether its own {@code postInterestUpTo} is still required afterwards. The
-     * default does nothing and returns {@code false} - no settlement, no posting - which is the behaviour every account
-     * type except Dynamic Deposit already had.
-     *
-     * A Dynamic Deposit account overrides this to route a cumulative-mode early closure through the same interest
-     * forfeiture path an ordinary early withdrawal uses - forfeiting everything and returning {@code false}, since the
-     * forfeiture service has already force-posted the closing interest itself - while a per-period-mode (or non-early)
-     * closure falls through to {@link #prepareClosureSettlement(LocalDate)} exactly as before, returning {@code true}
-     * so the caller still posts the final period's interest. See {@code DynamicDepositAccount#beginClosureSettlement}.
+     * Starts a premature-closure settlement and returns whether the caller must still post the closing interest. See
+     * {@code DynamicDepositAccount#beginClosureSettlement}.
      */
     public boolean beginClosureSettlement(final LocalDate closedDate) {
         return false;
     }
 
-    /**
-     * The upper bound {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} should use when posting
-     * the final closure-triggered interest, given the closure is dated {@code closedDate}. A no-op ({@code closedDate}
-     * itself, unchanged) for every account type except a maturity-bearing deposit (today: Dynamic Deposit, see
-     * {@code DynamicDepositAccount}), which caps it at {@code maturityDate.minusDays(1)} once {@code closedDate} is at
-     * or after its maturity date - mirroring {@code FixedDepositAccount}'s "interest should not be calculated for
-     * maturity day" rule - while leaving a premature closure (closed before maturity) uncapped, posting through the
-     * actual {@code closedDate} as before.
-     */
+    /** Upper bound for closure interest posting; maturity-bearing deposits cap it at the day before maturity. */
     public LocalDate interestPostingUpToForClosure(final LocalDate closedDate) {
         return closedDate;
     }
 
     /**
-     * The date {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#close(...)} should force the final
-     * closure-triggered interest-posting transaction to land on, given the closure is dated {@code closedDate}. A no-op
-     * ({@code closedDate} itself, unchanged) for every account type except a maturity-bearing deposit (today: Dynamic
-     * Deposit), which returns its maturity date instead once {@code closedDate} is at or after it - so a closure
-     * processed some days after the account actually matured (interest having already stopped accruing at maturity)
-     * still posts and dates its final interest transaction on the maturity day, not on the later administrative closure
-     * date. Used together with {@link #interestPostingUpToForClosure(LocalDate)}: forcing the posting to land here is
-     * what makes the shared interest-period-splitting logic (see {@code SavingsHelper#determineInterestPostingPeriods})
-     * cap the ACCRUAL at the day before this date - a separate mechanism from, and not replaced by, capping the outer
-     * calculation bound alone.
+     * Date the final closure interest posting lands on; maturity-bearing deposits return the maturity date when closed
+     * on/after it. Forcing the posting date is what caps accrual at the day before (see
+     * {@code SavingsHelper#determineInterestPostingPeriods}).
      */
     public LocalDate interestPostingTransactionDateForClosure(final LocalDate closedDate) {
         return closedDate;
     }
 
-    /**
-     * Lets {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#withdrawal(...)} pass an optional per-transaction
-     * override of the early-withdrawal charge percentage through to a deposit type that supports one (today: Dynamic
-     * Deposit, see {@code DynamicDepositAccount}), without this core class needing compile-time visibility of that
-     * custom-module subclass - the same pattern {@link #prepareClosureSettlement(LocalDate)} uses. A no-op for every
-     * other account type: {@code percentage} is simply discarded.
-     */
+    /** Hook for a per-transaction early-withdrawal charge percentage; ignored by types that do not support it. */
     public void setWithdrawalChargePercentageOverride(final BigDecimal percentage) {
-        // no-op by default - see javadoc.
+        // no-op by default
     }
 
     /**
-     * Whether this account currently refuses to have funds withdrawn from it via a regular cash withdrawal, a regular
-     * transfer-out, or a closure through the generic savings close route that withdraws the balance (implementation
-     * plan Section 7). No-op ({@code false}) for every account type except Dynamic Deposit, which overrides it to
-     * reflect its {@code allowWithdrawal} product/account setting - see
-     * {@code DynamicDepositAccount#isWithdrawalBlockedByAccountRule()}.
-     *
-     * A Dynamic Deposit's own closures (maturity and premature, via the dynamic deposit account API) lift the lock for
-     * the duration of the payout, so this hook does not stop them.
-     *
-     * Deliberately NOT consulted for transfer-in, top-up, interest calculation, interest posting, or a configured
-     * transfer-interest-to-savings movement - none of those are withdrawals from this account's own perspective, and
-     * each caller of this hook is responsible for only invoking it on the withdrawal-shaped paths listed above.
+     * Whether regular withdrawals, transfers-out and generic close-with-balance are blocked (Dynamic Deposit
+     * {@code allowWithdrawal}). Callers must only consult it on withdrawal-shaped paths.
      */
     public boolean isWithdrawalBlockedByAccountRule() {
         return false;
     }
 
     /**
-     * Brings {@link #getSummary()} back in line with this account's transactions, running exactly the same refresh
-     * {@link #postInterest(MathContext, LocalDate, boolean, boolean, Integer, LocalDate, boolean, boolean)} runs as its
-     * own last step - and picking the same branch on the same flag.
-     *
-     * For a caller that adds transactions of its own AFTER a posting call has already run (and therefore after that
-     * call's refresh): cumulative early-withdrawal forfeiture force-posts interest, then writes its INTEREST_CHARGE
-     * transaction and the deferred withholding tax on top. {@code addTransaction(...)} alone never touches the summary,
-     * so without this the very next read of {@code getSummary().getAccountBalance()} - which is exactly what a
-     * premature closure does to decide how much to pay out - would still report the balance from before the forfeiture.
-     *
-     * Note the {@code backdatedTxnsAllowedTill == true} branch is core's own pivot-configuration refresh, which
-     * recomputes the balance from the pivot running balance plus deposits/interest minus withdrawals, withholding tax
-     * and overdraft interest - it does NOT re-apply charge debits (the same is already true of INTEREST_CHARGE).
-     * Cumulative forfeiture passes {@code false} from both of its callers, so it always takes the full-recompute
-     * branch, which does subtract them.
+     * Re-syncs the summary for callers that add transactions after a posting (e.g. cumulative forfeiture), since
+     * {@code addTransaction} never updates it. The pivot-config branch does not re-apply charge debits.
      */
     public void refreshSummary(final boolean backdatedTxnsAllowedTill) {
         if (backdatedTxnsAllowedTill) {
@@ -2946,32 +2870,17 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
     }
 
-    /**
-     * Whether a premature closure settlement is mid-flight on this account, during which an ordinary early-withdrawal
-     * charge must not be recorded for the settlement withdrawal (the closure records its own, already applied). A no-op
-     * {@code false} for every account type except one that implements closure settlement - today Dynamic Deposit. Same
-     * extension-point pattern as {@link #prepareClosureSettlement(LocalDate)}.
-     */
+    /** True while a premature closure settles; its withdrawal must not record an early-withdrawal charge. */
     public boolean isClosureSettlementInProgress() {
         return false;
     }
 
-    /**
-     * The per-transaction early-withdrawal charge percentage override set via
-     * {@link #setWithdrawalChargePercentageOverride(BigDecimal)} for the next withdrawal only, or {@code null} when
-     * none applies. The matching getter for that already-existing setter, so a charge service can read it back without
-     * compile-time visibility of the custom-module subclass that stores it.
-     */
+    /** Per-transaction early-withdrawal charge percentage override for the next withdrawal, or {@code null}. */
     public BigDecimal earlyWithdrawalChargePercentageOverride() {
         return null;
     }
 
-    /**
-     * Whether a withdrawal on this date is early by the account's OWN terms. Only an account type with a maturity date
-     * can answer this - Dynamic Deposit compares against {@code maturityDate()}. Plain Savings has no maturity date and
-     * so is never early by its own terms: for it, earliness is asserted by the caller on the withdrawal request, and
-     * the two sources are combined at the trigger (see Task 9).
-     */
+    /** Early by the account's own terms; only maturity-bearing types (Dynamic Deposit) can say so. */
     public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
         return false;
     }
@@ -4088,6 +3997,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     public boolean isWithHoldTax() {
         return this.withHoldTax;
+    }
+
+    public LocalDate getAccruedTillDate() {
+        return this.accruedTillDate;
     }
 
     public void setAccruedTillDate(LocalDate accruedTillDate) {

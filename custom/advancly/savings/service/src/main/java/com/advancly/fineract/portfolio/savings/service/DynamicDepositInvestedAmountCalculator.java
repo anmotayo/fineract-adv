@@ -32,26 +32,9 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
 
 /**
- * The amount invested in a Dynamic Deposit: the principal still in the account.
- *
- * It is deposits less the PRINCIPAL part of withdrawals. Which part of a withdrawal is principal is not guessed from
- * the amounts; it is read off what the withdrawal was:
- * <ul>
- * <li>an interest transfer (the withdrawal that sent interest to the linked account, as listed in
- * {@code interestTransferTransactionIds}) takes from the interest available - the interest posted, less the tax
- * withheld on it and any interest forfeited, that has not already been withdrawn - and never from principal;</li>
- * <li>a closing payout - the withdrawal that leaves nothing in the account, once the early-withdrawal charge posted
- * straight after it is counted - sweeps whatever interest is left first, and only the rest is principal;</li>
- * <li>any other withdrawal is principal withdrawn, in full, however much interest the account is holding.</li>
- * </ul>
- *
- * Subtracting every withdrawal in full drove a fully closed account to a negative amount, and treating every withdrawal
- * as interest-first understated the principal withdrawn whenever the account held interest at the time.
- *
- * Pure: it reads only the transactions it is given (and their running balances), so it is the same on a managed
- * account, a detached one carrying a simulated transaction, and one mid-closure that has not been flushed. A
- * transaction without a running balance yet - the closing payout is read before core has set it - has its balance
- * worked out from the transactions instead, so it is still recognised as the payout that empties the account.
+ * The principal still invested in a Dynamic Deposit: deposits less the principal part of withdrawals. Interest
+ * transfers come only from interest, a closing payout sweeps remaining interest first, and any other withdrawal is
+ * principal in full. Pure: reads only the given transactions, deriving a missing running balance from them.
  */
 public final class DynamicDepositInvestedAmountCalculator {
 
@@ -59,12 +42,7 @@ public final class DynamicDepositInvestedAmountCalculator {
 
     private DynamicDepositInvestedAmountCalculator() {}
 
-    /**
-     * @param interestTransferTransactionIds
-     *            the withdrawals that paid interest out to the linked account
-     * @param uptoAndIncluding
-     *            the last transaction, in chronological order, that counts; later ones are ignored
-     */
+    /** {@code interestTransferTransactionIds}: the withdrawals that paid interest out to the linked account. */
     public static BigDecimal investedAmountAsOf(final Collection<SavingsAccountTransaction> transactions, final MonetaryCurrency currency,
             final Collection<Long> interestTransferTransactionIds, final SavingsAccountTransaction uptoAndIncluding) {
         final List<SavingsAccountTransaction> chronological = new ArrayList<>();
@@ -75,19 +53,14 @@ public final class DynamicDepositInvestedAmountCalculator {
         }
         chronological.sort(COMPARATOR);
         final Position position = new Position(currency, interestTransferTransactionIds);
-        // Applied over every transaction and stopped after the one asked about, not over a list cut at it: a closing
-        // payout has to see the charge posted right after it to be recognised.
+        // Iterate everything and stop after the target: a closing payout must see the charge posted right after it.
         for (int i = 0; i < chronological.size() && COMPARATOR.compare(chronological.get(i), uptoAndIncluding) <= 0; i++) {
             position.apply(chronological, i);
         }
         return position.principal;
     }
 
-    /**
-     * The amount invested after each transaction, in one pass over the transactions - for re-deriving every
-     * rate-history row of an account without recalculating from the start for each of them. Keyed by transaction
-     * instance.
-     */
+    /** Invested amount after each transaction in one pass, keyed by transaction instance. */
     public static Map<SavingsAccountTransaction, BigDecimal> investedAmountAfterEach(
             final Collection<SavingsAccountTransaction> transactions, final MonetaryCurrency currency,
             final Collection<Long> interestTransferTransactionIds) {
@@ -111,20 +84,13 @@ public final class DynamicDepositInvestedAmountCalculator {
         return !transaction.isReversed() && !transaction.isReversalTransaction();
     }
 
-    /**
-     * The principal still invested and the interest still available to be withdrawn, as of the transactions applied so
-     * far.
-     */
     private static final class Position {
 
         private final MonetaryCurrency currency;
         private final Set<Long> interestTransferTransactionIds;
         private BigDecimal principal = BigDecimal.ZERO;
         private BigDecimal interestAvailable = BigDecimal.ZERO;
-        /**
-         * The account balance worked out from the transactions applied so far, for a transaction with no running
-         * balance.
-         */
+        /** Derived balance, for transactions with no running balance yet. */
         private BigDecimal balance = BigDecimal.ZERO;
 
         Position(final MonetaryCurrency currency, final Collection<Long> interestTransferTransactionIds) {
@@ -166,10 +132,7 @@ public final class DynamicDepositInvestedAmountCalculator {
             }
         }
 
-        /**
-         * The early-withdrawal charge is posted after the payout it belongs to, so the payout's own running balance is
-         * the charge and it is the charge that brings the account to zero.
-         */
+        /** The charge posts after its payout, so it is the charge (not the payout) that brings the balance to zero. */
         private BigDecimal chargesPostedRightAfter(final List<SavingsAccountTransaction> chronological, final int withdrawalIndex) {
             BigDecimal charges = BigDecimal.ZERO;
             for (int i = withdrawalIndex + 1; i < chronological.size() && chronological.get(i).isInterestChargeAndNotReversed(); i++) {

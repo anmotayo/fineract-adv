@@ -39,14 +39,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/**
- * {@code SavingsAccountData} has only private constructors (all instantiation happens through its own static factory
- * methods), and no test in this module instantiates a real one - see this class's own investigation notes on
- * {@link #mockAccountDataForProduct(Long)} below. Mocking it directly with Mockito is therefore the only option, and is
- * safe here: {@code custom/advancly/savings/service} is one of the dynamically-loaded {@code fineractCustomProjects}
- * modules, which all pull in {@code mockito-inline} (see the root {@code build.gradle}), so the inline mock maker -
- * needed to mock a {@code final} class like {@code SavingsAccountData} - is already on this module's test classpath.
- */
+/** {@code SavingsAccountData} is final with private constructors, so it is mocked (mockito-inline). */
 @ExtendWith(MockitoExtension.class)
 class AdvanclySavingsAccountWritePlatformServiceSelectAccountIdTest {
 
@@ -76,18 +69,8 @@ class AdvanclySavingsAccountWritePlatformServiceSelectAccountIdTest {
         when(incomeMapping.getGlAccount()).thenReturn(incomeFromPenaltiesAccount);
         when(incomeFromPenaltiesAccount.getId()).thenReturn(202L);
 
-        // findProductIdAndProductTypeAndFinancialAccountTypeAndChargeId(...) is a hand-written @Query with an
-        // explicit "mapping.charge.id = :chargeId" comparison, not a Spring Data derived query - so a null chargeId
-        // does NOT get rewritten to "IS NULL" the way a derived findByChargeIsNull(...) method would. In JPQL (as in
-        // SQL) "x = NULL" is never true, so calling that method with charge=null can never match a row, no matter
-        // what data exists. Every existing caller of it (AccountingProcessorHelper, for loan/savings/share charges)
-        // only ever passes an actual non-null charge id for a charge-specific override; there is no null-charge-id
-        // precedent anywhere in this codebase. The base, no-charge SAVINGS_CONTROL/INCOME_FROM_PENALTIES mappings
-        // that a savings product carries (see SavingsProductToGLAccountMappingHelper's
-        // mergeSavingsToLiabilityAccountMappingChanges/mergeSavingsToIncomeAccountMappingChanges) are created without
-        // a charge attached, and are exactly what findCoreProductToFinAccountMapping(...) is documented and used
-        // everywhere else in core to look up ("paymentType is NULL and charge is NULL..."). So this test stubs
-        // findCoreProductToFinAccountMapping(...), matching the corrected production code.
+        // Base (no-charge) mappings come from findCoreProductToFinAccountMapping; the charge-specific @Query never
+        // matches a null chargeId.
         when(productToGLAccountMappingRepository.findCoreProductToFinAccountMapping(4L, 2, 2)).thenReturn(controlMapping);
         when(productToGLAccountMappingRepository.findCoreProductToFinAccountMapping(4L, 2, 5)).thenReturn(incomeMapping);
 
@@ -97,16 +80,6 @@ class AdvanclySavingsAccountWritePlatformServiceSelectAccountIdTest {
         assertThat(transactionData.getAccountCredit()).isEqualTo(202L);
     }
 
-    /**
-     * {@code SavingsAccountData}'s constructors are all {@code private}; every instance in production code is built
-     * through one of the class's own static factory methods (e.g. {@code importInstanceIndividual},
-     * {@code instance(...)}), none of which offers a convenient shape for a bare product-id fixture, and no existing
-     * test anywhere in this module or the wider codebase constructs or mocks one. Since the class is also
-     * {@code public final}, mocking it needs Mockito's inline mock maker, which {@code mockito-inline} (already a
-     * {@code fineractCustomProjects} test dependency, see the root {@code build.gradle}) provides. Mocking it directly
-     * is therefore the simplest correct option, and only {@code getProductId()} needs stubbing for this test's lookups
-     * to be hit with the right product id.
-     */
     private static SavingsAccountData mockAccountDataForProduct(final Long productId) {
         final SavingsAccountData savingsAccountData = mock(SavingsAccountData.class);
         when(savingsAccountData.getProductId()).thenReturn(productId);

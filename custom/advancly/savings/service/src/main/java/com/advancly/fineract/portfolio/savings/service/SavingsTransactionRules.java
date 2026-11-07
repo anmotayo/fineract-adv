@@ -33,19 +33,22 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsEvent;
 import org.apache.fineract.portfolio.savings.exception.SavingsActivityPriorToClientTransferException;
 
-/**
- * What core checks before a deposit or a withdrawal - in {@code SavingsAccount#deposit}/{@code #withdraw} and in the
- * write service around them - that the append path has to check too, because it builds the transaction row itself and
- * never calls them. The error codes are core's own, so a client sees the same response whichever path served the
- * request.
- */
+/** Core's deposit/withdrawal checks, repeated for the append path with core's error codes. */
 public final class SavingsTransactionRules {
 
     private SavingsTransactionRules() {}
 
     /**
-     * {@code SavingsAccount#deposit}: the account is active, the date is neither in the future nor before activation.
+     * Core reverses accruals for a transaction on or before the accrued-till date; the append path can't, so it goes
+     * through core. Reads the account row loaded under the lock, so it is never stale.
      */
+    public static boolean accrualWouldBeReversed(final SavingsAccount account, final LocalDate transactionDate) {
+        final LocalDate accruedTillDate = account.getAccruedTillDate();
+        return account.savingsProduct().isAccrualBasedAccountingEnabled() && accruedTillDate != null
+                && !DateUtils.isAfter(transactionDate, accruedTillDate);
+    }
+
+    /** Mirrors {@code SavingsAccount#deposit}. */
     public static void validateDepositAllowed(final SavingsAccount account, final LocalDate transactionDate) {
         final String resourceTypeName = account.depositAccountType().resourceName();
         if (account.isNotActive()) {
@@ -56,10 +59,7 @@ public final class SavingsTransactionRules {
         validateNotBeforeClientTransfer(SavingsEvent.SAVINGS_DEPOSIT, account, transactionDate);
     }
 
-    /**
-     * {@code SavingsAccount#withdraw}: as for a deposit, and no withdrawal while the account is locked in. A matured
-     * account's own closure may widen what is allowed through {@code isTransactionsAllowed()}.
-     */
+    /** Mirrors {@code SavingsAccount#withdraw}, including the lock-in period. */
     public static void validateWithdrawalAllowed(final SavingsAccount account, final LocalDate transactionDate) {
         final String resourceTypeName = account.depositAccountType().resourceName();
         if (!account.isTransactionsAllowed()) {
@@ -76,10 +76,7 @@ public final class SavingsTransactionRules {
         validateNotBeforeClientTransfer(SavingsEvent.SAVINGS_WITHDRAWAL, account, transactionDate);
     }
 
-    /**
-     * {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#checkClientOrGroupActive}: a client or group that is
-     * not active cannot deposit or withdraw.
-     */
+    /** Mirrors core's checkClientOrGroupActive. */
     public static void validateClientAndGroupActive(final SavingsAccount account) {
         final Client client = account.getClient();
         if (client != null && client.isNotActive()) {
@@ -91,12 +88,7 @@ public final class SavingsTransactionRules {
         }
     }
 
-    /**
-     * Whether a withdrawal from this account carries a withdrawal fee that core pays when it makes the withdrawal
-     * ({@code SavingsAccount#payWithdrawalFee}). The append path does not pay it, so such a withdrawal goes through
-     * core. Percent-of-interest charges - the early-withdrawal interest charges - are not paid there, in core or here:
-     * {@code AdvanclyInterestChargeApplicationService} applies them after the withdrawal on both paths.
-     */
+    /** A withdrawal fee core pays inside the withdrawal; percent-of-interest charges are applied separately. */
     public static boolean hasAutoPayableWithdrawalFee(final SavingsAccount account) {
         for (final SavingsAccountCharge charge : account.charges()) {
             if (charge.isWithdrawalFee() && charge.isActive() && !charge.isPercentageOfInterest()) {

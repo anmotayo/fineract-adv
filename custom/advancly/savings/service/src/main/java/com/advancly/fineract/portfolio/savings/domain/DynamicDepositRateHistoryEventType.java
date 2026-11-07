@@ -18,13 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.domain;
 
-/**
- * The principal-changing event that produced a {@link DepositAccountDynamicRateHistory} row - the {@code event_type}
- * column from the implementation plan (Section 4). Transfer-in/transfer-out and adjustment replacement transactions are
- * captured as {@link #DEPOSIT}/{@link #WITHDRAWAL} (plan Section 12: "transfer-in behaves like top-up", "transfer-out
- * behaves like withdrawal") - they reach the same {@code deposit()}/{@code withdraw()} hook as an ordinary
- * top-up/withdrawal, so there is no separate transaction-type signal to distinguish them by at this layer.
- */
+/** Transfers and adjustment replacements are recorded as DEPOSIT/WITHDRAWAL: they hit the same hooks. */
 public enum DynamicDepositRateHistoryEventType {
 
     ACCOUNT_ACTIVATION, //

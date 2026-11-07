@@ -68,14 +68,8 @@ import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.stereotype.Service;
 
 /**
- * Previews a Dynamic Deposit closure by running the closure's own settlement on an in-memory copy of the account: the
- * closing interest is posted - withholding tax and all - and the early-withdrawal forfeiture is taken from it with the
- * same {@link CumulativeForfeitureCalculator} the real closure uses, so the figure shown is the figure paid out.
- *
- * Deliberately has NO {@code @Transactional} of its own, for the same reason
- * {@link EarlyWithdrawalChargeReadPlatformServiceImpl} does not: {@code findOneWithNotFoundDetection(Long)} opens and
- * commits its own transaction, detaching the account before this class touches it, so nothing this class does to the
- * account is ever flushed.
+ * Previews a closure by running its settlement on a detached copy of the account. Deliberately not
+ * {@code @Transactional}: the loaded account is detached, so the simulated postings are never flushed.
  */
 @Service
 @RequiredArgsConstructor
@@ -85,7 +79,6 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
             Arrays.asList(DepositsApiConstants.localeParamName, DepositsApiConstants.dateFormatParamName,
                     DepositsApiConstants.closedOnDateParamName, EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
 
-    /** A premature closure, like a Fixed or Recurring Deposit's, cannot reinvest. */
     private static final DepositAccountOnClosureType[] PRE_MATURE_CLOSURE_OPTIONS = { DepositAccountOnClosureType.WITHDRAW_DEPOSIT,
             DepositAccountOnClosureType.TRANSFER_TO_SAVINGS };
     private static final DepositAccountOnClosureType[] MATURITY_CLOSURE_OPTIONS = { DepositAccountOnClosureType.WITHDRAW_DEPOSIT,
@@ -107,8 +100,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
     public DynamicDepositClosureData retrieveClosureTemplate(final Long accountId) {
         final DynamicDepositAccount account = loadAccount(accountId);
         final LocalDate businessDate = DateUtils.getBusinessLocalDate();
-        // Closing is only allowed from maturity, so show what the customer receives then - projected to the maturity
-        // date while the account has not reached it, today's figure once it has.
+        // Project to the maturity date until it is reached.
         final LocalDate maturityDate = account.maturityDate();
         final LocalDate asOfDate = maturityDate != null && businessDate.isBefore(maturityDate) ? maturityDate : businessDate;
         return simulate(account, asOfDate, null, MATURITY_CLOSURE_OPTIONS);
@@ -170,8 +162,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
                 ? this.cumulativeInterestForfeitureService.resolveQualifyingChargeWithPercentage(account, percentageOverride)
                 : null;
         if (qualifying != null && DateUtils.isBefore(closedOnDate, DateUtils.getBusinessLocalDate())) {
-            // The closure itself refuses this (see DynamicDepositAccount#beginClosureSettlement); a preview that
-            // promised a payout the closure then refuses would be worse than no preview.
+            // The closure itself refuses this (see DynamicDepositAccount#beginClosureSettlement).
             throw new GeneralPlatformDomainRuleException(
                     "error.msg.savings.account.close.backdated.cumulative.early.withdrawal.not.allowed",
                     "Backdated cumulative early-withdrawal closure is not allowed.");
@@ -181,16 +172,13 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         final BigDecimal principal = zeroIfNull(summary.getAccountBalance());
         final BigDecimal interestPostedBefore = zeroIfNull(summary.getTotalInterestPosted());
 
-        // The settlement, on this in-memory copy: the closing interest posts (net of withholding tax). A matured
-        // account
-        // has had it already - the maturity posted it and closing does not post it again - so there is nothing to add.
+        // A matured account already had its final interest posted.
         if (!account.isMatured()) {
             final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
             account.postInterest(mc, closedOnDate, false, this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
                     this.configurationDomainService.retrieveFinancialYearBeginningMonth(),
                     account.interestPostingTransactionDateForClosure(closedOnDate), false, false);
-            // A closure also writes tax configured to be withheld at maturity - unless a cumulative forfeiture settles
-            // it, which takes its own course - so the preview must too, or it would show more than the closure pays.
+            // Mirror the closure's maturity tax (a cumulative forfeiture settles tax its own way).
             if (qualifying == null) {
                 account.withholdMaturityTaxAtClosure(account.interestPostingTransactionDateForClosure(closedOnDate));
             }
@@ -223,10 +211,6 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
                 linkedAccount == null ? null : linkedAccount.getAccountNo());
     }
 
-    /**
-     * The principal invested as the account stands after the closing settlement: what a principal-only reinvestment
-     * carries.
-     */
     private static BigDecimal investedAmountOf(final DynamicDepositAccount account) {
         final List<SavingsAccountTransaction> transactions = account.getTransactions();
         if (transactions.isEmpty()) {

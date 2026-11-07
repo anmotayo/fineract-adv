@@ -25,13 +25,7 @@ import java.time.OffsetDateTime;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
 
-/**
- * Lightweight transaction row for the interest-calculation preview response - deliberately not the full
- * {@code SavingsAccountTransactionData} (charge-paid-by breakdowns etc. aren't needed here), just enough to show what
- * happened and when. A simulated top-up/withdrawal (see {@code InterestCalculationReadPlatformServiceImpl}) is included
- * with a {@code null} id (and a {@code null} {@code createdOnUtc}) so callers can tell it apart from a real, persisted
- * transaction.
- */
+/** Preview transaction row; a simulated top-up/withdrawal has a {@code null} id and {@code createdOnUtc}. */
 public class InterestCalculationTransactionData implements Serializable {
 
     private final Long id;
@@ -91,17 +85,12 @@ public class InterestCalculationTransactionData implements Serializable {
         return this.currency;
     }
 
-    /**
-     * The {@code m_account_transfer_details} id - the {@code resourceId} the account-transfer API returns - when this
-     * transaction is one leg of an account transfer, else {@code null}.
-     */
+    /** The {@code m_account_transfer_details} id (the transfer API's {@code resourceId}), else {@code null}. */
     public Long accountTransferId() {
         return this.accountTransferId;
     }
 
-    /**
-     * The {@code m_account_transfer_transaction} id of the transfer leg this transaction belongs to, else {@code null}.
-     */
+    /** The {@code m_account_transfer_transaction} id, else {@code null}. */
     public Long accountTransferTransactionId() {
         return this.accountTransferTransactionId;
     }

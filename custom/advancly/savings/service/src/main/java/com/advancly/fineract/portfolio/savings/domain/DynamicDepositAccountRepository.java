@@ -27,7 +27,6 @@ import org.springframework.data.repository.query.Param;
 public interface DynamicDepositAccountRepository
         extends JpaRepository<DynamicDepositAccount, Long>, JpaSpecificationExecutor<DynamicDepositAccount> {
 
-    /** Finds Dynamic Deposit account ids by status. */
     @Query("select a.id from DynamicDepositAccount a where a.status = :statusEnum")
     List<Long> findIdsByStatus(@Param("statusEnum") Integer statusEnum);
 }

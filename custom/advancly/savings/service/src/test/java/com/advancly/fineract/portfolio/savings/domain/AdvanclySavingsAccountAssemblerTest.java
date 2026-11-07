@@ -43,8 +43,11 @@ import org.apache.fineract.portfolio.savings.exception.SavingsAccountNotFoundExc
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AdvanclySavingsAccountAssemblerTest {
@@ -170,6 +173,24 @@ class AdvanclySavingsAccountAssemblerTest {
 
         assertThatThrownBy(() -> assembler.assembleForAppendPath(99L)).isInstanceOf(SavingsAccountNotFoundException.class);
         verify(advanclyTransactionRepository, never()).findLastNonReversedAndBalanceBearingTransactions(99L);
+    }
+
+    // Each guard alone must force the locking path; dropping one would let an account with history skip the lookups.
+    @ParameterizedTest
+    @ValueSource(strings = { "summary.accountBalance", "summary.totalDeposits", "summary.totalWithdrawals", "summary.totalInterestPosted",
+            "summary.totalWithdrawalFees", "summary.totalFeeCharge", "summary.totalPenaltyCharge", "summary.totalAnnualFees",
+            "summary.totalOverdraftInterestDerived", "summary.totalWithholdTax", "account.savingsOnHoldAmount", "account.onHoldFunds" })
+    void testAssembleForAppendPath_anyNonZeroTotalUsesTheLockingLookups(final String field) {
+        SavingsAccount account = emptyAccount();
+        final String[] target = field.split("\\.");
+        ReflectionTestUtils.setField("summary".equals(target[0]) ? account.getSummary() : account, target[1], BigDecimal.TEN);
+        when(savingsAccountLockRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(account));
+        when(advanclyTransactionRepository.findLastNonReversedAndBalanceBearingTransactions(1L)).thenReturn(new ArrayList<>());
+
+        assembler.assembleForAppendPath(1L);
+
+        verify(advanclyTransactionRepository).findLastNonReversedAndBalanceBearingTransactions(1L);
+        verify(advanclyTransactionRepository, never()).existsBySavingsAccountId(1L);
     }
 
     private static SavingsAccount emptyAccount() {

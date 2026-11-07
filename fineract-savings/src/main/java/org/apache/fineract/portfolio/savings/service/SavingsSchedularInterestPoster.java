@@ -69,6 +69,13 @@ public class SavingsSchedularInterestPoster {
     private Collection<SavingsAccountData> savingAccounts;
     private boolean backdatedTxnsAllowedTill;
 
+    // Runs through the JDBC transaction manager (not the primary JPA one) so READ_UNCOMMITTED is applied per-connection
+    // by DataSourceTransactionManager rather than via EclipseLink's shared DatabaseLogin. This keeps the primary JPA
+    // EntityManagerFactory free of any custom isolation level - which is what makes the lock-free getConnection() in
+    // the
+    // EclipseLink dialect safe - while preserving this job's READ_UNCOMMITTED behavior. It is safe to run outside a JPA
+    // transaction because postInterest() performs no JPA entity writes: all persistence is raw jdbcTemplate batch
+    // updates, and the savings write/interest-posting services only compute on SavingsAccountData DTOs.
     @Retry(name = "postInterest", fallbackMethod = "fallbackPostInterest")
     @Transactional(transactionManager = "jdbcTransactionManager", isolation = Isolation.READ_UNCOMMITTED, rollbackFor = Exception.class)
     public void postInterest() throws JobExecutionException {

@@ -27,18 +27,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.cob.exceptions.CustomJobParameterNotFoundException;
 import org.apache.fineract.infrastructure.core.serialization.GoogleGsonSerializerHelper;
 import org.apache.fineract.infrastructure.jobs.data.JobParameterDTO;
 import org.apache.fineract.infrastructure.jobs.domain.CustomJobParameter;
 import org.apache.fineract.infrastructure.jobs.domain.CustomJobParameterRepository;
 import org.apache.fineract.infrastructure.springbatch.SpringBatchJobConstants;
-import org.springframework.batch.core.JobParameter;
-import org.springframework.batch.core.StepContribution;
-import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.job.parameters.JobParameter;
 import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.StepContribution;
+import org.springframework.batch.core.step.StepExecution;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @RequiredArgsConstructor
 @Component
 public class CustomJobParameterResolver {
@@ -47,15 +50,21 @@ public class CustomJobParameterResolver {
 
     protected Gson gson = GoogleGsonSerializerHelper.createSimpleGson();
 
-    public void resolve(StepContribution contribution, ChunkContext chunkContext, String customJobParameterKey,
-            String parameterNameInExecutionContext) {
-        Set<JobParameterDTO> jobParameterDTOList = getCustomJobParameterSet(chunkContext.getStepContext().getStepExecution())
+    public void resolveToJobExecutionContext(final StepContribution contribution, final ChunkContext chunkContext,
+            final String[] requiredParameterNames, final String[] optionalParameterNames) {
+        final Set<JobParameterDTO> jobParameterDTOList = getCustomJobParameterSet(chunkContext.getStepContext().getStepExecution())
                 .orElseThrow(() -> new CustomJobParameterNotFoundException(SpringBatchJobConstants.CUSTOM_JOB_PARAMETER_ID_KEY));
-        JobParameterDTO businessDateParameter = jobParameterDTOList.stream()
-                .filter(jobParameterDTO -> customJobParameterKey.equals(jobParameterDTO.getParameterName())) //
-                .findFirst().orElseThrow(() -> new CustomJobParameterNotFoundException(customJobParameterKey));
-        contribution.getStepExecution().getExecutionContext().put(parameterNameInExecutionContext,
-                businessDateParameter.getParameterValue());
+        final ExecutionContext jobExecutionContext = contribution.getStepExecution().getJobExecution().getExecutionContext();
+        for (String parameterName : requiredParameterNames) {
+            final JobParameterDTO dto = jobParameterDTOList.stream().filter(p -> parameterName.equals(p.getParameterName())).findFirst()
+                    .orElseThrow(() -> new CustomJobParameterNotFoundException(parameterName));
+            jobExecutionContext.put(parameterName, dto.getParameterValue());
+        }
+        for (String parameterName : optionalParameterNames) {
+            jobParameterDTOList.stream().filter(p -> parameterName.equals(p.getParameterName())).findFirst().ifPresentOrElse(
+                    dto -> jobExecutionContext.put(parameterName, dto.getParameterValue()),
+                    () -> log.warn("Optional custom job parameter '{}' not found in custom parameter table.", parameterName));
+        }
     }
 
     /**
@@ -70,12 +79,6 @@ public class CustomJobParameterResolver {
                 .map(json -> gson.fromJson(json, new TypeToken<HashSet<JobParameterDTO>>() {}.getType()));
     }
 
-    public Optional<String> getCustomJobParameterById(StepExecution stepExecution, String key) {
-        return getCustomJobParameterSet(stepExecution)
-                .flatMap(paramterList -> paramterList.stream().filter(dto -> dto.getParameterName().equals(key)).findFirst())
-                .map(JobParameterDTO::getParameterValue);
-    }
-
     /**
      * Resolve job parameters from step execution context,
      * like @org.springframework.batch.core.scope.context.StepContext#getJobParameters()
@@ -86,8 +89,8 @@ public class CustomJobParameterResolver {
      */
     private Map<String, Object> getJobParameters(StepExecution stepExecution) {
         Map<String, Object> result = new HashMap<>();
-        for (Map.Entry<String, JobParameter<?>> entry : stepExecution.getJobParameters().getParameters().entrySet()) {
-            result.put(entry.getKey(), entry.getValue().getValue());
+        for (JobParameter<?> parameter : stepExecution.getJobParameters().parameters()) {
+            result.put(parameter.name(), parameter.value());
         }
         return Collections.unmodifiableMap(result);
     }

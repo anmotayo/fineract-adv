@@ -172,7 +172,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
         verify(this.accountTransfersWritePlatformService, never()).transferFunds(any());
         // The settlement already posted the closing interest.
-        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).postInterestForDynamicDeposit(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -184,7 +184,7 @@ class AdvanclyDepositAccountDomainServiceTest {
 
         final InOrder order = inOrder(this.account, this.savingsAccountRepository, this.journalEntryWritePlatformService,
                 this.coreDomainService);
-        order.verify(this.account).postInterest(any(), eq(CLOSED_DATE), eq(false), anyBoolean(), any(), eq(CLOSED_DATE), eq(false),
+        order.verify(this.account).postInterestForDynamicDeposit(any(), eq(CLOSED_DATE), eq(false), anyBoolean(), any(), eq(CLOSED_DATE), eq(false),
                 eq(false));
         order.verify(this.savingsAccountRepository).saveAndFlush(this.account);
         order.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
@@ -285,13 +285,13 @@ class AdvanclyDepositAccountDomainServiceTest {
 
         final InOrder order = inOrder(this.account, this.coreDomainService);
         // The maturity: the interest up to the maturity date, dated on it, and any tax withheld at maturity ...
-        order.verify(this.account).postInterest(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
+        order.verify(this.account).postInterestForDynamicDeposit(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
                 eq(false));
         order.verify(this.account).withholdMaturityTaxAtClosure(MATURITY_DATE);
         order.verify(this.account).markMatured();
         // ... and only then the payout.
         order.verify(this.coreDomainService).handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean());
-        verify(this.account, times(1)).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, times(1)).postInterestForDynamicDeposit(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
         verify(this.account, never()).beginClosureSettlement(any());
     }
 
@@ -306,7 +306,7 @@ class AdvanclyDepositAccountDomainServiceTest {
                 this.changes);
 
         assertThat(transactionId).isEqualTo(555L);
-        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).postInterestForDynamicDeposit(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
         verify(this.account, never()).beginClosureSettlement(any());
         verify(this.account, never()).markMatured();
         final InOrder order = inOrder(this.account, this.coreDomainService);
@@ -335,7 +335,7 @@ class AdvanclyDepositAccountDomainServiceTest {
 
         assertThat(matured).isTrue();
         final InOrder order = inOrder(this.account, this.savingsAccountRepository, this.journalEntryWritePlatformService);
-        order.verify(this.account).postInterest(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
+        order.verify(this.account).postInterestForDynamicDeposit(any(), eq(MATURITY_DATE), eq(false), anyBoolean(), any(), eq(MATURITY_DATE), eq(false),
                 eq(false));
         order.verify(this.account).withholdMaturityTaxAtClosure(MATURITY_DATE);
         order.verify(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
@@ -350,7 +350,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         assertThat(this.service.matureAccount(this.account)).isFalse();
 
         verify(this.account, never()).markMatured();
-        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).postInterestForDynamicDeposit(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -369,7 +369,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         assertThat(this.service.matureAccount(this.account)).isFalse();
 
         verify(this.account, never()).markMatured();
-        verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.account, never()).postInterestForDynamicDeposit(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
     }
 
     @Test

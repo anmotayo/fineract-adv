@@ -187,6 +187,27 @@ public final class PostingPeriod {
             final Money minBalanceForInterestCalculation, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
             final BigDecimal overdraftInterestRateAsFraction, final Money minOverdraftForInterestCalculation, boolean isUserPosting,
             int financialYearBeginningMonth, final boolean isAllowOverdraft) {
+        return createFromDTO(periodInterval, periodStartingBalance, orderedListOfTransactions, currency, interestCompoundingPeriodType,
+                interestCalculationType, interestRateAsFraction, daysInYear, upToInterestCalculationDate, interestPostTransactions,
+                isInterestTransfer, minBalanceForInterestCalculation, isSavingsInterestPostingAtCurrentPeriodEnd,
+                overdraftInterestRateAsFraction, minOverdraftForInterestCalculation, isUserPosting, financialYearBeginningMonth,
+                isAllowOverdraft, true);
+    }
+
+    /**
+     * @param fillLeadingGap
+     *            carry the starting balance over the days before the first transaction balance. Not wanted for the
+     *            overdraft split, where each list is already filtered to the balances of its own kind and a leading gap
+     *            is expected.
+     */
+    public static PostingPeriod createFromDTO(final LocalDateInterval periodInterval, final Money periodStartingBalance,
+            final List<SavingsAccountTransactionData> orderedListOfTransactions, final MonetaryCurrency currency,
+            final SavingsCompoundingInterestPeriodType interestCompoundingPeriodType,
+            final SavingsInterestCalculationType interestCalculationType, final BigDecimal interestRateAsFraction, final long daysInYear,
+            final LocalDate upToInterestCalculationDate, Collection<Long> interestPostTransactions, boolean isInterestTransfer,
+            final Money minBalanceForInterestCalculation, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
+            final BigDecimal overdraftInterestRateAsFraction, final Money minOverdraftForInterestCalculation, boolean isUserPosting,
+            int financialYearBeginningMonth, final boolean isAllowOverdraft, final boolean fillLeadingGap) {
 
         final List<EndOfDayBalance> accountEndOfDayBalances = new ArrayList<>();
         boolean interestTransfered = false;
@@ -225,7 +246,8 @@ public final class PostingPeriod {
         }
 
         // Fill gap between period start and the first EndOfDayBalance entry.
-        if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
+        if (fillLeadingGap && !accountEndOfDayBalances.isEmpty()
+                && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
             final LocalDate gapStart = periodInterval.startDate();
             final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
             final LocalDateInterval gapInterval = LocalDateInterval.create(gapStart, gapEnd);

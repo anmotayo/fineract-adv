@@ -24,7 +24,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.Consumes;
@@ -47,6 +46,7 @@ import org.apache.fineract.batch.command.CommandHandlerRegistry;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.infrastructure.core.annotation.AlternativeOperationId;
 import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.exception.UnrecognizedQueryParamException;
@@ -88,15 +88,15 @@ public class StandingInstructionApiResource {
 
     @GET
     @Path("template")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve Standing Instruction Template", description = "This is a convenience resource. "
+    @Operation(summary = "Retrieve Standing Instruction Template", operationId = "retrieveTemplateStandingInstruction", description = "This is a convenience resource. "
             + "It can be useful when building maintenance user interface screens for client applications. "
             + "The template data returned consists of any or all of:\n" + "\n" + "Field Defaults\n" + "Allowed Value Lists\n"
             + "Example Requests:\n" + "\n" + "standinginstructions/template?fromAccountType=2&fromOfficeId=1\n" + "\n"
             + "standinginstructions/template?fromAccountType=2&fromOfficeId=1&fromClientId=1&transferType=1\n" + "\n"
             + "standinginstructions/template?fromClientId=1&fromAccountType=2&fromAccountId=1&transferType=1")
-    @ApiResponses(@ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsTemplateResponse.class))))
+    @AlternativeOperationId("template_6")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsTemplateResponse.class)))
     public StandingInstructionData template(@BeanParam StandingInstructionSearchParam instructionParam) {
         context.authenticatedUser().validateHasReadPermission(StandingInstructionApiConstants.STANDING_INSTRUCTION_RESOURCE_NAME);
 
@@ -109,10 +109,10 @@ public class StandingInstructionApiResource {
     @POST
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Create new Standing Instruction", description = "Ability to create new instruction for transfer of monetary funds from one account to another")
+    @Operation(summary = "Create new Standing Instruction", operationId = "createStandingInstruction", description = "Ability to create new instruction for transfer of monetary funds from one account to another")
+    @AlternativeOperationId("create_5")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = StandingInstructionCreationRequest.class)))
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.PostStandingInstructionsResponse.class))) })
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.PostStandingInstructionsResponse.class)))
     public CommandProcessingResult create(@Parameter(hidden = true) StandingInstructionCreationRequest creationRequest) {
         final CommandWrapper commandRequest = new CommandWrapperBuilder().createStandingInstruction()
                 .withJson(toApiJsonSerializer.serialize(creationRequest)).build();
@@ -124,13 +124,13 @@ public class StandingInstructionApiResource {
     @Path("{standingInstructionId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Update Standing Instruction | Delete Standing Instruction", description = "Ability to modify existing instruction for transfer of monetary funds from one account to another.\n"
+    @Operation(summary = "Update Standing Instruction | Delete Standing Instruction", operationId = "updateStandingInstruction", description = "Ability to modify existing instruction for transfer of monetary funds from one account to another.\n"
             + "\n" + "PUT https://DomainName/api/v1/standinginstructions/1?command=update\n" + "\n\n"
             + "Ability to modify existing instruction for transfer of monetary funds from one account to another.\n" + "\n"
             + "PUT https://DomainName/api/v1/standinginstructions/1?command=delete")
+    @AlternativeOperationId("update_9")
     @RequestBody(content = @Content(schema = @Schema(implementation = StandingInstructionUpdatesRequest.class)))
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.PutStandingInstructionsStandingInstructionIdResponse.class))) })
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.PutStandingInstructionsStandingInstructionIdResponse.class)))
     public CommandProcessingResult update(
             @PathParam("standingInstructionId") @Parameter(description = "standingInstructionId") final Long standingInstructionId,
             @Parameter(hidden = true) StandingInstructionUpdatesRequest updatesRequest,
@@ -144,11 +144,11 @@ public class StandingInstructionApiResource {
     }
 
     @GET
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "List Standing Instructions", description = "Example Requests:\n" + "\n" + "standinginstructions")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsResponse.class))) })
+    @Operation(summary = "List Standing Instructions", operationId = "retrieveAllStandingInstructions", description = "Example Requests:\n"
+            + "\n" + "standinginstructions")
+    @AlternativeOperationId("retrieveAll_19")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsResponse.class)))
     public Page<StandingInstructionData> retrieveAll(
             @QueryParam("externalId") @Parameter(description = "externalId") final String externalId,
             @QueryParam("offset") @Parameter(description = "offset") final Integer offset,
@@ -179,11 +179,11 @@ public class StandingInstructionApiResource {
 
     @GET
     @Path("{standingInstructionId}")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve Standing Instruction", description = "Example Requests :\n" + "\n" + "standinginstructions/1")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsStandingInstructionIdResponse.class))) })
+    @Operation(summary = "Retrieve Standing Instruction", operationId = "retrieveOneStandingInstruction", description = "Example Requests :\n"
+            + "\n" + "standinginstructions/1")
+    @AlternativeOperationId("retrieveOne_10")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = StandingInstructionApiResourceSwagger.GetStandingInstructionsStandingInstructionIdResponse.class)))
     public StandingInstructionData retrieveOne(
             @PathParam("standingInstructionId") @Parameter(description = "standingInstructionId") final Long standingInstructionId,
             @Context final UriInfo uriInfo, @QueryParam("externalId") @Parameter(description = "externalId") final String externalId,
@@ -212,10 +212,10 @@ public class StandingInstructionApiResource {
             if (associationParameters.contains("template")) {
                 final StandingInstructionData templateData = standingInstructionReadPlatformService.retrieveTemplate(
                         standingInstructionData.getFromClient().getOfficeId(), standingInstructionData.getFromClient().getId(),
-                        standingInstructionData.getFromAccount().getId(), standingInstructionData.getFromAccountType().getValue(),
+                        standingInstructionData.getFromAccount().getId(), standingInstructionData.getFromAccountTypeEnum().getValue(),
                         standingInstructionData.getToClient().getOfficeId(), standingInstructionData.getToClient().getId(),
-                        standingInstructionData.getToAccount().getId(), standingInstructionData.getToAccountType().getValue(),
-                        standingInstructionData.getTransferType().getValue());
+                        standingInstructionData.getToAccount().getId(), standingInstructionData.getToAccountTypeEnum().getValue(),
+                        standingInstructionData.getTransferTypeEnum().getValue());
                 standingInstructionData = StandingInstructionData.withTemplateData(standingInstructionData, templateData);
             }
         }

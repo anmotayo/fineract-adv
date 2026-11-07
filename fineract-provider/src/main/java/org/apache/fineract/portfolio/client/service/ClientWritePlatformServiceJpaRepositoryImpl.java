@@ -52,8 +52,13 @@ import org.apache.fineract.infrastructure.dataqueries.data.EntityTables;
 import org.apache.fineract.infrastructure.dataqueries.data.StatusEnum;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
 import org.apache.fineract.infrastructure.event.business.domain.client.ClientActivateBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.client.ClientCloseBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.client.ClientCreateBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.client.ClientReactivateBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.client.ClientRejectBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.client.ClientUndoRejectionBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.client.ClientUndoWithdrawalBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.client.ClientWithdrawBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.office.domain.Office;
@@ -152,7 +157,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             Throwable throwable = ExceptionUtils.getRootCause(dve.getCause());
-            log.error("Error occured.", throwable);
+            log.error("Error occurred.", throwable);
             throw ErrorHandler.getMappable(dve, "error.msg.client.unknown.data.integrity.issue",
                     "Unknown data integrity issue with resource.");
         }
@@ -344,9 +349,9 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
                     .withClientId(newClient.getId()) //
                     .withGroupId(groupId) //
                     .withEntityId(newClient.getId()) //
-                    .withSavingsId(result.getSavingsId())//
-                    .setRollbackTransaction(rollbackTransaction)//
-                    .setRollbackTransaction(result.isRollbackTransaction())//
+                    .withSavingsId(result.getSavingsId()) //
+                    .setRollbackTransaction(rollbackTransaction) //
+                    .setRollbackTransaction(result.isRollbackTransaction()) //
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             handleDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
@@ -564,7 +569,6 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
             }
 
             if (changes.containsKey(ClientApiConstants.genderIdParamName)) {
-
                 final Long newValue = command.longValueOfParameterNamed(ClientApiConstants.genderIdParamName);
                 CodeValue gender = null;
                 if (newValue != null) {
@@ -583,15 +587,6 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
                             .orElseThrow(() -> new SavingsProductNotFoundException(savingsProductId));
                 }
                 clientForUpdate.updateSavingsProduct(savingsProductId);
-            }
-
-            if (changes.containsKey(ClientApiConstants.genderIdParamName)) {
-                final Long newValue = command.longValueOfParameterNamed(ClientApiConstants.genderIdParamName);
-                CodeValue newCodeVal = null;
-                if (newValue != null) {
-                    newCodeVal = this.codeValueRepository.findOneByCodeNameAndIdWithNotFoundDetection(ClientApiConstants.GENDER, newValue);
-                }
-                clientForUpdate.updateGender(newCodeVal);
             }
 
             if (changes.containsKey(ClientApiConstants.clientTypeIdParamName)) {
@@ -729,8 +724,8 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
                     .withEntityExternalId(client.getExternalId()) //
                     .withClientId(clientId) //
                     .withEntityId(clientId) //
-                    .withSavingsId(result.getSavingsId())//
-                    .setRollbackTransaction(result.isRollbackTransaction())//
+                    .withSavingsId(result.getSavingsId()) //
+                    .setRollbackTransaction(result.isRollbackTransaction()) //
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             handleDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
@@ -754,7 +749,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
     }
 
     private void logAsErrorUnexpectedDataIntegrityException(final Exception dve) {
-        log.error("Error occured.", dve);
+        log.error("Error occurred.", dve);
     }
 
     @Transactional
@@ -885,6 +880,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
 
             client.close(currentUser, closureReason, closureDate);
             this.clientRepository.saveAndFlush(client);
+            businessEventNotifierService.notifyPostBusinessEvent(new ClientCloseBusinessEvent(client));
             return new CommandProcessingResultBuilder() //
                     .withCommandId(command.commandId()) //
                     .withClientId(clientId) //
@@ -1014,6 +1010,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
         }
         client.withdraw(currentUser, withdrawalReason, withdrawalDate);
         this.clientRepository.saveAndFlush(client);
+        businessEventNotifierService.notifyPostBusinessEvent(new ClientWithdrawBusinessEvent(client));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withClientId(entityId) //
@@ -1040,6 +1037,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
         }
         client.reActivate(currentUser, reactivateDate);
         this.clientRepository.saveAndFlush(client);
+        businessEventNotifierService.notifyPostBusinessEvent(new ClientReactivateBusinessEvent(client));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withClientId(entityId) //
@@ -1067,7 +1065,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
 
         client.reOpened(currentUser, undoRejectDate);
         this.clientRepository.saveAndFlush(client);
-
+        businessEventNotifierService.notifyPostBusinessEvent(new ClientUndoRejectionBusinessEvent(client));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withClientId(entityId) //
@@ -1094,7 +1092,7 @@ public class ClientWritePlatformServiceJpaRepositoryImpl implements ClientWriteP
         }
         client.reOpened(currentUser, undoWithdrawalDate);
         this.clientRepository.saveAndFlush(client);
-
+        businessEventNotifierService.notifyPostBusinessEvent(new ClientUndoWithdrawalBusinessEvent(client));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withClientId(entityId) //

@@ -18,7 +18,6 @@
  */
 package org.apache.fineract.gradle
 
-import groovy.json.JsonSlurper
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.NotFileFilter
 import org.apache.commons.io.filefilter.PrefixFileFilter
@@ -68,6 +67,14 @@ class FineractPlugin implements Plugin<Project> {
             this.emailService = new EmailService(extension.config.smtp)
             this.gitService = new GitService(extension.config.git, extension.config.gpg)
             this.context = context(project)
+        }
+
+        // Their actions close over this plugin and the services it creates in afterEvaluate, which the configuration
+        // cache cannot store; builds that include them run uncached instead.
+        project.tasks.configureEach { task ->
+            if (task.name == "fineractDocPublish" || task.name.startsWith("fineractRelease")) {
+                task.notCompatibleWithConfigurationCache("release tasks keep plugin services in their actions")
+            }
         }
 
         project.tasks.register("fineractDocPublish") {
@@ -192,9 +199,9 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step1")
 
-                String version = project.properties?['fineract.release.version']
-                String issue = project.properties?['fineract.release.issue']
-                String date = project.properties?['fineract.releaseBranch.date']
+                String version = project.providers.gradleProperty('fineract.release.version').orNull
+                String issue = project.providers.gradleProperty('fineract.release.issue').orNull
+                String date = project.providers.gradleProperty('fineract.releaseBranch.date').orNull
 
                 if(!version || !issue || !date) {
                     TextIO textIO = TextIoFactory.getTextIO()
@@ -249,8 +256,8 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step3")
 
-                String version = project.properties?['fineract.release.version']
-                String date = project.properties?['fineract.release.date']
+                String version = project.providers.gradleProperty('fineract.release.version').orNull
+                String date = project.providers.gradleProperty('fineract.release.date').orNull
 
                 if(!version || !date) {
                     TextIO textIO = TextIoFactory.getTextIO()
@@ -299,7 +306,7 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step5")
 
-                String version = project.properties?['fineract.release.version']
+                String version = project.providers.gradleProperty('fineract.release.version').orNull
 
                 if(!version) {
                     TextIO textIO = TextIoFactory.getTextIO()
@@ -344,7 +351,7 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step8")
 
-                String version = project.properties?['fineract.release.version']
+                String version = project.providers.gradleProperty('fineract.release.version').orNull
 
                 if(!version) {
                     TextIO textIO = TextIoFactory.getTextIO()
@@ -384,23 +391,7 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step10")
 
-                String version = project.properties?['fineract.release.version']
-
-                if(!version) {
-                    TextIO textIO = TextIoFactory.getTextIO();
-
-                    version = textIO.newStringInputReader()
-                            .withPattern("\\d+.\\d+.\\d+")
-                            .read("Release Version");
-                }
-
-                // TODO: input validation, see FINERACT-1610
-
-                this.context?.project?['fineract.release.version'] = version
-
-                if(step.email) {
-                    emailService.send( processEmailParams(step.email, this.context) )
-                }
+                printInstructions(project, "step10")
             }
         }
 
@@ -409,28 +400,7 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 FineractPluginExtension.FineractPluginStep step = step(extension, "step11")
 
-                String version = project.properties?['fineract.release.version']
-
-                if(!version) {
-                    TextIO textIO = TextIoFactory.getTextIO()
-
-                    version = textIO.newStringInputReader()
-                            .withPattern("\\d+.\\d+.\\d+")
-                            .read("Release Version");
-                }
-
-                // TODO: input validation, see FINERACT-1610
-
-                this.context?.project?['fineract.release.version'] = version
-
-                def jsonSlurper = new JsonSlurper()
-                def data = jsonSlurper.parse(new File("buildSrc/src/main/resources/vote/result.${version}.json"))
-
-                this.context?.project?['fineract.vote'] = data
-
-                if(step.email) {
-                    emailService.send( processEmailParams(step.email, this.context) )
-                }
+                printInstructions(project, "step11")
             }
         }
 
@@ -470,36 +440,7 @@ class FineractPlugin implements Plugin<Project> {
             doFirst {
                 log.warn("Release step 15: send email to announcement mailing list")
 
-                FineractPluginExtension.FineractPluginStep step = step(extension, "step15")
-
-                String version = project.properties?['fineract.release.version']
-
-                if(!version) {
-                    TextIO textIO = TextIoFactory.getTextIO()
-
-                    version = textIO.newStringInputReader()
-                            .withPattern("\\d+.\\d+.\\d+")
-                            .read("Release Version");
-                }
-
-                // TODO: input validation, see FINERACT-1610
-
-                FineractPluginExtension.FineractPluginJiraParams issues = jiraService.search(step.jira)
-
-                def versions = jiraService.getProjectVersions(step.jira.projectId)
-                def filteredVersions = versions.findAll {
-                    log.warn(">>>> VERSION: ${it.id} - ${it.name} - ${it.description}")
-                    it.name == version
-                }
-
-                this.context?.project?['fineract.release.version'] = version
-                this.context?.project?['fineract.release.issues'] = issues.result
-                this.context?.project?['fineract.release.projectId'] = step.jira.projectId
-                this.context?.project?['fineract.release.versionId'] = filteredVersions[0]?.id
-
-                if(step.email) {
-                    emailService.send( processEmailParams(step.email, this.context) )
-                }
+                printInstructions(project, "step15")
             }
         }
     }
@@ -542,11 +483,12 @@ class FineractPlugin implements Plugin<Project> {
     }
 
     private Map<String, ?> context(Project project) {
-        return Map.of("project", project.getProperties().findAll { it.key != "password"})
+        return Map.of("project", project.providers.gradlePropertiesPrefixedBy("fineract.").get()
+                .findAll { !it.key.toLowerCase(Locale.ROOT).contains("password") })
     }
 
     private void printInstructions(Project project, String step) {
-        String version = project.properties?['fineract.release.version']?:"0.0.0"
+        String version = project.providers.gradleProperty('fineract.release.version').getOrElse("0.0.0")
 
         this.context?.project?['fineract.release.version'] = version
 

@@ -92,7 +92,8 @@ public interface SavingsAccountWritePlatformService {
 
     void postInterest(SavingsAccount account, boolean postInterestAs, LocalDate transactionDate, boolean backdatedTxnsAllowedTill);
 
-    // SavingsAccountData postInterest(SavingsAccountData account, boolean postInterestAs, LocalDate transactionDate,
+    // SavingsAccountData postInterest(SavingsAccountData account, boolean
+    // postInterestAs, LocalDate transactionDate,
     // boolean backdatedTxnsAllowedTill);
 
     SavingsAccountData postInterest(SavingsAccountData account, boolean postInterestAs, LocalDate transactionDate,
@@ -112,7 +113,7 @@ public interface SavingsAccountWritePlatformService {
 
     CommandProcessingResult unblockDebits(Long savingsId);
 
-    CommandProcessingResult releaseAmount(Long savingsId, Long transactionId);
+    CommandProcessingResult releaseAmount(Long savingsId, Long transactionId, JsonCommand command);
 
     CommandProcessingResult gsimActivate(Long gsimId, JsonCommand command);
 
@@ -125,4 +126,6 @@ public interface SavingsAccountWritePlatformService {
     }
 
     void selectAccountId(SavingsAccountTransactionData accountTransaction, SavingsAccountData savingsAccountData);
+
+    CommandProcessingResult forceWithdrawal(Long savingsId, JsonCommand command);
 }

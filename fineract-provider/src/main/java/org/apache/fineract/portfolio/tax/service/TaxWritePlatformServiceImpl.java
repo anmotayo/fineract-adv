@@ -64,7 +64,8 @@ public class TaxWritePlatformServiceImpl implements TaxWritePlatformService {
         this.taxComponentRepository.saveAndFlush(taxComponent);
         return new CommandProcessingResultBuilder() //
                 .withEntityId(id) //
-                .with(changes).build();
+                .with(changes) //
+                .build();
     }
 
     @Override
@@ -85,13 +86,14 @@ public class TaxWritePlatformServiceImpl implements TaxWritePlatformService {
         final TaxGroup taxGroup = this.taxGroupRepositoryWrapper.findOneWithNotFoundDetection(id);
         final boolean isUpdate = true;
         Set<TaxGroupMappings> groupMappings = this.taxAssembler.assembleTaxGroupMappingsFrom(command, isUpdate);
-        this.validator.validateTaxGroupEndDateAndTaxComponent(taxGroup, groupMappings);
+        this.validator.validateTaxGroupEndDateAndTaxComponent(taxGroup, groupMappings, this.taxGroupRepository.isLinked(id));
         Map<String, Object> changes = taxGroup.update(command, groupMappings);
         this.validator.validateTaxGroup(taxGroup);
         this.taxGroupRepository.saveAndFlush(taxGroup);
         return new CommandProcessingResultBuilder() //
                 .withEntityId(id) //
-                .with(changes).build();
+                .with(changes) //
+                .build();
     }
 
 }

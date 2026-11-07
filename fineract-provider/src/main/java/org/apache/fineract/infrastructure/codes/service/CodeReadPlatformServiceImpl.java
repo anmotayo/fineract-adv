@@ -30,8 +30,10 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional(readOnly = true)
 public class CodeReadPlatformServiceImpl implements CodeReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -86,7 +88,7 @@ public class CodeReadPlatformServiceImpl implements CodeReadPlatformService {
     }
 
     @Override
-    public CodeData retriveCode(final String codeName) {
+    public CodeData retrieveCode(final String codeName) {
         try {
             this.context.authenticatedUser();
 

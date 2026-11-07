@@ -21,8 +21,8 @@ package org.apache.fineract.infrastructure.springbatch;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.infrastructure.core.domain.ActionContext;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
+import org.jspecify.annotations.NonNull;
 import org.springframework.batch.integration.partition.StepExecutionRequest;
-import org.springframework.lang.NonNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHandler;
@@ -45,8 +45,7 @@ public class InputChannelInterceptor implements ExecutorChannelInterceptor {
     @Override
     public void afterMessageHandled(@NonNull final Message<?> message, @NonNull final MessageChannel channel,
             @NonNull final MessageHandler handler, final Exception ex) {
-        log.debug("Cleaning up ThreadLocal context after message handling");
-        ThreadLocalContextUtil.reset();
+        afterHandleMessage();
     }
 
     public Message<StepExecutionRequest> beforeHandleMessage(Message<?> message) {
@@ -54,9 +53,14 @@ public class InputChannelInterceptor implements ExecutorChannelInterceptor {
     }
 
     public StepExecutionRequest beforeHandleMessage(ContextualMessage contextualMessage) {
-        log.debug("Initializing ThreadLocal context for message handling");
+        log.debug("Initializing ThreadLocal context for message handling: {}", contextualMessage);
         ThreadLocalContextUtil.init(contextualMessage.getContext());
         ThreadLocalContextUtil.setActionContext(ActionContext.COB);
         return contextualMessage.getStepExecutionRequest();
+    }
+
+    public void afterHandleMessage() {
+        log.debug("Cleaning up ThreadLocal context after message handling");
+        ThreadLocalContextUtil.reset();
     }
 }

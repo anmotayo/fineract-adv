@@ -25,6 +25,7 @@ dependencies {
     implementation(project(':fineract-accounting'))
     implementation(project(':fineract-charge'))
     implementation(project(':fineract-tax'))
+    implementation(project(':fineract-working-capital-loan'))
     implementation('org.eclipse.persistence:org.eclipse.persistence.jpa') {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'
     }
@@ -32,6 +33,7 @@ dependencies {
     implementation('jakarta.ws.rs:jakarta.ws.rs-api')
     implementation('io.swagger.core.v3:swagger-annotations-jakarta')
     implementation('org.apache.commons:commons-lang3')
+    implementation('io.github.resilience4j:resilience4j-spring-boot4')
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     compileOnly('org.springframework.boot:spring-boot-autoconfigure')

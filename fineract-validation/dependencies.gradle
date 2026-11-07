@@ -25,17 +25,13 @@ dependencies {
             'org.apache.commons:commons-lang3',
             'commons-beanutils:commons-beanutils',
 
-            'com.github.spotbugs:spotbugs-annotations',
-
             'jakarta.validation:jakarta.validation-api',
             'org.hibernate.validator:hibernate-validator',
 
             'com.ibm.icu:icu4j',
             'org.yakworks:spring-icu4j',
             )
-    api('org.glassfish.jersey.ext:jersey-bean-validation') {
-        exclude group: 'jakarta.el', module: 'jakarta.el-api'
-    }
+    compileOnly 'com.github.spotbugs:spotbugs-annotations'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     annotationProcessor 'org.mapstruct:mapstruct-processor'
@@ -48,5 +44,4 @@ dependencies {
         exclude group: 'org.skyscreamer'
     }
     testImplementation( 'io.github.classgraph:classgraph' )
-    testImplementation ('org.mockito:mockito-inline')
 }

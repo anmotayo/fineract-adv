@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -42,6 +43,7 @@ public class AdvanclySavingsAccountAssembler {
     private final AdvanclySavingsAccountTransactionRepository advanclyTransactionRepository;
     private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
     private final SavingsHelper savingsHelper;
+    private final ConfigurationDomainService configurationDomainService;
 
     // Must match the queries' ORDER BY so same-date tie-breaking agrees with the database.
     private static final Comparator<SavingsAccountTransaction> MOST_RECENT_FIRST = Comparator
@@ -69,7 +71,7 @@ public class AdvanclySavingsAccountAssembler {
         SavingsAccountTransaction lastBalanceBearingTransaction = recentTransactions.stream()
                 .filter(SavingsAccountTransaction::isBalanceBearing).findFirst().orElse(null);
 
-        account.setHelpers(summaryWrapper, savingsHelper);
+        account.setHelpers(summaryWrapper, savingsHelper, configurationDomainService);
         return AssembledSavingsAccount.of(account, lastBalanceBearingTransaction,
                 lastTransaction == null ? null : lastTransaction.getTransactionDate());
     }

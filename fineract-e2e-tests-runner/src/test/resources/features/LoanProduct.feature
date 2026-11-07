@@ -187,26 +187,22 @@ Feature: LoanProduct
     When Admin sets the business date to "12 December 2021"
     When Admin creates a client with random data
     And Admin successfully creates a new customised Loan submitted on date: "12 December 2021", with Principal: "1000", a loanTermFrequency: 1 months, and numberOfRepayments: 1
-    Then Loan Product Charge-Off reasons options from loan product template have 5 options, with the following data:
+    Then Loan Product Charge-Off reasons options from loan product template have 3 options, with the following data:
       | Charge-Off Reason Name | Description | Position | Is Active | Is Mandatory |
-      | debit_card             |             | 0        | true      | false        |
-      | credit_card            |             | 1        | true      | false        |
-      | Fraud                  |             | 2        | true      | false        |
-      | Delinquent             |             | 3        | true      | false        |
-      | Other                  |             | 4        | true      | false        |
+      | Fraud                  |             | 0        | true      | false        |
+      | Delinquent             |             | 1        | true      | false        |
+      | Other                  |             | 2        | true      | false        |
 
   @TestRailId:C3482
   Scenario: As a user I would like to verify Charge-Off reasons options in specific loan product response
     When Admin sets the business date to "12 December 2021"
     When Admin creates a client with random data
     And Admin successfully creates a new customised Loan submitted on date: "12 December 2021", with Principal: "1000", a loanTermFrequency: 1 months, and numberOfRepayments: 1
-    Then Loan Product "LP1" Charge-Off reasons options from specific loan product have 5 options, with the following data:
+    Then Loan Product "LP1" Charge-Off reasons options from specific loan product have 3 options, with the following data:
       | Charge-Off Reason Name | Description | Position | Is Active | Is Mandatory |
-      | debit_card             |             | 0        | true      | false        |
-      | credit_card            |             | 1        | true      | false        |
-      | Fraud                  |             | 2        | true      | false        |
-      | Delinquent             |             | 3        | true      | false        |
-      | Other                  |             | 4        | true      | false        |
+      | Fraud                  |             | 0        | true      | false        |
+      | Delinquent             |             | 1        | true      | false        |
+      | Other                  |             | 2        | true      | false        |
 
   @TestRailId:C3587
   Scenario: As a user I would like to verify interestRecognitionOnDisbursementDate=false flag in loan product response
@@ -264,4 +260,28 @@ Feature: LoanProduct
     When Admin sets the business date to "2 January 2024"
     And Admin successfully disburse the loan on "2 January 2024" with "300" EUR transaction amount
     And Admin adds capitalized income with "AUTOPAY" payment type to the loan on "02 January 2024" with "200" EUR transaction amount
+
+  @TestRailId:C106739
+  Scenario: Verify Loan Product template delinquencyBucketOptions are REGULAR only
+    When Admin retrieves the Loan Product template
+    Then Loan Product template delinquencyBucketOptions all have bucketType "REGULAR"
+    And Loan Product template delinquencyBucketOptions do not contain:
+      | WC_DELINQUENCY_BUCKET |
+
+  @TestRailId:C106740
+  Scenario Outline: Verify Loan Product create rejects non-REGULAR delinquency bucket
+    Then Admin failed to create a new Loan Product with field "<lp_field_name>" invalid data <lp_invalid_field_value> and got an error <lp_error_message>
+
+    Examples:
+      | lp_field_name       | lp_invalid_field_value   | lp_error_message                                                                   |
+      | delinquencyBucketId | "WC_DELINQUENCY_BUCKET"  | "The parameter `delinquencyBucketId` must reference a REGULAR delinquency bucket." |
+
+  @TestRailId:C106741
+  Scenario Outline: Verify Loan Product update rejects non-REGULAR delinquency bucket
+    When Admin creates a new Loan Product
+    Then Admin failed to update a new Loan Product field "<lp_field_name>" with invalid data <lp_invalid_field_value> and got an error <lp_error_message>
+
+    Examples:
+      | lp_field_name       | lp_invalid_field_value   | lp_error_message                                                                   |
+      | delinquencyBucketId | "WC_DELINQUENCY_BUCKET"  | "The parameter `delinquencyBucketId` must reference a REGULAR delinquency bucket." |
 

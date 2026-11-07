@@ -25,7 +25,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -42,6 +41,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.infrastructure.core.annotation.AlternativeOperationId;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.interestpauses.data.InterestPauseRequestDto;
@@ -66,9 +66,9 @@ public class LoanInterestPauseApiResource {
     @Path("/{loanId}/interest-pauses")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Create a new interest pause period for a loan", description = "Allows users to define a period during which no interest will be accrued for a specific loan.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class))) })
+    @Operation(summary = "Create a new interest pause period for a loan", operationId = "createLoanInterestPause", description = "Allows users to define a period during which no interest will be accrued for a specific loan.")
+    @AlternativeOperationId("createInterestPause")
+    @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class)))
     public CommandProcessingResult createInterestPause(@PathParam("loanId") @Parameter(description = "loanId") final Long loanId,
             @RequestBody(required = true) final InterestPauseRequestDto request) {
 
@@ -83,9 +83,9 @@ public class LoanInterestPauseApiResource {
     @Path("/external-id/{loanExternalId}/interest-pauses")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Create a new interest pause for a loan using external ID", description = "Allows users to define a period during which no interest will be accrued for a specific loan using the external loan ID.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class))) })
+    @Operation(summary = "Create a new interest pause for a loan using external ID", operationId = "createLoanInterestPauseByExternalId", description = "Allows users to define a period during which no interest will be accrued for a specific loan using the external loan ID.")
+    @AlternativeOperationId("createInterestPauseByExternalId")
+    @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class)))
     public CommandProcessingResult createInterestPauseByExternalId(
             @PathParam("loanExternalId") @Parameter(description = "loanExternalId") final String loanExternalId,
             @RequestBody(required = true) final InterestPauseRequestDto request) {
@@ -101,9 +101,9 @@ public class LoanInterestPauseApiResource {
     @GET
     @Path("/{loanId}/interest-pauses")
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve all interest pause periods for a loan", description = "Fetches a list of all active interest pause periods for a specific loan.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of interest pause periods", content = @Content(array = @ArraySchema(schema = @Schema(implementation = InterestPauseResponseDto.class)))) })
+    @Operation(summary = "Retrieve all interest pause periods for a loan", operationId = "retrieveAllLoanInterestPauses", description = "Fetches a list of all active interest pause periods for a specific loan.")
+    @AlternativeOperationId("retrieveInterestPauses")
+    @ApiResponse(responseCode = "200", description = "List of interest pause periods", content = @Content(array = @ArraySchema(schema = @Schema(implementation = InterestPauseResponseDto.class))))
     public List<InterestPauseResponseDto> retrieveInterestPauses(
             @PathParam("loanId") @Parameter(description = "loanId") final Long loanId) {
 
@@ -115,9 +115,9 @@ public class LoanInterestPauseApiResource {
     @GET
     @Path("/external-id/{loanExternalId}/interest-pauses")
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve all interest pause periods for a loan using external ID", description = "Fetches a list of all active interest pause periods for a specific loan using the external loan ID.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "List of interest pause periods", content = @Content(array = @ArraySchema(schema = @Schema(implementation = InterestPauseResponseDto.class)))) })
+    @Operation(summary = "Retrieve all interest pause periods for a loan using external ID", operationId = "retrieveAllLoanInterestPausesByExternalId", description = "Fetches a list of all active interest pause periods for a specific loan using the external loan ID.")
+    @AlternativeOperationId("retrieveInterestPausesByExternalId")
+    @ApiResponse(responseCode = "200", description = "List of interest pause periods", content = @Content(array = @ArraySchema(schema = @Schema(implementation = InterestPauseResponseDto.class))))
     public List<InterestPauseResponseDto> retrieveInterestPausesByExternalId(
             @PathParam("loanExternalId") @Parameter(description = "loanExternalId") final String loanExternalId) {
 
@@ -128,8 +128,9 @@ public class LoanInterestPauseApiResource {
 
     @DELETE
     @Path("/{loanId}/interest-pauses/{variationId}")
-    @Operation(summary = "Delete an interest pause period", description = "Deletes a specific interest pause period by its variation ID.")
-    @ApiResponses({ @ApiResponse(responseCode = "204", description = "No Content") })
+    @Operation(summary = "Delete an interest pause period", operationId = "deleteLoanInterestPause", description = "Deletes a specific interest pause period by its variation ID.")
+    @AlternativeOperationId("deleteInterestPause")
+    @ApiResponse(responseCode = "204", description = "No Content")
     public Response deleteInterestPause(@PathParam("loanId") @Parameter(description = "loanId") final Long loanId,
             @PathParam("variationId") @Parameter(description = "variationId") final Long variationId) {
 
@@ -144,8 +145,9 @@ public class LoanInterestPauseApiResource {
 
     @DELETE
     @Path("/external-id/{loanExternalId}/interest-pauses/{variationId}")
-    @Operation(summary = "Delete an interest pause period by external id", description = "Deletes a specific interest pause period by its variation ID.")
-    @ApiResponses({ @ApiResponse(responseCode = "204", description = "No Content") })
+    @Operation(summary = "Delete an interest pause period by external id", operationId = "deleteLoanInterestPauseByExternalId", description = "Deletes a specific interest pause period by its variation ID.")
+    @AlternativeOperationId("deleteInterestPauseByExternalId")
+    @ApiResponse(responseCode = "204", description = "No Content")
     public Response deleteInterestPauseByExternalId(
             @PathParam("loanExternalId") @Parameter(description = "loanExternalId") final String loanExternalId,
             @PathParam("variationId") @Parameter(description = "variationId") final Long variationId) {
@@ -163,9 +165,9 @@ public class LoanInterestPauseApiResource {
     @Path("/{loanId}/interest-pauses/{variationId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Update an interest pause period", description = "Updates a specific interest pause period by its variation ID.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class))) })
+    @Operation(summary = "Update an interest pause period", operationId = "updateLoanInterestPause", description = "Updates a specific interest pause period by its variation ID.")
+    @AlternativeOperationId("updateInterestPause")
+    @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class)))
     public CommandProcessingResult updateInterestPause(@PathParam("loanId") @Parameter(description = "loanId") final Long loanId,
             @PathParam("variationId") @Parameter(description = "variationId") final Long variationId,
             @RequestBody(required = true) final InterestPauseRequestDto request) {
@@ -182,9 +184,9 @@ public class LoanInterestPauseApiResource {
     @Path("/external-id/{loanExternalId}/interest-pauses/{variationId}")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Update an interest pause period by external id", description = "Updates a specific interest pause period by its variation ID.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class))) })
+    @Operation(summary = "Update an interest pause period by external id", operationId = "updateLoanInterestPauseByExternalId", description = "Updates a specific interest pause period by its variation ID.")
+    @AlternativeOperationId("updateInterestPauseByExternalId")
+    @ApiResponse(responseCode = "200", description = "Command successfully processed", content = @Content(schema = @Schema(implementation = CommandProcessingResult.class)))
     public CommandProcessingResult updateInterestPauseByExternalId(
             @PathParam("loanExternalId") @Parameter(description = "loanExternalId") final String loanExternalId,
             @PathParam("variationId") @Parameter(description = "variationId") final Long variationId,

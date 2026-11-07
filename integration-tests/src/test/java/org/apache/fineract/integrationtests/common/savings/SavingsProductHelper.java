@@ -26,8 +26,6 @@ import io.restassured.specification.ResponseSpecification;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.fineract.client.models.GetSavingsProductsProductIdResponse;
-import org.apache.fineract.client.util.JSON;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.apache.fineract.integrationtests.common.accounting.Account;
 import org.slf4j.Logger;
@@ -39,7 +37,6 @@ public class SavingsProductHelper {
     private static final Logger LOG = LoggerFactory.getLogger(SavingsProductHelper.class);
     private static final String SAVINGS_PRODUCT_URL = "/fineract-provider/api/v1/savingsproducts";
     private static final String CREATE_SAVINGS_PRODUCT_URL = SAVINGS_PRODUCT_URL + "?" + Utils.TENANT_IDENTIFIER;
-    private static final Gson GSON = new JSON().getGson();
 
     private static final String LOCALE = "en_GB";
     private static final String DIGITS_AFTER_DECIMAL = "4";
@@ -227,11 +224,6 @@ public class SavingsProductHelper {
         return this;
     }
 
-    public SavingsProductHelper withInterestPostingPeriodTypeAsDaily() {
-        this.interestPostingPeriodType = DAILY;
-        return this;
-    }
-
     public SavingsProductHelper withInterestCalculationPeriodTypeAsDailyBalance() {
         this.interestCalculationType = INTEREST_CALCULATION_USING_DAILY_BALANCE;
         return this;
@@ -275,12 +267,6 @@ public class SavingsProductHelper {
         return this;
     }
 
-    public SavingsProductHelper withOverDraft(final String overdraftLimit) {
-        this.allowOverdraft = "true";
-        this.overdraftLimit = overdraftLimit;
-        return this;
-    }
-
     public SavingsProductHelper withAccountInterestReceivables(final String interestReceivableAccountId) {
         this.interestReceivableAccountId = interestReceivableAccountId;
         return this;
@@ -290,14 +276,6 @@ public class SavingsProductHelper {
         this.allowOverdraft = "true";
         this.overdraftLimit = overdraftLimit;
         this.nominalAnnualInterestRateOverdraft = nominalAnnualInterestRateOverdraft;
-        return this;
-    }
-
-    public SavingsProductHelper withWithHoldTax(final String taxGroupId) {
-        if (taxGroupId != null) {
-            this.withHoldTax = true;
-            this.taxGroupId = taxGroupId;
-        }
         return this;
     }
 
@@ -483,24 +461,10 @@ public class SavingsProductHelper {
         assertEquals(generatedProductID, responseSavingsProductID, "ERROR IN CREATING THE Savings Product");
     }
 
-    public SavingsProductHelper withDormancy() {
-        this.isDormancyTrackingActive = true;
-        this.daysToInactive = "30";
-        this.daysToDormancy = "60";
-        this.daysToEscheat = "90";
-        return this;
-    }
-
-    // TODO: Rewrite to use fineract-client instead!
-    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
-    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
     @Deprecated(forRemoval = true)
-    public static GetSavingsProductsProductIdResponse getSavingsProductById(final RequestSpecification requestSpec,
-            final ResponseSpecification responseSpec, final Integer productId) {
-        LOG.info("-------------------- RETRIEVING SAVINGS DEPOSIT PRODUCT BY ID --------------------------");
-        final String GET_PRODUCT_BY_ID_URL = SAVINGS_PRODUCT_URL + "/" + productId + "?" + Utils.TENANT_IDENTIFIER;
-        final String response = Utils.performServerGet(requestSpec, responseSpec, GET_PRODUCT_BY_ID_URL);
-        return GSON.fromJson(response, GetSavingsProductsProductIdResponse.class);
+    public static String retrieveAllSavingsProducts(final RequestSpecification requestSpec, final ResponseSpecification responseSpec) {
+        LOG.info("-------------------- RETRIEVING ALL SAVINGS PRODUCTS --------------------------");
+        return Utils.performServerGet(requestSpec, responseSpec, CREATE_SAVINGS_PRODUCT_URL);
     }
 
 }

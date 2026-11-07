@@ -47,12 +47,12 @@ public class CommandStrategyProvider {
     /**
      * Regex pattern for specifying any number of query params or not specific any query param
      */
-    private static final String OPTIONAL_QUERY_PARAM_REGEX = "(\\?(\\w+(?:\\=[\\w,]+|&)+)+)?";
+    private static final String OPTIONAL_QUERY_PARAM_REGEX = "(\\?([\\w-]+=[^&]+)(?:&[\\w-]+=[^&]+)*)?";
 
     /**
      * Regex pattern for specifying query params
      */
-    private static final String MANDATORY_QUERY_PARAM_REGEX = "(\\?(\\w+(?:\\=[\\w\\-,]+|&)+)+)";
+    private static final String MANDATORY_QUERY_PARAM_REGEX = "(\\?([\\w-]+=[^&]+)(?:&[\\w-]+=[^&]+)*)";
 
     /**
      * Regex pattern for specifying any query param that has key = 'command' or not specific anything.
@@ -149,6 +149,11 @@ public class CommandStrategyProvider {
         commandStrategies.put(CommandContext
                 .resource("v1\\/savingsaccounts\\/" + NUMBER_REGEX + "\\/transactions\\/" + NUMBER_REGEX + OPTIONAL_COMMAND_PARAM_REGEX)
                 .method(POST).build(), "savingsAccountAdjustTransactionCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/savingsaccounts\\/" + NUMBER_REGEX + "\\/charges").method(POST).build(),
+                "createSavingsAccountChargeCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/savingsaccounts\\/" + NUMBER_REGEX + "\\/charges\\/" + NUMBER_REGEX + MANDATORY_COMMAND_PARAM_REGEX)
+                .method(POST).build(), "paySavingsAccountChargeCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/loans\\/" + NUMBER_REGEX + "\\/charges").method(POST).build(),
                 "createChargeCommandStrategy");
         commandStrategies.put(
@@ -188,12 +193,16 @@ public class CommandStrategyProvider {
                 "approveLoanCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/loans\\/" + NUMBER_REGEX + "\\?command=disburse").method(POST).build(),
                 "disburseLoanCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/loans\\/" + NUMBER_REGEX + "\\?command=disburseToSavings").method(POST).build(),
+                "disburseToSavingsCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/loans\\/external-id\\/" + UUID_PARAM_REGEX + MANDATORY_COMMAND_PARAM_REGEX)
                 .method(POST).build(), "loanStateTransistionsByExternalIdCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/rescheduleloans").method(POST).build(),
                 "createLoanRescheduleRequestCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/rescheduleloans\\/" + NUMBER_REGEX + "\\?command=approve").method(POST).build(),
                 "approveLoanRescheduleCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/rescheduleloans\\/" + NUMBER_REGEX + "\\?command=reject").method(POST).build(),
+                "rejectLoanRescheduleCommandStrategy");
         commandStrategies.put(
                 CommandContext.resource("v1\\/loans\\/" + NUMBER_REGEX + "\\/transactions\\/" + NUMBER_REGEX).method(GET).build(),
                 "getLoanTransactionByIdCommandStrategy");
@@ -201,6 +210,13 @@ public class CommandStrategyProvider {
                 CommandContext.resource("v1\\/loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/transactions\\/external-id\\/"
                         + UUID_PARAM_REGEX + OPTIONAL_QUERY_PARAM_REGEX).method(GET).build(),
                 "getLoanTransactionByExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/loans\\/" + NUMBER_REGEX + "\\/transactions\\/reage-preview" + OPTIONAL_QUERY_PARAM_REGEX)
+                        .method(GET).build(),
+                "getReagePreviewByLoanIdCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/transactions\\/reage-preview" + OPTIONAL_QUERY_PARAM_REGEX)
+                .method(GET).build(), "getReagePreviewByLoanExternalIdCommandStrategy");
         commandStrategies.put(CommandContext.resource("v1\\/datatables\\/" + ALPHANUMBERIC_WITH_UNDERSCORE_REGEX + "\\/" + NUMBER_REGEX)
                 .method(POST).build(), "createDatatableEntryCommandStrategy");
         commandStrategies.put(CommandContext
@@ -243,6 +259,101 @@ public class CommandStrategyProvider {
         commandStrategies.put(CommandContext
                 .resource("v1\\/loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/interest-pauses\\/" + NUMBER_REGEX).method(PUT).build(),
                 "updateLoanInterestPauseByExternalIdCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/accounttransfers").method(POST).build(),
+                "createAccountTransferCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/working-capital-loans").method(POST).build(),
+                "applyWorkingCapitalLoanCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + OPTIONAL_COMMAND_PARAM_REGEX).method(PUT).build(),
+                "modifyWorkingCapitalLoanApplicationCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + OPTIONAL_COMMAND_PARAM_REGEX)
+                        .method(PUT).build(),
+                "modifyWorkingCapitalLoanApplicationByExternalIdCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + OPTIONAL_COMMAND_PARAM_REGEX)
+                .method(DELETE).build(), "deleteWorkingCapitalLoanApplicationCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + OPTIONAL_COMMAND_PARAM_REGEX)
+                        .method(DELETE).build(),
+                "deleteWorkingCapitalLoanApplicationByExternalIdCommandStrategy");
+        commandStrategies.put(CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + MANDATORY_COMMAND_PARAM_REGEX)
+                .method(POST).build(), "stateTransitionWorkingCapitalLoanCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + MANDATORY_COMMAND_PARAM_REGEX)
+                        .method(POST).build(),
+                "stateTransitionWorkingCapitalLoanByExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/transactions" + MANDATORY_COMMAND_PARAM_REGEX)
+                        .method(POST).build(),
+                "createWorkingCapitalTransactionLoanCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/transactions"
+                        + MANDATORY_COMMAND_PARAM_REGEX).method(POST).build(),
+                "createWorkingCapitalTransactionByLoanExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + OPTIONAL_QUERY_PARAM_REGEX).method(GET).build(),
+                "getWorkingCapitalLoanByIdCommandStrategy");
+        commandStrategies
+                .put(CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + OPTIONAL_QUERY_PARAM_REGEX)
+                        .method(GET).build(), "getWorkingCapitalLoanByExternalIdCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/transactions\\/" + NUMBER_REGEX + OPTIONAL_QUERY_PARAM_REGEX)
+                .method(GET).build(), "getWorkingCapitalLoanTransactionByIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/transactions\\/external-id\\/"
+                        + UUID_PARAM_REGEX + OPTIONAL_QUERY_PARAM_REGEX).method(GET).build(),
+                "getWorkingCapitalLoanTransactionByLoanIdAndExternalTransactionIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/transactions\\/"
+                        + NUMBER_REGEX + OPTIONAL_QUERY_PARAM_REGEX).method(GET).build(),
+                "getWorkingCapitalLoanTransactionByExternalLoanIdAndTransactionIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX
+                        + "\\/transactions\\/external-id\\/" + UUID_PARAM_REGEX + OPTIONAL_QUERY_PARAM_REGEX).method(GET).build(),
+                "getWorkingCapitalLoanTransactionByExternalIdCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource(
+                        "v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/transactions\\/" + NUMBER_REGEX + MANDATORY_QUERY_PARAM_REGEX)
+                .method(POST).build(), "executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/transactions\\/external-id\\/"
+                        + UUID_PARAM_REGEX + MANDATORY_QUERY_PARAM_REGEX).method(POST).build(),
+                "executeWorkingCapitalLoanTransactionCommandByLoanIdTransactionExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/transactions\\/"
+                        + NUMBER_REGEX + MANDATORY_QUERY_PARAM_REGEX).method(POST).build(),
+                "executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX
+                        + "\\/transactions\\/external-id\\/" + UUID_PARAM_REGEX + MANDATORY_QUERY_PARAM_REGEX).method(POST).build(),
+                "executeWorkingCapitalLoanTransactionCommandByLoanExternalIdTransactionExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/breach-schedule" + OPTIONAL_QUERY_PARAM_REGEX)
+                        .method(GET).build(),
+                "getWorkingCapitalLoanBreachScheduleByLoanIdCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/delinquency-range-schedule" + OPTIONAL_QUERY_PARAM_REGEX)
+                .method(GET).build(), "getWorkingCapitalLoanDelinquencyRangeScheduleByLoanIdCommandStrategy");
+        // Breach, delinquency and near breach actions name the action in the body rather than in a command query
+        // parameter, so each pair registers the bare path - one form for the loan id, one for the loan external id.
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/breach-actions").method(POST).build(),
+                "createWorkingCapitalLoanBreachActionCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/breach-actions").method(POST).build(),
+                "createWorkingCapitalLoanBreachActionByLoanExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/delinquency-actions").method(POST).build(),
+                "createWorkingCapitalLoanDelinquencyActionCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/delinquency-actions").method(POST).build(),
+                "createWorkingCapitalLoanDelinquencyActionByLoanExternalIdCommandStrategy");
+        commandStrategies.put(
+                CommandContext.resource("v1\\/working-capital-loans\\/" + NUMBER_REGEX + "\\/near-breach-actions").method(POST).build(),
+                "createWorkingCapitalLoanNearBreachActionCommandStrategy");
+        commandStrategies.put(CommandContext
+                .resource("v1\\/working-capital-loans\\/external-id\\/" + UUID_PARAM_REGEX + "\\/near-breach-actions").method(POST).build(),
+                "createWorkingCapitalLoanNearBreachActionByLoanExternalIdCommandStrategy");
     }
 
 }

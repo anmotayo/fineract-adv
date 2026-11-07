@@ -18,7 +18,6 @@
  */
 package org.apache.fineract.infrastructure.classpath;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.cucumber.java8.En;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ResourceList;
@@ -28,6 +27,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.collections4.MapUtils;
@@ -39,7 +39,6 @@ public class ClasspathDuplicatesStepDefinitions implements En {
 
     private ClassGraph classGraph;
 
-    @SuppressFBWarnings(value = "CT_CONSTRUCTOR_THROW")
     public ClasspathDuplicatesStepDefinitions() {
         // tag::given[]
         Given("A class graph", () -> {
@@ -97,12 +96,12 @@ public class ClasspathDuplicatesStepDefinitions implements En {
                 || resourcePath.equals("OSGI-INF/MANIFEST.MF") //
                 || resourcePath.equals("META-INF/INDEX.LIST") //
                 || resourcePath.equals("META-INF/ORACLE_J.SF") //
-                || resourcePath.toUpperCase().startsWith("META-INF/ASL") //
-                || resourcePath.toUpperCase().startsWith("META-INF/NOTICE") //
-                || resourcePath.toUpperCase().startsWith("META-INF/LICENSE") //
-                || resourcePath.toUpperCase().startsWith("META-INF/COPYRIGHT") //
-                || resourcePath.toUpperCase().startsWith("LICENSE") //
-                || resourcePath.toUpperCase().startsWith("LICENSE/NOTICE") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("META-INF/ASL") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("META-INF/NOTICE") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("META-INF/LICENSE") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("META-INF/COPYRIGHT") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("LICENSE") //
+                || resourcePath.toUpperCase(Locale.ROOT).startsWith("LICENSE/NOTICE") //
                 // list formerly in ClasspathHellDuplicatesCheckRule (moved here
                 // in INFRAUTILS-52)
                 || resourcePath.endsWith(".txt") //
@@ -115,8 +114,10 @@ public class ClasspathDuplicatesStepDefinitions implements En {
                 || resourcePath.startsWith("META-INF/services") //
                 || resourcePath.equals("META-INF/DEPENDENCIES") //
                 || resourcePath.equals("META-INF/git.properties") //
+                || resourcePath.equals("git.properties") //
                 || resourcePath.equals("META-INF/io.netty.versions.properties") //
                 || resourcePath.equals("META-INF/jersey-module-version") //
+                || resourcePath.equals("messages.properties") //
                 || resourcePath.startsWith("OSGI-INF/blueprint/") //
                 // in Akka's JARs
                 || resourcePath.startsWith("org/opendaylight/blueprint/") //
@@ -134,6 +135,8 @@ public class ClasspathDuplicatesStepDefinitions implements En {
                 || resourcePath.equals("META-INF/BC1024KE.DSA") //
                 || resourcePath.equals("META-INF/BC2048KE.SF") //
                 || resourcePath.equals("META-INF/BC1024KE.SF") //
+                || resourcePath.equals("META-INF/BCRSA204.SF") //
+                || resourcePath.equals("META-INF/BCRSA204.RSA") //
                 || resourcePath.equals("OSGI-INF/bundle.info") //
                 || resourcePath.equals("META-INF/DUMMY.SF") //
                 || resourcePath.equals("META-INF/DUMMY.DSA") //
@@ -151,6 +154,8 @@ public class ClasspathDuplicatesStepDefinitions implements En {
                 || resourcePath.startsWith("META-INF/additional-spring") //
                 || resourcePath.startsWith("META-INF/terracotta") //
                 || resourcePath.startsWith("com/fasterxml/jackson/core/io/doubleparser") //
+                // httpclient5 5.5+ and docker-java-transport-zerodep both bundle Mozilla's public suffix list
+                || resourcePath.startsWith("org/publicsuffix/list/") //
                 // Groovy is groovy
                 || resourcePath.startsWith("META-INF/groovy") //
                 || resourcePath.startsWith("org/springframework/batch/core/scope/context/JobSynchronizationManager") //
@@ -200,7 +205,7 @@ public class ClasspathDuplicatesStepDefinitions implements En {
                 // errorprone with Java 11 integration leaks to classpath, which
                 // causes a conflict between
                 // checkerframework/checker-qual and checkerframework/dataflow
-                || resourcePath.startsWith("org/checkerframework/dataflow/qual/") //
+                || resourcePath.startsWith("org/checkerframework/") //
                 // Pentaho reports harmless duplicates
                 || resourcePath.endsWith("overview.html") //
                 || resourcePath.endsWith("classic-engine.properties") //

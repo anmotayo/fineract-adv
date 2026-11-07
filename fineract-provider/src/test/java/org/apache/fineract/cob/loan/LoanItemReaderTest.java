@@ -23,7 +23,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,10 +31,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
-import org.apache.fineract.cob.common.CustomJobParameterResolver;
+import java.util.stream.Stream;
 import org.apache.fineract.cob.data.COBParameter;
-import org.apache.fineract.cob.domain.LoanAccountLock;
 import org.apache.fineract.cob.domain.LockOwner;
+import org.apache.fineract.cob.domain.LockingService;
+import org.apache.fineract.cob.service.BeforeStepLockingItemReaderHelper;
+import org.apache.fineract.cob.service.RetrieveIdService;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
@@ -47,8 +48,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.item.ExecutionContext;
+import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.step.StepExecution;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 @ExtendWith(MockitoExtension.class)
 class LoanItemReaderTest {
@@ -57,16 +59,15 @@ class LoanItemReaderTest {
     private LoanRepository loanRepository;
 
     @Mock
-    private RetrieveLoanIdService retrieveLoanIdService;
+    private RetrieveIdService retrieveIdService;
 
     @Mock
-    private CustomJobParameterResolver customJobParameterResolver;
-
-    @Mock
-    private LoanLockingService loanLockingService;
+    private LockingService loanLockingService;
 
     @Mock
     private StepExecution stepExecution;
+    @Mock
+    private JobExecution jobExecution;
 
     @Mock
     private ExecutionContext executionContext;
@@ -83,16 +84,17 @@ class LoanItemReaderTest {
     public void testLoanItemReaderSimple() throws Exception {
         // given
         ThreadLocalContextUtil.setTenant(new FineractPlatformTenant(1L, "test", "test", "UTC", null));
-        LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
-                loanLockingService);
+        LoanItemReader loanItemReader = new LoanItemReader(loanRepository,
+                new BeforeStepLockingItemReaderHelper(retrieveIdService, loanLockingService));
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
+        when(stepExecution.getJobExecution()).thenReturn(jobExecution);
+        when(jobExecution.getExecutionContext()).thenReturn(executionContext);
         COBParameter loanCOBParameter = new COBParameter(1L, 5L);
-        when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
-        when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
+        when(executionContext.get(LoanCOBConstant.COB_PARAMETER)).thenReturn(loanCOBParameter);
+        when(retrieveIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(List.of(1L, 2L, 3L, 4L, 5L)));
-        List<LoanAccountLock> accountLocks = List.of(1L, 2L, 3L, 4L, 5L).stream()
-                .map(l -> new LoanAccountLock(l, LockOwner.LOAN_COB_CHUNK_PROCESSING, LocalDate.of(2023, 7, 25))).toList();
-        when(loanLockingService.findAllByLoanIdInAndLockOwner(List.of(1L, 2L, 3L, 4L, 5L), LockOwner.LOAN_COB_CHUNK_PROCESSING))
+        List<Long> accountLocks = Stream.of(1L, 2L, 3L, 4L, 5L).toList();
+        when(loanLockingService.findLockIdsByLoanIdInAndLockOwner(List.of(1L, 2L, 3L, 4L, 5L), LockOwner.LOAN_COB_CHUNK_PROCESSING))
                 .thenReturn(accountLocks);
         when(loanRepository.findById(anyLong())).thenReturn(Optional.of(loan));
 
@@ -111,12 +113,14 @@ class LoanItemReaderTest {
     public void testLoanItemReadNoOpenLoansFound() throws Exception {
         // given
         ThreadLocalContextUtil.setTenant(new FineractPlatformTenant(1L, "test", "test", "UTC", null));
-        LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
-                loanLockingService);
+        LoanItemReader loanItemReader = new LoanItemReader(loanRepository,
+                new BeforeStepLockingItemReaderHelper(retrieveIdService, loanLockingService));
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
+        when(stepExecution.getJobExecution()).thenReturn(jobExecution);
+        when(jobExecution.getExecutionContext()).thenReturn(executionContext);
         COBParameter loanCOBParameter = new COBParameter(1L, 5L);
-        when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
-        when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
+        when(executionContext.get(LoanCOBConstant.COB_PARAMETER)).thenReturn(loanCOBParameter);
+        when(retrieveIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(List.of()));
 
         // when + then
@@ -132,16 +136,17 @@ class LoanItemReaderTest {
     public void testLoanItemReaderMultiThreadRead() throws Exception {
         // given
         ThreadLocalContextUtil.setTenant(new FineractPlatformTenant(1L, "test", "test", "UTC", null));
-        LoanItemReader loanItemReader = new LoanItemReader(loanRepository, retrieveLoanIdService, customJobParameterResolver,
-                loanLockingService);
+        LoanItemReader loanItemReader = new LoanItemReader(loanRepository,
+                new BeforeStepLockingItemReaderHelper(retrieveIdService, loanLockingService));
         when(stepExecution.getExecutionContext()).thenReturn(executionContext);
+        when(stepExecution.getJobExecution()).thenReturn(jobExecution);
+        when(jobExecution.getExecutionContext()).thenReturn(executionContext);
         COBParameter loanCOBParameter = new COBParameter(1L, 100L);
-        when(executionContext.get(LoanCOBConstant.LOAN_COB_PARAMETER)).thenReturn(loanCOBParameter);
-        when(retrieveLoanIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
+        when(executionContext.get(LoanCOBConstant.COB_PARAMETER)).thenReturn(loanCOBParameter);
+        when(retrieveIdService.retrieveAllNonClosedLoansByLastClosedBusinessDateAndMinAndMaxLoanId(loanCOBParameter, false))
                 .thenReturn(new ArrayList<>(IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf).toList()));
-        List<LoanAccountLock> accountLocks = IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf)
-                .map(l -> new LoanAccountLock(l, LockOwner.LOAN_COB_CHUNK_PROCESSING, LocalDate.of(2023, 7, 25))).toList();
-        when(loanLockingService.findAllByLoanIdInAndLockOwner(IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf).toList(),
+        List<Long> accountLocks = IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf).toList();
+        when(loanLockingService.findLockIdsByLoanIdInAndLockOwner(IntStream.rangeClosed(1, 100).boxed().map(Long::valueOf).toList(),
                 LockOwner.LOAN_COB_CHUNK_PROCESSING)).thenReturn(accountLocks);
         when(loanRepository.findById(anyLong())).thenReturn(Optional.of(loan));
 
@@ -160,7 +165,7 @@ class LoanItemReaderTest {
         }
         executorService.shutdown();
         boolean b = executorService.awaitTermination(5L, TimeUnit.SECONDS);
-        Assertions.assertEquals(true, b, "Executor did not terminate successfully");
+        Assertions.assertTrue(b, "Executor did not terminate successfully");
 
         // verify that this was called 100times, and for each loan it was called exactly once
         for (long i = 1; i <= 100; i++) {

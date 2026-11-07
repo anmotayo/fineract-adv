@@ -20,7 +20,6 @@ package org.apache.fineract.integrationtests.common.loans;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -34,6 +33,7 @@ import org.apache.fineract.client.util.Calls;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.integrationtests.common.BusinessDateHelper;
 import org.apache.fineract.integrationtests.common.FineractClientHelper;
+import org.apache.fineract.integrationtests.common.ParallelExecutionHelper;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -56,56 +56,61 @@ public class LoanTestLifecycleExtension implements AfterEachCallback, BeforeEach
     }
 
     private void closeOpenLoans() {
-        BusinessDateHelper.runAt(DateTimeFormatter.ofPattern(DATE_FORMAT).format(Utils.getLocalDateOfTenant()), () -> {
+        LocalDate cleanupDate = determineCleanupDate();
+        BusinessDateHelper.runAt(DateTimeFormatter.ofPattern(DATE_FORMAT).format(cleanupDate), () -> {
             this.loanTransactionHelper = new LoanTransactionHelper(null, null);
 
-            // Fully repay ACTIVE loans, so it will not be picked up by any jobs
             List<Long> loanIds = LoanTransactionHelper.getLoanIdsByStatusId(300);
-            loanIds.forEach(loanId -> {
-                GetLoansLoanIdResponse loanResponse = Calls
-                        .ok(FineractClientHelper.getFineractClient().loans.retrieveLoan((long) loanId, null, "all", null, null));
-                if (MathUtil.isLessThan(loanResponse.getApprovedPrincipal(), loanResponse.getProposedPrincipal())) {
-                    // reset approved principal in case it's less than proposed principal so all expected disbursements
-                    // can be properly disbursed
-                    PutLoansApprovedAmountRequest request = new PutLoansApprovedAmountRequest().amount(loanResponse.getProposedPrincipal())
-                            .locale("en");
-                    Calls.ok(FineractClientHelper.getFineractClient().loans.modifyLoanApprovedAmount(loanId, request));
-                }
-                loanResponse.getDisbursementDetails().forEach(disbursementDetail -> {
-                    if (disbursementDetail.getActualDisbursementDate() == null) {
-                        loanTransactionHelper.disburseLoan((long) loanId,
-                                new PostLoansLoanIdRequest()
-                                        .actualDisbursementDate(dateFormatter.format(disbursementDetail.getExpectedDisbursementDate()))
-                                        .dateFormat(DATE_FORMAT).locale("en")
-                                        .transactionAmount(BigDecimal.valueOf(disbursementDetail.getPrincipal())));
-                    }
-                });
-                loanResponse = Calls
-                        .ok(FineractClientHelper.getFineractClient().loans.retrieveLoan((long) loanId, null, "all", null, null));
-                GetLoansLoanIdTransactionsTemplateResponse prepayDetail = this.loanTransactionHelper.getPrepaymentAmount(loanId,
-                        dateFormatter.format(Utils.getLocalDateOfTenant()), DATE_FORMAT);
-                LocalDate transactionDate = prepayDetail.getDate();
-                Double amount = prepayDetail.getAmount();
-                Double netDisbursalAmount = prepayDetail.getNetDisbursalAmount();
-                Double repayAmount = Double.compare(amount, 0.0) > 0 ? amount : netDisbursalAmount;
-                loanTransactionHelper.makeLoanRepayment(loanId, new PostLoansLoanIdTransactionsRequest().dateFormat(DATE_FORMAT)
-                        .transactionDate(dateFormatter.format(transactionDate)).locale("en").transactionAmount(repayAmount));
-            });
-            // Undo APPROVED loans, so the next step can REJECT them, so it will not be picked up by any jobs
+            ParallelExecutionHelper.runInParallel(loanIds, loanId -> closeActiveLoan(loanId, cleanupDate));
             loanIds = LoanTransactionHelper.getLoanIdsByStatusId(200);
-            loanIds.forEach(loanId -> {
-                loanTransactionHelper.undoApprovalForLoan(loanId, new PostLoansLoanIdRequest());
-            });
-            // Mark SUBMITTED loans, as REJECTED, so it will not be picked up by any jobs
+            ParallelExecutionHelper.runInParallel(loanIds,
+                    loanId -> loanTransactionHelper.undoApprovalForLoan(loanId, new PostLoansLoanIdRequest()));
             loanIds = LoanTransactionHelper.getLoanIdsByStatusId(100);
-            loanIds.forEach(loanId -> {
-                GetLoansLoanIdResponse details = loanTransactionHelper.getLoanDetails((long) loanId);
-                loanTransactionHelper.rejectLoan(loanId,
-                        new PostLoansLoanIdRequest().rejectedOnDate(dateFormatter.format(details.getTimeline().getSubmittedOnDate()))
-                                .locale("en").dateFormat(DATE_FORMAT));
-            });
+            ParallelExecutionHelper.runInParallel(loanIds, this::rejectSubmittedLoan);
             loanIds = LoanTransactionHelper.getLoanIdsByStatusId(300);
             assertEquals(0, loanIds.size());
         });
+    }
+
+    private void closeActiveLoan(Long loanId, LocalDate cleanupDate) {
+        GetLoansLoanIdResponse loanResponse = Calls
+                .ok(FineractClientHelper.getFineractClient().loans.retrieveOneLoan(loanId, null, "all", null, null));
+        if (MathUtil.isLessThan(loanResponse.getApprovedPrincipal(), loanResponse.getProposedPrincipal())) {
+            PutLoansApprovedAmountRequest request = new PutLoansApprovedAmountRequest().amount(loanResponse.getProposedPrincipal())
+                    .locale("en");
+            Calls.ok(FineractClientHelper.getFineractClient().loans.updateApprovedAmountLoan(loanId, request));
+        }
+        loanResponse.getDisbursementDetails().forEach(disbursementDetail -> {
+            if (disbursementDetail.getActualDisbursementDate() == null) {
+                loanTransactionHelper.disburseLoan(loanId,
+                        new PostLoansLoanIdRequest()
+                                .actualDisbursementDate(dateFormatter.format(disbursementDetail.getExpectedDisbursementDate()))
+                                .dateFormat(DATE_FORMAT).locale("en").transactionAmount(disbursementDetail.getPrincipal()));
+            }
+        });
+        GetLoansLoanIdTransactionsTemplateResponse prepayDetail = this.loanTransactionHelper.getPrepaymentAmount(loanId,
+                dateFormatter.format(cleanupDate), DATE_FORMAT);
+        LocalDate transactionDate = prepayDetail.getDate();
+        Double amount = prepayDetail.getAmount() != null ? prepayDetail.getAmount().doubleValue() : 0.0;
+        Double netDisbursalAmount = prepayDetail.getNetDisbursalAmount() != null ? prepayDetail.getNetDisbursalAmount().doubleValue() : 0.0;
+        Double repayAmount = Double.compare(amount, 0.0) > 0 ? amount : netDisbursalAmount;
+        loanTransactionHelper.makeLoanRepayment(loanId, new PostLoansLoanIdTransactionsRequest().dateFormat(DATE_FORMAT)
+                .transactionDate(dateFormatter.format(transactionDate)).locale("en").transactionAmount(repayAmount));
+    }
+
+    private void rejectSubmittedLoan(Long loanId) {
+        GetLoansLoanIdResponse details = loanTransactionHelper.getLoanDetails(loanId);
+        loanTransactionHelper.rejectLoan(loanId, new PostLoansLoanIdRequest()
+                .rejectedOnDate(dateFormatter.format(details.getTimeline().getSubmittedOnDate())).locale("en").dateFormat(DATE_FORMAT));
+    }
+
+    private LocalDate determineCleanupDate() {
+        LocalDate tenantDate = Utils.getLocalDateOfTenant();
+        try {
+            LocalDate maxTxnDate = LoanTransactionHelper.getMaxTransactionDateOfActiveLoans();
+            return maxTxnDate.isAfter(tenantDate) ? maxTxnDate : tenantDate;
+        } catch (Exception e) {
+            return tenantDate;
+        }
     }
 }

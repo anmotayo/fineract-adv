@@ -34,6 +34,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
@@ -67,7 +68,7 @@ class AdvanclySavingsAccountAssemblerTest {
     void setUp() {
         MoneyHelperInitializer.initialize();
         assembler = new AdvanclySavingsAccountAssembler(savingsAccountLockRepository, advanclyTransactionRepository, summaryWrapper,
-                savingsHelper);
+                savingsHelper, org.mockito.Mockito.mock(ConfigurationDomainService.class));
     }
 
     @Test

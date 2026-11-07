@@ -66,6 +66,7 @@ import java.util.Collection;
 import java.util.Locale;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.UnsupportedParameterException;
@@ -121,6 +122,7 @@ public class DepositAccountAssembler {
     private final PaymentDetailAssembler paymentDetailAssembler;
 
     private final ExternalIdFactory externalIdFactory;
+    private final ConfigurationDomainService configurationDomainService;
 
     @Autowired
     public DepositAccountAssembler(final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper,
@@ -129,8 +131,9 @@ public class DepositAccountAssembler {
             final SavingsAccountRepositoryWrapper savingsAccountRepository,
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler, final FromJsonHelper fromApiJsonHelper,
             final DepositProductAssembler depositProductAssembler,
-            final RecurringDepositProductRepository recurringDepositProductRepository, final PlatformSecurityContext context,
-            final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory, final SavingsHelper savingsHelper) {
+            final RecurringDepositProductRepository recurringDepositProductRepository, final SavingsHelper savingsHelper,
+            final PlatformSecurityContext context, final PaymentDetailAssembler paymentDetailAssembler, ExternalIdFactory externalIdFactory,
+            final ConfigurationDomainService configurationDomainService) {
 
         this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
         this.clientRepository = clientRepository;
@@ -146,6 +149,7 @@ public class DepositAccountAssembler {
         this.context = context;
         this.paymentDetailAssembler = paymentDetailAssembler;
         this.externalIdFactory = externalIdFactory;
+        this.configurationDomainService = configurationDomainService;
     }
 
     /**
@@ -161,10 +165,10 @@ public class DepositAccountAssembler {
         final Long productId = this.fromApiJsonHelper.extractLongNamed(productIdParamName, element);
 
         SavingsProduct product = null;
-        if (depositAccountType.isFixedDeposit()) {
+        if (depositAccountType == DepositAccountType.FIXED_DEPOSIT) {
             product = this.fixedDepositProductRepository.findById(productId)
                     .orElseThrow(() -> new FixedDepositProductNotFoundException(productId));
-        } else if (depositAccountType.isRecurringDeposit()) {
+        } else if (depositAccountType == DepositAccountType.RECURRING_DEPOSIT) {
             product = this.recurringDepositProductRepository.findById(productId)
                     .orElseThrow(() -> new RecurringDepositProductNotFoundException(productId));
         }
@@ -321,7 +325,7 @@ public class DepositAccountAssembler {
         }
 
         SavingsAccount account = null;
-        if (depositAccountType.isFixedDeposit()) {
+        if (depositAccountType == DepositAccountType.FIXED_DEPOSIT) {
             final DepositProductTermAndPreClosure prodTermAndPreClosure = ((FixedDepositProduct) product).depositProductTermAndPreClosure();
             final DepositAccountTermAndPreClosure accountTermAndPreClosure = this.assembleAccountTermAndPreClosure(command,
                     prodTermAndPreClosure);
@@ -334,7 +338,7 @@ public class DepositAccountAssembler {
             accountTermAndPreClosure.updateAccountReference(fdAccount);
             fdAccount.validateDomainRules();
             account = fdAccount;
-        } else if (depositAccountType.isRecurringDeposit()) {
+        } else if (depositAccountType == DepositAccountType.RECURRING_DEPOSIT) {
             final DepositProductTermAndPreClosure prodTermAndPreClosure = ((RecurringDepositProduct) product)
                     .depositProductTermAndPreClosure();
             final DepositAccountTermAndPreClosure accountTermAndPreClosure = this.assembleAccountTermAndPreClosure(command,
@@ -357,7 +361,7 @@ public class DepositAccountAssembler {
         }
 
         if (account != null) {
-            account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+            account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
             account.validateNewApplicationState(depositAccountType.resourceName());
         }
 
@@ -366,12 +370,12 @@ public class DepositAccountAssembler {
 
     public SavingsAccount assembleFrom(final Long savingsId, DepositAccountType depositAccountType) {
         final SavingsAccount account = this.savingsAccountRepository.findOneWithNotFoundDetection(savingsId, depositAccountType);
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
         return account;
     }
 
     public void assignSavingAccountHelpers(final SavingsAccount savingsAccount) {
-        savingsAccount.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        savingsAccount.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
     }
 
     public DepositAccountTermAndPreClosure assembleAccountTermAndPreClosure(final JsonCommand command,

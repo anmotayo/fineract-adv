@@ -58,6 +58,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountPostInterestService;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,6 +90,9 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
     private EarlyWithdrawalChargeReadPlatformServiceImpl service;
 
+    private final SavingsAccountPostInterestService savingsAccountPostInterestService = org.mockito.Mockito
+            .mock(SavingsAccountPostInterestService.class);
+
     @BeforeEach
     void setUp() {
         MoneyHelperInitializer.initialize();
@@ -114,7 +118,7 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         this.service = new EarlyWithdrawalChargeReadPlatformServiceImpl(this.context, this.savingsAccountRepositoryWrapper,
                 this.savingsAccountAssembler, this.configurationDomainService, this.fromJsonHelper,
                 this.cumulativeInterestForfeitureService, this.advanclyInterestChargeApplicationService,
-                this.interestChargeApplicationRepository);
+                this.interestChargeApplicationRepository, this.savingsAccountPostInterestService);
     }
 
     // ------------------------------------------------------------------ cumulative mode
@@ -221,8 +225,8 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         this.service.calculate(ACCOUNT_ID, query());
 
         verify(this.cumulativeInterestForfeitureService).forcedPostingDate(account, WITHDRAWAL_DATE, false);
-        verify(account).postInterest(any(), eq(BUSINESS_DATE), anyBoolean(), anyBoolean(), any(), eq(WITHDRAWAL_DATE), anyBoolean(),
-                anyBoolean());
+        verify(this.savingsAccountPostInterestService).postInterest(eq(account), any(), eq(BUSINESS_DATE), anyBoolean(), anyBoolean(),
+                any(), eq(WITHDRAWAL_DATE), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -236,8 +240,8 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
         verify(this.cumulativeInterestForfeitureService).forcedPostingDate(account, closureDate, true);
         // accrual stops at the closure date, not today's business date
-        verify(account).postInterest(any(), eq(closureDate), anyBoolean(), anyBoolean(), any(), eq(closureDate), anyBoolean(),
-                anyBoolean());
+        verify(this.savingsAccountPostInterestService).postInterest(eq(account), any(), eq(closureDate), anyBoolean(), anyBoolean(), any(),
+                eq(closureDate), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -249,7 +253,8 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
 
         this.service.calculate(ACCOUNT_ID, query());
 
-        verify(account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.savingsAccountPostInterestService, never()).postInterest(eq(account), any(), any(), anyBoolean(), anyBoolean(), any(),
+                any(), anyBoolean(), anyBoolean());
     }
 
     @Test
@@ -298,8 +303,8 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID,
                 query("\"forClosure\": true", "\"selectedFromDate\": \"2026-09-01\"", "\"selectedToDate\": \"2026-09-15\""));
 
-        verify(account).postInterest(any(), eq(WITHDRAWAL_DATE), anyBoolean(), anyBoolean(), any(), eq(WITHDRAWAL_DATE), anyBoolean(),
-                anyBoolean());
+        verify(this.savingsAccountPostInterestService).postInterest(eq(account), any(), eq(WITHDRAWAL_DATE), anyBoolean(), anyBoolean(),
+                any(), eq(WITHDRAWAL_DATE), anyBoolean(), anyBoolean());
         assertThat(result.accountBalanceAfterPosting()).isEqualByComparingTo("1000");
     }
 
@@ -310,7 +315,8 @@ class EarlyWithdrawalChargeReadPlatformServiceImplTest {
         final EarlyWithdrawalChargeData result = this.service.calculate(ACCOUNT_ID,
                 query("\"selectedFromDate\": \"2026-09-01\"", "\"selectedToDate\": \"2026-09-15\""));
 
-        verify(account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
+        verify(this.savingsAccountPostInterestService, never()).postInterest(eq(account), any(), any(), anyBoolean(), anyBoolean(), any(),
+                any(), anyBoolean(), anyBoolean());
         assertThat(result.accountBalanceAfterPosting()).isNull();
     }
 

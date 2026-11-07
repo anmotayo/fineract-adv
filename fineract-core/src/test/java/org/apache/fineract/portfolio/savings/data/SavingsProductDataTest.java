@@ -18,35 +18,49 @@
  */
 package org.apache.fineract.portfolio.savings.data;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.apache.fineract.accounting.common.AccountingRuleType;
+import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 class SavingsProductDataTest {
 
     @Test
-    void lookupProductHasNoAccountingEnabled() {
-        final SavingsProductData product = SavingsProductData.lookup(1L, "Savings");
+    void lookupInstanceWithoutAccountingRuleReportsNoAccounting() {
+        SavingsProductData product = SavingsProductData.lookup(1L, "Savings product");
 
-        assertThat(product.hasAccountingEnabled()).isFalse();
-        assertThat(product.accountingRuleTypeId()).isEqualTo(AccountingRuleType.NONE.getValue());
-        assertThat(product.isCashBasedAccountingEnabled()).isFalse();
-        assertThat(product.isAccrualBasedAccountingEnabled()).isFalse();
-        assertThat(product.isUpfrontAccrualAccounting()).isFalse();
-        assertThat(product.isPeriodicAccrualAccounting()).isFalse();
+        assertFalse(product.hasAccountingEnabled());
+        assertEquals(AccountingRuleType.NONE.getValue().intValue(), product.accountingRuleTypeId());
+        assertFalse(product.isCashBasedAccountingEnabled());
+        assertFalse(product.isAccrualBasedAccountingEnabled());
+        assertFalse(product.isUpfrontAccrualAccounting());
+        assertFalse(product.isPeriodicAccrualAccounting());
     }
 
     @Test
-    void accountingTypeChecksUseAccountingRuleId() {
-        final SavingsProductData product = SavingsProductData.createForInterestPosting(1L,
-                AccountingRuleType.ACCRUAL_PERIODIC.toEnumOptionData());
+    void lookupInstanceWithoutAccountingRuleCanBeSerialized() {
+        SavingsProductData product = SavingsProductData.lookup(1L, "Savings product");
 
-        assertThat(product.hasAccountingEnabled()).isTrue();
-        assertThat(product.accountingRuleTypeId()).isEqualTo(AccountingRuleType.ACCRUAL_PERIODIC.getValue());
-        assertThat(product.isCashBasedAccountingEnabled()).isFalse();
-        assertThat(product.isAccrualBasedAccountingEnabled()).isTrue();
-        assertThat(product.isUpfrontAccrualAccounting()).isFalse();
-        assertThat(product.isPeriodicAccrualAccounting()).isTrue();
+        String json = assertDoesNotThrow(() -> JsonMapper.builder().build().writeValueAsString(product));
+
+        assertTrue(json.contains("\"cashBasedAccountingEnabled\":false"), json);
+    }
+
+    @Test
+    void accountingRuleIsStillEvaluatedWhenPresent() {
+        AccountingRuleType cashBased = AccountingRuleType.CASH_BASED;
+        EnumOptionData accountingRule = new EnumOptionData(cashBased.getValue().longValue(), cashBased.getCode(),
+                cashBased.getValue().toString());
+        SavingsProductData product = SavingsProductData.createForInterestPosting(1L, accountingRule);
+
+        assertTrue(product.hasAccountingEnabled());
+        assertEquals(AccountingRuleType.CASH_BASED.getValue().intValue(), product.accountingRuleTypeId());
+        assertTrue(product.isCashBasedAccountingEnabled());
+        assertFalse(product.isAccrualBasedAccountingEnabled());
     }
 }

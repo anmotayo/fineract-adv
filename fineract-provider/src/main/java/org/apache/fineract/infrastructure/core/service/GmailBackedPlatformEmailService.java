@@ -18,6 +18,8 @@
  */
 package org.apache.fineract.infrastructure.core.service;
 
+import jakarta.mail.internet.MimeMessage;
+import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import org.apache.fineract.infrastructure.configuration.data.SMTPCredentialsData;
 import org.apache.fineract.infrastructure.configuration.service.ExternalServicesPropertiesReadPlatformService;
@@ -25,6 +27,7 @@ import org.apache.fineract.infrastructure.core.domain.EmailDetail;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -73,24 +76,41 @@ public class GmailBackedPlatformEmailService implements PlatformEmailService {
         props.put("mail.smtp.auth", "true");
         props.put("mail.debug", "true");
 
-        // these are the added lines
         props.put("mail.smtp.starttls.enable", "true");
-        // props.put("mail.smtp.ssl.enable", "true");
-
-        props.put("mail.smtp.socketFactory.port", Integer.parseInt(smtpCredentialsData.getPort()));
-        props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");// NOSONAR
-        props.put("mail.smtp.socketFactory.fallback", "true");
 
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(smtpCredentialsData.getFromEmail()); // same email address used for the authentication
-            message.setTo(emailDetails.getAddress());
-            message.setSubject(emailDetails.getSubject());
-            message.setText(emailDetails.getBody());
-            mailSender.send(message);
-
+            if (emailDetails.isHtml()) {
+                MimeMessage mimeMessage = mailSender.createMimeMessage();
+                MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, StandardCharsets.UTF_8.name());
+                helper.setFrom(smtpCredentialsData.getFromEmail());
+                helper.setTo(emailDetails.getAddress());
+                helper.setSubject(emailDetails.getSubject());
+                helper.setText(emailDetails.getBody(), true);
+                mailSender.send(mimeMessage);
+            } else {
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setFrom(smtpCredentialsData.getFromEmail()); // same email address used for the authentication
+                message.setTo(emailDetails.getAddress());
+                message.setSubject(emailDetails.getSubject());
+                message.setText(emailDetails.getBody());
+                mailSender.send(message);
+            }
         } catch (Exception e) {
             throw new PlatformEmailSendException(e);
         }
+    }
+
+    @Override
+    public void sendForgotPasswordEmail(String organisationName, String contactName, String address, String username,
+            String temporaryPassword) {
+        final String subject = "Password Reset Request - " + organisationName;
+        final String body = "Dear " + contactName + ",\n\n" + "You have requested to reset your password for your account on "
+                + organisationName + ".\n\n" + "Your temporary password is: " + temporaryPassword + "\n\n"
+                + "This temporary password will expire in 1 hour.\n\n" + "Please login with your username: " + username
+                + " and this temporary password.\n" + "You will be required to change your password immediately after logging in.\n\n"
+                + "If you did not request this password reset, please contact your system administrator.\n\n" + "Thank you.";
+
+        final EmailDetail emailDetail = new EmailDetail(subject, body, address, contactName);
+        sendDefinedEmail(emailDetail);
     }
 }

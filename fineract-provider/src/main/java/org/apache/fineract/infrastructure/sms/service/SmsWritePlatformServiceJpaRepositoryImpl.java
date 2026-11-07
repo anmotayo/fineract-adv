@@ -119,7 +119,9 @@ public class SmsWritePlatformServiceJpaRepositoryImpl implements SmsWritePlatfor
             handleDataIntegrityIssues(null, throwable, dve);
             return CommandProcessingResult.empty();
         }
-        return new CommandProcessingResultBuilder().withEntityId(resourceId).build();
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(resourceId) //
+                .build();
     }
 
     /*
@@ -132,7 +134,7 @@ public class SmsWritePlatformServiceJpaRepositoryImpl implements SmsWritePlatfor
                     "The group, client or staff provided has no mobile no.", "id");
         }
 
-        LOG.error("Error occured.", dve);
+        LOG.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.sms.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }

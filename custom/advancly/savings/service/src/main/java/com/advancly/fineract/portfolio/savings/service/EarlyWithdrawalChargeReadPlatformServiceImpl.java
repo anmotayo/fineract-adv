@@ -46,6 +46,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountPostInterestService;
 import org.springframework.stereotype.Service;
 
 /**
@@ -64,6 +65,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private final AdvanclyInterestChargeApplicationService advanclyInterestChargeApplicationService;
     private final DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
+    private final SavingsAccountPostInterestService savingsAccountPostInterestService;
 
     @Override
     public EarlyWithdrawalChargeData calculate(final Long savingsAccountId, final JsonQuery query) {
@@ -204,8 +206,9 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
         final boolean isInterestTransfer = false;
         final boolean backdatedTxnsAllowedTill = false;
         final boolean postReversals = false;
-        account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill, postReversals);
+        this.savingsAccountPostInterestService.postInterest(account, mc, interestPostingUpToDate, isInterestTransfer,
+                isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill,
+                postReversals);
     }
 
     private static BigDecimal zeroIfNull(final BigDecimal value) {

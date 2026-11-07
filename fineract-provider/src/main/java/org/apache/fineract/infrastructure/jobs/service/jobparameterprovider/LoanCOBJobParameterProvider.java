@@ -21,6 +21,7 @@ package org.apache.fineract.infrastructure.jobs.service.jobparameterprovider;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -32,7 +33,7 @@ import org.apache.fineract.infrastructure.jobs.data.JobParameterDTO;
 import org.apache.fineract.infrastructure.jobs.domain.CustomJobParameterRepository;
 import org.apache.fineract.infrastructure.jobs.service.JobName;
 import org.apache.fineract.infrastructure.springbatch.SpringBatchJobConstants;
-import org.springframework.batch.core.JobParameter;
+import org.springframework.batch.core.job.parameters.JobParameter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,13 +48,14 @@ public class LoanCOBJobParameterProvider extends AbstractJobParameterProvider<Lo
     public Map<String, JobParameter<Long>> provide(Set<JobParameterDTO> jobParameterDTOSet) {
         Map<String, JobParameter<Long>> jobParameterMap = new HashMap<>();
         Long customJobParameterId = customJobParameterRepository.save(getJobParameterDTOListWithCorrectBusinessDate(jobParameterDTOSet));
-        jobParameterMap.put(SpringBatchJobConstants.CUSTOM_JOB_PARAMETER_ID_KEY, new JobParameter<>(customJobParameterId, Long.class));
+        jobParameterMap.put(SpringBatchJobConstants.CUSTOM_JOB_PARAMETER_ID_KEY,
+                new JobParameter<>(SpringBatchJobConstants.CUSTOM_JOB_PARAMETER_ID_KEY, customJobParameterId, Long.class));
         return jobParameterMap;
     }
 
     @Override
-    public String getJobName() {
-        return JobName.LOAN_COB.name();
+    protected List<String> getJobNames() {
+        return List.of(JobName.LOAN_COB.name(), JobName.WORKING_CAPITAL_LOAN_COB_JOB.name());
     }
 
     private Set<JobParameterDTO> getJobParameterDTOListWithCorrectBusinessDate(Set<JobParameterDTO> jobParameterDTOset) {

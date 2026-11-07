@@ -18,9 +18,6 @@
  */
 package org.apache.fineract.portfolio.delinquency.service;
 
-import static org.apache.fineract.portfolio.loanaccount.domain.Loan.EARLIEST_UNPAID_DATE;
-import static org.apache.fineract.portfolio.loanaccount.domain.Loan.NEXT_UNPAID_DUE_DATE;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
@@ -29,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
+import org.apache.fineract.infrastructure.configuration.domain.NextPaymentDueDateConfig;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
@@ -39,6 +37,8 @@ import org.apache.fineract.portfolio.delinquency.data.LoanDelinquencyTagHistoryD
 import org.apache.fineract.portfolio.delinquency.data.LoanInstallmentDelinquencyTagData;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucket;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucketRepository;
+import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucketType;
+import org.apache.fineract.portfolio.delinquency.domain.DelinquencyMinimumPaymentPeriodAndRuleRepository;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyRange;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyRangeRepository;
 import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyAction;
@@ -46,6 +46,7 @@ import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyActionRep
 import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyTagHistory;
 import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyTagHistoryRepository;
 import org.apache.fineract.portfolio.delinquency.domain.LoanInstallmentDelinquencyTagRepository;
+import org.apache.fineract.portfolio.delinquency.exception.DelinquencyBucketNotFoundException;
 import org.apache.fineract.portfolio.delinquency.helper.DelinquencyEffectivePauseHelper;
 import org.apache.fineract.portfolio.delinquency.helper.InstallmentDelinquencyAggregator;
 import org.apache.fineract.portfolio.delinquency.mapper.DelinquencyBucketMapper;
@@ -64,7 +65,7 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
 import org.apache.fineract.portfolio.loanproduct.exception.LoanProductGeneralRuleException;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
@@ -73,6 +74,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
 
     private final DelinquencyRangeRepository repositoryRange;
     private final DelinquencyBucketRepository repositoryBucket;
+    private final DelinquencyMinimumPaymentPeriodAndRuleRepository minimumPaymentPeriodAndRuleRepository;
     private final LoanDelinquencyTagHistoryRepository repositoryLoanDelinquencyTagHistory;
     private final DelinquencyRangeMapper mapperRange;
     private final DelinquencyBucketMapper mapperBucket;
@@ -100,27 +102,46 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
 
     @Override
     public List<DelinquencyBucketData> retrieveAllDelinquencyBuckets() {
-        final List<DelinquencyBucket> delinquencyRangeList = repositoryBucket.findAll();
-        return mapperBucket.map(delinquencyRangeList);
+        return mapAndEnrich(repositoryBucket.findAllBuckets());
+    }
+
+    @Override
+    public List<DelinquencyBucketData> retrieveDelinquencyBucketsByType(final DelinquencyBucketType bucketType) {
+        return mapAndEnrich(repositoryBucket.findByBucketType(bucketType));
+    }
+
+    private List<DelinquencyBucketData> mapAndEnrich(final List<DelinquencyBucket> delinquencyBuckets) {
+        final List<DelinquencyBucketData> result = mapperBucket.map(delinquencyBuckets);
+        result.forEach(this::enrichWorkingCapitalConfiguration);
+        return result;
     }
 
     @Override
     public DelinquencyBucketData retrieveDelinquencyBucket(Long delinquencyBucketId) {
+        if (!repositoryBucket.existsById(delinquencyBucketId)) {
+            throw DelinquencyBucketNotFoundException.notFound(delinquencyBucketId);
+        }
         final DelinquencyBucket delinquencyBucket = repositoryBucket.getReferenceById(delinquencyBucketId);
         final DelinquencyBucketData delinquencyBucketData = mapperBucket.map(delinquencyBucket);
         delinquencyBucketData.setRanges(mapperRange.map(delinquencyBucket.getRanges()));
+        enrichWorkingCapitalConfiguration(delinquencyBucketData);
         return delinquencyBucketData;
+    }
+
+    private void enrichWorkingCapitalConfiguration(DelinquencyBucketData bucketData) {
+        if (bucketData != null && DelinquencyBucketType.WORKING_CAPITAL.equals(bucketData.getBucketType()) && bucketData.getId() != null) {
+            minimumPaymentPeriodAndRuleRepository.findByBucketId(bucketData.getId())
+                    .ifPresent(rule -> bucketData.setMinimumPaymentPeriodAndRule(mapperBucket.map(rule)));
+        }
     }
 
     @Override
     public DelinquencyRangeData retrieveCurrentDelinquencyTag(Long loanId) {
         final Loan loan = this.loanRepository.getReferenceById(loanId);
-        Optional<LoanDelinquencyTagHistory> optLoanDelinquencyTag = this.repositoryLoanDelinquencyTagHistory.findByLoanAndLiftedOnDate(loan,
-                null);
-        if (optLoanDelinquencyTag.isPresent()) {
-            return mapperRange.map(optLoanDelinquencyTag.get().getDelinquencyRange());
-        }
-        return null;
+        Optional<LoanDelinquencyTagHistory> optLoanDelinquencyTag = this.repositoryLoanDelinquencyTagHistory
+                .findByLoanAndLiftedOnDateIsNull(loan);
+        return optLoanDelinquencyTag.map(loanDelinquencyTagHistory -> mapperRange.map(loanDelinquencyTagHistory.getDelinquencyRange()))
+                .orElse(null);
     }
 
     @Override
@@ -141,19 +162,17 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
 
             // If the Loan is not Active yet or is cancelled (rejected or withdrawn), return template data
             if (loan.isSubmittedAndPendingApproval() || loan.isApproved() || loan.isCancelled()) {
-                if (loan.getLoanProduct() != null && !loan.getLoanProduct().isAllowApprovedDisbursedAmountsOverApplied()) {
-                    return collectionData;
-                } else {
+                if (loan.getLoanProduct() != null && loan.getLoanProduct().isAllowApprovedDisbursedAmountsOverApplied()) {
                     collectionData.setAvailableDisbursementAmountWithOverApplied(calculateAvailableDisbursementAmountWithOverApplied(loan));
-                    return collectionData;
                 }
+                return collectionData;
             }
 
             final List<LoanDelinquencyAction> savedDelinquencyList = retrieveLoanDelinquencyActions(loanId);
             List<LoanDelinquencyActionData> effectiveDelinquencyList = delinquencyEffectivePauseHelper
                     .calculateEffectiveDelinquencyList(savedDelinquencyList);
 
-            final String nextPaymentDueDateConfig = configurationDomainService.getNextPaymentDateConfigForLoan();
+            final NextPaymentDueDateConfig nextPaymentDueDateConfig = configurationDomainService.getNextPaymentDateConfigForLoan();
 
             // Below method calculates delinquency for active loans only and returns template data for Closed or
             // Overpaid
@@ -199,7 +218,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
         BigDecimal approvedWithOverApplied = loan.getApprovedPrincipal();
 
         // If over applied amount is enabled, calculate the maximum allowed amount
-        if (loanProduct.isAllowApprovedDisbursedAmountsOverApplied()) {
+        if (loanProduct != null && loanProduct.isAllowApprovedDisbursedAmountsOverApplied()) {
             if (loanProduct.getOverAppliedCalculationType() != null) {
                 if ("percentage".equalsIgnoreCase(loanProduct.getOverAppliedCalculationType())) {
                     final BigDecimal overAppliedNumber = BigDecimal.valueOf(loanProduct.getOverAppliedNumber());
@@ -218,7 +237,7 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
         // Calculate available amount: (approved + over applied) - expected tranches - disbursed - capitalized income
         if (loan.isMultiDisburmentLoan() && loan.getDisbursementDetails() != null) {
             final BigDecimal expectedDisbursementAmount = loan.getDisbursementDetails().stream()
-                    .filter(detail -> detail.actualDisbursementDate() == null).map(LoanDisbursementDetails::principal)
+                    .filter(detail -> detail.actualDisbursementDate() == null).map(LoanDisbursementDetails::getPrincipal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             approvedWithOverApplied = approvedWithOverApplied.subtract(expectedDisbursementAmount);
         }
@@ -293,14 +312,10 @@ public class DelinquencyReadPlatformServiceImpl implements DelinquencyReadPlatfo
         return List.of();
     }
 
-    private LocalDate possibleNextRepaymentDate(final String nextPaymentDueDateConfig, final Loan loan) {
-        if (nextPaymentDueDateConfig == null) {
-            return null;
-        }
-        return switch (nextPaymentDueDateConfig.toLowerCase()) {
+    private LocalDate possibleNextRepaymentDate(final NextPaymentDueDateConfig nextPaymentDueDateConfig, final Loan loan) {
+        return switch (nextPaymentDueDateConfig) {
             case EARLIEST_UNPAID_DATE -> getEarliestUnpaidInstallmentDate(loan);
             case NEXT_UNPAID_DUE_DATE -> getNextUnpaidInstallmentDueDate(loan);
-            default -> null;
         };
     }
 

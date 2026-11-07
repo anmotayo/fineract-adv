@@ -22,9 +22,10 @@ import static org.apache.fineract.test.data.TransactionProcessingStrategyCode.AD
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.client.models.AllowAttributeOverrides;
 import org.apache.fineract.client.models.GetLoanPaymentChannelToFundSourceMappings;
@@ -54,6 +55,7 @@ import org.apache.fineract.test.data.accounttype.AccountTypeResolver;
 import org.apache.fineract.test.data.accounttype.DefaultAccountType;
 import org.apache.fineract.test.data.codevalue.CodeValueResolver;
 import org.apache.fineract.test.data.codevalue.DefaultCodeValue;
+import org.apache.fineract.test.data.delinquency.DelinquencyBucketResolver;
 import org.apache.fineract.test.data.paymenttype.DefaultPaymentType;
 import org.apache.fineract.test.data.paymenttype.PaymentTypeResolver;
 import org.apache.fineract.test.helper.CodeHelper;
@@ -68,8 +70,9 @@ public class LoanProductsRequestFactory {
     private final PaymentTypeResolver paymentTypeResolver;
     private final AccountTypeResolver accountTypeResolver;
     private final CodeValueResolver codeValueResolver;
+    private final DelinquencyBucketResolver delinquencyBucketResolver;
 
-    private final Set<String> productShortNameMap = new HashSet<>();
+    private final Set<String> productShortNameMap = ConcurrentHashMap.newKeySet();
 
     @Autowired
     private CodeHelper codeHelper;
@@ -94,6 +97,7 @@ public class LoanProductsRequestFactory {
     public static final String DESCRIPTION_INTEREST_DECLINING_BALANCE_DAILY_RECALCULATION_COMPOUNDING_NONE = "LP1 with 12% DECLINING BALANCE interest, interest period: Daily, Interest recalculation-Daily, Compounding:none";
     public static final Long FUND_ID = FundId.LENDER_A.value;
     public static final String CURRENCY_CODE = "EUR";
+    public static final String CURRENCY_CODE_USD = "USD";
     public static final Integer INTEREST_RATE_FREQUENCY_TYPE_MONTH = InterestRateFrequencyType.MONTH.value;
     public static final Integer INTEREST_RATE_FREQUENCY_TYPE_YEAR = InterestRateFrequencyType.YEAR.value;
     public static final Integer INTEREST_RATE_FREQUENCY_TYPE_WHOLE_TERM = InterestRateFrequencyType.WHOLE_TERM.value;
@@ -115,7 +119,6 @@ public class LoanProductsRequestFactory {
     public static final Integer CASH_ACCOUNTING_RULE = AccountingRule.CASH_BASED.value;
     public static final String OVER_APPLIED_CALCULATION_TYPE = OverAppliedCalculationType.PERCENTAGE.value;
     public static final Integer OVER_APPLIED_NUMBER = 50;
-    public static final Integer DELINQUENCY_BUCKET_ID = DelinquencyBucket.BASIC_DELINQUENCY_BUCKET.value;
     public static final Integer PRE_CLOSURE_INTEREST_CALCULATION_RULE_TILL_PRE_CLOSE_DATE = PreClosureInterestCalculationRule.TILL_PRE_CLOSE_DATE.value;
     public static final Integer ADVANCE_PAYMENT_ADJUSTMENT_TYPE_REDUCE_EMI_AMOUNT = AdvancePaymentsAdjustmentType.REDUCE_EMI_AMOUNT.value;
     public static final Integer INTEREST_RECALCULATION_COMPOUND_METHOD_INTEREST = InterestRecalculationCompoundingMethod.INTEREST.value;
@@ -127,7 +130,7 @@ public class LoanProductsRequestFactory {
     public static final String CHARGE_OFF_REASONS = "ChargeOffReasons";
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP1() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -198,7 +201,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -221,7 +224,7 @@ public class LoanProductsRequestFactory {
                 .allowApprovedDisbursedAmountsOverApplied(true)//
                 .overAppliedCalculationType(OVER_APPLIED_CALCULATION_TYPE)//
                 .overAppliedNumber(OVER_APPLIED_NUMBER)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -237,7 +240,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP1InterestFlat() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_FLAT, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_FLAT, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -308,7 +311,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -329,7 +332,7 @@ public class LoanProductsRequestFactory {
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
                 .allowApprovedDisbursedAmountsOverApplied(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -345,7 +348,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP1InterestDeclining() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_DECLINING, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_DECLINING, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -416,7 +419,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -437,7 +440,7 @@ public class LoanProductsRequestFactory {
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
                 .allowApprovedDisbursedAmountsOverApplied(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -453,7 +456,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP11MonthInterestDecliningBalanceDailyRecalculationCompoundingMonthly() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_DECLINING_RECALCULATION, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_DECLINING_RECALCULATION, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -541,7 +544,7 @@ public class LoanProductsRequestFactory {
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
                 .allowApprovedDisbursedAmountsOverApplied(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -566,7 +569,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP1InterestDecliningBalanceDailyRecalculationCompoundingNone() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_DECLINING_RECALCULATION, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_DECLINING_RECALCULATION, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -654,7 +657,7 @@ public class LoanProductsRequestFactory {
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
                 .allowApprovedDisbursedAmountsOverApplied(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -676,7 +679,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2InterestDailyRecalculation() {
-        final String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_RECALCULATION, 10);
+        final String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_RECALCULATION, 10);
         final String shortName = generateShortNameSafely();
 
         List<LoanProductChargeToGLAccountMapper> penaltyToIncomeAccountMappings = new ArrayList<>();
@@ -704,7 +707,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(false)//
+                .allowPartialPeriodInterestCalculation(false)//
                 .allowVariableInstallments(false)//
                 .amortizationType(AMORTIZATION_TYPE)//
                 .canDefineInstallmentAmount(true)//
@@ -714,7 +717,7 @@ public class LoanProductsRequestFactory {
                 .dateFormat(DATE_FORMAT)//
                 .daysInMonthType(DAYS_IN_MONTH_TYPE_30)//
                 .daysInYearType(DAYS_IN_YEAR_TYPE_360)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .digitsAfterDecimal(2)//
                 .disallowExpectedDisbursements(true)//
                 .dueDaysForRepaymentEvent(1)//
@@ -791,7 +794,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_LP2, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_LP2, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -865,7 +868,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -888,7 +891,7 @@ public class LoanProductsRequestFactory {
                 .allowApprovedDisbursedAmountsOverApplied(true)//
                 .overAppliedCalculationType(OVER_APPLIED_CALCULATION_TYPE)//
                 .overAppliedNumber(OVER_APPLIED_NUMBER)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -904,7 +907,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2InterestFlat() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_INTEREST_FLAT_LP2, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_INTEREST_FLAT_LP2, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -978,7 +981,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -999,7 +1002,7 @@ public class LoanProductsRequestFactory {
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
                 .allowApprovedDisbursedAmountsOverApplied(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1015,7 +1018,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2Emi() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_LP2_EMI, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_LP2_EMI, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -1051,7 +1054,7 @@ public class LoanProductsRequestFactory {
                 .maxPrincipal(10000.0)//
                 .minNumberOfRepayments(1)//
                 .numberOfRepayments(4)//
-                .maxNumberOfRepayments(30)//
+                .maxNumberOfRepayments(100)//
                 .isLinkedToFloatingInterestRates(false)//
                 .minInterestRatePerPeriod((double) 0)//
                 .interestRatePerPeriod((double) 12)//
@@ -1089,7 +1092,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(false)//
+                .allowPartialPeriodInterestCalculation(false)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1109,7 +1112,7 @@ public class LoanProductsRequestFactory {
                 .dateFormat(DATE_FORMAT)//
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1125,7 +1128,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2EmiWithChargeOff() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_LP2_EMI, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_LP2_EMI, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -1219,7 +1222,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(false)//
+                .allowPartialPeriodInterestCalculation(false)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1239,7 +1242,7 @@ public class LoanProductsRequestFactory {
                 .dateFormat(DATE_FORMAT)//
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1255,7 +1258,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2ChargeOffReasonToExpenseAccountMappings() {
-        final String name = Utils.randomNameGenerator(NAME_PREFIX_LP2, 10);
+        final String name = Utils.randomStringGenerator(NAME_PREFIX_LP2, 10);
         final String shortName = generateShortNameSafely();
 
         final List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -1337,7 +1340,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1360,7 +1363,7 @@ public class LoanProductsRequestFactory {
                 .allowApprovedDisbursedAmountsOverApplied(true)//
                 .overAppliedCalculationType(OVER_APPLIED_CALCULATION_TYPE)//
                 .overAppliedNumber(OVER_APPLIED_NUMBER)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1377,7 +1380,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2EmiCashAccounting() {
-        String name = Utils.randomNameGenerator(NAME_PREFIX_LP2_EMI, 10);
+        String name = Utils.randomStringGenerator(NAME_PREFIX_LP2_EMI, 10);
         String shortName = generateShortNameSafely();
 
         List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
@@ -1471,7 +1474,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(false)//
+                .allowPartialPeriodInterestCalculation(false)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1488,7 +1491,7 @@ public class LoanProductsRequestFactory {
                 .dateFormat(DATE_FORMAT)//
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1504,7 +1507,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2CapitalizedIncome() {
-        final String name = Utils.randomNameGenerator(NAME_PREFIX_LP2, 10);
+        final String name = Utils.randomStringGenerator(NAME_PREFIX_LP2, 10);
         final String shortName = generateShortNameSafely();
         final List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
         final List<Integer> numberOfRepaymentVariationsForBorrowerCycle = new ArrayList<>();
@@ -1576,7 +1579,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(true)//
+                .allowPartialPeriodInterestCalculation(true)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1599,7 +1602,7 @@ public class LoanProductsRequestFactory {
                 .allowApprovedDisbursedAmountsOverApplied(true)//
                 .overAppliedCalculationType(OVER_APPLIED_CALCULATION_TYPE)//
                 .overAppliedNumber(OVER_APPLIED_NUMBER)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1630,6 +1633,17 @@ public class LoanProductsRequestFactory {
                 .incomeFromCapitalizationAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME));//
     }
 
+    public PostLoanProductsRequest defaultLoanProductsRequestLP2EmiDeferredIncome() {
+        return defaultLoanProductsRequestLP2EmiCapitalizedIncome()//
+                .enableBuyDownFee(true)//
+                .merchantBuyDownFee(true)//
+                .buyDownFeeStrategy(PostLoanProductsRequest.BuyDownFeeStrategyEnum.EQUAL_AMORTIZATION)//
+                .buyDownFeeCalculationType(PostLoanProductsRequest.BuyDownFeeCalculationTypeEnum.FLAT)//
+                .buyDownFeeIncomeType(PostLoanProductsRequest.BuyDownFeeIncomeTypeEnum.INTEREST)//
+                .buyDownExpenseAccountId(accountTypeResolver.resolve(DefaultAccountType.BUY_DOWN_EXPENSE))//
+                .incomeFromBuyDownAccountId(accountTypeResolver.resolve(DefaultAccountType.INCOME_FROM_BUY_DOWN));//
+    }
+
     public PostLoanProductsRequest defaultLoanProductsRequestLP2ChargeOffReasonToExpenseAccountMappingsWithCapitalizedIncome() {
         return defaultLoanProductsRequestLP2ChargeOffReasonToExpenseAccountMappings()//
                 .enableIncomeCapitalization(true)//
@@ -1642,7 +1656,7 @@ public class LoanProductsRequestFactory {
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2BuyDownFees() {
-        final String name = Utils.randomNameGenerator(NAME_PREFIX_LP2, 10);
+        final String name = Utils.randomStringGenerator(NAME_PREFIX_LP2, 10);
         final String shortName = generateShortNameSafely();
         final List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
         final List<Integer> numberOfRepaymentVariationsForBorrowerCycle = new ArrayList<>();
@@ -1714,7 +1728,7 @@ public class LoanProductsRequestFactory {
                         .repaymentEvery(true)//
                         .graceOnPrincipalAndInterestPayment(true)//
                         .graceOnArrearsAgeing(true))//
-                .allowPartialPeriodInterestCalcualtion(false)//
+                .allowPartialPeriodInterestCalculation(false)//
                 .maxTrancheCount(10)//
                 .outstandingLoanBalance(10000.0)//
                 .charges(charges)//
@@ -1734,7 +1748,7 @@ public class LoanProductsRequestFactory {
                 .dateFormat(DATE_FORMAT)//
                 .locale(LOCALE_EN)//
                 .disallowExpectedDisbursements(false)//
-                .delinquencyBucketId(DELINQUENCY_BUCKET_ID.longValue())//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
                 .goodwillCreditAccountId(accountTypeResolver.resolve(DefaultAccountType.GOODWILL_EXPENSE_ACCOUNT))//
                 .incomeFromGoodwillCreditInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME_CHARGE_OFF))//
                 .incomeFromGoodwillCreditFeesAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_CHARGE_OFF))//
@@ -1755,6 +1769,11 @@ public class LoanProductsRequestFactory {
                 .merchantBuyDownFee(true)//
                 .buyDownExpenseAccountId(accountTypeResolver.resolve(DefaultAccountType.BUY_DOWN_EXPENSE))//
                 .incomeFromBuyDownAccountId(accountTypeResolver.resolve(DefaultAccountType.INCOME_FROM_BUY_DOWN));//
+    }
+
+    public PostLoanProductsRequest defaultLoanProductsRequestLP2BuyDownFeesFeeIncome() {
+        return defaultLoanProductsRequestLP2BuyDownFees()//
+                .buyDownFeeIncomeType(PostLoanProductsRequest.BuyDownFeeIncomeTypeEnum.FEE);//
     }
 
     public PostLoanProductsRequest defaultLoanProductsRequestLP2ChargeOffReasonToExpenseAccountMappingsWithBuyDownFee() {
@@ -1779,17 +1798,117 @@ public class LoanProductsRequestFactory {
                 .chargeOffReasonToExpenseAccountMappings(chargeOffReasonToExpenseAccountMappings);//
     }
 
+    public PostLoanProductsRequest defaultLoanProductsRequestLP2EmiUSD() {
+        String name = Utils.randomStringGenerator(NAME_PREFIX_LP2_EMI, 10);
+        String shortName = generateShortNameSafely();
+
+        List<Integer> principalVariationsForBorrowerCycle = new ArrayList<>();
+        List<Integer> numberOfRepaymentVariationsForBorrowerCycle = new ArrayList<>();
+        List<Integer> interestRateVariationsForBorrowerCycle = new ArrayList<>();
+        return new PostLoanProductsRequest()//
+                .name(name)//
+                .shortName(shortName)//
+                .description(DESCRIPTION_LP2_EMI)//
+                .includeInBorrowerCycle(false)//
+                .useBorrowerCycle(false)//
+                .currencyCode(CURRENCY_CODE_USD)//
+                .digitsAfterDecimal(2)//
+                .inMultiplesOf(0)//
+                .principal(1500.0)//
+                .minPrincipal(1.0)//
+                .maxPrincipal(10000.0)//
+                .numberOfRepayments(3)//
+                .minNumberOfRepayments(3)//
+                .maxNumberOfRepayments(48)//
+                .repaymentEvery(1)//
+                .repaymentFrequencyType(REPAYMENT_FREQUENCY_TYPE_MONTHS)//
+                .interestRatePerPeriod(9.99)//
+                .minInterestRatePerPeriod((double) 0)//
+                .maxInterestRatePerPeriod((double) 50)//
+                .interestRateFrequencyType(INTEREST_RATE_FREQUENCY_TYPE_YEAR)//
+                .isLinkedToFloatingInterestRates(false)//
+                .allowVariableInstallments(false)//
+                .amortizationType(AmortizationType.EQUAL_INSTALLMENTS.value)//
+                .interestType(INTEREST_TYPE_DECLINING_BALANCE)//
+                .interestCalculationPeriodType(INTEREST_CALCULATION_PERIOD_TYPE_DAILY)//
+                .allowPartialPeriodInterestCalculation(false)//
+                .transactionProcessingStrategyCode(ADVANCED_PAYMENT_ALLOCATION.getValue())//
+                .daysInMonthType(DAYS_IN_MONTH_TYPE_30)//
+                .daysInYearType(DAYS_IN_YEAR_TYPE_360)//
+                .isInterestRecalculationEnabled(true)//
+                .interestRecalculationCompoundingMethod(INTEREST_RECALCULATION_COMPOUND_METHOD_NONE)//
+                .rescheduleStrategyMethod(AdvancePaymentsAdjustmentType.ADJUST_LAST_UNPAID_PERIOD.value)//
+                .recalculationRestFrequencyType(FREQUENCY_FOR_RECALCULATE_OUTSTANDING_DAILY)//
+                .recalculationRestFrequencyInterval(1)//
+                .isArrearsBasedOnOriginalSchedule(false)//
+                .preClosureInterestCalculationStrategy(PRE_CLOSURE_INTEREST_CALCULATION_RULE_TILL_PRE_CLOSE_DATE)//
+                .canDefineInstallmentAmount(true)//
+                .repaymentStartDateType(1)//
+                .supportedInterestRefundTypes(Arrays.asList("MERCHANT_ISSUED_REFUND", "PAYOUT_REFUND"))//
+                .chargeOffBehaviour(ChargeOffBehaviour.ZERO_INTEREST.value)
+                .principalVariationsForBorrowerCycle(principalVariationsForBorrowerCycle)//
+                .interestRateVariationsForBorrowerCycle(interestRateVariationsForBorrowerCycle)//
+                .numberOfRepaymentVariationsForBorrowerCycle(numberOfRepaymentVariationsForBorrowerCycle)//
+                .accountingRule(AccountingRule.ACCRUAL_PERIODIC.value)//
+                .canUseForTopup(false)//
+                .enableAccrualActivityPosting(true)//
+                .multiDisburseLoan(true)//
+                .maxTrancheCount(500)//
+                .outstandingLoanBalance(10000.0)//
+                .disallowExpectedDisbursements(true)//
+                .allowApprovedDisbursedAmountsOverApplied(true)//
+                .overAppliedCalculationType(OverAppliedCalculationType.FIXED_SIZE.value)//
+                .overAppliedNumber(10000)//
+                .principalThresholdForLastInstallment(50)//
+                .holdGuaranteeFunds(false)//
+                .accountMovesOutOfNPAOnlyOnArrearsCompletion(false)//
+                .allowAttributeOverrides(new AllowAttributeOverrides()//
+                        .amortizationType(true)//
+                        .interestType(true)//
+                        .transactionProcessingStrategyCode(true)//
+                        .interestCalculationPeriodType(true)//
+                        .inArrearsTolerance(true)//
+                        .repaymentEvery(true)//
+                        .graceOnPrincipalAndInterestPayment(true)//
+                        .graceOnArrearsAgeing(true))//
+                .isEqualAmortization(false)//
+                .delinquencyBucketId(delinquencyBucketResolver.resolve(DelinquencyBucket.BASIC_DELINQUENCY_BUCKET))//
+                .enableDownPayment(false)//
+                .enableInstallmentLevelDelinquency(true)//
+                .loanScheduleType("PROGRESSIVE") //
+                .loanScheduleProcessingType("HORIZONTAL")//
+                .enableIncomeCapitalization(false)//
+                .capitalizedIncomeCalculationType(PostLoanProductsRequest.CapitalizedIncomeCalculationTypeEnum.FLAT)//
+                .capitalizedIncomeStrategy(PostLoanProductsRequest.CapitalizedIncomeStrategyEnum.EQUAL_AMORTIZATION)//
+                .capitalizedIncomeType(PostLoanProductsRequest.CapitalizedIncomeTypeEnum.INTEREST).enableBuyDownFee(true)//
+                .merchantBuyDownFee(true)//
+                .buyDownFeeCalculationType(PostLoanProductsRequest.BuyDownFeeCalculationTypeEnum.FLAT)//
+                .buyDownFeeStrategy(PostLoanProductsRequest.BuyDownFeeStrategyEnum.EQUAL_AMORTIZATION)//
+                .buyDownFeeIncomeType(PostLoanProductsRequest.BuyDownFeeIncomeTypeEnum.INTEREST)//
+                .fundSourceAccountId(accountTypeResolver.resolve(DefaultAccountType.SUSPENSE_CLEARING_ACCOUNT))//
+                .loanPortfolioAccountId(accountTypeResolver.resolve(DefaultAccountType.LOANS_RECEIVABLE))//
+                .transfersInSuspenseAccountId(accountTypeResolver.resolve(DefaultAccountType.TRANSFER_IN_SUSPENSE_ACCOUNT))//
+                .interestOnLoanAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_INCOME))//
+                .incomeFromFeeAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_INCOME))//
+                .incomeFromPenaltyAccountId(accountTypeResolver.resolve(DefaultAccountType.FEE_INCOME))//
+                .incomeFromRecoveryAccountId(accountTypeResolver.resolve(DefaultAccountType.RECOVERIES))//
+                .writeOffAccountId(accountTypeResolver.resolve(DefaultAccountType.WRITTEN_OFF))//
+                .overpaymentLiabilityAccountId(accountTypeResolver.resolve(DefaultAccountType.OVERPAYMENT_ACCOUNT))//
+                .receivableInterestAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_FEE_RECEIVABLE))//
+                .receivableFeeAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_FEE_RECEIVABLE))//
+                .receivablePenaltyAccountId(accountTypeResolver.resolve(DefaultAccountType.INTEREST_FEE_RECEIVABLE))//
+                .buyDownExpenseAccountId(accountTypeResolver.resolve(DefaultAccountType.BUY_DOWN_EXPENSE))//
+                .incomeFromBuyDownAccountId(accountTypeResolver.resolve(DefaultAccountType.INCOME_FROM_BUY_DOWN)).dateFormat(DATE_FORMAT)//
+                .locale(LOCALE_EN);//
+    }
+
     public String generateShortNameSafely() {
-        String generatedShortName;
-        int counter = 0;
-        do {
-            counter++;
-            generatedShortName = Utils.randomNameGenerator("", 4);
-            if (counter > 999) {
-                throw new RuntimeException("Unable to generate unique short name");
+        for (int counter = 0; counter < 999; counter++) {
+            String generatedShortName = Utils.randomStringGenerator("", 4);
+            if (productShortNameMap.add(generatedShortName)) {
+                return generatedShortName;
             }
-        } while (productShortNameMap.contains(generatedShortName));
-        productShortNameMap.add(generatedShortName);
-        return generatedShortName;
+        }
+        throw new RuntimeException("Unable to generate unique short name");
     }
 }

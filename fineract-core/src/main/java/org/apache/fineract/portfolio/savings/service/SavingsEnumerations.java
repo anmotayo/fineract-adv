@@ -61,35 +61,23 @@ public final class SavingsEnumerations {
     public static final String RECURRING_FREQUENCY_TYPE = "recurringFrequencyType";
     public static final String WITHHOLD_TAX_POSTING_TYPE = "withHoldTaxPostingType";
 
-    public static EnumOptionData savingEnumueration(final String typeName, final int id) {
-        if (typeName.equals(INTEREST_COMPOUNDING_PERIOD_TYPE)) {
-            return compoundingInterestPeriodType(id);
-        } else if (typeName.equals(INTEREST_POSTING_PERIOD_TYPE)) {
-            return interestPostingPeriodType(id);
-        } else if (typeName.equals(INTEREST_CALCULATION_TYPE)) {
-            return interestCalculationType(id);
-        } else if (typeName.equals(MIN_DEPOSIT_TERM_TYPE)) {
-            return depositTermFrequencyType(id);
-        } else if (typeName.equals(MAX_DEPOSIT_TERM_TYPE)) {
-            return depositTermFrequencyType(id);
-        } else if (typeName.equals(IN_MULTIPLES_OF_DEPOSIT_TERM_TYPE)) {
-            return inMultiplesOfDepositTermFrequencyType(id);
-        } else if (typeName.equals(DEPOSIT_PERIOD_FREQUNCY_TYPE)) {
-            return depositPeriodFrequency(id);
-        } else if (typeName.equals(LOCKIN_PERIOD_FREQUNCY_TYPE)) {
-            return lockinPeriodFrequencyType(id);
-        } else if (typeName.equals(ACCOUNTING_RULE_TYPE)) {
-            return AccountingEnumerations.accountingRuleType(id);
-        } else if (typeName.equals(PRE_CLOSURE_PENAL_INTEREST_TYPE)) {
-            return preClosurePenaltyInterestOnType(id);
-        } else if (typeName.equals(INTEREST_CALCULATION_DAYS_IN_YEAR)) {
-            return interestCalculationDaysInYearType(id);
-        } else if (typeName.equals(RECURRING_FREQUENCY_TYPE)) {
-            return depositPeriodFrequency(id);
-        } else if (typeName.equals(WITHHOLD_TAX_POSTING_TYPE)) {
-            return withHoldTaxPostingType(id);
-        }
-        return null;
+    public static EnumOptionData savingEnumeration(final String typeName, final int id) {
+        return switch (typeName) {
+            case INTEREST_COMPOUNDING_PERIOD_TYPE -> compoundingInterestPeriodType(id);
+            case INTEREST_POSTING_PERIOD_TYPE -> interestPostingPeriodType(id);
+            case INTEREST_CALCULATION_TYPE -> interestCalculationType(id);
+            case MIN_DEPOSIT_TERM_TYPE -> depositTermFrequencyType(id);
+            case MAX_DEPOSIT_TERM_TYPE -> depositTermFrequencyType(id);
+            case IN_MULTIPLES_OF_DEPOSIT_TERM_TYPE -> inMultiplesOfDepositTermFrequencyType(id);
+            case DEPOSIT_PERIOD_FREQUNCY_TYPE -> depositPeriodFrequency(id);
+            case LOCKIN_PERIOD_FREQUNCY_TYPE -> lockinPeriodFrequencyType(id);
+            case ACCOUNTING_RULE_TYPE -> AccountingEnumerations.accountingRuleType(id);
+            case PRE_CLOSURE_PENAL_INTEREST_TYPE -> preClosurePenaltyInterestOnType(id);
+            case INTEREST_CALCULATION_DAYS_IN_YEAR -> interestCalculationDaysInYearType(id);
+            case RECURRING_FREQUENCY_TYPE -> depositPeriodFrequency(id);
+            case WITHHOLD_TAX_POSTING_TYPE -> withHoldTaxPostingType(id);
+            default -> null;
+        };
     }
 
     public static EnumOptionData lockinPeriodFrequencyType(final int id) {
@@ -219,6 +207,15 @@ public final class SavingsEnumerations {
             break;
         }
         return optionData;
+    }
+
+    public static EnumOptionData status(final SavingsAccountStatusEnumData status) {
+
+        Long id = status.getId();
+        String code = status.getCode();
+        String value = status.getValue();
+
+        return new EnumOptionData(id, code, value);
     }
 
     public static SavingsAccountStatusEnumData status(final Integer statusEnum) {
@@ -396,6 +393,22 @@ public final class SavingsEnumerations {
                 optionData = new EnumOptionData(SavingsPostingInterestPeriodType.ANNUAL.getValue().longValue(),
                         codePrefix + SavingsPostingInterestPeriodType.ANNUAL.getCode(), "Annually");
             break;
+            case ANNIVERSARY_MONTHLY:
+                optionData = new EnumOptionData(SavingsPostingInterestPeriodType.ANNIVERSARY_MONTHLY.getValue().longValue(),
+                        codePrefix + SavingsPostingInterestPeriodType.ANNIVERSARY_MONTHLY.getCode(), "Anniversary Monthly");
+            break;
+            case ANNIVERSARY_QUARTERLY:
+                optionData = new EnumOptionData(SavingsPostingInterestPeriodType.ANNIVERSARY_QUARTERLY.getValue().longValue(),
+                        codePrefix + SavingsPostingInterestPeriodType.ANNIVERSARY_QUARTERLY.getCode(), "Anniversary Quarterly");
+            break;
+            case ANNIVERSARY_BIANNUAL:
+                optionData = new EnumOptionData(SavingsPostingInterestPeriodType.ANNIVERSARY_BIANNUAL.getValue().longValue(),
+                        codePrefix + SavingsPostingInterestPeriodType.ANNIVERSARY_BIANNUAL.getCode(), "Anniversary BiAnnual");
+            break;
+            case ANNIVERSARY_ANNUAL:
+                optionData = new EnumOptionData(SavingsPostingInterestPeriodType.ANNIVERSARY_ANNUAL.getValue().longValue(),
+                        codePrefix + SavingsPostingInterestPeriodType.ANNIVERSARY_ANNUAL.getCode(), "Anniversary Annually");
+            break;
         }
 
         return optionData;
@@ -558,7 +571,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> preClosurePenaltyInterestOnType(final PreClosurePenalInterestOnType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final PreClosurePenalInterestOnType type : types) {
-            if (!type.isInvalid()) {
+            if (type != PreClosurePenalInterestOnType.INVALID) {
                 optionDatas.add(preClosurePenaltyInterestOnType(type));
             }
         }
@@ -592,7 +605,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> recurringDepositType(final RecurringDepositType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final RecurringDepositType type : types) {
-            if (!type.isInvalid()) {
+            if (type != RecurringDepositType.INVALID) {
                 optionDatas.add(recurringDepositType(type));
             }
         }
@@ -633,7 +646,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> recurringDepositFrequencyType(final SavingsPeriodFrequencyType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final SavingsPeriodFrequencyType type : types) {
-            if (!type.isInvalid()) {
+            if (type != SavingsPeriodFrequencyType.INVALID) {
                 optionDatas.add(recurringDepositFrequencyType(type));
             }
         }
@@ -739,7 +752,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> depositType(final DepositAccountType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final DepositAccountType type : types) {
-            if (!type.isInvalid()) {
+            if (type != DepositAccountType.INVALID) {
                 optionDatas.add(depositType(type));
             }
         }
@@ -780,7 +793,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> depositPeriodFrequency(final SavingsPeriodFrequencyType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final SavingsPeriodFrequencyType type : types) {
-            if (!type.isInvalid()) {
+            if (type != SavingsPeriodFrequencyType.INVALID) {
                 optionDatas.add(recurringDepositFrequencyType(type));
             }
         }
@@ -820,7 +833,7 @@ public final class SavingsEnumerations {
     public static List<EnumOptionData> depositAccountOnClosureType(final DepositAccountOnClosureType[] types) {
         final List<EnumOptionData> optionDatas = new ArrayList<>();
         for (final DepositAccountOnClosureType type : types) {
-            if (!type.isInvalid()) {
+            if (type != DepositAccountOnClosureType.INVALID) {
                 optionDatas.add(depositAccountOnClosureType(type));
             }
         }

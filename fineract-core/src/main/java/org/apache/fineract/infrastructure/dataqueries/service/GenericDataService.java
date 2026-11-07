@@ -27,9 +27,13 @@ public interface GenericDataService {
 
     GenericResultsetData fillGenericResultSet(String sql);
 
+    GenericResultsetData fillGenericResultSet(String sql, Object... args);
+
     List<ResultsetColumnHeaderData> fillResultsetColumnHeaders(String tableName);
 
     List<ResultsetRowData> fillResultsetRowData(String sql, List<ResultsetColumnHeaderData> columnHeaders);
+
+    List<ResultsetRowData> fillResultsetRowData(String sql, List<ResultsetColumnHeaderData> columnHeaders, Object... args);
 
     String generateJsonFromGenericResultsetData(GenericResultsetData grs);
 

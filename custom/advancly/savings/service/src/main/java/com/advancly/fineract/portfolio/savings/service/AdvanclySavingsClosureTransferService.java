@@ -65,6 +65,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountPostInterestService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -104,6 +105,7 @@ public class AdvanclySavingsClosureTransferService {
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     private final AdvanclyAccountTransfersWritePlatformService accountTransfersWritePlatformService;
     private final FromJsonHelper fromApiJsonHelper;
+    private final SavingsAccountPostInterestService savingsAccountPostInterestService;
     @Qualifier("coreSavingsAccountWritePlatformService")
     private final SavingsAccountWritePlatformService coreSavingsAccountWritePlatformService;
 
@@ -254,8 +256,8 @@ public class AdvanclySavingsClosureTransferService {
         final boolean isInterestTransfer = false;
         final boolean backdatedTxnsAllowedTill = false;
         final boolean postReversals = false;
-        account.postInterest(mc, account.interestPostingUpToForClosure(closedDate), isInterestTransfer,
-                isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+        this.savingsAccountPostInterestService.postInterest(account, mc, account.interestPostingUpToForClosure(closedDate),
+                isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
                 account.interestPostingTransactionDateForClosure(closedDate), backdatedTxnsAllowedTill, postReversals);
 
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {

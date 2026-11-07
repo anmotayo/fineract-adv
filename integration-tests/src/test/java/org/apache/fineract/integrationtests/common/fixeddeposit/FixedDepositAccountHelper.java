@@ -25,7 +25,11 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
+import org.apache.fineract.client.models.GetFixedDepositAccountsAccountIdTransactionsResponse;
+import org.apache.fineract.client.models.PostFixedDepositAccountsFixedDepositAccountIdTransactionsRequest;
+import org.apache.fineract.client.util.Calls;
 import org.apache.fineract.integrationtests.common.CommonConstants;
+import org.apache.fineract.integrationtests.common.FineractClientHelper;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +58,6 @@ public class FixedDepositAccountHelper {
     private static final String WITHDRAWN_BY_CLIENT_FIXED_DEPOSIT_COMMAND = "withdrawnByApplicant";
     private static final String ACTIVATE_FIXED_DEPOSIT_COMMAND = "activate";
     private static final String CLOSE_FIXED_DEPOSIT_COMMAND = "close";
-    private static final String POST_INTEREST_FIXED_DEPOSIT_COMMAND = "postInterest";
     private static final String CALCULATE_INTEREST_FIXED_DEPOSIT_COMMAND = "calculateInterest";
     private static final String CALCULATE_PREMATURE_AMOUNT_COMMAND = "calculatePrematureAmount";
     private static final String PREMATURE_CLOSE_COMMAND = "prematureClose";
@@ -150,17 +153,6 @@ public class FixedDepositAccountHelper {
     // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
     // org.apache.fineract.client.models.PostLoansLoanIdRequest)
     @Deprecated(forRemoval = true)
-    public static Integer applyFixedDepositApplicationGetId(final String fixedDepositAccountAsJson, final RequestSpecification requestSpec,
-            final ResponseSpecification responseSpec) {
-        LOG.info("--------------------- APPLYING FOR FIXED DEPOSIT ACCOUNT ------------------------");
-        return Utils.performServerPost(requestSpec, responseSpec, APPLY_FIXED_DEPOSIT_ACCOUNT_URL, fixedDepositAccountAsJson,
-                CommonConstants.RESPONSE_RESOURCE_ID);
-    }
-
-    // TODO: Rewrite to use fineract-client instead!
-    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
-    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
-    @Deprecated(forRemoval = true)
     public static String applyFixedDepositApplication(final String fixedDepositAccountAsJson, final RequestSpecification requestSpec,
             final ResponseSpecification responseSpec) {
         LOG.info("--------------------- APPLYING FOR FIXED DEPOSIT ACCOUNT ------------------------");
@@ -176,14 +168,6 @@ public class FixedDepositAccountHelper {
         final String GET_FIXED_DEPOSIT_BY_ID_URL = FIXED_DEPOSIT_ACCOUNT_URL + "/" + accountID + "?" + Utils.TENANT_IDENTIFIER;
         LOG.info("------------------------ RETRIEVING FIXED DEPOSIT ACCOUNT BY ID -------------------------");
         return Utils.performServerGet(requestSpec, responseSpec, GET_FIXED_DEPOSIT_BY_ID_URL, "");
-    }
-
-    // TODO: Rewrite to use fineract-client instead!
-    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
-    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
-    @Deprecated(forRemoval = true)
-    public HashMap getFixedDepositSummary(final Integer accountID) {
-        return getFixedDepositDetails(accountID, "summary");
     }
 
     // TODO: Rewrite to use fineract-client instead!
@@ -366,17 +350,6 @@ public class FixedDepositAccountHelper {
         LOG.info("--------------------------------- CALCULATING INTEREST FOR FIXED DEPOSIT --------------------------------");
         return (Integer) performFixedDepositActions(
                 createFixedDepositCalculateInterestURL(CALCULATE_INTEREST_FIXED_DEPOSIT_COMMAND, fixedDepositAccountId),
-                getCalculatedInterestForFixedDepositApplicationAsJSON(), CommonConstants.RESPONSE_RESOURCE_ID);
-    }
-
-    // TODO: Rewrite to use fineract-client instead!
-    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
-    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
-    @Deprecated(forRemoval = true)
-    public Integer postInterestForFixedDeposit(final Integer fixedDepositAccountId) {
-        LOG.info("--------------------------------- POST INTEREST FOR FIXED DEPOSIT --------------------------------");
-        return (Integer) performFixedDepositActions(
-                createFixedDepositCalculateInterestURL(POST_INTEREST_FIXED_DEPOSIT_COMMAND, fixedDepositAccountId),
                 getCalculatedInterestForFixedDepositApplicationAsJSON(), CommonConstants.RESPONSE_RESOURCE_ID);
     }
 
@@ -593,23 +566,6 @@ public class FixedDepositAccountHelper {
         return this;
     }
 
-    public FixedDepositAccountHelper withSavings(final String savingsId) {
-        this.savingsId = savingsId;
-        return this;
-    }
-
-    public FixedDepositAccountHelper transferInterest(final boolean transferInterest) {
-        this.transferInterest = transferInterest;
-        return this;
-    }
-
-    public FixedDepositAccountHelper withLockinPeriodFrequency(final String lockingPeriodFrequencyType,
-            final String lockinPeriodFrequency) {
-        this.lockingPeriodFrequencyType = lockingPeriodFrequencyType;
-        this.lockinPeriodFrequency = lockinPeriodFrequency;
-        return this;
-    }
-
     public FixedDepositAccountHelper withDepositPeriod(final String depositPeriod) {
         this.depositPeriod = depositPeriod;
         return this;
@@ -636,4 +592,30 @@ public class FixedDepositAccountHelper {
         this.charges = charges;
         return this;
     }
+
+    public List<GetFixedDepositAccountsAccountIdTransactionsResponse> getFixedDepositTransactions(final Integer fixedDepositAccountId) {
+        LOG.info("-------------------- RETRIEVING FIXED DEPOSIT TRANSACTIONS ---------------------");
+        return Calls.ok(FineractClientHelper.getFineractClient().fixedDepositAccountTransactions
+                .retrieveAllFixedDepositAccountTransactions(fixedDepositAccountId.longValue()));
+    }
+
+    public Long undoFixedDepositTransaction(final Integer fixedDepositAccountId, final Integer transactionId) {
+        LOG.info("--------------------------------- UNDO FIXED DEPOSIT TRANSACTION --------------------------------");
+        return Calls.ok(FineractClientHelper.getFineractClient().fixedDepositAccountTransactions
+                .handleCommandsFixedDepositAccountTransaction(fixedDepositAccountId.longValue(), transactionId.longValue(),
+                        new PostFixedDepositAccountsFixedDepositAccountIdTransactionsRequest(), "undo"))
+                .getResourceId();
+    }
+
+    public Long adjustFixedDepositTransaction(final Integer fixedDepositAccountId, final Integer transactionId,
+            final String transactionDate, final Double transactionAmount) {
+        LOG.info("--------------------------------- ADJUST FIXED DEPOSIT TRANSACTION --------------------------------");
+        final PostFixedDepositAccountsFixedDepositAccountIdTransactionsRequest request = new PostFixedDepositAccountsFixedDepositAccountIdTransactionsRequest()
+                .dateFormat("dd MMMM yyyy").locale("en").transactionDate(transactionDate).transactionAmount(transactionAmount);
+        return Calls
+                .ok(FineractClientHelper.getFineractClient().fixedDepositAccountTransactions.handleCommandsFixedDepositAccountTransaction(
+                        fixedDepositAccountId.longValue(), transactionId.longValue(), request, "modify"))
+                .getResourceId();
+    }
+
 }

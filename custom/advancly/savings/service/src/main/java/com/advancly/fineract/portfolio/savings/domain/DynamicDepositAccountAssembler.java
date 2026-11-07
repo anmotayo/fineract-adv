@@ -53,6 +53,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.organisation.staff.domain.Staff;
@@ -103,6 +104,7 @@ public class DynamicDepositAccountAssembler {
     private final SavingsAccountChargeAssembler savingsAccountChargeAssembler;
     private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
     private final SavingsHelper savingsHelper;
+    private final ConfigurationDomainService configurationDomainService;
     private final ExternalIdFactory externalIdFactory;
     private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
     private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
@@ -112,7 +114,9 @@ public class DynamicDepositAccountAssembler {
             final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
             final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
             final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
-            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator,
+            final ConfigurationDomainService configurationDomainService) {
+        this.configurationDomainService = configurationDomainService;
         this.clientRepository = clientRepository;
         this.groupRepository = groupRepository;
         this.staffRepository = staffRepository;
@@ -277,7 +281,7 @@ public class DynamicDepositAccountAssembler {
         // Anchored on submittedOnDate; recomputed against the activation date on activate, as FD does.
         account.updateMaturityDate();
 
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
         account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
 
         return account;

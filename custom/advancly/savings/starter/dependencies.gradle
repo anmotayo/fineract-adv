@@ -26,6 +26,9 @@ dependencies {
     implementation(project(':fineract-charge'))
     implementation(project(':fineract-tax'))
     implementation(project(':fineract-accounting'))
+    implementation(project(':fineract-working-capital-loan'))
+    compileOnly('jakarta.validation:jakarta.validation-api')
+    compileOnly('jakarta.ws.rs:jakarta.ws.rs-api')
     implementation('org.eclipse.persistence:org.eclipse.persistence.jpa') {
         exclude group: 'org.eclipse.persistence', module: 'jakarta.persistence'
     }

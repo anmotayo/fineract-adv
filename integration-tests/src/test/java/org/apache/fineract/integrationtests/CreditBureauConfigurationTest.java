@@ -18,51 +18,33 @@
  */
 package org.apache.fineract.integrationtests;
 
-import io.restassured.builder.RequestSpecBuilder;
-import io.restassured.builder.ResponseSpecBuilder;
-import io.restassured.http.ContentType;
-import io.restassured.specification.RequestSpecification;
-import io.restassured.specification.ResponseSpecification;
-import org.apache.fineract.integrationtests.common.CreditBureauConfigurationHelper;
+import org.apache.fineract.client.models.CommandProcessingResult;
+import org.apache.fineract.client.models.PostCreditBureauConfigurationRequest;
+import org.apache.fineract.integrationtests.client.FeignIntegrationTest;
+import org.apache.fineract.integrationtests.client.feign.helpers.FeignCreditBureauHelper;
 import org.apache.fineract.integrationtests.common.Utils;
-import org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class CreditBureauConfigurationTest {
+public class CreditBureauConfigurationTest extends FeignIntegrationTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(CreditBureauConfigurationTest.class);
-    private ResponseSpecification responseSpec;
-    private RequestSpecification requestSpec;
-    private LoanTransactionHelper loanTransactionHelper;
-
-    private static final String NO_ACCOUNTING = "1";
-
-    static final int MYTHREADS = 30;
-
-    @BeforeEach
-    public void setup() {
-        Utils.initializeRESTAssured();
-        this.requestSpec = new RequestSpecBuilder().setContentType(ContentType.JSON).build();
-        this.requestSpec.header("Authorization", "Basic " + Utils.loginIntoServerAndGetBase64EncodedAuthenticationKey());
-        this.responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
-        this.loanTransactionHelper = new LoanTransactionHelper(this.requestSpec, this.responseSpec);
-    }
 
     @Test
     public void creditBureauConfigurationTest() {
+        final FeignCreditBureauHelper creditBureauHelper = new FeignCreditBureauHelper(fineractClient());
 
         // create creditBureauConfiguration
-        final Integer configurationId = CreditBureauConfigurationHelper.createCreditBureauConfiguration(this.requestSpec, this.responseSpec,
-                Utils.randomStringGenerator("testConfigKey_", 5));
+        CommandProcessingResult createResponse = creditBureauHelper.createConfiguration(1L, new PostCreditBureauConfigurationRequest()
+                .configkey(Utils.randomStringGenerator("testConfigKey_", 5)).value("testConfigKeyValue").description("description"));
+        Long configurationId = createResponse.getResourceId();
         Assertions.assertNotNull(configurationId);
 
         // update creditBureauConfiguration
-        final String updateconfiguration = CreditBureauConfigurationHelper.updateCreditBureauConfiguration(this.requestSpec,
-                this.responseSpec, configurationId);
+        CommandProcessingResult updateResponse = creditBureauHelper.updateConfiguration(configurationId, null, "updateConfigKeyValue");
+        Object updateconfiguration = updateResponse.getChanges().get("value");
 
         Assertions.assertEquals("updateConfigKeyValue", updateconfiguration);
     }

@@ -42,6 +42,7 @@ import java.util.Optional;
 import org.apache.fineract.accounting.common.AccountingRuleType;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormatRepositoryWrapper;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
@@ -133,6 +134,8 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
 
     private DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl service;
 
+    private final ConfigurationDomainService configurationDomainService = org.mockito.Mockito.mock(ConfigurationDomainService.class);
+
     @BeforeEach
     void setUp() {
         MoneyHelperInitializer.initialize();
@@ -141,7 +144,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 noteRepository, savingsAccountApplicationTransitionApiJsonValidator, savingsAccountTransactionDataValidator,
                 savingsAccountWritePlatformService, depositAccountAssembler, depositAccountDataValidator, accountAssociationsRepository,
                 savingsAccountTransactionSummaryWrapper, savingsHelper, chargeInterestRuleValidator, accountAssociationsReadPlatformService,
-                accountTransfersWritePlatformService, maturityAmountService);
+                accountTransfersWritePlatformService, maturityAmountService, configurationDomainService);
 
         // The real validator reads business dates; seed them so the result doesn't depend on test order.
         final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
@@ -223,7 +226,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
                 chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService,
-                maturityAmountService);
+                maturityAmountService, configurationDomainService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 
@@ -258,7 +261,7 @@ class DynamicDepositAccountWritePlatformServiceJpaRepositoryImplTest {
                 savingsAccountTransactionDataValidator, savingsAccountWritePlatformService, depositAccountAssembler,
                 depositAccountDataValidator, accountAssociationsRepository, savingsAccountTransactionSummaryWrapper, savingsHelper,
                 chargeInterestRuleValidator, accountAssociationsReadPlatformService, accountTransfersWritePlatformService,
-                maturityAmountService);
+                maturityAmountService, configurationDomainService);
 
         assertThatCode(() -> serviceWithRealValidator.modifyApplication(accountId, command)).doesNotThrowAnyException();
 

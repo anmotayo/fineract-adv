@@ -27,9 +27,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -50,6 +53,7 @@ import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.loanaccount.domain.Loan;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanBuyDownFeeBalance;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanCapitalizedIncomeBalance;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanCharge;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanDisbursementDetails;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanEvent;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
@@ -73,6 +77,32 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
     private final LoanBuyDownFeeBalanceRepository loanBuydownFeeBalanceRepository;
     private final LoanTransactionRepository loanTransactionRepository;
     private final LoanMaximumAmountCalculator loanMaximumAmountCalculator;
+
+    private static final String TRANSACTION_DATE = "transactionDate";
+    private static final String TRANSACTION_AMOUNT = "transactionAmount";
+    private static final String NOTE = "note";
+    private static final String EXTERNAL_ID = "externalId";
+    private static final String DATE_FORMAT = "dateFormat";
+    private static final String LOCALE = "locale";
+    private static final String PAYMENT_TYPE_ID = "paymentTypeId";
+
+    private static final EarlyTerminationRules CONTRACT_TERMINATION = new EarlyTerminationRules("loan.contract.termination",
+            "Contract Termination", Loan::isContractTermination, Loan::findContractTerminationTransaction,
+            "error.msg.loan.is.not.contract.terminated", "is not contract terminated",
+            "error.msg.loan.contract.termination.transaction.not.found",
+            "error.msg.loan.contract.termination.is.not.the.last.user.transaction", false);
+    private static final EarlyTerminationRules LOAN_WITHDRAWAL = new EarlyTerminationRules("loan.withdrawal", "Loan Withdrawal",
+            Loan::isLoanWithdrawal, Loan::findLoanWithdrawalTransaction, "error.msg.loan.is.not.loan.withdrawal",
+            "has no loan withdrawal applied", "error.msg.loan.withdrawal.transaction.not.found",
+            "error.msg.loan.withdrawal.is.not.the.last.user.transaction", true);
+
+    private static final String NOT_PROGRESSIVE_LOAN = "not.progressive.loan";
+    private static final String NOT_VALID_LOAN_STATUS = "not.valid.loan.status";
+    private static final String BEFORE_DISBURSEMENT_DATE = "before.disbursement.date";
+    private static final String MSG_BEFORE_DISBURSEMENT_DATE = "Transaction date cannot be before disbursement date";
+    private static final String CANNOT_BE_IN_THE_FUTURE = "cannot.be.in.the.future";
+    private static final String MSG_CANNOT_BE_IN_THE_FUTURE = "Transaction date cannot be in the future";
+    private static final String BUY_DOWN_FEE_TRANSACTION_ID = "buyDownFeeTransactionId";
 
     @Override
     public void validateCapitalizedIncome(final JsonCommand command, final Long loanId) {
@@ -98,7 +128,7 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
 
             // Validate loan is progressive
             if (!loan.isProgressiveSchedule()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.progressive.loan");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_PROGRESSIVE_LOAN);
             }
 
             // Validate income capitalization is enabled
@@ -109,26 +139,24 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
             // Validate loan is active, or closed or overpaid
             final LoanStatus loanStatus = loan.getStatus();
             if (!loanStatus.isActive() && !loanStatus.isClosed() && !loanStatus.isOverpaid()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.valid.loan.status");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_VALID_LOAN_STATUS);
             }
 
-            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
-            baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed(TRANSACTION_DATE, element);
+            baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).notNull();
 
             // Validate transaction date is not before disbursement date
             if (transactionDate != null && loan.getDisbursementDate() != null && transactionDate.isBefore(loan.getDisbursementDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("before.disbursement.date",
-                        "Transaction date cannot be before disbursement date");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(BEFORE_DISBURSEMENT_DATE, MSG_BEFORE_DISBURSEMENT_DATE);
             }
 
             // Validate transaction date is not in the future
             if (transactionDate != null && transactionDate.isAfter(DateUtils.getBusinessLocalDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("cannot.be.in.the.future",
-                        "Transaction date cannot be in the future");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(CANNOT_BE_IN_THE_FUTURE, MSG_CANNOT_BE_IN_THE_FUTURE);
             }
 
-            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
-            baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
+            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(TRANSACTION_AMOUNT, element);
+            baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).notNull().positiveAmount();
 
             // Validate total disbursement + capitalized income <= applied amount
             if (transactionAmount != null) {
@@ -139,12 +167,12 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
                 if (loan.loanProduct().isAllowApprovedDisbursedAmountsOverApplied()) {
                     final BigDecimal maxAppliedAmount = loanMaximumAmountCalculator.getOverAppliedMax(loan);
                     if (newTotal.compareTo(maxAppliedAmount) > 0) {
-                        baseDataValidator.reset().parameter("transactionAmount").failWithCode("exceeds.approved.amount",
+                        baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).failWithCode("exceeds.approved.amount",
                                 "Sum of disbursed amount and capitalized income can't be greater than maximum applied loan amount calculation.");
                     }
                 } else {
                     if (newTotal.compareTo(loan.getApprovedPrincipal()) > 0) {
-                        baseDataValidator.reset().parameter("transactionAmount").failWithCode("exceeds.approved.amount",
+                        baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).failWithCode("exceeds.approved.amount",
                                 "Sum of disbursed amount and capitalized income can't be greater than approved loan principal.");
                     }
                 }
@@ -179,7 +207,7 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
 
             // Validate loan is progressive
             if (!loan.isProgressiveSchedule()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.progressive.loan");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_PROGRESSIVE_LOAN);
             }
 
             // Validate income capitalization is enabled
@@ -190,26 +218,24 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
             // Validate loan is active, or closed or overpaid
             final LoanStatus loanStatus = loan.getStatus();
             if (!loanStatus.isActive() && !loanStatus.isClosed() && !loanStatus.isOverpaid()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.valid.loan.status");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_VALID_LOAN_STATUS);
             }
 
-            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
-            baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed(TRANSACTION_DATE, element);
+            baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).notNull();
 
             // Validate transaction date is not before disbursement date
             if (transactionDate != null && loan.getDisbursementDate() != null && transactionDate.isBefore(loan.getDisbursementDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("before.disbursement.date",
-                        "Transaction date cannot be before disbursement date");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(BEFORE_DISBURSEMENT_DATE, MSG_BEFORE_DISBURSEMENT_DATE);
             }
 
             // Validate transaction date is not in the future
             if (transactionDate != null && transactionDate.isAfter(DateUtils.getBusinessLocalDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("cannot.be.in.the.future",
-                        "Transaction date cannot be in the future");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(CANNOT_BE_IN_THE_FUTURE, MSG_CANNOT_BE_IN_THE_FUTURE);
             }
 
-            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
-            baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
+            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(TRANSACTION_AMOUNT, element);
+            baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).notNull().positiveAmount();
 
             Optional<LoanTransaction> capitalizedIncomeTransactionOpt = loanTransactionRepository.findById(capitalizedIncomeTransactionId);
             if (capitalizedIncomeTransactionOpt.isEmpty()) {
@@ -218,7 +244,7 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
             } else {
                 // Validate not before capitalized income transaction
                 if (transactionDate != null && transactionDate.isBefore(capitalizedIncomeTransactionOpt.get().getTransactionDate())) {
-                    baseDataValidator.reset().parameter("transactionDate").failWithCode("before.capitalizedIncome.transaction.date",
+                    baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode("before.capitalizedIncome.transaction.date",
                             "Transaction date cannot be before capitalized income transaction date");
 
                 }
@@ -227,7 +253,7 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
                             .findByLoanIdAndLoanTransactionIdAndDeletedFalseAndClosedFalse(loanId, capitalizedIncomeTransactionId);
                     if (MathUtil.isLessThan(capitalizedIncomeBalance.getAmount()
                             .subtract(MathUtil.nullToZero(capitalizedIncomeBalance.getAmountAdjustment())), transactionAmount)) {
-                        baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).failWithCode(
+                        baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).failWithCode(
                                 "cannot.be.more.than.remaining.amount",
                                 " Capitalized income adjustment amount cannot be more than remaining amount");
                     }
@@ -241,7 +267,86 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
     }
 
     @Override
+    public void validateContractTermination(final JsonCommand command, final Long loanId) {
+        validateEarlyTermination(command, loanId, CONTRACT_TERMINATION);
+    }
+
+    @Override
     public void validateContractTerminationUndo(final JsonCommand command, final Long loanId) {
+        validateEarlyTerminationUndo(command, loanId, CONTRACT_TERMINATION);
+    }
+
+    @Override
+    public void validateLoanWithdrawal(final JsonCommand command, final Long loanId) {
+        validateEarlyTermination(command, loanId, LOAN_WITHDRAWAL);
+    }
+
+    @Override
+    public void validateLoanWithdrawalUndo(final JsonCommand command, final Long loanId) {
+        validateEarlyTerminationUndo(command, loanId, LOAN_WITHDRAWAL);
+    }
+
+    private void validateEarlyTermination(final JsonCommand command, final Long loanId, final EarlyTerminationRules rules) {
+        final String json = command.json();
+        final JsonElement element = StringUtils.isNotBlank(json) ? this.fromApiJsonHelper.parse(json) : null;
+        if (element != null) {
+            final Type typeOfMap = new TypeToken<Map<String, Object>>() {}.getType();
+            this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, getEarlyTerminationParameters());
+        }
+
+        final LocalDate transactionDate = command.localDateValueOfParameterNamed(TRANSACTION_DATE);
+        final boolean transactionDateSent = element != null && this.fromApiJsonHelper.parameterExists(TRANSACTION_DATE, element);
+        if (transactionDate == null && !transactionDateSent) {
+            return;
+        }
+
+        Validator.validateOrThrow(rules.resource(), baseDataValidator -> {
+            if (transactionDate == null) {
+                // A sent but unparseable date reads as null too, and must not take the business date default
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode("invalid.date.format",
+                        rules.label() + " transaction date could not be read as a date");
+            } else if (DateUtils.isBeforeBusinessDate(transactionDate)) {
+                if (rules.backdatingAllowed()) {
+                    validateBackdatedEarlyTermination(baseDataValidator, transactionDate,
+                            this.loanRepositoryWrapper.findOneWithNotFoundDetection(loanId, true), rules);
+                } else {
+                    baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).failWithCode(
+                            "cannot.be.before.business.date", rules.label() + " transaction date cannot be before the business date");
+                }
+            } else if (DateUtils.isDateInTheFuture(transactionDate)) {
+                // Deliberately future dated only: terminating on the business date after maturity stays allowed
+                final Loan loan = this.loanRepositoryWrapper.findOneWithNotFoundDetection(loanId);
+                final LocalDate maturityDate = loan.getMaturityDate();
+                if (maturityDate != null && !transactionDate.isBefore(maturityDate)) {
+                    baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).failWithCode(
+                            "must.be.before.maturity.date", rules.label() + " transaction date must be before the maturity date");
+                }
+            }
+        });
+    }
+
+    /**
+     * A backdated early termination may not move behind anything already recorded on the loan: its last transaction and
+     * the charges submitted on it.
+     */
+    private void validateBackdatedEarlyTermination(final DataValidatorBuilder baseDataValidator, final LocalDate transactionDate,
+            final Loan loan, final EarlyTerminationRules rules) {
+        if (DateUtils.isBefore(transactionDate, loan.getLastUserTransactionDateExcludingAmortization())) {
+            baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).failWithCode(
+                    "cannot.be.before.last.transaction.date",
+                    rules.label() + " transaction date cannot be before the last transaction date");
+            return;
+        }
+        final boolean beforeChargeSubmission = loan.getActiveCharges().stream().map(LoanCharge::getSubmittedOnDate)
+                .anyMatch(submittedOnDate -> DateUtils.isBefore(transactionDate, submittedOnDate));
+        if (beforeChargeSubmission) {
+            baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).failWithCode(
+                    "cannot.be.before.charge.submitted.on.date",
+                    rules.label() + " transaction date cannot be before the submitted on date of a charge");
+        }
+    }
+
+    private void validateEarlyTerminationUndo(final JsonCommand command, final Long loanId, final EarlyTerminationRules rules) {
         final String json = command.json();
         if (StringUtils.isBlank(json)) {
             throw new InvalidJsonException();
@@ -249,30 +354,29 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
 
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final Type typeOfMap = new TypeToken<Map<String, Object>>() {}.getType();
-        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, getContractTerminationUndoParameters());
+        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, getEarlyTerminationUndoParameters());
 
-        Validator.validateOrThrow("loan.contract.termination.undo", baseDataValidator -> {
+        Validator.validateOrThrow(rules.resource() + ".undo", baseDataValidator -> {
             final Loan loan = this.loanRepositoryWrapper.findOneWithNotFoundDetection(loanId, true);
             validateLoanClientIsActive(loan);
             validateLoanGroupIsActive(loan);
 
             if (!loan.isOpen()) {
                 throw new GeneralPlatformDomainRuleException("error.msg.loan.is.not.active",
-                        "Loan: " + loanId + " Undo Contract Termination is not allowed. Loan Account is not Active", loanId);
+                        "Loan: " + loanId + " Undo " + rules.title() + " is not allowed. Loan Account is not Active", loanId);
             }
-            if (!loan.isContractTermination()) {
-                throw new GeneralPlatformDomainRuleException("error.msg.loan.is.not.contract.terminated",
-                        "Loan: " + loanId + " is not contract terminated", loanId);
+            if (!rules.appliedOn().test(loan)) {
+                throw new GeneralPlatformDomainRuleException(rules.notAppliedCode(), "Loan: " + loanId + " " + rules.notAppliedMessage(),
+                        loanId);
             }
-            final LoanTransaction contractTerminationTransaction = loan.findContractTerminationTransaction();
-            if (contractTerminationTransaction == null) {
-                throw new GeneralPlatformDomainRuleException("error.msg.loan.contract.termination.transaction.not.found",
-                        "Loan: " + loanId + " contract termination transaction was not found", loanId);
+            final LoanTransaction transaction = rules.transactionFinder().apply(loan);
+            if (transaction == null) {
+                throw new GeneralPlatformDomainRuleException(rules.transactionNotFoundCode(),
+                        "Loan: " + loanId + " " + rules.lowerCaseLabel() + " transaction was not found", loanId);
             }
-            if (!contractTerminationTransaction.equals(loan.getLastUserTransaction())) {
-                throw new GeneralPlatformDomainRuleException("error.msg.loan.contract.termination.is.not.the.last.user.transaction",
-                        "Loan: " + loanId
-                                + " contract termination cannot be undone. User transaction was found after contract termination!",
+            if (!transaction.equals(loan.getLastUserTransaction())) {
+                throw new GeneralPlatformDomainRuleException(rules.notLastUserTransactionCode(), "Loan: " + loanId + " "
+                        + rules.lowerCaseLabel() + " cannot be undone. User transaction was found after " + rules.lowerCaseLabel() + "!",
                         loanId);
             }
 
@@ -281,9 +385,8 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
         });
     }
 
-    private static final List<String> BUY_DOWN_FEE_TRANSACTION_SUPPORTED_PARAMETERS = List
-            .of(new String[] { "transactionDate", "dateFormat", "locale", "transactionAmount", "paymentTypeId", "note", "externalId",
-                    LoanTransactionApiConstants.TRANSACTION_CLASSIFICATIONID_PARAMNAME });
+    private static final List<String> BUY_DOWN_FEE_TRANSACTION_SUPPORTED_PARAMETERS = List.of(TRANSACTION_DATE, DATE_FORMAT, LOCALE,
+            TRANSACTION_AMOUNT, PAYMENT_TYPE_ID, NOTE, EXTERNAL_ID, LoanTransactionApiConstants.TRANSACTION_CLASSIFICATIONID_PARAMNAME);
 
     @Override
     public void validateBuyDownFee(JsonCommand command, Long loanId) {
@@ -306,19 +409,19 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
         // Basic validation
         validateBuyDownFeeEligibility(loan);
 
-        final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
-        baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed(TRANSACTION_DATE, element);
+        baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).notNull();
 
         // Validate transaction date is on or after first disbursement
         if (transactionDate != null) {
             final LocalDate firstDisbursementDate = loan.getDisbursementDate();
             if (firstDisbursementDate != null && transactionDate.isBefore(firstDisbursementDate)) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("cannot.be.before.first.disbursement.date");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode("cannot.be.before.first.disbursement.date");
             }
         }
 
-        final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
-        baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
+        final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(TRANSACTION_AMOUNT, element);
+        baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).notNull().positiveAmount();
 
         final Long transactionClassificationId = fromApiJsonHelper
                 .extractLongNamed(LoanTransactionApiConstants.TRANSACTION_CLASSIFICATIONID_PARAMNAME, element);
@@ -352,7 +455,7 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
 
             // Validate loan is progressive
             if (!loan.isProgressiveSchedule()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.progressive.loan");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_PROGRESSIVE_LOAN);
             }
 
             // Validate buy down fee is enabled
@@ -363,40 +466,38 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
             // Validate loan is active, or closed or overpaid
             final LoanStatus loanStatus = loan.getStatus();
             if (!loanStatus.isActive() && !loanStatus.isClosed() && !loanStatus.isOverpaid()) {
-                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.valid.loan.status");
+                baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode(NOT_VALID_LOAN_STATUS);
             }
 
-            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
-            baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+            final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed(TRANSACTION_DATE, element);
+            baseDataValidator.reset().parameter(TRANSACTION_DATE).value(transactionDate).notNull();
 
             // Validate transaction date is not before disbursement date
             if (transactionDate != null && loan.getDisbursementDate() != null && transactionDate.isBefore(loan.getDisbursementDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("before.disbursement.date",
-                        "Transaction date cannot be before disbursement date");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(BEFORE_DISBURSEMENT_DATE, MSG_BEFORE_DISBURSEMENT_DATE);
             }
 
             // Validate transaction date is not in the future
             if (transactionDate != null && transactionDate.isAfter(DateUtils.getBusinessLocalDate())) {
-                baseDataValidator.reset().parameter("transactionDate").failWithCode("cannot.be.in.the.future",
-                        "Transaction date cannot be in the future");
+                baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode(CANNOT_BE_IN_THE_FUTURE, MSG_CANNOT_BE_IN_THE_FUTURE);
             }
 
-            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
-            baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
+            final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed(TRANSACTION_AMOUNT, element);
+            baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).notNull().positiveAmount();
 
             Optional<LoanTransaction> buyDownFeeTransactionOpt = loanTransactionRepository.findById(buyDownFeeTransactionId);
             if (buyDownFeeTransactionOpt.isEmpty()) {
-                baseDataValidator.reset().parameter("buyDownFeeTransactionId").failWithCode("loan.transaction.not.found",
+                baseDataValidator.reset().parameter(BUY_DOWN_FEE_TRANSACTION_ID).failWithCode("loan.transaction.not.found",
                         "Buy Down Fee transaction not found.");
             } else {
                 // Validate that the transaction is actually a buy down fee transaction
                 if (!buyDownFeeTransactionOpt.get().isBuyDownFee()) {
-                    baseDataValidator.reset().parameter("buyDownFeeTransactionId").failWithCode("not.buyDownFee.transaction",
+                    baseDataValidator.reset().parameter(BUY_DOWN_FEE_TRANSACTION_ID).failWithCode("not.buyDownFee.transaction",
                             "The specified transaction is not a Buy Down Fee transaction.");
                 }
                 // Validate not before buy down fee transaction
                 if (transactionDate != null && transactionDate.isBefore(buyDownFeeTransactionOpt.get().getTransactionDate())) {
-                    baseDataValidator.reset().parameter("transactionDate").failWithCode("before.buyDownFee.transaction.date",
+                    baseDataValidator.reset().parameter(TRANSACTION_DATE).failWithCode("before.buyDownFee.transaction.date",
                             "Transaction date cannot be before buy down fee transaction date");
 
                 }
@@ -404,12 +505,12 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
                     LoanBuyDownFeeBalance buydownFeeBalance = loanBuydownFeeBalanceRepository
                             .findByLoanIdAndLoanTransactionIdAndDeletedFalseAndClosedFalse(loanId, buyDownFeeTransactionId);
                     if (buydownFeeBalance == null) {
-                        baseDataValidator.reset().parameter("buyDownFeeTransactionId").failWithCode("buydown.fee.balance.not.found",
+                        baseDataValidator.reset().parameter(BUY_DOWN_FEE_TRANSACTION_ID).failWithCode("buydown.fee.balance.not.found",
                                 "Buy down fee balance not found for the specified transaction.");
                     } else if (MathUtil.isLessThan(
                             buydownFeeBalance.getAmount().subtract(MathUtil.nullToZero(buydownFeeBalance.getAmountAdjustment())),
                             transactionAmount)) {
-                        baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).failWithCode(
+                        baseDataValidator.reset().parameter(TRANSACTION_AMOUNT).value(transactionAmount).failWithCode(
                                 "cannot.be.more.than.remaining.amount",
                                 " Buy down fee adjustment amount cannot be more than remaining amount");
                     }
@@ -507,6 +608,16 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
     }
 
     @Override
+    public void validateLoanNotClosedOrOverpaidForTransactions(Loan loan) {
+        loanTransactionValidator.validateLoanNotClosedOrOverpaidForTransactions(loan);
+    }
+
+    @Override
+    public void validateLoanNotClosedOrOverpaidForTransactions(Loan loan, LoanTransactionType loanTransactionType) {
+        loanTransactionValidator.validateLoanNotClosedOrOverpaidForTransactions(loan, loanTransactionType);
+    }
+
+    @Override
     public void validateActivityNotBeforeLastTransactionDate(Loan loan, LocalDate activityDate, LoanEvent event) {
         loanTransactionValidator.validateActivityNotBeforeLastTransactionDate(loan, activityDate, event);
     }
@@ -595,21 +706,36 @@ public class ProgressiveLoanTransactionValidatorImpl implements ProgressiveLoanT
     }
 
     private Set<String> getCapitalizedIncomeParameters() {
-        return new HashSet<>(Arrays.asList("transactionDate", "dateFormat", "locale", "transactionAmount", "paymentTypeId", "note",
-                "externalId", LoanTransactionApiConstants.TRANSACTION_CLASSIFICATIONID_PARAMNAME));
+        return new HashSet<>(Arrays.asList(TRANSACTION_DATE, DATE_FORMAT, LOCALE, TRANSACTION_AMOUNT, PAYMENT_TYPE_ID, NOTE, EXTERNAL_ID,
+                LoanTransactionApiConstants.TRANSACTION_CLASSIFICATIONID_PARAMNAME));
     }
 
     private Set<String> getCapitalizedIncomeAdjustmentParameters() {
-        return new HashSet<>(
-                Arrays.asList("transactionDate", "dateFormat", "locale", "transactionAmount", "paymentTypeId", "note", "externalId"));
+        return new HashSet<>(Arrays.asList(TRANSACTION_DATE, DATE_FORMAT, LOCALE, TRANSACTION_AMOUNT, PAYMENT_TYPE_ID, NOTE, EXTERNAL_ID));
     }
 
-    private Set<String> getContractTerminationUndoParameters() {
-        return new HashSet<>(Arrays.asList("note", "reversalExternalId"));
+    private Set<String> getEarlyTerminationParameters() {
+        return new HashSet<>(Arrays.asList(TRANSACTION_DATE, DATE_FORMAT, LOCALE, NOTE, EXTERNAL_ID));
+    }
+
+    private Set<String> getEarlyTerminationUndoParameters() {
+        return new HashSet<>(Arrays.asList(NOTE, "reversalExternalId"));
     }
 
     private Set<String> getBuyDownFeeAdjustmentParameters() {
-        return new HashSet<>(
-                Arrays.asList("transactionDate", "dateFormat", "locale", "transactionAmount", "paymentTypeId", "note", "externalId"));
+        return new HashSet<>(Arrays.asList(TRANSACTION_DATE, DATE_FORMAT, LOCALE, TRANSACTION_AMOUNT, PAYMENT_TYPE_ID, NOTE, EXTERNAL_ID));
+    }
+
+    private record EarlyTerminationRules(String resource, String title, Predicate<Loan> appliedOn,
+            Function<Loan, LoanTransaction> transactionFinder, String notAppliedCode, String notAppliedMessage,
+            String transactionNotFoundCode, String notLastUserTransactionCode, boolean backdatingAllowed) {
+
+        String label() {
+            return StringUtils.capitalize(lowerCaseLabel());
+        }
+
+        String lowerCaseLabel() {
+            return title.toLowerCase(Locale.ROOT);
+        }
     }
 }

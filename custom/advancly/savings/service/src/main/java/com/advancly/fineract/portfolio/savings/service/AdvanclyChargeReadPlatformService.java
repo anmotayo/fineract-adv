@@ -40,6 +40,11 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
     private final AdvanclyChargeInterestRuleRepository chargeInterestRuleRepository;
 
     @Override
+    public List<ChargeData> retrieveWorkingCapitalLoanAccountApplicableCharges(final Long resolvedLoanId) {
+        return this.delegate.retrieveWorkingCapitalLoanAccountApplicableCharges(resolvedLoanId);
+    }
+
+    @Override
     public List<ChargeData> retrieveAllCharges() {
         return enrichCharges(this.delegate.retrieveAllCharges());
     }
@@ -57,6 +62,11 @@ public class AdvanclyChargeReadPlatformService implements ChargeReadPlatformServ
     @Override
     public ChargeData retrieveNewChargeDetails() {
         return withRuleOptions(this.delegate.retrieveNewChargeDetails());
+    }
+
+    @Override
+    public ChargeData retrieveNewChargeDetails(final Long chargeAppliesTo, final Long chargeTimeType) {
+        return withRuleOptions(this.delegate.retrieveNewChargeDetails(chargeAppliesTo, chargeTimeType));
     }
 
     @Override

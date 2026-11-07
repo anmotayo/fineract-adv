@@ -24,7 +24,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -54,11 +53,10 @@ public class InlineJobApiResource {
     @Path("{jobName}/inline")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Starts an inline Job", description = "Starts an inline Job")
+    @Operation(summary = "Starts an inline Job", operationId = "executeInlineJob", description = "Starts an inline Job")
     @RequestBody(content = @Content(schema = @Schema(implementation = InlineJobResourceSwagger.InlineJobRequest.class)))
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = InlineJobResourceSwagger.InlineJobResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Request body item size validation error") })
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = InlineJobResourceSwagger.InlineJobResponse.class)))
+    @ApiResponse(responseCode = "400", description = "Request body item size validation error")
     public String executeInlineJob(@PathParam("jobName") @Parameter(description = "jobName") final String jobName,
             @Parameter(hidden = true) final String jsonRequestBody) {
 

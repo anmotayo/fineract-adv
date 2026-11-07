@@ -62,12 +62,16 @@ import org.apache.fineract.portfolio.paymentdetail.data.PaymentDetailData;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 @RequiredArgsConstructor
+@Service
+@ConditionalOnMissingBean(value = JournalEntryReadPlatformService.class, ignored = JournalEntryReadPlatformServiceImpl.class)
 public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -187,7 +191,7 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
                 final Long paymentTypeId = JdbcSupport.getLong(rs, "paymentTypeId");
                 if (paymentTypeId != null) {
                     final String typeName = rs.getString("paymentTypeName");
-                    final PaymentTypeData paymentType = PaymentTypeData.instance(paymentTypeId, typeName);
+                    final PaymentTypeData paymentType = PaymentTypeData.builder().id(paymentTypeId).name(typeName).build();
                     final String accountNumber = rs.getString("accountNumber");
                     final String checkNumber = rs.getString("checkNumber");
                     final String routingCode = rs.getString("routingCode");
@@ -212,12 +216,12 @@ public class JournalEntryReadPlatformServiceImpl implements JournalEntryReadPlat
 
                 TransactionTypeEnumData transactionTypeEnumData = null;
 
-                if (PortfolioAccountType.fromInt(entityTypeId).isLoanAccount()) {
+                if (PortfolioAccountType.LOAN.equals(PortfolioAccountType.fromInt(entityTypeId))) {
                     final LoanTransactionEnumData loanTransactionType = LoanEnumerations
                             .transactionType(JdbcSupport.getInteger(rs, "loanTransactionType"));
                     transactionTypeEnumData = new TransactionTypeEnumData(loanTransactionType.getId(), loanTransactionType.getCode(),
                             loanTransactionType.getValue());
-                } else if (PortfolioAccountType.fromInt(entityTypeId).isSavingsAccount()) {
+                } else if (PortfolioAccountType.SAVINGS.equals(PortfolioAccountType.fromInt(entityTypeId))) {
                     final SavingsAccountTransactionEnumData savingsTransactionType = SavingsEnumerations
                             .transactionType(JdbcSupport.getInteger(rs, "savingsTransactionType"));
                     transactionTypeEnumData = new TransactionTypeEnumData(savingsTransactionType.getId(), savingsTransactionType.getCode(),

@@ -29,8 +29,10 @@ import java.util.List;
 import org.apache.fineract.infrastructure.codes.data.CodeValueData;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
+import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.staff.data.StaffData;
-import org.apache.fineract.organisation.staff.service.StaffReadPlatformService;
+import org.apache.fineract.organisation.staff.exception.StaffNotFoundException;
+import org.apache.fineract.organisation.staff.service.StaffReadService;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
 import org.apache.fineract.portfolio.client.data.ClientData;
@@ -42,6 +44,8 @@ import org.apache.fineract.portfolio.loanaccount.guarantor.data.GuarantorTransac
 import org.apache.fineract.portfolio.loanaccount.guarantor.data.ObligeeData;
 import org.apache.fineract.portfolio.savings.data.DepositAccountOnHoldTransactionData;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -53,18 +57,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class GuarantorReadPlatformServiceImpl implements GuarantorReadPlatformService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(GuarantorReadPlatformServiceImpl.class);
+
     private final JdbcTemplate jdbcTemplate;
     private final ClientReadPlatformService clientReadPlatformService;
-    private final StaffReadPlatformService staffReadPlatformService;
+    private final StaffReadService staffReadPlatformService;
     private final LoanRepositoryWrapper loanRepositoryWrapper;
+    private final PlatformSecurityContext context;
 
     @Autowired
     public GuarantorReadPlatformServiceImpl(final JdbcTemplate jdbcTemplate, final ClientReadPlatformService clientReadPlatformService,
-            final StaffReadPlatformService staffReadPlatformService, final LoanRepositoryWrapper loanRepositoryWrapper) {
+            final StaffReadService staffReadPlatformService, final LoanRepositoryWrapper loanRepositoryWrapper,
+            final PlatformSecurityContext context) {
         this.jdbcTemplate = jdbcTemplate;
         this.clientReadPlatformService = clientReadPlatformService;
         this.staffReadPlatformService = staffReadPlatformService;
         this.loanRepositoryWrapper = loanRepositoryWrapper;
+        this.context = context;
     }
 
     @Override
@@ -130,9 +139,9 @@ public class GuarantorReadPlatformServiceImpl implements GuarantorReadPlatformSe
                 .append(" left JOIN m_code_value cv on g.client_reln_cv_id = cv.id")//
                 .append(" left JOIN m_guarantor_funding_details gfd on g.id = gfd.guarantor_id")//
                 .append(" left JOIN m_portfolio_account_associations aa on gfd.account_associations_id = aa.id and aa.is_active = true and aa.association_type_enum = ?")//
-                .append(" left JOIN m_savings_account sa on sa.id = aa.linked_savings_account_id ")//
                 .append(" left join m_guarantor_transaction gt on gt.guarantor_fund_detail_id = gfd.id") //
-                .append(" left join m_deposit_account_on_hold_transaction oht on oht.id = gt.deposit_on_hold_transaction_id");
+                .append(" left join m_deposit_account_on_hold_transaction oht on oht.id = gt.deposit_on_hold_transaction_id")//
+                .append(" left JOIN m_savings_account sa on sa.id = COALESCE(aa.linked_savings_account_id, oht.savings_account_id)");
 
         public String schema() {
             return this.sqlBuilder.toString();
@@ -269,16 +278,18 @@ public class GuarantorReadPlatformServiceImpl implements GuarantorReadPlatformSe
         public GuarantorTransactionData mapRow(final ResultSet rs, final int rowNum) throws SQLException {
             GuarantorTransactionData guarantorTransactionData = null;
             final Long id = rs.getLong("gtId");
-            final Long transactionId = rs.getLong("ohtId");
-            final BigDecimal amount = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "transactionAmount");
-            final LocalDate date = JdbcSupport.getLocalDate(rs, "transactionDate");
-            final int transactionTypeEnum = rs.getInt("transactionType");
-            EnumOptionData transactionType = SavingsEnumerations.onHoldTransactionType(transactionTypeEnum);
-            final boolean reversed = rs.getBoolean("reversed");
-            final boolean transactionReversed = rs.getBoolean("transactionReversed");
-            DepositAccountOnHoldTransactionData onHoldTransactionData = DepositAccountOnHoldTransactionData.instance(transactionId, amount,
-                    transactionType, date, transactionReversed);
-            guarantorTransactionData = GuarantorTransactionData.instance(id, onHoldTransactionData, null, reversed);
+            if (id > 0) {
+                final Long transactionId = rs.getLong("ohtId");
+                final BigDecimal amount = JdbcSupport.getBigDecimalDefaultToZeroIfNull(rs, "transactionAmount");
+                final LocalDate date = JdbcSupport.getLocalDate(rs, "transactionDate");
+                final int transactionTypeEnum = rs.getInt("transactionType");
+                EnumOptionData transactionType = SavingsEnumerations.onHoldTransactionType(transactionTypeEnum);
+                final boolean reversed = rs.getBoolean("reversed");
+                final boolean transactionReversed = rs.getBoolean("transactionReversed");
+                DepositAccountOnHoldTransactionData onHoldTransactionData = DepositAccountOnHoldTransactionData.instance(transactionId,
+                        amount, transactionType, date, transactionReversed);
+                guarantorTransactionData = GuarantorTransactionData.instance(id, onHoldTransactionData, null, reversed);
+            }
             return guarantorTransactionData;
         }
 
@@ -289,13 +300,31 @@ public class GuarantorReadPlatformServiceImpl implements GuarantorReadPlatformSe
      */
     private GuarantorData mergeDetailsForClientOrStaffGuarantor(final GuarantorData guarantorData) {
         if (guarantorData.isExistingClient()) {
-            final ClientData clientData = this.clientReadPlatformService.retrieveOne(guarantorData.getEntityId());
-            return GuarantorData.mergeClientData(clientData, guarantorData);
+            if (isClientVisibleToCurrentUser(guarantorData.getEntityId())) {
+                final ClientData clientData = this.clientReadPlatformService.retrieveOne(guarantorData.getEntityId());
+                return GuarantorData.mergeClientData(clientData, guarantorData);
+            }
+            LOG.warn("Guarantor client {} of loan {} is not visible to the current user, returning unmerged guarantor details",
+                    guarantorData.getEntityId(), guarantorData.getLoanId());
         } else if (guarantorData.isStaffMember()) {
-            final StaffData staffData = this.staffReadPlatformService.retrieveStaff(guarantorData.getEntityId());
-            return GuarantorData.mergeStaffData(staffData, guarantorData);
+            try {
+                final StaffData staffData = this.staffReadPlatformService.retrieveStaff(guarantorData.getEntityId());
+                return GuarantorData.mergeStaffData(staffData, guarantorData);
+            } catch (final StaffNotFoundException e) {
+                LOG.warn("Guarantor staff {} of loan {} could not be resolved, returning unmerged guarantor details",
+                        guarantorData.getEntityId(), guarantorData.getLoanId(), e);
+            }
         }
         return guarantorData;
+    }
+
+    private boolean isClientVisibleToCurrentUser(final Long clientId) {
+        final String hierarchySearchString = this.context.officeHierarchy() + "%";
+        final Integer count = this.jdbcTemplate.queryForObject(
+                "select count(*) from m_client c join m_office o on o.id = c.office_id left join m_office t on t.id = c.transfer_to_office_id"
+                        + " where c.id = ? and (o.hierarchy like ? or t.hierarchy like ?)",
+                Integer.class, clientId, hierarchySearchString, hierarchySearchString);
+        return count != null && count > 0;
     }
 
     @Override

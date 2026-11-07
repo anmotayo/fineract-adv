@@ -90,7 +90,7 @@ import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
-import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
+import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadService;
 import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeDataValidator;
@@ -237,11 +237,14 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.service = new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer,
                 savingAccountRepositoryWrapper, staffRepository, savingsAccountTransactionRepository, savingAccountAssembler,
                 savingsAccountTransactionDataValidator, savingsAccountChargeDataValidator, paymentDetailWritePlatformService,
-                journalEntryWritePlatformService, savingsAccountDomainService, noteRepository, accountTransfersReadPlatformService,
-                accountAssociationsReadPlatformService, chargeRepository, savingsAccountChargeRepository, holidayRepository,
-                workingDaysRepository, configurationDomainService, depositAccountOnHoldTransactionRepository,
-                entityDatatableChecksWritePlatformService, appuserRepository, standingInstructionRepository, businessEventNotifierService,
-                gsimRepository, savingsAccountInterestPostingService, errorHandler);
+                savingsAccountDomainService, noteRepository, accountTransfersReadPlatformService, accountAssociationsReadPlatformService,
+                chargeRepository, savingsAccountChargeRepository, holidayRepository, workingDaysRepository, configurationDomainService,
+                depositAccountOnHoldTransactionRepository, entityDatatableChecksWritePlatformService, appuserRepository,
+                standingInstructionRepository, businessEventNotifierService, gsimRepository, savingsAccountInterestPostingService,
+                new com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountPostInterestService(
+                        new org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper()),
+                org.mockito.Mockito.mock(org.apache.fineract.portfolio.savings.service.SavingsAccountActivationService.class),
+                org.mockito.Mockito.mock(org.apache.fineract.infrastructure.core.service.ExternalIdFactory.class), errorHandler);
 
         // Real and wired to the service under test, so force-posting takes the production path.
         this.cumulativeInterestForfeitureService = new CumulativeInterestForfeitureService(this.chargeInterestRuleRepository,
@@ -255,6 +258,15 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
             this.journalledTransactions.addAll(newTransactions);
             return null;
         }).when(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
+
+        // Journalling moved from the write service to the domain service; route it to the same captured journal.
+        lenient().doAnswer(invocation -> {
+            final SavingsAccount journalledAccount = invocation.getArgument(0);
+            this.journalEntryWritePlatformService
+                    .createJournalEntriesForSavings(journalledAccount.deriveAccountingBridgeData(journalledAccount.getCurrency().getCode(),
+                            invocation.getArgument(1), invocation.getArgument(2), false, invocation.getArgument(3)));
+            return null;
+        }).when(this.savingsAccountDomainService).postJournalEntries(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
 
         // DynamicDepositAccount resolves its collaborators via this static locator, not Spring DI.
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -671,7 +683,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                         this.savingsAccountTransactionRepository, this.savingAccountRepositoryWrapper,
                         mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
                         this.cumulativeInterestForfeitureService),
-                mock(PaymentTypeReadPlatformService.class), mock(SavingsAccountReadPlatformService.class),
+                mock(PaymentTypeReadService.class), mock(SavingsAccountReadPlatformService.class),
                 this.accountAssociationsReadPlatformService);
     }
 

@@ -24,10 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import lombok.Getter;
 import org.apache.fineract.portfolio.TransactionEntryType;
 
 /**
- * An enumeration of different transactions that can occur on a {@link SavingsAccount}.
+ * An enumeration of different transactions that can occur on a SavingsAccount.
  */
 public enum SavingsAccountTransactionType {
 
@@ -58,7 +59,9 @@ public enum SavingsAccountTransactionType {
             .collect(Collectors.toMap(SavingsAccountTransactionType::getValue, v -> v));
 
     private final int value;
+    @Getter
     private final String code;
+    @Getter
     private final TransactionEntryType entryType;
 
     SavingsAccountTransactionType(final Integer value, final String code, TransactionEntryType entryType) {
@@ -77,14 +80,6 @@ public enum SavingsAccountTransactionType {
 
     public Integer getValue() {
         return this.value;
-    }
-
-    public String getCode() {
-        return this.code;
-    }
-
-    public TransactionEntryType getEntryType() {
-        return entryType;
     }
 
     public boolean isCreditEntryType() {
@@ -123,10 +118,6 @@ public enum SavingsAccountTransactionType {
             case 100 -> SavingsAccountTransactionType.INTEREST_CHARGE;
             default -> SavingsAccountTransactionType.INVALID;
         };
-    }
-
-    public boolean isValid() {
-        return this != INVALID;
     }
 
     public boolean isDeposit() {

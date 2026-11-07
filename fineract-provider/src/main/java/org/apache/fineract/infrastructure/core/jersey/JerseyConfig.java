@@ -25,7 +25,7 @@ import jakarta.ws.rs.ApplicationPath;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ext.Provider;
 import org.apache.fineract.infrastructure.core.api.jersey.PageableParamProvider;
-import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.inject.hk2.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.spi.internal.ValueParamProvider;
@@ -55,7 +55,7 @@ public class JerseyConfig extends ResourceConfig {
 
     @PostConstruct
     public void setup() {
-        appCtx.getBeansWithAnnotation(Path.class).values().forEach(component -> register(component.getClass()));
+        appCtx.getBeansWithAnnotation(Path.class).values().forEach(this::register);
 
         appCtx.getBeansWithAnnotation(Provider.class).values().forEach(this::register);
     }

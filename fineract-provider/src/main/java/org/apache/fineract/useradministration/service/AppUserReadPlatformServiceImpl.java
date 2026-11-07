@@ -20,9 +20,9 @@ package org.apache.fineract.useradministration.service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
@@ -30,13 +30,9 @@ import org.apache.fineract.infrastructure.security.service.PlatformSecurityConte
 import org.apache.fineract.organisation.office.data.OfficeData;
 import org.apache.fineract.organisation.office.service.OfficeReadPlatformService;
 import org.apache.fineract.organisation.staff.data.StaffData;
-import org.apache.fineract.organisation.staff.service.StaffReadPlatformService;
-import org.apache.fineract.portfolio.client.data.ClientData;
-import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.useradministration.data.AppUserData;
 import org.apache.fineract.useradministration.data.RoleData;
 import org.apache.fineract.useradministration.domain.AppUser;
-import org.apache.fineract.useradministration.domain.AppUserClientMapping;
 import org.apache.fineract.useradministration.domain.AppUserRepository;
 import org.apache.fineract.useradministration.domain.Role;
 import org.apache.fineract.useradministration.exception.UserNotFoundException;
@@ -52,7 +48,6 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
     private final OfficeReadPlatformService officeReadPlatformService;
     private final RoleReadPlatformService roleReadPlatformService;
     private final AppUserRepository appUserRepository;
-    private final StaffReadPlatformService staffReadPlatformService;
 
     /*
      * used for caching in spring expression language.
@@ -69,7 +64,7 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
         final String hierarchy = currentUser.getOffice().getHierarchy();
         final String hierarchySearchString = hierarchy + "%";
 
-        final AppUserMapper mapper = new AppUserMapper(this.roleReadPlatformService, this.staffReadPlatformService);
+        final AppUserMapper mapper = new AppUserMapper(this.roleReadPlatformService);
         final String sql = "select " + mapper.schema();
 
         return this.jdbcTemplate.query(sql, mapper, new Object[] { hierarchySearchString }); // NOSONAR
@@ -92,18 +87,23 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
 
         final Collection<OfficeData> offices = this.officeReadPlatformService.retrieveAllOfficesForDropdown();
         final Collection<RoleData> availableRoles = this.roleReadPlatformService.retrieveAllActiveRoles();
-        final Collection<RoleData> selfServiceRoles = this.roleReadPlatformService.retrieveAllSelfServiceRoles();
 
-        return AppUserData.template(offices, availableRoles, selfServiceRoles);
+        return AppUserData.template(offices, availableRoles);
     }
 
     @Override
     public AppUserData retrieveUser(final Long userId) {
 
-        this.context.authenticatedUser();
+        final String callerHierarchy = this.context.authenticatedUser().getOffice().getHierarchy();
 
         final AppUser user = this.appUserRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
         if (user.isDeleted()) {
+            throw new UserNotFoundException(userId);
+        }
+        // Scope the target user to the caller's office hierarchy, as retrieveAllUsers does. The linked staff below
+        // is read without a hierarchy filter, so this check is what keeps users outside the caller's tree unreadable.
+        final String userHierarchy = user.getOffice().getHierarchy();
+        if (userHierarchy == null || callerHierarchy == null || !userHierarchy.startsWith(callerHierarchy)) {
             throw new UserNotFoundException(userId);
         }
 
@@ -119,24 +119,17 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
 
         final StaffData linkedStaff;
         if (user.getStaff() != null) {
-            linkedStaff = this.staffReadPlatformService.retrieveStaff(user.getStaffId());
+            final String sql = "select " + LinkedStaffMapper.SCHEMA
+                    + " from m_staff s join m_office so on so.id = s.office_id where s.id = ?";
+            linkedStaff = this.jdbcTemplate.query(sql, (rs, rowNum) -> LinkedStaffMapper.map(rs), user.getStaffId()).stream().findFirst()
+                    .orElse(null);
         } else {
             linkedStaff = null;
         }
 
         AppUserData retUser = AppUserData.instance(user.getId(), user.getUsername(), user.getEmail(), user.getOffice().getId(),
-                user.getOffice().getName(), user.getFirstname(), user.getLastname(), availableRoles, null, selectedUserRoles, linkedStaff,
-                user.getPasswordNeverExpires(), user.isSelfServiceUser());
-
-        if (retUser.isSelfServiceUser()) {
-            Set<ClientData> clients = new HashSet<>();
-            for (AppUserClientMapping clientMap : user.getAppUserClientMappings()) {
-                Client client = clientMap.getClient();
-                clients.add(ClientData.lookup(client.getId(), client.getDisplayName(), client.getOffice().getId(),
-                        client.getOffice().getName()));
-            }
-            retUser.setClients(clients);
-        }
+                user.getOffice().getName(), user.getFirstname(), user.getLastname(), availableRoles, selectedUserRoles, linkedStaff,
+                user.getPasswordNeverExpires());
 
         return retUser;
     }
@@ -144,11 +137,9 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
     private static final class AppUserMapper implements RowMapper<AppUserData> {
 
         private final RoleReadPlatformService roleReadPlatformService;
-        private final StaffReadPlatformService staffReadPlatformService;
 
-        AppUserMapper(final RoleReadPlatformService roleReadPlatformService, final StaffReadPlatformService staffReadPlatformService) {
+        AppUserMapper(final RoleReadPlatformService roleReadPlatformService) {
             this.roleReadPlatformService = roleReadPlatformService;
-            this.staffReadPlatformService = staffReadPlatformService;
         }
 
         @Override
@@ -161,27 +152,43 @@ public class AppUserReadPlatformServiceImpl implements AppUserReadPlatformServic
             final String email = rs.getString("email");
             final Long officeId = JdbcSupport.getLong(rs, "officeId");
             final String officeName = rs.getString("officeName");
-            final Long staffId = JdbcSupport.getLong(rs, "staffId");
             final Boolean passwordNeverExpire = rs.getBoolean("passwordNeverExpires");
-            final Boolean isSelfServiceUser = rs.getBoolean("isSelfServiceUser");
             final Collection<RoleData> selectedRoles = this.roleReadPlatformService.retrieveAppUserRoles(id);
 
-            final StaffData linkedStaff;
-            if (staffId != null) {
-                linkedStaff = this.staffReadPlatformService.retrieveStaff(staffId);
-            } else {
-                linkedStaff = null;
-            }
-            return AppUserData.instance(id, username, email, officeId, officeName, firstname, lastname, null, null, selectedRoles,
-                    linkedStaff, passwordNeverExpire, isSelfServiceUser);
+            final StaffData linkedStaff = LinkedStaffMapper.map(rs);
+            return AppUserData.instance(id, username, email, officeId, officeName, firstname, lastname, null, selectedRoles, linkedStaff,
+                    passwordNeverExpire);
         }
 
         public String schema() {
             return " u.id as id, u.username as username, u.firstname as firstname, u.lastname as lastname, u.email as email, u.password_never_expires as passwordNeverExpires, "
-                    + " u.office_id as officeId, o.name as officeName, u.staff_id as staffId, u.is_self_service_user as isSelfServiceUser from m_appuser u "
-                    + " join m_office o on o.id = u.office_id where o.hierarchy like ? and u.is_deleted=false order by u.username";
+                    + " u.office_id as officeId, o.name as officeName, " + LinkedStaffMapper.SCHEMA + " from m_appuser u "
+                    + " join m_office o on o.id = u.office_id left join m_staff s on s.id = u.staff_id left join m_office so on so.id = s.office_id"
+                    + " where o.hierarchy like ? and u.is_deleted=false order by u.username";
         }
 
+    }
+
+    private static final class LinkedStaffMapper {
+
+        static final String SCHEMA = "s.id as staffId, s.office_id as staffOfficeId, so.name as staffOfficeName, s.firstname as staffFirstname,"
+                + " s.lastname as staffLastname, s.display_name as staffDisplayName, s.is_loan_officer as staffIsLoanOfficer,"
+                + " s.external_id as staffExternalId, s.mobile_no as staffMobileNo, s.is_active as staffIsActive, s.joining_date as staffJoiningDate";
+
+        private LinkedStaffMapper() {}
+
+        static StaffData map(final ResultSet rs) throws SQLException {
+            final Long staffId = JdbcSupport.getLong(rs, "staffId");
+            if (staffId == null) {
+                return null;
+            }
+            final LocalDate joiningDate = JdbcSupport.getLocalDate(rs, "staffJoiningDate");
+            return StaffData.builder().id(staffId).firstname(rs.getString("staffFirstname")).lastname(rs.getString("staffLastname"))
+                    .displayName(rs.getString("staffDisplayName")).officeId(rs.getLong("staffOfficeId"))
+                    .officeName(rs.getString("staffOfficeName")).isLoanOfficer(rs.getBoolean("staffIsLoanOfficer"))
+                    .externalId(rs.getString("staffExternalId")).mobileNo(rs.getString("staffMobileNo"))
+                    .isActive(rs.getBoolean("staffIsActive")).joiningDate(joiningDate).build();
+        }
     }
 
     private static final class AppUserLookupMapper implements RowMapper<AppUserData> {

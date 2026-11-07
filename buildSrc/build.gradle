@@ -41,6 +41,14 @@ repositories {
     mavenCentral()
 }
 
+configurations.all {
+    resolutionStrategy {
+        dependencySubstitution {
+            substitute module('org.lz4:lz4-java') using module('at.yawk.lz4:lz4-java:1.11.4')
+        }
+    }
+}
+
 dependencies {
     implementation 'com.sun.activation:jakarta.activation'
     implementation 'com.sun.mail:jakarta.mail'
@@ -54,6 +62,7 @@ dependencies {
     implementation 'org.eclipse.jgit:org.eclipse.jgit'
     implementation 'org.eclipse.jgit:org.eclipse.jgit.gpg.bc'
     implementation 'org.eclipse.jgit:org.eclipse.jgit.ssh.apache'
+    implementation 'org.apache.maven:maven-artifact'
     implementation 'com.vdurmont:semver4j'
     implementation 'org.beryx:text-io'
     implementation 'commons-io:commons-io'
@@ -62,5 +71,4 @@ dependencies {
     implementation 'com.squareup.retrofit2:retrofit'
     implementation 'com.squareup.retrofit2:converter-jackson'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'com.squareup.okhttp3:okhttp'
 }

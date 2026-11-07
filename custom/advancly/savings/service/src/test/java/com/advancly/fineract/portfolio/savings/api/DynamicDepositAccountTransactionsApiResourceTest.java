@@ -29,7 +29,7 @@ import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
-import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
+import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadService;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +51,7 @@ class DynamicDepositAccountTransactionsApiResourceTest {
         this.commandsSourceWritePlatformService = mock(PortfolioCommandSourceWritePlatformService.class);
         final ApiRequestParameterHelper apiRequestParameterHelper = mock(ApiRequestParameterHelper.class);
         final SavingsAccountReadPlatformService savingsAccountReadPlatformService = mock(SavingsAccountReadPlatformService.class);
-        final PaymentTypeReadPlatformService paymentTypeReadPlatformService = mock(PaymentTypeReadPlatformService.class);
+        final PaymentTypeReadService paymentTypeReadPlatformService = mock(PaymentTypeReadService.class);
         when(this.commandsSourceWritePlatformService.logCommandSource(any(CommandWrapper.class)))
                 .thenReturn(mock(CommandProcessingResult.class));
         this.resource = new DynamicDepositAccountTransactionsApiResource(context, toApiJsonSerializer,

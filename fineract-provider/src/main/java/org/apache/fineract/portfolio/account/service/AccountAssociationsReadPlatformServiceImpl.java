@@ -34,9 +34,11 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class AccountAssociationsReadPlatformServiceImpl implements AccountAssociationsReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -99,7 +101,9 @@ public class AccountAssociationsReadPlatformServiceImpl implements AccountAssoci
 
         final List<Map<String, Object>> statusList = this.jdbcTemplate.queryForList(sql1, savingsId);
         for (final Map<String, Object> statusMap : statusList) {
-            AccountAssociationType associationType = AccountAssociationType.fromInt((Integer) statusMap.get("type"));
+            // Direct conversion using Number handles both Short and Integer safely
+            final Integer typeValue = ((Number) statusMap.get("type")).intValue();
+            final AccountAssociationType associationType = AccountAssociationType.fromInt(typeValue);
             if (!associationType.isLinkedAccountAssociation() && (Boolean) statusMap.get("active")) {
                 hasActiveAccount = true;
                 break;

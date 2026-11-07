@@ -25,8 +25,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import java.io.IOException;
-import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -34,9 +32,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.avro.loan.v1.LoanAccountDelinquencyRangeDataV1;
-import org.apache.fineract.avro.loan.v1.LoanInstallmentDelinquencyBucketDataV1;
 import org.apache.fineract.client.feign.FineractFeignClient;
 import org.apache.fineract.client.feign.util.CallFailedRuntimeException;
 import org.apache.fineract.client.models.DelinquencyRangeData;
@@ -49,7 +47,7 @@ import org.apache.fineract.client.models.GetLoansLoanIdResponse;
 import org.apache.fineract.client.models.PostLoansDelinquencyActionRequest;
 import org.apache.fineract.client.models.PostLoansDelinquencyActionResponse;
 import org.apache.fineract.client.models.PostLoansResponse;
-import org.apache.fineract.test.api.ApiProperties;
+import org.apache.fineract.test.api.FineractClientConfiguration;
 import org.apache.fineract.test.data.DelinquencyRange;
 import org.apache.fineract.test.data.LoanStatus;
 import org.apache.fineract.test.helper.ErrorMessageHelper;
@@ -59,46 +57,29 @@ import org.apache.fineract.test.messaging.event.EventCheckHelper;
 import org.apache.fineract.test.messaging.event.loan.delinquency.LoanDelinquencyRangeChangeEvent;
 import org.apache.fineract.test.stepdef.AbstractStepDef;
 import org.apache.fineract.test.support.TestContextKey;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @Slf4j
+@RequiredArgsConstructor
 public class LoanDelinquencyStepDef extends AbstractStepDef {
 
     public static final String DATE_FORMAT = "dd MMMM yyyy";
     public static final String DEFAULT_LOCALE = "en";
     public static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern(DATE_FORMAT);
-    private static final String PWD_USER_WITH_ROLE = "1234567890Aa!";
+    public static final String RESUME_ACTION_NAME = "resume";
+    public static final String PAUSE_ACTION_NAME = "pause";
 
-    @Autowired
-    private FineractFeignClient fineractClient;
-
-    @Autowired
-    private ApiProperties apiProperties;
-
-    @Autowired
-    private EventAssertion eventAssertion;
-
-    @Autowired
-    private EventCheckHelper eventCheckHelper;
-
-    private FineractFeignClient createClientForUser(String username, String password) {
-        String baseUrl = apiProperties.getBaseUrl();
-        String tenantId = apiProperties.getTenantId();
-        long readTimeout = apiProperties.getReadTimeout();
-        String apiBaseUrl = baseUrl + "/fineract-provider/api/";
-
-        return FineractFeignClient.builder().baseUrl(apiBaseUrl).credentials(username, password).tenantId(tenantId)
-                .disableSslVerification(true).connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout((int) readTimeout, java.util.concurrent.TimeUnit.SECONDS).build();
-    }
+    private final FineractFeignClient fineractClient;
+    private final FineractClientConfiguration fineractClientConfiguration;
+    private final EventAssertion eventAssertion;
+    private final EventCheckHelper eventCheckHelper;
 
     @Then("Admin checks that delinquency range is: {string} and has delinquentDate {string}")
-    public void checkDelinquencyRange(String range, String delinquentDateExpected) throws IOException {
+    public void checkDelinquencyRange(String range, String delinquentDateExpected) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
-        Integer loanStatus = loanDetails.getStatus().getId();
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
+        Integer loanStatus = loanDetails.getStatus().getId() == null ? null : loanDetails.getStatus().getId().intValue();
 
         if (!LoanStatus.SUBMITTED_AND_PENDING_APPROVAL.value.equals(loanStatus) && !LoanStatus.APPROVED.value.equals(loanStatus)) {
             String delinquentDateExpectedValue = "".equals(delinquentDateExpected) ? null : delinquentDateExpected;
@@ -121,48 +102,15 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
                 .isEqualTo(expectedDelinquencyRangeValue);
     }
 
-    @Then("Admin checks that {string}th delinquency range is: {string} and added on: {string} and has delinquentDate {string}")
-    public void checkDelinquencyRange(String nthInList, String range, String addedOnDate, String delinquentDateExpected)
-            throws IOException {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DATE_FORMAT);
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        String delinquentDateExpectedValue = "".equals(delinquentDateExpected) ? null : delinquentDateExpected;
-        eventAssertion.assertEvent(LoanDelinquencyRangeChangeEvent.class, loanId)
-                .extractingData(LoanAccountDelinquencyRangeDataV1::getDelinquentDate).isEqualTo(delinquentDateExpectedValue);
-
-        DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(range);
-        String expectedDelinquencyRangeValue = expectedDelinquencyRange.getValue();
-
-        List<GetDelinquencyTagHistoryResponse> delinquencyHistoryDetails = ok(
-                () -> fineractClient.loans().getDelinquencyTagHistory(loanId));
-
-        String actualDelinquencyRangeValue = DelinquencyRange.NO_DELINQUENCY.value;
-        String actualDelinquencyAddedOnDate = "";
-        int i = Integer.parseInt(nthInList) - 1;
-        GetDelinquencyTagHistoryResponse delinquencyTag = delinquencyHistoryDetails.get(i);
-        if (delinquencyTag != null) {
-            actualDelinquencyRangeValue = delinquencyTag.getDelinquencyRange().getClassification();
-            actualDelinquencyAddedOnDate = formatter.format(delinquencyTag.getAddedOnDate());
-        }
-
-        assertThat(actualDelinquencyRangeValue)
-                .as(ErrorMessageHelper.delinquencyRangeError(actualDelinquencyRangeValue, expectedDelinquencyRangeValue))
-                .isEqualTo(expectedDelinquencyRangeValue);
-        assertThat(actualDelinquencyAddedOnDate).as(ErrorMessageHelper.delinquencyRangeError(actualDelinquencyAddedOnDate, addedOnDate))
-                .isEqualTo(addedOnDate);
-    }
-
     @Then("Loan delinquency history has the following details:")
-    public void delinquencyHistoryCheck(DataTable table) throws IOException {
+    public void delinquencyHistoryCheck(DataTable table) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DATE_FORMAT);
         List<List<String>> dataExpected = table.asLists();
 
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        List<GetDelinquencyTagHistoryResponse> body = ok(() -> fineractClient.loans().getDelinquencyTagHistory(loanId));
+        List<GetDelinquencyTagHistoryResponse> body = ok(() -> fineractClient.loans().retrieveDelinquencyTagHistoryLoan(loanId));
 
         for (int i = 0; i < body.size(); i++) {
             List<String> line = dataExpected.get(i + 1);
@@ -188,63 +136,42 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @When("Admin initiate a DELINQUENCY PAUSE with startDate: {string} and endDate: {string}")
-    public void delinquencyPause(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+    public void delinquencyPause(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
-        PostLoansDelinquencyActionResponse response = ok(() -> fineractClient.loans().createLoanDelinquencyAction(loanId, request));
+        PostLoansDelinquencyActionResponse response = ok(() -> fineractClient.loans().createDelinquencyActionLoan(loanId, request));
         testContext().set(TestContextKey.LOAN_DELINQUENCY_ACTION_RESPONSE, response);
         eventCheckHelper.loanAccountDelinquencyPauseChangedBusinessEventCheck(loanId);
     }
 
     @When("Created user with CREATE_DELINQUENCY_ACTION permission initiate a DELINQUENCY PAUSE with startDate: {string} and endDate: {string}")
-    public void delinquencyPauseWithCreatedUser(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+    public void delinquencyPauseWithCreatedUser(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
         String username = testContext().get(TestContextKey.CREATED_SIMPLE_USER_USERNAME);
         String password = testContext().get(TestContextKey.CREATED_SIMPLE_USER_PASSWORD);
-        FineractFeignClient userClient = createClientForUser(username, password);
+        FineractFeignClient userClient = fineractClientConfiguration.fineractFeignClientForUser(username, password);
 
-        PostLoansDelinquencyActionResponse response = ok(() -> userClient.loans().createLoanDelinquencyAction(loanId, request));
+        PostLoansDelinquencyActionResponse response = ok(() -> userClient.loans().createDelinquencyActionLoan(loanId, request));
         testContext().set(TestContextKey.LOAN_DELINQUENCY_ACTION_RESPONSE, response);
         eventCheckHelper.loanAccountDelinquencyPauseChangedBusinessEventCheck(loanId);
     }
 
     @Then("Created user with no CREATE_DELINQUENCY_ACTION permission gets an error when initiate a DELINQUENCY PAUSE with startDate: {string} and endDate: {string}")
-    public void delinquencyPauseWithCreatedUserNOPermissionError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+    public void delinquencyPauseWithCreatedUserNOPermissionError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
         int errorCodeExpected = 403;
         String errorMessageExpected = "User has no authority to CREATE delinquency_actions";
 
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
         String username = testContext().get(TestContextKey.CREATED_SIMPLE_USER_USERNAME);
         String password = testContext().get(TestContextKey.CREATED_SIMPLE_USER_PASSWORD);
-        FineractFeignClient userClient = createClientForUser(username, password);
+        FineractFeignClient userClient = fineractClientConfiguration.fineractFeignClientForUser(username, password);
 
-        CallFailedRuntimeException exception = fail(() -> userClient.loans().createLoanDelinquencyAction(loanId, request));
+        CallFailedRuntimeException exception = fail(() -> userClient.loans().createDelinquencyActionLoan(loanId, request));
 
         assertThat(exception.getStatus()).as(ErrorMessageHelper.wrongErrorCode(exception.getStatus(), errorCodeExpected))
                 .isEqualTo(errorCodeExpected);
@@ -252,72 +179,55 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
                 .as(ErrorMessageHelper.wrongErrorMessage(exception.getDeveloperMessage(), errorMessageExpected))
                 .contains(errorMessageExpected);
 
-        log.debug("ERROR CODE: {}", exception.getStatus());
-        log.debug("ERROR MESSAGE: {}", exception.getDeveloperMessage());
+        log.debug("ERROR CODE in response: {}", exception.getStatus());
+        log.debug("ERROR MESSAGE in response: {}", exception.getDeveloperMessage());
     }
 
     @When("Admin initiate a DELINQUENCY RESUME with startDate: {string}")
-    public void delinquencyResume(String startDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+    public void delinquencyResume(String startDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
 
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
-        PostLoansDelinquencyActionResponse response = ok(() -> fineractClient.loans().createLoanDelinquencyAction(loanId, request));
+        PostLoansDelinquencyActionResponse response = ok(() -> fineractClient.loans().createDelinquencyActionLoan(loanId, request));
         testContext().set(TestContextKey.LOAN_DELINQUENCY_ACTION_RESPONSE, response);
         eventCheckHelper.loanAccountDelinquencyPauseChangedBusinessEventCheck(loanId);
     }
 
     @When("Admin initiate a DELINQUENCY PAUSE by loanExternalId with startDate: {string} and endDate: {string}")
-    public void delinquencyPauseByLoanExternalId(String startDate, String endDate) throws IOException {
+    public void delinquencyPauseByLoanExternalId(String startDate, String endDate) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
         String loanExternalId = loanResponse.getResourceExternalId();
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+        Long loanId = loanResponse.getLoanId();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
         PostLoansDelinquencyActionResponse response = ok(
-                () -> fineractClient.loans().createLoanDelinquencyAction1(loanExternalId, request));
+                () -> fineractClient.loans().createDelinquencyActionLoanByExternalId(loanExternalId, request));
         testContext().set(TestContextKey.LOAN_DELINQUENCY_ACTION_RESPONSE, response);
         eventCheckHelper.loanAccountDelinquencyPauseChangedBusinessEventCheck(loanId);
     }
 
     @When("Admin initiate a DELINQUENCY RESUME by loanExternalId with startDate: {string}")
-    public void delinquencyResumeByLoanExternalId(String startDate) throws IOException {
+    public void delinquencyResumeByLoanExternalId(String startDate) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
         String loanExternalId = loanResponse.getResourceExternalId();
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+        Long loanId = loanResponse.getLoanId();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
 
         PostLoansDelinquencyActionResponse response = ok(
-                () -> fineractClient.loans().createLoanDelinquencyAction1(loanExternalId, request));
+                () -> fineractClient.loans().createDelinquencyActionLoanByExternalId(loanExternalId, request));
         testContext().set(TestContextKey.LOAN_DELINQUENCY_ACTION_RESPONSE, response);
         eventCheckHelper.loanAccountDelinquencyPauseChangedBusinessEventCheck(loanId);
     }
 
     @Then("Delinquency-actions have the following data:")
-    public void getDelinquencyActionData(DataTable table) throws IOException {
+    public void getDelinquencyActionData(DataTable table) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         List<List<String>> data = table.asLists();
         int nrOfLinesExpected = data.size() - 1;
 
-        List<GetDelinquencyActionsResponse> response = ok(() -> fineractClient.loans().getLoanDelinquencyActions(loanId));
+        List<GetDelinquencyActionsResponse> response = ok(() -> fineractClient.loans().retrieveDelinquencyActionsLoan(loanId));
         int nrOfLinesActual = response.size();
 
         assertThat(nrOfLinesActual)//
@@ -341,66 +251,38 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Initiating a delinquency-action other than PAUSE or RESUME in action field results an error - startDate: {string}, endDate: {string}")
-    public void actionFieldError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("TEST")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+    public void actionFieldError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest("TEST", startDate, endDate);
 
         int errorCodeExpected = 400;
         String errorMessageExpected = "Invalid Delinquency Action: TEST";
         errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
     }
 
-    @Then("Initiating a DELINQUENCY PAUSE with startDate before the actual business date results an error - startDate: {string}, endDate: {string}")
-    public void delinquencyPauseStartDateError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
-        int errorCodeExpected = 400;
-        String errorMessageExpected = "Start date of pause period must be in the future";
-        errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
-    }
-
     @Then("Initiating a DELINQUENCY PAUSE on a non-active loan results an error - startDate: {string}, endDate: {string}")
-    public void delinquencyPauseNonActiveLoanError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
+    public void delinquencyPauseNonActiveLoanError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
         int errorCodeExpected = 400;
         String errorMessageExpected = "Delinquency actions can be created only for active loans.";
         errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
     }
 
-    @Then("Initiating a DELINQUENCY RESUME on a non-active loan results an error - startDate: {string}")
-    public void delinquencyResumeNonActiveLoanError(String startDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+    @Then("Initiating a DELINQUENCY PAUSE with duration less then one day result an error - startDate: {string}, endDate: {string}")
+    public void delinquencyPauseDurationLessThenOneDayError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+        int errorCodeExpected = 400;
+        String errorMessageExpected = "Delinquency pause period must be at least one day";
+        errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
+    }
+
+    @Then("Initiating a DELINQUENCY RESUME on a non-active loan results an error - startDate: {string}")
+    public void delinquencyResumeNonActiveLoanError(String startDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
 
         int errorCodeExpected = 400;
         String errorMessageExpected = "Delinquency actions can be created only for active loans.";
@@ -408,16 +290,9 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Overlapping PAUSE periods result an error - startDate: {string}, endDate: {string}")
-    public void delinquencyPauseOverlappingError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("pause")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+    public void delinquencyPauseOverlappingError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(PAUSE_ACTION_NAME, startDate, endDate);
 
         int errorCodeExpected = 400;
         String errorMessageExpected = "Delinquency pause period cannot overlap with another pause period";
@@ -425,15 +300,9 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Initiating a DELINQUENCY RESUME without an active PAUSE period results an error - startDate: {string}")
-    public void delinquencyResumeWithoutPauseError(String startDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+    public void delinquencyResumeWithoutPauseError(String startDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
 
         int errorCodeExpected = 400;
         String errorMessageExpected = "Resume Delinquency Action can only be created during an active pause";
@@ -441,92 +310,102 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Initiating a DELINQUENCY RESUME with start date other than actual business date results an error - startDate: {string}")
-    public void delinquencyResumeStartDateError(String startDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
-
+    public void delinquencyResumeStartDateError(String startDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
         int errorCodeExpected = 400;
         String errorMessageExpected = "Start date of the Resume Delinquency action must be the current business date";
         errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
     }
 
     @Then("Initiating a DELINQUENCY RESUME with an endDate results an error - startDate: {string}, endDate: {string}")
-    public void delinquencyResumeWithEndDateError(String startDate, String endDate) throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        PostLoansDelinquencyActionRequest request = new PostLoansDelinquencyActionRequest()//
-                .action("resume")//
-                .startDate(startDate)//
-                .endDate(endDate)//
-                .dateFormat(DATE_FORMAT)//
-                .locale(DEFAULT_LOCALE);//
+    public void delinquencyResumeWithEndDateError(String startDate, String endDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyActionRequest(RESUME_ACTION_NAME, startDate, endDate);
 
         int errorCodeExpected = 400;
         String errorMessageExpected = "Resume Delinquency action can not have end date";
         errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
     }
 
+    @Then("Initiating a DELINQUENCY RESUME duplicated results an error - startDate: {string}")
+    public void delinquencyResumeDuplicatedError(String startDate) {
+        Long loanId = getLoanIdFromLoanResponse();
+        PostLoansDelinquencyActionRequest request = buildDelinquencyResumeActionRequest(startDate);
+
+        int errorCodeExpected = 400;
+        String errorMessageExpected = "There is an existing Resume Delinquency Action on this date";
+        errorMessageAssertationFeign(loanId, request, errorCodeExpected, errorMessageExpected);
+    }
+
     @Then("Installment level delinquency event has correct data")
-    public void installmentLevelDelinquencyEventCheck() throws IOException {
+    public void installmentLevelDelinquencyEventCheck() {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         eventCheckHelper.installmentLevelDelinquencyRangeChangeEventCheck(loanId);
     }
 
     @Then("INSTALLMENT level delinquency is null")
-    public void installmentLevelDelinquencyNull() throws IOException {
+    public void installmentLevelDelinquencyNull() {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
         List<GetLoansLoanIdLoanInstallmentLevelDelinquency> installmentLevelDelinquency = loanDetails.getDelinquent()
                 .getInstallmentLevelDelinquency() == null ? null : loanDetails.getDelinquent().getInstallmentLevelDelinquency();
         assertThat(installmentLevelDelinquency).isNull();
     }
 
     @Then("Loan has the following LOAN level delinquency data:")
-    public void loanDelinquencyDataCheck(DataTable table) throws IOException {
+    public void loanDelinquencyDataCheck(DataTable table) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         List<String> expectedValuesList = table.asLists().get(1);
-        DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(expectedValuesList.get(0));
+        DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(expectedValuesList.getFirst());
         String expectedDelinquencyRangeValue = expectedDelinquencyRange.getValue();
         expectedValuesList.set(0, expectedDelinquencyRangeValue);
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
         String actualDelinquencyRangeValue = loanDetails.getDelinquencyRange() == null ? "NO_DELINQUENCY"
                 : loanDetails.getDelinquencyRange().getClassification();
         GetLoansLoanIdDelinquencySummary delinquent = loanDetails.getDelinquent();
+        assertThat(delinquent).isNotNull();
         String delinquentAmount = delinquent.getDelinquentAmount() == null ? null
                 : new Utils.DoubleFormatter(delinquent.getDelinquentAmount().doubleValue()).format();
-        List<String> actualValuesList = List.of(actualDelinquencyRangeValue, delinquentAmount,
-                delinquent.getDelinquentDate() == null ? "null" : FORMATTER.format(delinquent.getDelinquentDate()),
-                delinquent.getDelinquentDays().toString(), delinquent.getPastDueDays().toString());
+
+        assertThat(actualDelinquencyRangeValue).isNotNull();
+        assertThat(delinquentAmount).isNotNull();
+        assertThat(delinquent.getDelinquentDays()).isNotNull();
+        assertThat(delinquent.getPastDueDays()).isNotNull();
+        List<String> actualValuesList;
+        if (expectedValuesList.size() == 6) {
+            actualValuesList = List.of(actualDelinquencyRangeValue, delinquentAmount,
+                    delinquent.getDelinquentDate() == null ? "null" : FORMATTER.format(delinquent.getDelinquentDate()),
+                    delinquent.getPastDueDate() == null ? "null" : FORMATTER.format(delinquent.getPastDueDate()),
+                    delinquent.getDelinquentDays().toString(), delinquent.getPastDueDays().toString());
+        } else {
+            actualValuesList = List.of(actualDelinquencyRangeValue, delinquentAmount,
+                    delinquent.getDelinquentDate() == null ? "null" : FORMATTER.format(delinquent.getDelinquentDate()),
+                    delinquent.getDelinquentDays().toString(), delinquent.getPastDueDays().toString());
+        }
 
         assertThat(actualValuesList).as(ErrorMessageHelper.wrongValueInLoanLevelDelinquencyData(actualValuesList, expectedValuesList))
                 .isEqualTo(expectedValuesList);
     }
 
     @Then("Loan has the following LOAN level next payment due data:")
-    public void loanNextPaymentDataCheck(DataTable table) throws IOException {
+    public void loanNextPaymentDataCheck(DataTable table) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         List<String> expectedValuesList = table.asLists().get(1);
-        DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(expectedValuesList.get(0));
+        DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(expectedValuesList.getFirst());
         String expectedDelinquencyRangeValue = expectedDelinquencyRange.getValue();
         expectedValuesList.set(0, expectedDelinquencyRangeValue);
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
 
         String actualDelinquencyRangeValue = loanDetails.getDelinquencyRange() == null ? "NO_DELINQUENCY"
                 : loanDetails.getDelinquencyRange().getClassification();
@@ -543,11 +422,11 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Loan has the following INSTALLMENT level delinquency data:")
-    public void loanDelinquencyInstallmentLevelDataCheck(DataTable table) throws IOException {
+    public void loanDelinquencyInstallmentLevelDataCheck(DataTable table) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
         List<GetLoansLoanIdLoanInstallmentLevelDelinquency> installmentLevelDelinquency = loanDetails.getDelinquent()
                 .getInstallmentLevelDelinquency();
 
@@ -556,14 +435,13 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
                 .as(ErrorMessageHelper.nrOfLinesWrongInInstallmentLevelDelinquencyData(installmentLevelDelinquency.size(), data.size() - 1))
                 .isEqualTo(data.size() - 1);
         for (int i = 1; i < data.size(); i++) {
-            DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(data.get(i).get(1));
+            DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(data.get(i).get(0));
             String expectedDelinquencyRangeValue = expectedDelinquencyRange.getValue();
 
             List<String> expectedValuesList = data.get(i);
-            expectedValuesList.set(1, expectedDelinquencyRangeValue);
+            expectedValuesList.set(0, expectedDelinquencyRangeValue);
 
-            List<String> actualValuesList = List.of(String.valueOf(installmentLevelDelinquency.get(i - 1).getRangeId()),
-                    installmentLevelDelinquency.get(i - 1).getClassification(),
+            List<String> actualValuesList = List.of(installmentLevelDelinquency.get(i - 1).getClassification(),
                     installmentLevelDelinquency.get(i - 1).getDelinquentAmount().setScale(2, RoundingMode.HALF_DOWN).toString());
             assertThat(actualValuesList)
                     .as(ErrorMessageHelper.wrongValueInLineInInstallmentLevelDelinquencyData(i, actualValuesList, expectedValuesList))
@@ -572,12 +450,12 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Loan Delinquency pause periods has the following data:")
-    public void loanDelinquencyPauseDataCheck(DataTable table) throws IOException {
+    public void loanDelinquencyPauseDataCheck(DataTable table) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         List<List<String>> expectedData = table.asLists();
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
 
         List<GetLoansLoanIdDelinquencyPausePeriod> delinquencyPausePeriods = loanDetails.getDelinquent().getDelinquencyPausePeriods();
 
@@ -598,11 +476,11 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     }
 
     @Then("Loan details delinquent.nextPaymentDueDate will be {string}")
-    public void nextPaymentDueDateCheck(String expectedDate) throws IOException {
+    public void nextPaymentDueDateCheck(String expectedDate) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
         String actualDate = FORMATTER.format(loanDetails.getDelinquent().getNextPaymentDueDate());
 
         assertThat(actualDate).as(ErrorMessageHelper.wrongDataInNextPaymentDueDate(actualDate, expectedDate)).isEqualTo(expectedDate);
@@ -611,7 +489,7 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     @Then("LoanAccountDelinquencyRangeDataV1 has delinquencyRange field with value {string}")
     public void checkDelinquencyRangeInEvent(String expectedRange) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         DelinquencyRange expectedDelinquencyRange = DelinquencyRange.valueOf(expectedRange);
         String expectedDelinquencyRangeValue = expectedDelinquencyRange.getValue();
@@ -626,91 +504,18 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
                 });
     }
 
-    @Then("LoanDelinquencyRangeChangeBusinessEvent has the same Delinquency range, date and amount as in LoanDetails on both loan- and installment-level")
-    public void checkDelinquencyRangeInEvent() throws IOException {
-        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
-
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
-        DelinquencyRangeData delinquencyRange = loanDetails.getDelinquencyRange();
-        GetLoansLoanIdDelinquencySummary delinquent = loanDetails.getDelinquent();
-
-        eventAssertion.assertEvent(LoanDelinquencyRangeChangeEvent.class, loanId)//
-                .extractingData(loanAccountDelinquencyRangeDataV1 -> {
-
-                    Long loanLevelDelinquencyRangeId = loanAccountDelinquencyRangeDataV1.getDelinquencyRange().getId();
-                    String loanLevelDelinquencyRange = loanAccountDelinquencyRangeDataV1.getDelinquencyRange().getClassification();
-                    String loanLevelDelinquentDate = loanAccountDelinquencyRangeDataV1.getDelinquentDate();
-                    BigDecimal loanLevelTotalAmount = loanAccountDelinquencyRangeDataV1.getAmount().getTotalAmount();
-
-                    Long loanLevelDelinquencyRangeIdExpected = delinquencyRange.getId();
-                    String loanLevelDelinquencyRangeExpected = delinquencyRange.getClassification();
-                    String loanLevelDelinquentDateExpected = FORMATTER.format(delinquent.getDelinquentDate());
-                    BigDecimal loanLevelTotalAmountExpected = delinquent.getDelinquentAmount();
-
-                    assertThat(loanLevelDelinquencyRangeId)//
-                            .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent4(loanLevelDelinquencyRangeId,
-                                    loanLevelDelinquencyRangeIdExpected))//
-                            .isEqualTo(loanLevelDelinquencyRangeIdExpected);//
-                    assertThat(loanLevelDelinquencyRange)//
-                            .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent5(loanLevelDelinquencyRange,
-                                    loanLevelDelinquencyRangeExpected))//
-                            .isEqualTo(loanLevelDelinquencyRangeExpected);//
-                    assertThat(loanLevelDelinquentDate)//
-                            .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent7(loanLevelDelinquentDate,
-                                    loanLevelDelinquentDateExpected))//
-                            .isEqualTo(loanLevelDelinquentDateExpected);//
-                    assertThat(loanLevelTotalAmount)//
-                            .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent6(loanLevelTotalAmount,
-                                    loanLevelTotalAmountExpected))//
-                            .isEqualByComparingTo(loanLevelTotalAmountExpected);//
-
-                    List<GetLoansLoanIdLoanInstallmentLevelDelinquency> installmentLevelDelinquencyBucketsExpected = delinquent
-                            .getInstallmentLevelDelinquency();
-                    List<LoanInstallmentDelinquencyBucketDataV1> installmentDelinquencyBuckets = loanAccountDelinquencyRangeDataV1
-                            .getInstallmentDelinquencyBuckets();
-                    for (int i = 0; i < installmentDelinquencyBuckets.size(); i++) {
-                        Long installmentLevelDelinquencyRangeId = installmentDelinquencyBuckets.get(i).getDelinquencyRange().getId();
-                        String installmentLevelDelinquencyRange = installmentDelinquencyBuckets.get(i).getDelinquencyRange()
-                                .getClassification();
-                        BigDecimal installmentLevelTotalAmount = installmentDelinquencyBuckets.get(i).getAmount().getTotalAmount();
-
-                        Long installmentLevelDelinquencyRangeIdExpected = installmentLevelDelinquencyBucketsExpected.get(i).getRangeId();
-                        String installmentLevelDelinquencyRangeExpected = installmentLevelDelinquencyBucketsExpected.get(i)
-                                .getClassification();
-                        BigDecimal installmentLevelTotalAmountExpected = installmentLevelDelinquencyBucketsExpected.get(i)
-                                .getDelinquentAmount();
-
-                        assertThat(installmentLevelDelinquencyRangeId)//
-                                .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent1(
-                                        installmentLevelDelinquencyRangeId, installmentLevelDelinquencyRangeIdExpected))//
-                                .isEqualTo(installmentLevelDelinquencyRangeIdExpected);//
-                        assertThat(installmentLevelDelinquencyRange)//
-                                .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent2(
-                                        installmentLevelDelinquencyRange, installmentLevelDelinquencyRangeExpected))//
-                                .isEqualTo(installmentLevelDelinquencyRangeExpected);//
-                        assertThat(installmentLevelTotalAmount)//
-                                .as(ErrorMessageHelper.wrongValueInLoanDelinquencyRangeChangeBusinessEvent3(installmentLevelTotalAmount,
-                                        installmentLevelTotalAmountExpected))//
-                                .isEqualByComparingTo(installmentLevelTotalAmountExpected);//
-                    }
-                    return null;
-                });
-    }
-
     @Then("In Loan details delinquent.lastRepaymentAmount is {int} EUR with lastRepaymentDate {string}")
-    public void delinquentLastRepaymentAmountCheck(int expectedLastRepaymentAmount, String expectedLastRepaymentDate) throws IOException {
+    public void delinquentLastRepaymentAmountCheck(int expectedLastRepaymentAmount, String expectedLastRepaymentDate) {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
-        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveLoan(loanId, Map.of("associations", "collection")));
+        GetLoansLoanIdResponse loanDetails = ok(() -> fineractClient.loans().retrieveOneLoan(loanId, Map.of("associations", "collection")));
 
-        Double expectedLastRepaymentAmount1 = Double.valueOf(expectedLastRepaymentAmount);
         Double actualLastRepaymentAmount = loanDetails.getDelinquent().getLastRepaymentAmount().doubleValue();
         String actualLastRepaymentDate = FORMATTER.format(loanDetails.getDelinquent().getLastRepaymentDate());
 
         assertThat(actualLastRepaymentAmount)//
-                .as(ErrorMessageHelper.wrongDataInDelinquentLastRepaymentAmount(actualLastRepaymentAmount, expectedLastRepaymentAmount1))//
+                .as(ErrorMessageHelper.wrongDataInDelinquentLastRepaymentAmount(actualLastRepaymentAmount, actualLastRepaymentAmount))//
                 .isEqualTo(expectedLastRepaymentAmount);//
         assertThat(actualLastRepaymentDate)//
                 .as(ErrorMessageHelper.wrongDataInDelinquentLastRepaymentDate(actualLastRepaymentDate, expectedLastRepaymentDate))//
@@ -736,7 +541,7 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
 
     private void errorMessageAssertationFeign(long loanId, PostLoansDelinquencyActionRequest request, int errorCodeExpected,
             String errorMessageExpected) {
-        CallFailedRuntimeException exception = fail(() -> fineractClient.loans().createLoanDelinquencyAction(loanId, request));
+        CallFailedRuntimeException exception = fail(() -> fineractClient.loans().createDelinquencyActionLoan(loanId, request));
 
         assertThat(exception.getStatus()).as(ErrorMessageHelper.wrongErrorCode(exception.getStatus(), errorCodeExpected))
                 .isEqualTo(errorCodeExpected);
@@ -751,8 +556,31 @@ public class LoanDelinquencyStepDef extends AbstractStepDef {
     @Then("LoanDelinquencyRangeChangeBusinessEvent is created")
     public void checkLoanDelinquencyRangeChangeBusinessEventCreated() {
         PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
-        long loanId = loanResponse.getLoanId();
+        Long loanId = loanResponse.getLoanId();
 
         eventAssertion.assertEventRaised(LoanDelinquencyRangeChangeEvent.class, loanId);
     }
+
+    private Long getLoanIdFromLoanResponse() {
+        PostLoansResponse loanResponse = testContext().get(TestContextKey.LOAN_CREATE_RESPONSE);
+        return loanResponse.getLoanId();
+    }
+
+    private PostLoansDelinquencyActionRequest buildDelinquencyResumeActionRequest(String startDate) {
+        return new PostLoansDelinquencyActionRequest()//
+                .action(RESUME_ACTION_NAME)//
+                .startDate(startDate)//
+                .dateFormat(DATE_FORMAT)//
+                .locale(DEFAULT_LOCALE);//
+    }
+
+    private PostLoansDelinquencyActionRequest buildDelinquencyActionRequest(String delinquencyAction, String startDate, String endDate) {
+        return new PostLoansDelinquencyActionRequest()//
+                .action(delinquencyAction)//
+                .startDate(startDate)//
+                .endDate(endDate)//
+                .dateFormat(DATE_FORMAT)//
+                .locale(DEFAULT_LOCALE);//
+    }
+
 }

@@ -20,6 +20,8 @@ description = 'Advancly: Fineract Savings Optimization Starter'
 
 group = 'com.advancly.fineract.portfolio.savings'
 
-archivesBaseName = 'advancly-fineract-savings-starter'
+base {
+    archivesName = 'advancly-fineract-savings-starter'
+}
 
 apply from: 'dependencies.gradle'

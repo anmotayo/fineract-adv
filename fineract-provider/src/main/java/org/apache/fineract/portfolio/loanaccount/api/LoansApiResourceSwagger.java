@@ -134,6 +134,40 @@ final class LoansApiResourceSwagger {
             public Boolean overpaid;
         }
 
+        static final class GetLoansLoanIdCollateralData {
+
+            private GetLoansLoanIdCollateralData() {}
+
+            @Schema(example = "1")
+            public Long collateralId;
+            @Schema(example = "1")
+            public Long clientCollateralId;
+            @Schema(example = "1")
+            public BigDecimal quantity;
+            @Schema(example = "10000.00")
+            public BigDecimal total;
+            @Schema(example = "10000.00")
+            public BigDecimal totalCollateral;
+            @Schema(example = "Gold")
+            public String name;
+            @Schema(example = "10000.00")
+            public BigDecimal unitPrice;
+            @Schema(example = "40")
+            public BigDecimal pctToBase;
+        }
+
+        static final class GetLoansLoanIdSubStatus {
+
+            private GetLoansLoanIdSubStatus() {}
+
+            @Schema(example = "1")
+            public Long id;
+            @Schema(example = "loanSubStatus.foreclosed")
+            public String code;
+            @Schema(example = "Foreclosed")
+            public String value;
+        }
+
         static final class GetLoansLoanIdLoanType {
 
             private GetLoansLoanIdLoanType() {}
@@ -314,6 +348,7 @@ final class LoansApiResourceSwagger {
             @Schema(example = "0.00")
             public BigDecimal totalOutstanding;
             public List<GetLoansLoanIdRepaymentPeriod> periods;
+            public List<GetLoansLoanIdRepaymentPeriod> futurePeriods;
         }
 
         static final class GetLoansLoanIdRepaymentPeriod {
@@ -736,9 +771,13 @@ final class LoansApiResourceSwagger {
                 @Schema(example = "false")
                 public boolean capitalizedIncomeAmortization;
                 @Schema(example = "false")
+                public boolean capitalizedIncomeAmortizationAdjustment;
+                @Schema(example = "false")
                 public boolean capitalizedIncomeAdjustment;
                 @Schema(example = "false")
                 public boolean contractTermination;
+                @Schema(example = "false")
+                public boolean loanWithdrawal;
                 @Schema(example = "false")
                 public boolean buyDownFee;
                 @Schema(example = "false")
@@ -1027,6 +1066,8 @@ final class LoansApiResourceSwagger {
             @Schema(example = "12")
             public Integer pastDueDays;
             @Schema(example = "[2022, 07, 01]")
+            public LocalDate pastDueDate;
+            @Schema(example = "[2022, 07, 01]")
             public LocalDate nextPaymentDueDate;
             @Schema(example = "123.23")
             public BigDecimal nextPaymentAmount;
@@ -1128,6 +1169,29 @@ final class LoansApiResourceSwagger {
             public boolean isProcessed;
         }
 
+        @Schema(description = "Originator data associated with the loan")
+        static final class GetLoansLoanIdOriginatorData {
+
+            private GetLoansLoanIdOriginatorData() {}
+
+            @Schema(example = "1")
+            public Long id;
+            @Schema(example = "REV-SHARE-001")
+            public String externalId;
+            @Schema(example = "PP Merchant")
+            public String name;
+            @Schema(example = "ACTIVE")
+            public String status;
+            @Schema(example = "1")
+            public Long originatorTypeId;
+            @Schema(example = "MERCHANT")
+            public String originatorTypeName;
+            @Schema(example = "2")
+            public Long channelTypeId;
+            @Schema(example = "ONLINE")
+            public String channelTypeName;
+        }
+
         @Schema(example = "1")
         public Long id;
         @Schema(example = "95174ff9-1a75-4d72-a413-6f9b1cb988b7")
@@ -1135,6 +1199,8 @@ final class LoansApiResourceSwagger {
         @Schema(example = "000000001")
         public String accountNo;
         public GetLoansLoanIdStatus status;
+        public GetLoansLoanIdSubStatus subStatus;
+        public List<GetLoansLoanIdCollateralData> collateral;
         @Schema(example = "false")
         public boolean disallowExpectedDisbursements;
         @Schema(example = "1")
@@ -1198,14 +1264,16 @@ final class LoansApiResourceSwagger {
         public GetLoansLoanIdRepaymentSchedule repaymentSchedule;
         @Schema(description = "Set of GetLoansLoanIdTransactions")
         public List<GetLoansLoanIdTransactions> transactions;
-        @Schema(description = "Set of GetLoansLoanIdDisbursementDetails")
-        public Set<GetLoansLoanIdDisbursementDetails> disbursementDetails;
+        @Schema(description = "List of GetLoansLoanIdDisbursementDetails")
+        public List<GetLoansLoanIdDisbursementDetails> disbursementDetails;
         @Schema(example = "false", description = "Allow full term length for each tranche disbursement")
         public Boolean allowFullTermForTranche;
         @Schema(description = "Delinquent data")
         public GetLoansLoanIdDelinquencySummary delinquent;
         @Schema(description = "Set of charges")
         public List<GetLoansLoanIdLoanChargeData> charges;
+        @Schema(description = "List of originators associated with this loan")
+        public List<GetLoansLoanIdOriginatorData> originators;
         public DelinquencyRangeData delinquencyRange;
         @Schema(example = "false")
         public Boolean fraud;
@@ -1214,6 +1282,8 @@ final class LoansApiResourceSwagger {
         @Schema(example = "250.000000")
         public BigDecimal totalOverpaid;
         public LocalDate lastClosedBusinessDate;
+        @Schema(example = "false", description = "Whether the loan is a non-performing asset")
+        public Boolean isNPA;
         @Schema(example = "[2013, 11, 1]")
         public LocalDate overpaidOnDate;
         @Schema(example = "false")
@@ -1234,6 +1304,8 @@ final class LoansApiResourceSwagger {
         public BigDecimal disbursedAmountPercentageForDownPayment;
         @Schema(example = "false")
         public Boolean enableAutoRepaymentForDownPayment;
+        @Schema(description = "Seed date for first repayment period: disbursement date vs submitted on date", example = "1")
+        public EnumOptionData repaymentStartDateType;
         @Schema(example = "CUMULATIVE")
         public EnumOptionData loanScheduleType;
         @Schema(example = "HORIZONTAL")
@@ -1261,6 +1333,8 @@ final class LoansApiResourceSwagger {
         public StringEnumOptionData buyDownFeeStrategy;
         @Schema(example = "FEE")
         public StringEnumOptionData buyDownFeeIncomeType;
+        @Schema(example = "6")
+        public Integer actualNoTerm;
     }
 
     @Schema(description = "GetLoansResponse")
@@ -1300,6 +1374,8 @@ final class LoansApiResourceSwagger {
 
         @Schema(example = "1")
         public Long clientId;
+        @Schema(example = "1", description = "Mandatory for group and GLIM loans")
+        public Long groupId;
         @Schema(example = "dd MMMM yyyy")
         public String dateFormat;
         @Schema(example = "en_GB")
@@ -1336,12 +1412,20 @@ final class LoansApiResourceSwagger {
         public String expectedDisbursementDate;
         @Schema(example = "mifos-standard-strategy")
         public String transactionProcessingStrategyCode;
-        @Schema(example = "360", allowableValues = "1, 360, 364, 36")
+        @Schema(examples = "1, 360, 364, 365")
         public Integer daysInYearType;
         @Schema(example = "FULL_LEAP_YEAR", allowableValues = "FULL_LEAP_YEAR, FEB_29_PERIOD_ONLY")
         public String daysInYearCustomStrategy;
         @Schema(example = "individual")
         public String loanType;
+        @Schema(example = "false", description = "Take the rate from the product's floating rate instead of interestRatePerPeriod")
+        public Boolean isFloatingInterestRate;
+        @Schema(example = "0", description = "Added to the floating rate when isFloatingInterestRate is true")
+        public BigDecimal interestRateDifferential;
+        @Schema(example = "1", description = "Meeting calendar to attach the loan to; required for jlg loans")
+        public Long calendarId;
+        @Schema(example = "true", description = "Sync the disbursement date with the attached meeting")
+        public Boolean syncDisbursementWithMeeting;
         @Schema(example = "20 September 2011")
         public String submittedOnDate;
         @Schema(example = "786444UUUYYH7")
@@ -1352,10 +1436,12 @@ final class LoansApiResourceSwagger {
         public Boolean allowFullTermForTranche;
         @Schema(description = "Maximum allowed outstanding balance")
         public BigDecimal maxOutstandingLoanBalance;
-        @Schema(example = "[2011, 10, 20]")
-        public LocalDate repaymentsStartingFromDate;
+        @Schema(example = "20 September 2011")
+        public String repaymentsStartingFromDate;
         @Schema(example = "1")
         public Integer graceOnInterestCharged;
+        @Schema(example = "20 September 2011")
+        public String interestChargedFromDate;
         @Schema(example = "1")
         public Integer graceOnPrincipalPayment;
         @Schema(example = "1")
@@ -1398,6 +1484,26 @@ final class LoansApiResourceSwagger {
         public List<PostLoansDataTable> datatables;
 
         public List<PostLoansRequestChargeData> charges;
+        public List<PostLoansRequestCollateralData> collateral;
+        @Schema(example = "1")
+        public Long linkAccountId;
+        @Schema(example = "true", description = "Requires linkAccountId when true")
+        public Boolean createStandingInstructionAtDisbursement;
+
+        @Schema(description = """
+                Optional array of originators to associate with this loan. \
+                Each entry can reference an existing originator by 'id' or 'externalId'. \
+                If the global config 'enable_originator_creation_during_loan_application' is enabled, \
+                non-existing originators will be auto-created using the provided details (name, typeId, channelTypeId).""")
+        public List<PostLoansOriginatorData> originators;
+
+        @Schema(example = "1")
+        public Integer repaymentStartDateType;
+
+        @Schema(example = "true", description = "GLIM loans only: marks this application as the GLIM parent account")
+        public Boolean isParentAccount;
+        @Schema(example = "10000", description = "GLIM loans only: the total principal of the parent GLIM account")
+        public BigDecimal totalLoan;
 
         static final class PostLoansRequestChargeData {
 
@@ -1408,6 +1514,41 @@ final class LoansApiResourceSwagger {
 
             @Schema(example = "1.0")
             public BigDecimal amount;
+
+            @Schema(example = "29 September 2011")
+            public String dueDate;
+        }
+
+        static final class PostLoansRequestCollateralData {
+
+            private PostLoansRequestCollateralData() {}
+
+            @Schema(example = "1")
+            public Long clientCollateralId;
+
+            @Schema(example = "1")
+            public BigDecimal quantity;
+        }
+
+        @Schema(description = "Originator data for loan creation request")
+        public static final class PostLoansOriginatorData {
+
+            private PostLoansOriginatorData() {}
+
+            @Schema(description = "Originator internal ID (use this OR externalId, not both)", example = "1")
+            public Long id;
+
+            @Schema(description = "Originator external ID (use this OR id, not both)", example = "REV-SHARE-001")
+            public String externalId;
+
+            @Schema(description = "Originator name (used when creating new originator if config enabled)", example = "PP Merchant")
+            public String name;
+
+            @Schema(description = "Code value ID for originator type (from LoanOriginatorType code)", example = "1")
+            public Long typeId;
+
+            @Schema(description = "Code value ID for channel type (from LoanOriginationChannelType code)", example = "2")
+            public Long channelTypeId;
         }
     }
 
@@ -1480,6 +1621,8 @@ final class LoansApiResourceSwagger {
         public Long resourceId;
         @Schema(example = "95174ff9-1a75-4d72-a413-6f9b1cb988b7")
         public String resourceExternalId;
+        @Schema(example = "1", description = "Returned for GLIM loans: the id of the parent GLIM account")
+        public Long glimId;
     }
 
     @Schema(description = "PutLoansLoanIdRequest")
@@ -1553,7 +1696,7 @@ final class LoansApiResourceSwagger {
         public Long clientId;
         @Schema(example = "individual")
         public String loanType;
-        public List<PutLoansLoanIdChanges> charges;
+        public List<PutLoansLoanIdChargeData> charges;
         public List<PutLoansLoanIdCollateral> collateral;
         public List<PutLoansLoanIdDisbursementData> disbursementData;
         @Schema(example = "false", description = "Allow full term length for each tranche disbursement")
@@ -1571,9 +1714,9 @@ final class LoansApiResourceSwagger {
         @Schema(example = "false")
         public Boolean interestRecognitionOnDisbursementDate;
 
-        static final class PutLoansLoanIdChanges {
+        static final class PutLoansLoanIdChargeData {
 
-            private PutLoansLoanIdChanges() {}
+            private PutLoansLoanIdChargeData() {}
 
             @Schema(example = "dd MMMM yyyy")
             public String dateFormat;
@@ -1682,10 +1825,64 @@ final class LoansApiResourceSwagger {
 
             private PostLoansLoanIdDisbursementData() {}
 
-            @Schema(example = "[2012, 4, 3]")
-            public LocalDate expectedDisbursementDate;
+            // Parsed with the request's dateFormat, like every other date on this DTO. Declaring it
+            // LocalDate made a generated client serialise ISO into a body declaring "dd MMMM yyyy".
+            @Schema(example = "1 November 2023")
+            public String expectedDisbursementDate;
             @Schema(example = "22000")
             public BigDecimal principal;
+        }
+
+        @Schema(description = "Post dated check backing one repayment installment")
+        static final class PostLoansLoanIdPostDatedCheckData {
+
+            private PostLoansLoanIdPostDatedCheckData() {}
+
+            @Schema(example = "1")
+            public Integer installmentId;
+            @Schema(example = "AMANA BANK")
+            public String name;
+            @Schema(example = "1600.00")
+            public BigDecimal amount;
+            @Schema(example = "900400500621")
+            public Long accountNo;
+            @Schema(example = "123456789")
+            public Long checkNo;
+        }
+
+        @Schema(description = "Originator data for loan disbursement request")
+        public static final class PostLoansLoanIdOriginatorData {
+
+            private PostLoansLoanIdOriginatorData() {}
+
+            @Schema(description = "Originator internal ID (use this OR externalId, not both)", example = "1")
+            public Long id;
+
+            @Schema(description = "Originator external ID (use this OR id, not both)", example = "REV-SHARE-001")
+            public String externalId;
+
+            @Schema(description = "Originator name (used when creating a new originator during disbursement)", example = "PP Merchant")
+            public String name;
+
+            @Schema(description = "Code value ID for originator type (from LoanOriginatorType code)", example = "1")
+            public Long typeId;
+
+            @Schema(description = "Code value ID for channel type (from LoanOriginationChannelType code)", example = "2")
+            public Long channelTypeId;
+        }
+
+        static final class PostLoansLoanIdGlimApprovalData {
+
+            private PostLoansLoanIdGlimApprovalData() {}
+
+            @Schema(example = "1")
+            public Long loanId;
+            @Schema(example = "28 June 2022")
+            public String approvedOnDate;
+            @Schema(example = "en")
+            public String locale;
+            @Schema(example = "dd MMMM yyyy")
+            public String dateFormat;
         }
 
         @Schema(example = "2")
@@ -1705,10 +1902,14 @@ final class LoansApiResourceSwagger {
         public String externalId;
         @Schema(example = "5000.33")
         public BigDecimal transactionAmount;
+        @Schema(example = "5000.33")
+        public BigDecimal netDisbursalAmount;
         @Schema(example = "Description of disbursement details.")
         public String note;
         @Schema(example = "28 June 2022")
         public String actualDisbursementDate;
+        @Schema(example = "31 March 2024")
+        public String transactionDate;
         @Schema(example = "3")
         public Integer paymentTypeId;
         @Schema(example = "28 June 2022")
@@ -1723,10 +1924,23 @@ final class LoansApiResourceSwagger {
         public String withdrawnOnDate;
         @Schema(description = "List of PostLoansLoanIdDisbursementData")
         public List<PostLoansLoanIdDisbursementData> disbursementData;
+        @Schema(description = "Disburse only: the post dated checks backing the repayment schedule")
+        public List<PostLoansLoanIdPostDatedCheckData> postDatedChecks;
         @Schema(example = "500.00")
         public BigDecimal fixedEmiAmount;
         @Schema(example = "28 July 2022")
         public String adjustRepaymentDate;
+        @Schema(description = """
+                Optional array of originators to reconcile during loan disbursement. \
+                Omit the field to leave existing mappings unchanged. \
+                Send an empty array to detach all originators. \
+                Each entry can reference an existing originator by 'id' or 'externalId'. \
+                Missing externalIds are created during disbursement.""")
+        public List<PostLoansLoanIdOriginatorData> originators;
+        @Schema(description = "Approve GLIM Application only: the per-child-loan approval details")
+        public List<PostLoansLoanIdGlimApprovalData> approvalFormData;
+        @Schema(example = "1000", description = "Approve GLIM Application only: the approved principal of the parent GLIM account")
+        public BigDecimal glimPrincipal;
     }
 
     @Schema(description = "PostLoansLoanIdResponse")
@@ -1776,6 +1990,8 @@ final class LoansApiResourceSwagger {
             public String note;
             @Schema(description = "PostLoansLoanIdStatus")
             public PostLoansLoanIdStatus status;
+            @Schema(example = "1000.00", description = "Undo last disbursal only: the tranche amount that was rolled back")
+            public BigDecimal disbursedAmount;
         }
 
         @Schema(example = "2")

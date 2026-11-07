@@ -1,32 +1,72 @@
 name: Fineract Publish to DockerHub
 on:
-  push:
-    branches:
-      - develop
-    tags:
-      - 1.*
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DEVELOCITY_ACCESS_KEY:
+        required: false
+      DOCKERHUB_USER:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        (
+          github.ref_name == 'develop' ||
+          startsWith(github.ref_name, 'release/') ||
+          startsWith(github.ref_name, '1.')
+        )
+      }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
     env:
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          fetch-depth: 0
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5
-        with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'zulu'
 
+      - name: Download workspace
+        id: download-workspace
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: fineract-workspace-${{ github.run_id }}
+          path: .
+
+      - name: Extract workspace
+        if: steps.download-workspace.outcome == 'success'
+        run: tar -xf fineract-workspace.tar
+
+      - name: Checkout
+        if: steps.download-workspace.outcome != 'success'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Build workspace fallback
+        if: steps.download-workspace.outcome != 'success'
+        uses: $/.github/actions/setup-and-build-fineract
+        with:
+          cache-read-only: false
+
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Apply Gradle memory budget
+        uses: $/.github/actions/gradle-memory-budget
+        with:
+          max-heap: '4g'
+          workers-max: '2'
 
       - name: Get Git Hashes
         run: |
@@ -35,12 +75,22 @@ jobs:
         id: git_hashes
 
       - name: Build the Apache Fineract image
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          SHORT_HASH: ${{ steps.git_hashes.outputs.short_hash }}
+          LONG_HASH: ${{ steps.git_hashes.outputs.long_hash }}
         run:  |
-          TAGS=${{ github.ref_name }}
-          if [ "${{ github.ref_name }}" == "develop" ]; then
-            TAGS="$TAGS,${{ steps.git_hashes.outputs.short_hash }},${{ steps.git_hashes.outputs.long_hash }}"
+          TAGS=$REF_NAME
+          if [ "$TAGS" == "develop" ]; then
+            TAGS="$TAGS,$SHORT_HASH,$LONG_HASH"
+          else
+            TAGS=$(git tag --points-at HEAD | grep -E '^1\.' | head -n 1 || true)
+            if [ -z "$TAGS" ]; then
+              echo "Skipping DockerHub publish because this run is not for develop or a 1.* tag."
+              exit 0
+            fi
           fi
-          ./gradlew --no-daemon --console=plain :fineract-provider:jib -x test -x cucumber \
+          ./gradlew --no-daemon --console=plain :fineract-provider:jib -x test -x cucumber -x buildJavaSdk  \
             -Djib.to.auth.username=${{secrets.DOCKERHUB_USER}} \
             -Djib.to.auth.password=${{secrets.DOCKERHUB_TOKEN}} \
             -Djib.from.platforms=linux/amd64,linux/arm64 \

@@ -28,6 +28,7 @@ import org.apache.fineract.cob.data.COBIdAndLastClosedBusinessDate;
 import org.apache.fineract.cob.data.LoanDataForExternalTransfer;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
+import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -100,10 +101,13 @@ public interface LoanRepository extends JpaRepository<Loan, Long>, JpaSpecificat
 
     String FIND_ALL_LOANS_BY_LAST_CLOSED_BUSINESS_DATE_NOT_NULL_AND_MIN_AND_MAX_LOAN_ID_AND_STATUSES = "select loan.id from Loan loan where loan.id BETWEEN :minLoanId and :maxLoanId and loan.loanStatus in :loanStatuses and :cobBusinessDate = loan.lastClosedBusinessDate";
     String FIND_ALL_LOANS_BEHIND_BY_LOAN_IDS_AND_STATUSES = "select loan.id, loan.lastClosedBusinessDate from Loan loan where loan.id IN :loanIds and loan.loanStatus in :loanStatuses and loan.lastClosedBusinessDate < :cobBusinessDate";
+    String FIND_ALL_LOANS_BEHIND_ON_DISBURSEMENT_DATE = "select loan.id, loan.lastClosedBusinessDate from Loan loan where loan.id IN :loanIds and loan.loanStatus in :loanStatuses and loan.lastClosedBusinessDate IS NULL and loan.actualDisbursementDate = :cobBusinessDate";
 
     String FIND_ALL_STAYED_LOCKED_BY_COB_BUSINESS_DATE = "select loan.id, loan.externalId, loan.accountNumber from LoanAccountLock lock left join Loan loan on lock.loanId = loan.id where lock.lockPlacedOnCobBusinessDate = :cobBusinessDate";
 
     String FIND_ALL_LOAN_IDS_BY_STATUS = "SELECT loan.id FROM Loan loan WHERE loan.loanStatus = :loanStatus";
+
+    String PROGRESSIVE_LOAN_CONDITION = "l.loanRepaymentScheduleDetail.loanScheduleType = :progressiveScheduleType";
 
     String LOANS_FOR_ACCRUAL = "select l from Loan l left join l.loanInterestRecalculationDetails recalcDetails "
             + "where l.loanStatus = :loanStatus and l.isNpa = false and l.chargedOff = false "
@@ -113,9 +117,11 @@ public interface LoanRepository extends JpaRepository<Loan, Long>, JpaSpecificat
             + "and ((coalesce(ls.interestCharged, 0) - coalesce(ls.interestWaived, 0)) <> coalesce(ls.interestAccrued, 0) "
             + "or (coalesce(ls.feeChargesCharged, 0) - coalesce(ls.feeChargesWaived, 0)) <> coalesce(ls.feeAccrued, 0) "
             + "or (coalesce(ls.penaltyCharges, 0) - coalesce(ls.penaltyChargesWaived, 0)) <> coalesce(ls.penaltyAccrued, 0)) ";
-    String FIND_LOANS_FOR_PERIODIC_ACCRUAL = LOANS_FOR_ACCRUAL
-            + "and (:futureCharges = true or ls.fromDate < :tillDate or (ls.installmentNumber = (select min(lsi.installmentNumber) from LoanRepaymentScheduleInstallment lsi where lsi.loan.id = l.id and lsi.isDownPayment = false) and ls.fromDate = :tillDate))))";
-    String FIND_LOANS_FOR_ADD_ACCRUAL = LOANS_FOR_ACCRUAL + "and (:futureCharges = true or ls.dueDate <= :tillDate)))";
+    String FIND_LOANS_FOR_PERIODIC_ACCRUAL = LOANS_FOR_ACCRUAL + "and (:futureCharges = true or (:progressiveFutureCharges = true and "
+            + PROGRESSIVE_LOAN_CONDITION
+            + ") or ls.fromDate < :tillDate or (ls.installmentNumber = (select min(lsi.installmentNumber) from LoanRepaymentScheduleInstallment lsi where lsi.loan.id = l.id and lsi.isDownPayment = false) and ls.fromDate = :tillDate))))";
+    String FIND_LOANS_FOR_ADD_ACCRUAL = LOANS_FOR_ACCRUAL + "and (:futureCharges = true or (:progressiveFutureCharges = true and "
+            + PROGRESSIVE_LOAN_CONDITION + ") or ls.dueDate <= :tillDate)))";
 
     String FIND_LOAN_BY_EXTERNAL_ID = "SELECT loan FROM Loan loan WHERE loan.externalId = :externalId";
 
@@ -214,6 +220,9 @@ public interface LoanRepository extends JpaRepository<Loan, Long>, JpaSpecificat
     @Query(FIND_LOAN_DATA_FOR_EXTERNAL_TRANSFER)
     Optional<LoanDataForExternalTransfer> findLoanDataForExternalTransferByLoanId(@Param("loanId") Long loanId);
 
+    @Query("SELECT loan.loanProduct.id FROM Loan loan WHERE loan.id = :loanId")
+    Optional<Long> findLoanProductIdByLoanId(@Param("loanId") Long loanId);
+
     @Query(EXISTS_BY_EXTERNAL_LOAN_ID_AND_STATUSES)
     boolean existsLoanByExternalLoanIdAndStatuses(@Param("externalLoanId") ExternalId externalLoanId,
             @Param("loanStatuses") Collection<LoanStatus> loanStatuses);
@@ -260,11 +269,13 @@ public interface LoanRepository extends JpaRepository<Loan, Long>, JpaSpecificat
     @Query(FIND_LOANS_FOR_PERIODIC_ACCRUAL)
     List<Loan> findLoansForPeriodicAccrual(@Param("accountingType") AccountingRuleType accountingType,
             @Param("tillDate") LocalDate tillDate, @Param("futureCharges") boolean futureCharges,
-            @Param("loanStatus") LoanStatus loanStatus);
+            @Param("progressiveFutureCharges") boolean progressiveFutureCharges,
+            @Param("progressiveScheduleType") LoanScheduleType progressiveScheduleType, @Param("loanStatus") LoanStatus loanStatus);
 
     @Query(FIND_LOANS_FOR_ADD_ACCRUAL)
     List<Loan> findLoansForAddAccrual(@Param("accountingType") AccountingRuleType accountingType, @Param("tillDate") LocalDate tillDate,
-            @Param("futureCharges") boolean futureCharges, @Param("loanStatus") LoanStatus loanStatus);
+            @Param("futureCharges") boolean futureCharges, @Param("progressiveFutureCharges") boolean progressiveFutureCharges,
+            @Param("progressiveScheduleType") LoanScheduleType progressiveScheduleType, @Param("loanStatus") LoanStatus loanStatus);
 
     @Query(FIND_LOAN_BY_EXTERNAL_ID)
     Optional<Loan> findByExternalId(@Param("externalId") ExternalId externalId);
@@ -275,4 +286,16 @@ public interface LoanRepository extends JpaRepository<Loan, Long>, JpaSpecificat
     @Query("select loan.loanRepaymentScheduleDetail.enableBuyDownFee from Loan loan where loan.id = :loanId")
     Boolean isEnabledBuyDownFee(@Param("loanId") Long loanId);
 
+    @Query(FIND_ALL_LOANS_BEHIND_ON_DISBURSEMENT_DATE)
+    List<COBIdAndLastClosedBusinessDate> findAllLoansBehindOnDisbursementDate(@Param("cobBusinessDate") LocalDate cobBusinessDate,
+            @Param("loanIds") List<Long> loanIds, @Param("loanStatuses") Collection<LoanStatus> loanStatuses);
+
+    @Query("SELECT CASE WHEN COUNT(l) > 0 THEN TRUE ELSE FALSE END FROM Loan l WHERE l.id = :loanId and l.loanRepaymentScheduleDetail.loanScheduleType = org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType.PROGRESSIVE")
+    Boolean isProgressiveLoan(@Param("loanId") Long loanId);
+
+    @Query("SELECT CASE WHEN COUNT(l) > 0 THEN TRUE ELSE FALSE END FROM Loan l WHERE l.id = :loanId and l.loanStatus in :allowedLoanStatuses")
+    Boolean isLoanInAllowedStatus(@Param("loanId") Long loanId, @Param("allowedLoanStatuses") List<LoanStatus> allowedLoanStatuses);
+
+    @Query("SELECT MAX(lt.dateOf) FROM LoanTransaction lt, Loan l WHERE lt.loan=l AND l.loanStatus = org.apache.fineract.portfolio.loanaccount.domain.LoanStatus.ACTIVE")
+    LocalDate findMaxTransactionDateOfActiveLoans();
 }

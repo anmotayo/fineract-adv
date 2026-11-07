@@ -100,15 +100,15 @@ public class ReprocessLoanTransactionsServiceImpl implements ReprocessLoanTransa
 
                 final ProgressiveTransactionCtx progressiveTransactionCtx = new ProgressiveTransactionCtx(loan.getCurrency(),
                         loan.getRepaymentScheduleInstallments(), loan.getActiveCharges(), new MoneyHolder(loan.getTotalOverpaidAsMoney()),
-                        new ChangedTransactionDetail(), savedModel.get());
+                        new ChangedTransactionDetail(), savedModel.get(), loan.getActiveLoanTermVariations());
                 progressiveTransactionCtx.setChargedOff(loan.isChargedOff());
                 progressiveTransactionCtx.setWrittenOff(loan.isClosedWrittenOff());
-                progressiveTransactionCtx.setContractTerminated(loan.isContractTermination());
+                progressiveTransactionCtx.setContractTerminated(loan.isTerminatedEarly());
                 transactionCtx = progressiveTransactionCtx;
             }
         } else {
             transactionCtx = new TransactionCtx(loan.getCurrency(), loan.getRepaymentScheduleInstallments(), loan.getActiveCharges(),
-                    new MoneyHolder(loan.getTotalOverpaidAsMoney()), new ChangedTransactionDetail());
+                    new MoneyHolder(loan.getTotalOverpaidAsMoney()), new ChangedTransactionDetail(), loan.getActiveLoanTermVariations());
         }
 
         final ChangedTransactionDetail changedTransactionDetail = loanTransactionProcessingService

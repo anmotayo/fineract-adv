@@ -194,12 +194,18 @@ final class RescheduleLoansApiResourceSwagger {
         public BigDecimal newInterestRate;
         @Schema(example = "20 September 2011")
         public String rescheduleFromDate;
+        @Schema(example = "20 September 2011")
+        public String endDate;
+        @Schema(example = "100.0")
+        public BigDecimal emi;
         @Schema(example = "comment")
         public String rescheduleReasonComment;
         @Schema(example = "1")
         public Long rescheduleReasonId;
         @Schema(example = "20 September 2011")
         public String submittedOnDate;
+        @Schema(example = "true")
+        public Boolean recalculateInterest;
     }
 
     @Schema(description = "PostUpdateRescheduleLoansRequest")

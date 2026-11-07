@@ -31,6 +31,7 @@ import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidati
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
 import org.apache.fineract.infrastructure.jobs.exception.JobExecutionException;
+import org.apache.fineract.portfolio.account.PortfolioAccountType;
 import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
 import org.apache.fineract.portfolio.account.data.StandingInstructionData;
 import org.apache.fineract.portfolio.account.data.StandingInstructionDuesData;
@@ -48,10 +49,10 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountSubStatusEnum;
 import org.apache.fineract.portfolio.savings.exception.InsufficientAccountBalanceException;
 import org.apache.fineract.portfolio.savings.exception.SavingsAccountBlockedException;
 import org.apache.fineract.portfolio.savings.exception.SavingsAccountDebitsBlockedException;
-import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Slf4j
@@ -71,12 +72,12 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
         List<Throwable> errors = new ArrayList<>();
         for (StandingInstructionData data : instructionData) {
             boolean isDueForTransfer = false;
-            AccountTransferRecurrenceType recurrenceType = data.getRecurrenceType();
-            StandingInstructionType instructionType = data.getInstructionType();
+            AccountTransferRecurrenceType recurrenceType = data.getRecurrenceTypeEnum();
+            StandingInstructionType instructionType = data.getInstructionTypeEnum();
             LocalDate transactionDate = DateUtils.getBusinessLocalDate();
             if (recurrenceType.isPeriodicRecurrence()) {
                 final ScheduledDateGenerator scheduledDateGenerator = new DefaultScheduledDateGenerator();
-                PeriodFrequencyType frequencyType = data.getRecurrenceFrequency();
+                PeriodFrequencyType frequencyType = data.getRecurrenceFrequencyEnum();
                 LocalDate startDate = data.getValidFrom();
                 if (frequencyType.isMonthly()) {
                     startDate = startDate.withDayOfMonth(data.getRecurrenceOnDay());
@@ -94,11 +95,11 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
 
             }
             BigDecimal transactionAmount = data.getAmount();
-            if (data.getToAccountType().isLoanAccount()
+            if (PortfolioAccountType.LOAN.equals(data.getToAccountTypeEnum())
                     && (recurrenceType.isDuesRecurrence() || (isDueForTransfer && instructionType.isDuesAmoutTransfer()))) {
                 StandingInstructionDuesData standingInstructionDuesData = standingInstructionReadPlatformService
                         .retriveLoanDuesData(data.getToAccount().getId());
-                if (data.getInstructionType().isDuesAmoutTransfer()) {
+                if (data.getInstructionTypeEnum().isDuesAmoutTransfer()) {
                     final SavingsAccount fromSavingsAccount = this.savingsAccountAssembler.assembleFrom(data.getFromAccount().getId(),
                             false);
                     BigDecimal availableBalance = fromSavingsAccount.getWithdrawableBalance();
@@ -121,7 +122,7 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
             }
 
             if (isDueForTransfer && transactionAmount != null && transactionAmount.compareTo(BigDecimal.ZERO) > 0) {
-                if (data.getFromAccountType().isSavingsAccount()) {
+                if (PortfolioAccountType.SAVINGS.equals(data.getFromAccountTypeEnum())) {
                     final SavingsAccount fromAccount = this.savingsAccountAssembler.assembleFrom(data.getFromAccount().getId(), false);
                     final SavingsAccountSubStatusEnum fromSubStatus = SavingsAccountSubStatusEnum.fromInt(fromAccount.getSubStatus());
                     if (fromSubStatus.isSubStatusAccountBlocked() || fromSubStatus.isSubStatusDebitBlocked()
@@ -148,10 +149,10 @@ public class ExecuteStandingInstructionsTasklet implements Tasklet {
                 final boolean isRegularTransaction = true;
                 final boolean isExceptionForBalanceCheck = false;
                 AccountTransferDTO accountTransferDTO = new AccountTransferDTO(transactionDate, transactionAmount,
-                        data.getFromAccountType(), data.getToAccountType(), data.getFromAccount().getId(), data.getToAccount().getId(),
-                        data.getName() + " Standing instruction transfer ", null, null, null, null, data.toTransferType(), null, null,
-                        data.getTransferType().getValue(), null, null, ExternalId.empty(), null, null, fromSavingsAccount,
-                        isRegularTransaction, isExceptionForBalanceCheck);
+                        data.getFromAccountTypeEnum(), data.getToAccountTypeEnum(), data.getFromAccount().getId(),
+                        data.getToAccount().getId(), data.getName() + " Standing instruction transfer ", null, null, null, null,
+                        data.toTransferType(), null, null, data.getTransferTypeEnum().getValue(), null, null, ExternalId.empty(), null,
+                        null, fromSavingsAccount, isRegularTransaction, isExceptionForBalanceCheck);
                 final boolean transferCompleted = transferAmount(errors, accountTransferDTO, data.getId());
 
                 if (transferCompleted) {

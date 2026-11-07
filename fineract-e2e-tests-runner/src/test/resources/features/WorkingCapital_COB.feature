@@ -1,0 +1,517 @@
+@WorkingCapital
+@WCCOBFeature
+@Order(1)
+Feature: Working Capital COB Job
+
+  Background:
+    Given Global configuration "enable-business-date" is enabled
+
+  @TestRailId:C4695
+  Scenario: Verify WC COB job registration, default business step, and scheduler metadata
+    Then Admin checks that configured business jobs contain "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS"
+    Then Admin verifies configured business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" match:
+      | stepName                              | order |
+      | DUMMY_BUSINESS_STEP                   | 1     |
+      | WC_MISSED_PAYMENT_ACKNOWLEDGEMENT     | 2     |
+      | WC_DELINQUENCY_RANGE_SCHEDULE         | 3     |
+      | WC_LOAN_DELINQUENCY_CLASSIFICATION    | 4     |
+      | WC_BREACH_SCHEDULE                    | 5     |
+      | WC_NEAR_BREACH_EVALUATION             | 6     |
+      | WC_DISCOUNT_FEE_AMORTIZATION          | 7     |
+      | WC_CHARGE_ACCRUAL                     | 8     |
+    Then Admin verifies scheduler job "WC_COB" has display name "Working Capital Loan COB"
+    Then Admin verifies scheduler job "WC_COB" has active status "false"
+
+  @TestRailId:C106656
+  Scenario: Verify available business steps are exposed for the Working Capital COB job name
+    Then Admin verifies available business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" contain:
+      | stepName                           |
+      | DUMMY_BUSINESS_STEP                |
+      | WC_MISSED_PAYMENT_ACKNOWLEDGEMENT  |
+      | WC_DELINQUENCY_RANGE_SCHEDULE      |
+      | WC_LOAN_DELINQUENCY_CLASSIFICATION |
+      | WC_BREACH_SCHEDULE                 |
+      | WC_NEAR_BREACH_EVALUATION          |
+      | WC_DISCOUNT_FEE_AMORTIZATION       |
+      | WC_CHARGE_ACCRUAL                  |
+
+  @TestRailId:C106657 @WCBusinessStepConfig
+  Scenario: Verify Working Capital COB job rejects a business step from the Loan COB family
+    Then Admin fails to update business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" with invalid step "APPLY_CHARGE_TO_OVERDUE_LOANS"
+
+  @TestRailId:C106658
+  Scenario: Verify Loan COB job rejects a business step from the Working Capital family
+    Then Admin fails to update business steps for "LOAN_CLOSE_OF_BUSINESS" with invalid step "WC_CHARGE_ACCRUAL"
+
+  @TestRailId:C106659
+  Scenario: Verify Business step update is rejected for an unknown job name
+    Then Admin fails to update business steps for "NOT_A_COB_JOB" with invalid step "APPLY_CHARGE_TO_OVERDUE_LOANS"
+
+  @TestRailId:C106660 @WCBusinessStepConfig
+  Scenario: Verify Working Capital COB business step order is updated
+    When Admin updates business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" with:
+      | stepName                           | order |
+      | DUMMY_BUSINESS_STEP                | 1     |
+      | WC_CHARGE_ACCRUAL                  | 2     |
+      | WC_MISSED_PAYMENT_ACKNOWLEDGEMENT  | 3     |
+      | WC_DELINQUENCY_RANGE_SCHEDULE      | 4     |
+      | WC_LOAN_DELINQUENCY_CLASSIFICATION | 5     |
+      | WC_BREACH_SCHEDULE                 | 6     |
+      | WC_NEAR_BREACH_EVALUATION          | 7     |
+      | WC_DISCOUNT_FEE_AMORTIZATION       | 8     |
+    Then Admin verifies configured business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" match:
+      | stepName                           | order |
+      | DUMMY_BUSINESS_STEP                | 1     |
+      | WC_CHARGE_ACCRUAL                  | 2     |
+      | WC_MISSED_PAYMENT_ACKNOWLEDGEMENT  | 3     |
+      | WC_DELINQUENCY_RANGE_SCHEDULE      | 4     |
+      | WC_LOAN_DELINQUENCY_CLASSIFICATION | 5     |
+      | WC_BREACH_SCHEDULE                 | 6     |
+      | WC_NEAR_BREACH_EVALUATION          | 7     |
+      | WC_DISCOUNT_FEE_AMORTIZATION       | 8     |
+
+  @TestRailId:C106661 @WCBusinessStepConfig
+  Scenario: Verify Working Capital COB runs with a reordered business step configuration
+    When Admin updates business steps for "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS" with:
+      | stepName                           | order |
+      | WC_MISSED_PAYMENT_ACKNOWLEDGEMENT  | 1     |
+      | WC_DELINQUENCY_RANGE_SCHEDULE      | 2     |
+      | WC_LOAN_DELINQUENCY_CLASSIFICATION | 3     |
+      | WC_BREACH_SCHEDULE                 | 4     |
+      | WC_NEAR_BREACH_EVALUATION          | 5     |
+      | WC_DISCOUNT_FEE_AMORTIZATION       | 6     |
+      | WC_CHARGE_ACCRUAL                  | 7     |
+      | DUMMY_BUSINESS_STEP                | 8     |
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C4696
+  Scenario: WC COB and Loan COB coexistence — both jobs listed and execute without interference
+    Then Admin checks that configured business jobs contain "LOAN_CLOSE_OF_BUSINESS"
+    Then Admin checks that configured business jobs contain "WORKING_CAPITAL_LOAN_CLOSE_OF_BUSINESS"
+    When Admin sets the business date to "01 January 2024"
+    When Admin runs COB job
+    When Admin runs WC COB job
+
+  @TestRailId:C4697
+  Scenario: WC COB executes on consecutive dates with Loan COB interleaved
+    When Admin sets the business date to "01 January 2024"
+    When Admin runs WC COB job
+    When Admin runs COB job
+    When Admin sets the business date to "02 January 2024"
+    When Admin runs WC COB job
+
+  @TestRailId:C70320
+  Scenario: WC COB updates lastClosedBusinessDate for a single active loan
+    # Behavioral test: inserts a WC loan via JDBC, runs COB, verifies lastClosedBusinessDate is set.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C70231
+  Scenario: WC COB processes multiple loans in a single run
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts 3 active WC loans into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C70232
+  Scenario: WC COB advances lastClosedBusinessDate over consecutive business dates
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin sets the business date to "02 January 2024"
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2024"
+    Then Admin verifies all inserted WC loans have version 2
+
+  @TestRailId:C70233
+  Scenario: WC COB does not reprocess loans already closed for the business date
+    # Verifies idempotency — running COB twice on the same business date doesn't cause errors or duplicate processing.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+
+  @TestRailId:C70234
+  Scenario: WC COB skips loans with ineligible status (closed obligations met)
+    # COB only processes non-closed statuses: SUBMITTED_AND_PENDING_APPROVAL, APPROVED, ACTIVE,
+    # TRANSFER_IN_PROGRESS, TRANSFER_ON_HOLD. Closed loans should be skipped.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "CLOSED_OBLIGATIONS_MET" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have null lastClosedBusinessDate
+
+  @TestRailId:C70235
+  Scenario: WC COB processes loans with eligible non-active statuses
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "SUBMITTED_AND_PENDING_APPROVAL" into the database
+    Given Admin inserts a WC loan with status "APPROVED" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C70236
+  Scenario: WC COB processes loans with transfer statuses
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "TRANSFER_IN_PROGRESS" into the database
+    Given Admin inserts a WC loan with status "TRANSFER_ON_HOLD" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C70237
+  Scenario: WC COB skips loans already closed for the current business date
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "ACTIVE" and lastClosedBusinessDate "31 December 2023" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 0
+
+  @TestRailId:C70238
+  Scenario: WC COB advances a loan that is exactly one day behind
+    When Admin sets the business date to "02 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "ACTIVE" and lastClosedBusinessDate "31 December 2023" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2024"
+
+  @TestRailId:C70239
+  Scenario: WC COB releases all account locks after completion
+    # After COB completes, no lingering account locks should remain for processed loans.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have no account locks
+
+  @TestRailId:C70240
+  Scenario: WC COB handles a batch of 10 loans
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts 10 active WC loans into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+
+  @TestRailId:C70241
+  Scenario: WC COB increments loan version after processing
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    Then Admin verifies all inserted WC loans have version 0
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+
+  @TestRailId:C70242
+  Scenario: WC COB processes eligible loans and skips ineligible ones in the same batch
+    # Mix of eligible (ACTIVE) and ineligible (CLOSED_OBLIGATIONS_MET) loans — only eligible should be updated.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    Given Admin inserts a WC loan with status "CLOSED_OBLIGATIONS_MET" into the database
+    When Admin runs WC COB job
+    Then Admin verifies inserted WC loan 1 has lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies inserted WC loan 2 has null lastClosedBusinessDate
+
+    #----------#
+  @TestRailId:C70243
+  Scenario: Inline WC COB processes a single loan and releases locks
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have no account locks
+    Then Admin verifies all inserted WC loans have version 1
+
+  @TestRailId:C70244
+  Scenario: Inline WC COB processes multiple loans in a single request
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts 3 active WC loans into the database
+    When Admin runs inline COB job for all Working Capital Loans
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+
+  @TestRailId:C70245
+  Scenario: Inline WC COB and batch WC COB coexistence
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+    When Admin sets the business date to "02 January 2024"
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2024"
+    Then Admin verifies all inserted WC loans have version 2
+
+  @TestRailId:C70246
+  Scenario: Inline WC COB advances lastClosedBusinessDate over consecutive business dates
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin sets the business date to "02 January 2024"
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2024"
+    Then Admin verifies all inserted WC loans have version 2
+
+  @TestRailId:C70247
+  Scenario: Inline WC COB advances lastClosedBusinessDate over skipped business dates
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin sets the business date to "05 January 2024"
+    When Admin runs inline COB job for Working Capital Loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "04 January 2024"
+    Then Admin verifies all inserted WC loans have version 5
+
+  @TestRailId:C70248
+  Scenario: Working Capital COB catch up advances lastClosedBusinessDate over skipped business dates
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin sets the business date to "05 January 2024"
+    When Admin runs Working Capital COB catch up
+    When Admin runs COB catch up
+    Then Admin checks that WC Loan COB is running until the current business date
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "04 January 2024"
+    Then Admin verifies all inserted WC loans have version 5
+
+  @TestRailId:C70249
+  Scenario: WC COB catch-up is skipped when loans are already up to date
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+    When Admin runs Working Capital COB catch up
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    Then Admin verifies all inserted WC loans have version 1
+
+  @TestRailId:C98240
+  Scenario: WC COB removes an orphaned lock with no error on a loan already processed for that COB date
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places a chunk-processing lock without an error message on the last inserted WC loan
+    Then Admin verifies all inserted WC loans have at least one account lock
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have no account locks
+
+  @TestRailId:C98241
+  Scenario: WC COB keeps a lock that carries an error message
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places a chunk-processing lock with error "ERROR" on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have at least one account lock
+
+  @TestRailId:C98242
+  Scenario: WC COB keeps a lock when the loan's last closed business date does not match the lock's COB date
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    # Skip a few days so the lock's cob_date is far ahead of the loan's last_closed (31 Dec 2023).
+    # Even if WC COB advances last_closed by one day during the next run, it won't reach the lock's cob_date.
+    When Admin sets the business date to "05 January 2024"
+    When Admin places a chunk-processing lock without an error message on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have at least one account lock
+
+  @TestRailId:C98243
+  Scenario: WC COB removes an orphaned inline-COB lock with no error on a processed loan
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places an inline-COB lock without an error message on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have no account locks
+
+  @TestRailId:C98244
+  Scenario: WC COB keeps an inline-COB lock that carries an error message
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places an inline-COB lock with error "ERROR" on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have at least one account lock
+
+  @TestRailId:C98245
+  Scenario: WC COB keeps a lock with NULL cob business date
+    # SQL filter requires `lock_placed_on_cob_business_date IS NOT NULL` — a lock with NULL date must never be removed.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts an active WC loan into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places a chunk-processing lock without an error message and null cob business date on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have at least one account lock
+
+  @TestRailId:C98246
+  Scenario: WC COB keeps a lock when cob business date is in the past relative to last closed date
+    # SQL uses strict equality on dates — a stale lock whose cob_date already lags behind last_closed must remain.
+    When Admin sets the business date to "02 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts a WC loan with status "ACTIVE" and lastClosedBusinessDate "31 December 2023" into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2024"
+    # Place a lock claiming cob_date = 31 Dec 2023 — earlier than the loan's current last_closed (01 Jan 2024).
+    When Admin places a chunk-processing lock without an error message and cob business date "31 December 2023" on the last inserted WC loan
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have at least one account lock
+
+  @TestRailId:C98247
+  Scenario: WC COB removes only orphaned locks among multiple loans in the same run
+    # Two loans share the same COB run: one carries an orphaned lock (no error) and must be unlocked;
+    # the other carries a lock with an error message and must remain locked. Verifies DELETE selectivity.
+    When Admin sets the business date to "01 January 2024"
+    When Admin creates a client with random data
+    When Admin creates a new Working Capital Loan Product
+    Given Admin inserts 2 active WC loans into the database
+    When Admin runs WC COB job
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2023"
+    When Admin places a chunk-processing lock without an error message on WC loan 1
+    When Admin places a chunk-processing lock with error "ERROR" on WC loan 2
+    When Admin runs WC COB job
+    Then Admin verifies inserted WC loan 1 has no account locks
+    Then Admin verifies inserted WC loan 2 has at least one account lock
+
+  @TestRailId:C98248
+  Scenario: WC COB run properly uses .before/after listeners
+    When Admin clears internal working capital cob last run data
+    Then Admin verifies internal working capital cob last run data values are empty "true"
+    When Admin runs WC COB job
+    Then Admin verifies internal working capital cob last run data values are empty "false"
+
+  @TestRailId:C102396
+  Scenario: Verify inline WC COB before monetary activity - UC1: repayment triggers inline COB on a behind loan
+    When Admin sets the business date to "01 January 2026"
+    And Admin creates a client with random data
+    And Admin creates a working capital loan with the following data:
+      | LoanProduct | submittedOnDate | expectedDisbursementDate | principalAmount | totalPaymentVolume | periodPaymentRate | discount |
+      | WCLP        | 01 January 2026 | 01 January 2026          | 9000            | 100000             | 18                | 0        |
+    And Admin successfully approves the working capital loan on "01 January 2026" with "9000" amount and expected disbursement date on "01 January 2026"
+    And Admin successfully disburse the Working Capital loan on "01 January 2026" with "9000" EUR transaction amount
+    # --- Seed the loan with an initial inline COB so it has a non-null lastClosedBusinessDate ---
+    And Admin runs inline COB job for Working Capital Loan by loanId
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2025"
+    And Admin verifies all inserted WC loans have no account locks
+    When Admin sets the business date to "02 January 2026"
+    When Admin creates new user with "NO_BYPASS_WC" username, "NO_BYPASS_WC_ROLE" role name and given permissions:
+      | REPAYMENT_WORKINGCAPITALLOAN |
+    # --- Repayment by a non-bypass user: should trigger inline COB first ---
+    And Created user makes repayment on "02 January 2026" with 50.0 transaction amount on Working Capital loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2026"
+    And Admin verifies all inserted WC loans have no account locks
+    # --- Closing the loan ---
+    And Admin closes the Working Capital loan with all obligations met with a full repayment on "02 January 2026"
+
+  @TestRailId:C102397
+  Scenario: Verify inline WC COB before monetary activity - UC2: repayment by external ID triggers inline COB on a behind loan
+    When Admin sets the business date to "01 January 2026"
+    And Admin creates a client with random data
+    And Admin creates a working capital loan with the following data:
+      | LoanProduct | submittedOnDate | expectedDisbursementDate | principalAmount | totalPaymentVolume | periodPaymentRate | discount |
+      | WCLP        | 01 January 2026 | 01 January 2026          | 9000            | 100000             | 18                | 0        |
+    And Admin successfully approves the working capital loan on "01 January 2026" with "9000" amount and expected disbursement date on "01 January 2026"
+    And Admin successfully disburse the Working Capital loan on "01 January 2026" with "9000" EUR transaction amount
+    And Admin runs inline COB job for Working Capital Loan by loanId
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2025"
+    And Admin verifies all inserted WC loans have no account locks
+    When Admin sets the business date to "02 January 2026"
+    When Admin creates new user with "NO_BYPASS_WC" username, "NO_BYPASS_WC_ROLE" role name and given permissions:
+      | REPAYMENT_WORKINGCAPITALLOAN |
+    # --- Repayment by external ID as a non-bypass user: tests the external-id path wiring ---
+    And Created user makes repayment by loan external ID on "02 January 2026" with 50.0 transaction amount on Working Capital loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2026"
+    And Admin verifies all inserted WC loans have no account locks
+    # --- Closing the loan ---
+    And Admin closes the Working Capital loan with all obligations met with a full repayment on "02 January 2026"
+
+  @TestRailId:C102398
+  Scenario: Verify inline WC COB before monetary activity - UC3: transaction updates COB date after date advance without re-running COB
+    When Admin sets the business date to "01 January 2026"
+    And Admin creates a client with random data
+    And Admin creates a working capital loan with the following data:
+      | LoanProduct | submittedOnDate | expectedDisbursementDate | principalAmount | totalPaymentVolume | periodPaymentRate | discount |
+      | WCLP        | 01 January 2026 | 01 January 2026          | 9000            | 100000             | 18                | 0        |
+    And Admin successfully approves the working capital loan on "01 January 2026" with "9000" amount and expected disbursement date on "01 January 2026"
+    And Admin successfully disburse the Working Capital loan on "01 January 2026" with "9000" EUR transaction amount
+    And Admin runs inline COB job for Working Capital Loan by loanId
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2025"
+    And Admin verifies all inserted WC loans have no account locks
+    When Admin sets the business date to "02 January 2026"
+    When Admin creates new user with "NO_BYPASS_WC" username, "NO_BYPASS_WC_ROLE" role name and given permissions:
+      | REPAYMENT_WORKINGCAPITALLOAN |
+    # --- Advancing the business date alone must not change the COB date ---
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "31 December 2025"
+    # --- Repayment on the new date should trigger inline COB and move the COB date forward ---
+    And Created user makes repayment on "02 January 2026" with 50.0 transaction amount on Working Capital loan
+    Then Admin verifies all inserted WC loans have lastClosedBusinessDate "01 January 2026"
+    And Admin verifies all inserted WC loans have no account locks
+    # --- Closing the loan ---
+    And Admin closes the Working Capital loan with all obligations met with a full repayment on "02 January 2026"

@@ -1,54 +1,76 @@
 name: Fineract Liquibase Only mode - PostgreSQL
 
-on: [push, pull_request]
+on:
+  workflow_call:
+    secrets:
+      DEVELOCITY_ACCESS_KEY:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
 
     services:
       postgresql:
-        image: postgres:17.4
+        image: postgres:18.3
         ports:
           - 5432:5432
         env:
           POSTGRES_USER: root
           POSTGRES_PASSWORD: postgres
-        options: --health-cmd="pg_isready -q -d postgres -U root" --health-interval=5s --health-timeout=2s --health-retries=3
+        options: --health-cmd="pg_isready -q -d postgres -U root" --health-interval=5s --health-timeout=2s --health-retries=12
 
     env:
       TZ: Asia/Kolkata
       DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
+          java-version: '25'
+          distribution: 'zulu'
+
+      - name: Download workspace
+        id: download-workspace
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: fineract-workspace-${{ github.run_id }}
+          path: .
+
+      - name: Extract workspace
+        if: steps.download-workspace.outcome == 'success'
+        run: tar -xf fineract-workspace.tar
+
+      - name: Checkout
+        if: steps.download-workspace.outcome != 'success'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5
+      - name: Build workspace fallback
+        if: steps.download-workspace.outcome != 'success'
+        uses: $/.github/actions/setup-and-build-fineract
         with:
-          java-version: '21'
-          distribution: 'zulu'
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          cache-read-only: false
 
       - name: Setup Gradle and Validate Wrapper
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           validate-wrappers: true
+
+      - name: Apply Gradle memory budget
+        uses: $/.github/actions/gradle-memory-budget
+        with:
+          max-heap: '4g'
+          workers-max: '2'
 
       - name: Verify PostgreSQL connection
         run: |
@@ -58,8 +80,8 @@ jobs:
 
       - name: Initialise databases
         run: |
-          ./gradlew --no-daemon -q createPGDB -PdbName=fineract_tenants
-          ./gradlew --no-daemon -q createPGDB -PdbName=fineract_default
+          ./gradlew --no-daemon -q createPGDB -PdbName=fineract_tenants -x buildJavaSdk
+          ./gradlew --no-daemon -q createPGDB -PdbName=fineract_default -x buildJavaSdk
 
       - name: Run Fineract in Liquibase only mode
         env:
@@ -78,4 +100,4 @@ jobs:
           FINERACT_HIKARI_USERNAME: "root"
           SPRING_PROFILES_ACTIVE: "liquibase-only"
         run:
-          ./gradlew fineract-provider:bootRun
+          ./gradlew --no-daemon fineract-provider:bootRun -x buildJavaSdk

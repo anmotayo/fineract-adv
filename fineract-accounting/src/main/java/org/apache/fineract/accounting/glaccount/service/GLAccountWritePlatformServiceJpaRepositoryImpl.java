@@ -99,7 +99,10 @@ public class GLAccountWritePlatformServiceJpaRepositoryImpl implements GLAccount
 
             this.glAccountRepository.saveAndFlush(glAccount);
 
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(glAccount.getId()).build();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(glAccount.getId()) //
+                    .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             final Throwable throwable = dve.getMostSpecificCause();
             handleGLAccountDataIntegrityIssues(command, throwable, dve);
@@ -159,7 +162,10 @@ public class GLAccountWritePlatformServiceJpaRepositoryImpl implements GLAccount
                 this.glAccountRepository.saveAndFlush(glAccount);
             }
 
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(glAccount.getId()).with(changesOnly)
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(glAccount.getId()) //
+                    .with(changesOnly) //
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             final Throwable throwable = dve.getMostSpecificCause();
@@ -205,7 +211,9 @@ public class GLAccountWritePlatformServiceJpaRepositoryImpl implements GLAccount
         }
         this.glAccountRepository.delete(glAccount);
 
-        return new CommandProcessingResultBuilder().withEntityId(glAccountId).build();
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(glAccountId) //
+                .build();
     }
 
     /**
@@ -236,7 +244,7 @@ public class GLAccountWritePlatformServiceJpaRepositoryImpl implements GLAccount
             throw new GLAccountDuplicateException(glCode);
         }
 
-        LOG.error("Error occured.", dve);
+        LOG.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.glAccount.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource GL Account: " + realCause.getMessage());
     }

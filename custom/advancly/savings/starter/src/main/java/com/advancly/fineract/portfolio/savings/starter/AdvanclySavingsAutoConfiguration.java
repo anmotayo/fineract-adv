@@ -22,6 +22,7 @@ import com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule
 import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeInterestRuleValidator;
 import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeReadPlatformService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeWritePlatformService;
+import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsAccountPostInterestService;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPoster;
 import com.advancly.fineract.portfolio.savings.service.AdvanclySavingsSchedularInterestPosterTask;
 import com.advancly.fineract.portfolio.savings.service.DynamicDepositScheduledRateHistoryReadPlatformService;
@@ -69,10 +70,11 @@ import org.apache.fineract.portfolio.group.domain.GroupRepositoryWrapper;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanAccountDomainService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanAssembler;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.service.adjustment.LoanAdjustmentService;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRepository;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
-import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepository;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountChargeDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDataValidator;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -85,13 +87,17 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeReposito
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountDomainServiceJpa;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsProductRepository;
 import org.apache.fineract.portfolio.savings.service.GroupSavingsIndividualMonitoringWritePlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountActivationService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountDomainService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountInterestPostingService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountPostInterestService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountReadPlatformService;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountTransfersService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformServiceJpaRepositoryImpl;
 import org.apache.fineract.portfolio.savings.service.SavingsApplicationProcessWritePlatformServiceJpaRepositoryImpl;
@@ -140,7 +146,7 @@ public class AdvanclySavingsAutoConfiguration {
             ChargeDefinitionCommandFromApiJsonDeserializer fromApiJsonDeserializer, ChargeRepository chargeRepository,
             LoanProductRepository loanProductRepository, JdbcTemplate jdbcTemplate, FineractEntityAccessUtil fineractEntityAccessUtil,
             GLAccountRepositoryWrapper glAccountRepository, TaxGroupRepositoryWrapper taxGroupRepository,
-            PaymentTypeRepositoryWrapper paymentTyperepositoryWrapper) {
+            PaymentTypeRepository paymentTyperepositoryWrapper) {
         return new ChargeWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer, chargeRepository, loanProductRepository,
                 jdbcTemplate, fineractEntityAccessUtil, glAccountRepository, taxGroupRepository, paymentTyperepositoryWrapper);
     }
@@ -164,11 +170,13 @@ public class AdvanclySavingsAutoConfiguration {
             @org.springframework.beans.factory.annotation.Qualifier("coreSavingsAccountWritePlatformService") SavingsAccountWritePlatformService savingsAccountWritePlatformService,
             AccountTransferDetailRepository accountTransferDetailRepository, LoanReadPlatformService loanReadPlatformService,
             GSIMRepositoy gsimRepository, ConfigurationDomainService configurationDomainService, ExternalIdFactory externalIdFactory,
-            FineractProperties fineractProperties) {
+            FineractProperties fineractProperties, LoanAdjustmentService loanAdjustmentService,
+            PaymentDetailWritePlatformService paymentDetailWritePlatformService) {
         return new AccountTransfersWritePlatformServiceImpl(accountTransfersDataValidator, accountTransferAssembler,
                 accountTransferRepository, savingsAccountAssembler, savingsAccountDomainService, loanAccountAssembler,
                 loanAccountDomainService, savingsAccountWritePlatformService, accountTransferDetailRepository, loanReadPlatformService,
-                gsimRepository, configurationDomainService, externalIdFactory, fineractProperties);
+                gsimRepository, configurationDomainService, externalIdFactory, fineractProperties, loanAdjustmentService,
+                paymentDetailWritePlatformService);
     }
 
     @Bean("coreSavingsAccountDomainService")
@@ -177,10 +185,12 @@ public class AdvanclySavingsAutoConfiguration {
             ApplicationCurrencyRepositoryWrapper applicationCurrencyRepositoryWrapper,
             JournalEntryWritePlatformService journalEntryWritePlatformService, ConfigurationDomainService configurationDomainService,
             PlatformSecurityContext context, DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository,
-            BusinessEventNotifierService businessEventNotifierService) {
+            BusinessEventNotifierService businessEventNotifierService, SavingsAccountPostInterestService savingsAccountPostInterestService,
+            SavingsAccountTransfersService savingsAccountTransfersService) {
         return new SavingsAccountDomainServiceJpa(savingsAccountRepository, savingsAccountTransactionRepository,
                 applicationCurrencyRepositoryWrapper, journalEntryWritePlatformService, configurationDomainService, context,
-                depositAccountOnHoldTransactionRepository, businessEventNotifierService);
+                depositAccountOnHoldTransactionRepository, businessEventNotifierService, savingsAccountPostInterestService,
+                savingsAccountTransfersService);
     }
 
     @Bean("coreSavingsAccountWritePlatformService")
@@ -190,7 +200,6 @@ public class AdvanclySavingsAutoConfiguration {
             SavingsAccountAssembler savingAccountAssembler, SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
             SavingsAccountChargeDataValidator savingsAccountChargeDataValidator,
             PaymentDetailWritePlatformService paymentDetailWritePlatformService,
-            JournalEntryWritePlatformService journalEntryWritePlatformService,
             @org.springframework.beans.factory.annotation.Qualifier("coreSavingsAccountDomainService") SavingsAccountDomainService savingsAccountDomainService,
             NoteRepository noteRepository, AccountTransfersReadPlatformService accountTransfersReadPlatformService,
             AccountAssociationsReadPlatformService accountAssociationsReadPlatformService, ChargeRepositoryWrapper chargeRepository,
@@ -200,16 +209,18 @@ public class AdvanclySavingsAutoConfiguration {
             EntityDatatableChecksWritePlatformService entityDatatableChecksWritePlatformService, AppUserRepositoryWrapper appuserRepository,
             StandingInstructionRepository standingInstructionRepository, BusinessEventNotifierService businessEventNotifierService,
             GSIMRepositoy gsimRepository, SavingsAccountInterestPostingService savingsAccountInterestPostingService,
+            SavingsAccountPostInterestService savingsAccountPostInterestService,
+            SavingsAccountActivationService savingsAccountActivationService, ExternalIdFactory externalIdFactory,
             ErrorHandler errorHandler) {
 
         return new SavingsAccountWritePlatformServiceJpaRepositoryImpl(context, fromApiJsonDeserializer, savingAccountRepositoryWrapper,
                 staffRepository, savingsAccountTransactionRepository, savingAccountAssembler, savingsAccountTransactionDataValidator,
-                savingsAccountChargeDataValidator, paymentDetailWritePlatformService, journalEntryWritePlatformService,
-                savingsAccountDomainService, noteRepository, accountTransfersReadPlatformService, accountAssociationsReadPlatformService,
-                chargeRepository, savingsAccountChargeRepository, holidayRepository, workingDaysRepository, configurationDomainService,
+                savingsAccountChargeDataValidator, paymentDetailWritePlatformService, savingsAccountDomainService, noteRepository,
+                accountTransfersReadPlatformService, accountAssociationsReadPlatformService, chargeRepository,
+                savingsAccountChargeRepository, holidayRepository, workingDaysRepository, configurationDomainService,
                 depositAccountOnHoldTransactionRepository, entityDatatableChecksWritePlatformService, appuserRepository,
                 standingInstructionRepository, businessEventNotifierService, gsimRepository, savingsAccountInterestPostingService,
-                errorHandler);
+                savingsAccountPostInterestService, savingsAccountActivationService, externalIdFactory, errorHandler);
     }
 
     @Bean("coreSavingsApplicationProcessWritePlatformService")
@@ -241,6 +252,17 @@ public class AdvanclySavingsAutoConfiguration {
             FineractEntityAccessUtil fineractEntityAccessUtil) {
         return new SavingsProductWritePlatformServiceJpaRepositoryImpl(context, savingProductRepository, fromApiJsonDataValidator,
                 savingsProductAssembler, accountMappingWritePlatformService, fineractEntityAccessUtil);
+    }
+
+    /**
+     * {@code @Primary} for the same reason as the poster below: core's conditional post-interest service is also
+     * registered. Dynamic deposits get their own posting; everything else is core's.
+     */
+    @Bean
+    @Primary
+    public SavingsAccountPostInterestService advanclySavingsAccountPostInterestService(
+            SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper) {
+        return new AdvanclySavingsAccountPostInterestService(savingsAccountTransactionSummaryWrapper);
     }
 
     /**

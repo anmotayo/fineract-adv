@@ -18,11 +18,11 @@
  */
 
 plugins {
-    id 'com.gradle.develocity' version '3.18.2'
-    id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.0.2'
+    id 'com.gradle.develocity' version '4.5.1'
+    id 'com.gradle.common-custom-user-data-gradle-plugin' version '2.8.0'
 }
 
-def isCI = System.getenv('JENKINS_URL') != null
+def isCI = System.getenv('GITHUB_ACTIONS') != null
 
 develocity {
     projectId = "fineract"
@@ -48,9 +48,15 @@ buildCache {
 
 rootProject.name='fineract'
 include ':fineract-core'
+include ':fineract-security'
 include ':fineract-cob'
 include ':fineract-validation'
 include ':fineract-command'
+include ':fineract-command-test'
+include ':fineract-command-jdbc'
+include ':fineract-command-audit'
+include ':fineract-command-async'
+include ':fineract-command-disruptor'
 include ':fineract-accounting'
 include ':fineract-provider'
 include ':fineract-branch'
@@ -59,6 +65,7 @@ include ':fineract-investor'
 include ':fineract-rates'
 include ':fineract-charge'
 include ':fineract-tax'
+include ':fineract-loan-origination'
 include ':fineract-loan'
 include ':fineract-savings'
 include ':fineract-report'
@@ -74,6 +81,7 @@ include ':fineract-e2e-tests-core'
 include ':fineract-e2e-tests-runner'
 include 'fineract-progressive-loan'
 include 'fineract-progressive-loan-embeddable-schedule-generator'
+include 'fineract-working-capital-loan'
 // NOTE: custom Docker image with all custom modules included
 include ':custom:docker'
 // NOTE: dynamically load custom modules with pattern "custom -> company -> category -> module"
@@ -82,7 +90,7 @@ file("${rootDir}/custom").eachDir { companyDir ->
         file("${rootDir}/custom/${companyDir.name}").eachDir { categoryDir ->
             if('build' != categoryDir.name) {
                 file("${rootDir}/custom/${companyDir.name}/${categoryDir.name}").eachDir { moduleDir ->
-                    if('build' != moduleDir.name) {
+                    if('build' != moduleDir.name && file("${moduleDir}/build.gradle").exists()) {
                         include ":custom:${companyDir.name}:${categoryDir.name}:${moduleDir.name}"
                     }
                 }

@@ -1,0 +1,346 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.fineract.portfolio.workingcapitalloanproduct.service;
+
+import com.google.gson.JsonObject;
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.portfolio.workingcapitalloan.domain.WorkingCapitalLoanPeriodFrequencyType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.WorkingCapitalLoanProductConstants;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalAmortizationType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanBreachStartType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanDelinquencyStartType;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProduct;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProductConfigurableAttributes;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProductMinMaxConstraints;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalLoanProductRelatedDetail;
+import org.apache.fineract.portfolio.workingcapitalloanproduct.domain.WorkingCapitalPaymentAmountCalculationStrategy;
+import org.springframework.stereotype.Component;
+
+/**
+ * Utility for applying update (JsonCommand) to Working Capital Loan Product and its embedded parts. Keeps JsonCommand
+ * out of domain entities.
+ */
+@Component
+public class WorkingCapitalLoanProductUpdateUtil {
+
+    /**
+     * Update currency fields on the product from command.
+     */
+    public Map<String, Object> updateCurrency(final WorkingCapitalLoanProduct product, final JsonCommand command) {
+        final Map<String, Object> changes = new HashMap<>();
+        MonetaryCurrency current = product.getCurrency();
+        if (current == null) {
+            return changes;
+        }
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.currencyCodeParamName, current.getCode())) {
+            final String newCurrencyCode = command.stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.currencyCodeParamName);
+            changes.put(WorkingCapitalLoanProductConstants.currencyCodeParamName, newCurrencyCode);
+            current = new MonetaryCurrency(newCurrencyCode, current.getDigitsAfterDecimal(), current.getInMultiplesOf());
+            product.setCurrency(current);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.digitsAfterDecimalParamName,
+                current.getDigitsAfterDecimal())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.digitsAfterDecimalParamName);
+            changes.put(WorkingCapitalLoanProductConstants.digitsAfterDecimalParamName, newValue);
+            current = new MonetaryCurrency(current.getCode(), newValue, current.getInMultiplesOf());
+            product.setCurrency(current);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.inMultiplesOfParamName,
+                current.getInMultiplesOf())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.inMultiplesOfParamName);
+            changes.put(WorkingCapitalLoanProductConstants.inMultiplesOfParamName, newValue);
+            product.setCurrency(new MonetaryCurrency(current.getCode(), current.getDigitsAfterDecimal(), newValue));
+        }
+        return changes;
+    }
+
+    /**
+     * Update related detail (core product parameters) from command.
+     */
+    public Map<String, Object> updateRelatedDetail(final WorkingCapitalLoanProductRelatedDetail relatedDetail, final JsonCommand command) {
+        final Map<String, Object> changes = new HashMap<>();
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.amortizationTypeParamName,
+                relatedDetail.getAmortizationType().name())) {
+            final String newValue = command.stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.amortizationTypeParamName);
+            changes.put(WorkingCapitalLoanProductConstants.amortizationTypeParamName, newValue);
+            relatedDetail.setAmortizationType(WorkingCapitalAmortizationType.fromString(newValue));
+        }
+        final String currentStrategy = relatedDetail.getPaymentAmountCalculationStrategy() != null
+                ? relatedDetail.getPaymentAmountCalculationStrategy().name()
+                : WorkingCapitalPaymentAmountCalculationStrategy.TPV.name();
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.paymentAmountCalculationStrategyParamName,
+                currentStrategy)) {
+            final String newValue = command
+                    .stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.paymentAmountCalculationStrategyParamName);
+            changes.put(WorkingCapitalLoanProductConstants.paymentAmountCalculationStrategyParamName, newValue);
+            final WorkingCapitalPaymentAmountCalculationStrategy newStrategy = WorkingCapitalPaymentAmountCalculationStrategy
+                    .fromString(newValue);
+            relatedDetail.setPaymentAmountCalculationStrategy(newStrategy);
+            if (newStrategy != null) {
+                clearInputsOfOtherStrategies(relatedDetail, newStrategy, changes);
+            }
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.annualEirParamName,
+                relatedDetail.getAnnualEir())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.annualEirParamName);
+            changes.put(WorkingCapitalLoanProductConstants.annualEirParamName, newValue);
+            relatedDetail.setAnnualEir(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.paymentAmountParamName,
+                relatedDetail.getPaymentAmount())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.paymentAmountParamName);
+            changes.put(WorkingCapitalLoanProductConstants.paymentAmountParamName, newValue);
+            relatedDetail.setPaymentAmount(newValue);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.npvDayCountParamName,
+                relatedDetail.getNpvDayCount())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.npvDayCountParamName);
+            changes.put(WorkingCapitalLoanProductConstants.npvDayCountParamName, newValue);
+            relatedDetail.setNpvDayCount(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.principalParamName,
+                relatedDetail.getPrincipal())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.principalParamName);
+            changes.put(WorkingCapitalLoanProductConstants.principalParamName, newValue);
+            relatedDetail.setPrincipal(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.periodPaymentRateParamName,
+                relatedDetail.getPeriodPaymentRate())) {
+            final BigDecimal newValue = command
+                    .bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.periodPaymentRateParamName);
+            changes.put(WorkingCapitalLoanProductConstants.periodPaymentRateParamName, newValue);
+            relatedDetail.setPeriodPaymentRate(newValue);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.repaymentEveryParamName,
+                relatedDetail.getRepaymentEvery())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.repaymentEveryParamName);
+            changes.put(WorkingCapitalLoanProductConstants.repaymentEveryParamName, newValue);
+            relatedDetail.setRepaymentEvery(newValue);
+        }
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.repaymentFrequencyTypeParamName,
+                relatedDetail.getRepaymentFrequencyType().name())) {
+            final String newValue = command.stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.repaymentFrequencyTypeParamName);
+            changes.put(WorkingCapitalLoanProductConstants.repaymentFrequencyTypeParamName, newValue);
+            relatedDetail.setRepaymentFrequencyType(WorkingCapitalLoanPeriodFrequencyType.fromString(newValue));
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.discountParamName, relatedDetail.getDiscount())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.discountParamName);
+            changes.put(WorkingCapitalLoanProductConstants.discountParamName, newValue);
+            relatedDetail.setDiscount(newValue);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.delinquencyGraceDaysParamName,
+                relatedDetail.getDelinquencyGraceDays())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.delinquencyGraceDaysParamName);
+            changes.put(WorkingCapitalLoanProductConstants.delinquencyGraceDaysParamName, newValue);
+            relatedDetail.setDelinquencyGraceDays(newValue);
+        }
+        if (command.isChangeInIntegerParameterNamed(WorkingCapitalLoanProductConstants.breachGraceDaysParamName,
+                relatedDetail.getBreachGraceDays())) {
+            final Integer newValue = command.integerValueOfParameterNamed(WorkingCapitalLoanProductConstants.breachGraceDaysParamName);
+            changes.put(WorkingCapitalLoanProductConstants.breachGraceDaysParamName, newValue);
+            relatedDetail.setBreachGraceDays(newValue);
+        }
+        final String currentDelinquencyStartType = (relatedDetail.getDelinquencyStartType() != null)
+                ? relatedDetail.getDelinquencyStartType().name()
+                : null;
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName,
+                currentDelinquencyStartType)) {
+            final String newValue = command.stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName);
+            changes.put(WorkingCapitalLoanProductConstants.delinquencyStartTypeParamName, newValue);
+            relatedDetail.setDelinquencyStartType(WorkingCapitalLoanDelinquencyStartType.fromString(newValue));
+        }
+        final String currentBreachStartType = (relatedDetail.getBreachStartType() != null) ? relatedDetail.getBreachStartType().name()
+                : null;
+        if (command.isChangeInStringParameterNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName, currentBreachStartType)) {
+            final String newValue = command.stringValueOfParameterNamed(WorkingCapitalLoanProductConstants.breachStartTypeParamName);
+            final WorkingCapitalLoanBreachStartType newBreachStartType = WorkingCapitalLoanBreachStartType.fromString(newValue);
+            changes.put(WorkingCapitalLoanProductConstants.breachStartTypeParamName,
+                    newBreachStartType != null ? newBreachStartType.getCode() : null);
+            relatedDetail.setBreachStartType(newBreachStartType);
+        }
+        return changes;
+    }
+
+    /**
+     * Clears the min/max bounds of the strategies the product no longer uses, so a switch does not keep (and report)
+     * bounds the new strategy rejects.
+     */
+    public Map<String, Object> clearMinMaxIncompatibleWithPaymentStrategy(
+            final WorkingCapitalLoanProductMinMaxConstraints minMaxConstraints,
+            final WorkingCapitalPaymentAmountCalculationStrategy strategy) {
+        final Map<String, Object> changes = new HashMap<>();
+        if (minMaxConstraints == null || strategy == null) {
+            return changes;
+        }
+        if (!strategy.isTpv()) {
+            if (minMaxConstraints.getMinPeriodPaymentRate() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.minPeriodPaymentRateParamName, null);
+                minMaxConstraints.setMinPeriodPaymentRate(null);
+            }
+            if (minMaxConstraints.getMaxPeriodPaymentRate() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.maxPeriodPaymentRateParamName, null);
+                minMaxConstraints.setMaxPeriodPaymentRate(null);
+            }
+        }
+        if (!strategy.isAnnualEir()) {
+            if (minMaxConstraints.getMinAnnualEir() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.minAnnualEirParamName, null);
+                minMaxConstraints.setMinAnnualEir(null);
+            }
+            if (minMaxConstraints.getMaxAnnualEir() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.maxAnnualEirParamName, null);
+                minMaxConstraints.setMaxAnnualEir(null);
+            }
+        }
+        if (!strategy.isPaymentAmount()) {
+            if (minMaxConstraints.getMinPaymentAmount() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.minPaymentAmountParamName, null);
+                minMaxConstraints.setMinPaymentAmount(null);
+            }
+            if (minMaxConstraints.getMaxPaymentAmount() != null) {
+                changes.put(WorkingCapitalLoanProductConstants.maxPaymentAmountParamName, null);
+                minMaxConstraints.setMaxPaymentAmount(null);
+            }
+        }
+        return changes;
+    }
+
+    /**
+     * A strategy switch leaves the old strategy's input behind unless it is cleared here: the request only carries the
+     * new strategy's field, and the mapper reports every stored input regardless of strategy.
+     */
+    private void clearInputsOfOtherStrategies(final WorkingCapitalLoanProductRelatedDetail relatedDetail,
+            final WorkingCapitalPaymentAmountCalculationStrategy strategy, final Map<String, Object> changes) {
+        if (!strategy.isTpv() && relatedDetail.getPeriodPaymentRate() != null) {
+            relatedDetail.setPeriodPaymentRate(null);
+            changes.put(WorkingCapitalLoanProductConstants.periodPaymentRateParamName, null);
+        }
+        if (!strategy.isAnnualEir() && relatedDetail.getAnnualEir() != null) {
+            relatedDetail.setAnnualEir(null);
+            changes.put(WorkingCapitalLoanProductConstants.annualEirParamName, null);
+        }
+        if (!strategy.isPaymentAmount() && relatedDetail.getPaymentAmount() != null) {
+            relatedDetail.setPaymentAmount(null);
+            changes.put(WorkingCapitalLoanProductConstants.paymentAmountParamName, null);
+        }
+    }
+
+    /**
+     * Update min/max constraints from command.
+     */
+    public Map<String, Object> updateMinMaxConstraints(final WorkingCapitalLoanProductMinMaxConstraints minMaxConstraints,
+            final JsonCommand command) {
+        final Map<String, Object> changes = new HashMap<>();
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.minPrincipalParamName,
+                minMaxConstraints.getMinPrincipal())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.minPrincipalParamName);
+            changes.put(WorkingCapitalLoanProductConstants.minPrincipalParamName, newValue);
+            minMaxConstraints.setMinPrincipal(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.maxPrincipalParamName,
+                minMaxConstraints.getMaxPrincipal())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.maxPrincipalParamName);
+            changes.put(WorkingCapitalLoanProductConstants.maxPrincipalParamName, newValue);
+            minMaxConstraints.setMaxPrincipal(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.minPeriodPaymentRateParamName,
+                minMaxConstraints.getMinPeriodPaymentRate())) {
+            final BigDecimal newValue = command
+                    .bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.minPeriodPaymentRateParamName);
+            changes.put(WorkingCapitalLoanProductConstants.minPeriodPaymentRateParamName, newValue);
+            minMaxConstraints.setMinPeriodPaymentRate(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.maxPeriodPaymentRateParamName,
+                minMaxConstraints.getMaxPeriodPaymentRate())) {
+            final BigDecimal newValue = command
+                    .bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.maxPeriodPaymentRateParamName);
+            changes.put(WorkingCapitalLoanProductConstants.maxPeriodPaymentRateParamName, newValue);
+            minMaxConstraints.setMaxPeriodPaymentRate(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.minAnnualEirParamName,
+                minMaxConstraints.getMinAnnualEir())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.minAnnualEirParamName);
+            changes.put(WorkingCapitalLoanProductConstants.minAnnualEirParamName, newValue);
+            minMaxConstraints.setMinAnnualEir(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.maxAnnualEirParamName,
+                minMaxConstraints.getMaxAnnualEir())) {
+            final BigDecimal newValue = command.bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.maxAnnualEirParamName);
+            changes.put(WorkingCapitalLoanProductConstants.maxAnnualEirParamName, newValue);
+            minMaxConstraints.setMaxAnnualEir(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.minPaymentAmountParamName,
+                minMaxConstraints.getMinPaymentAmount())) {
+            final BigDecimal newValue = command
+                    .bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.minPaymentAmountParamName);
+            changes.put(WorkingCapitalLoanProductConstants.minPaymentAmountParamName, newValue);
+            minMaxConstraints.setMinPaymentAmount(newValue);
+        }
+        if (command.isChangeInBigDecimalParameterNamed(WorkingCapitalLoanProductConstants.maxPaymentAmountParamName,
+                minMaxConstraints.getMaxPaymentAmount())) {
+            final BigDecimal newValue = command
+                    .bigDecimalValueOfParameterNamed(WorkingCapitalLoanProductConstants.maxPaymentAmountParamName);
+            changes.put(WorkingCapitalLoanProductConstants.maxPaymentAmountParamName, newValue);
+            minMaxConstraints.setMaxPaymentAmount(newValue);
+        }
+        return changes;
+    }
+
+    /**
+     * Update configurable attributes from command.
+     */
+    public Map<String, Object> updateConfigurableAttributes(final WorkingCapitalLoanProductConfigurableAttributes config,
+            final JsonCommand command) {
+        final Map<String, Object> changes = new HashMap<>();
+        if (command.parameterExists(WorkingCapitalLoanProductConstants.allowAttributeOverridesParamName)) {
+            final JsonObject allowOverrides = command.parsedJson().getAsJsonObject()
+                    .getAsJsonObject(WorkingCapitalLoanProductConstants.allowAttributeOverridesParamName);
+            if (allowOverrides != null && !allowOverrides.isJsonNull()) {
+                updateBooleanField(allowOverrides, WorkingCapitalLoanProductConstants.delinquencyBucketClassificationOverridableParamName,
+                        config::setDelinquencyBucketClassification, config::isDelinquencyBucketClassification, changes);
+                updateBooleanField(allowOverrides, WorkingCapitalLoanProductConstants.breachOverridableParamName, config::setBreach,
+                        config::isBreach, changes);
+                updateBooleanField(allowOverrides, WorkingCapitalLoanProductConstants.discountDefaultOverridableParamName,
+                        config::setDiscountDefaultOverridable, config::isDiscountDefaultOverridable, changes);
+                updateBooleanField(allowOverrides, WorkingCapitalLoanProductConstants.periodPaymentFrequencyOverridableParamName,
+                        config::setPeriodPaymentFrequency, config::isPeriodPaymentFrequency, changes);
+                updateBooleanField(allowOverrides, WorkingCapitalLoanProductConstants.periodPaymentFrequencyTypeOverridableParamName,
+                        config::setPeriodPaymentFrequencyType, config::isPeriodPaymentFrequencyType, changes);
+            }
+        }
+        return changes;
+    }
+
+    private static void updateBooleanField(final JsonObject allowOverrides, final String paramName, final Consumer<Boolean> setter,
+            final Supplier<Boolean> getter, final Map<String, Object> changes) {
+        if (allowOverrides.has(paramName) && !allowOverrides.get(paramName).isJsonNull()) {
+            final boolean newValue = allowOverrides.get(paramName).getAsBoolean();
+            if (getter.get() != newValue) {
+                changes.put(paramName, newValue);
+                setter.accept(newValue);
+            }
+        }
+    }
+}

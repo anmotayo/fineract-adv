@@ -55,7 +55,8 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
-import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepository;
+import org.apache.fineract.portfolio.paymenttype.exception.PaymentTypeNotFoundException;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -90,7 +91,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     private final SavingsAccountWritePlatformService delegate;
     private final BulkTransactionDataValidator bulkTransactionDataValidator;
     private final FromJsonHelper fromApiJsonHelper;
-    private final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
+    private final PaymentTypeRepository paymentTypeRepositoryWrapper;
     private final PaymentDetailRepository paymentDetailRepository;
     private final AdvanclyInterestChargeApplicationService interestChargeApplicationService;
     private final ProductToGLAccountMappingRepository productToGLAccountMappingRepository;
@@ -105,7 +106,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final GSIMRepositoy gsimRepository,
             @Qualifier("coreSavingsAccountWritePlatformService") final SavingsAccountWritePlatformService delegate,
             final BulkTransactionDataValidator bulkTransactionDataValidator, final FromJsonHelper fromApiJsonHelper,
-            final PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
+            final PaymentTypeRepository paymentTypeRepositoryWrapper, final PaymentDetailRepository paymentDetailRepository,
             final AdvanclyInterestChargeApplicationService interestChargeApplicationService,
             final ProductToGLAccountMappingRepository productToGLAccountMappingRepository,
             final ConfigurationDomainService configurationDomainService) {
@@ -349,7 +350,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         if (paymentTypeId == null) {
             return null;
         }
-        final PaymentType paymentType = paymentTypeRepositoryWrapper.findOneWithNotFoundDetection(paymentTypeId);
+        final PaymentType paymentType = paymentTypeRepositoryWrapper.findById(paymentTypeId)
+                .orElseThrow(() -> new PaymentTypeNotFoundException(paymentTypeId));
         final String accountNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.accountNumberParamName, txn);
         final String checkNumber = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.checkNumberParamName, txn);
         final String routingCode = fromApiJsonHelper.extractStringNamed(PaymentDetailConstants.routingCodeParamName, txn);
@@ -599,8 +601,13 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
     }
 
     @Override
-    public CommandProcessingResult releaseAmount(Long savingsId, Long transactionId) {
-        return delegate.releaseAmount(savingsId, transactionId);
+    public CommandProcessingResult releaseAmount(Long savingsId, Long transactionId, JsonCommand command) {
+        return delegate.releaseAmount(savingsId, transactionId, command);
+    }
+
+    @Override
+    public CommandProcessingResult forceWithdrawal(Long savingsId, JsonCommand command) {
+        return delegate.forceWithdrawal(savingsId, command);
     }
 
     @Override

@@ -27,11 +27,13 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.Getter;
 import org.apache.fineract.infrastructure.core.domain.AbstractAuditableCustom;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.portfolio.tax.api.TaxApiConstants;
 
 @Entity
+@Getter
 @Table(name = "m_tax_group_mappings")
 public class TaxGroupMappings extends AbstractAuditableCustom {
 
@@ -63,16 +65,23 @@ public class TaxGroupMappings extends AbstractAuditableCustom {
 
     }
 
-    public static TaxGroupMappings createTaxGroupMappings(final Long id, final TaxComponent taxComponent, final LocalDate endDate) {
-        final LocalDate startDate = null;
+    public static TaxGroupMappings createTaxGroupMappings(final Long id, final TaxComponent taxComponent, final LocalDate startDate,
+            final LocalDate endDate) {
         TaxGroupMappings groupMappings = new TaxGroupMappings(taxComponent, startDate, endDate);
         groupMappings.setId(id);
         return groupMappings;
 
     }
 
-    public void update(final LocalDate endDate, final List<Map<String, Object>> changes) {
-        if (endDate != null && this.endDate == null) {
+    public void update(final LocalDate startDate, final LocalDate endDate, final List<Map<String, Object>> changes) {
+        if (startDate != null && !DateUtils.isEqual(startDate, this.startDate)) {
+            this.startDate = startDate;
+            Map<String, Object> map = new HashMap<>(2);
+            map.put(TaxApiConstants.startDateParamName, startDate);
+            map.put(TaxApiConstants.taxComponentIdParamName, this.getTaxComponent().getId());
+            changes.add(map);
+        }
+        if (endDate != null && !DateUtils.isEqual(endDate, this.endDate)) {
             this.endDate = endDate;
             Map<String, Object> map = new HashMap<>(2);
             map.put(TaxApiConstants.endDateParamName, endDate);

@@ -52,13 +52,12 @@ tasks.named('compileTestJava') {
         .withPropertyName("testClassesDir")
 
     // Track annotation processor outputs
-    options.annotationProcessorGeneratedSourcesDirectory = 
-        layout.buildDirectory.dir('generated/sources/annotationProcessor/java/test').get().asFile
+    options.generatedSourceOutputDirectory =
+        layout.buildDirectory.dir('generated/sources/annotationProcessor/java/test')
 }
 
 dependencies {
     testImplementation(project(':fineract-avro-schemas'))
-    testImplementation(project(':fineract-client'))
     testImplementation(project(':fineract-client-feign'))
 
     testImplementation 'org.springframework:spring-context'
@@ -67,38 +66,42 @@ dependencies {
 
     testImplementation 'com.github.spotbugs:spotbugs-annotations'
 
-    testImplementation 'com.squareup.retrofit2:retrofit:2.11.0'
-    testImplementation 'io.github.openfeign:feign-core:13.6'
-    testImplementation 'org.apache.httpcomponents:httpclient:4.5.14'
-    testImplementation 'org.apache.commons:commons-lang3:3.18.0'
+    testImplementation 'com.squareup.retrofit2:retrofit'
+    testImplementation 'io.github.openfeign:feign-core:13.12'
+    testImplementation 'io.github.openfeign:feign-jackson:13.12'
+    testImplementation 'org.apache.httpcomponents:httpclient'
+    testImplementation 'org.apache.commons:commons-lang3'
+    testImplementation 'com.google.guava:guava'
     testImplementation ('com.googlecode.json-simple:json-simple:1.1.1') {
         exclude group: 'junit', module: 'junit'
     }
-    testImplementation 'com.google.code.gson:gson:2.11.0'
+    testImplementation 'com.google.code.gson:gson'
 
-    testImplementation 'io.cucumber:cucumber-java:7.20.1'
-    testImplementation 'io.cucumber:cucumber-junit:7.20.1'
-    testImplementation 'io.cucumber:cucumber-spring:7.20.1'
-    testImplementation 'io.cucumber:cucumber-junit-platform-engine:7.20.1'
+    testImplementation 'io.cucumber:cucumber-java'
+    testImplementation 'io.cucumber:cucumber-junit'
+    testImplementation 'io.cucumber:cucumber-spring'
+    testImplementation 'io.cucumber:cucumber-junit-platform-engine'
 
-    testImplementation 'io.qameta.allure:allure-cucumber7-jvm:2.29.1'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api'
+    testImplementation 'org.junit.jupiter:junit-jupiter'
 
-    testImplementation 'org.assertj:assertj-core:3.26.3'
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.11.3'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
 
-    testCompileOnly 'org.projectlombok:lombok:1.18.36'
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.36'
+    testImplementation 'ch.qos.logback:logback-core'
+    testImplementation 'ch.qos.logback:logback-classic'
 
-    testImplementation "ch.qos.logback:logback-core:1.5.17"
-    testImplementation "ch.qos.logback:logback-classic:1.5.17"
+    testImplementation 'org.apache.activemq:activemq-client'
+    testImplementation 'org.apache.avro:avro'
+    testImplementation 'org.awaitility:awaitility'
+    testImplementation 'io.github.classgraph:classgraph'
 
-    testImplementation 'org.apache.activemq:activemq-client:6.1.6'
-    testImplementation "org.apache.avro:avro:1.12.0"
-    testImplementation "org.awaitility:awaitility:4.2.2"
-    testImplementation 'io.github.classgraph:classgraph:4.8.179'
+    testImplementation 'org.apache.commons:commons-collections4'
 
-    testImplementation 'org.apache.commons:commons-collections4:4.4'
+    testImplementation 'org.springframework:spring-jdbc'
+    testImplementation 'org.postgresql:postgresql'
+    testImplementation 'org.mariadb.jdbc:mariadb-java-client'
 }
 
 tasks.withType(JavaCompile).configureEach {

@@ -20,6 +20,7 @@ package org.apache.fineract.infrastructure.core.exception;
 
 import static org.springframework.core.ResolvableType.forClassWithGenerics;
 
+import com.google.common.collect.ImmutableList;
 import com.google.gson.Gson;
 import jakarta.persistence.PersistenceException;
 import jakarta.validation.constraints.NotNull;
@@ -50,7 +51,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.NestedRuntimeException;
 import org.springframework.dao.NonTransientDataAccessException;
 import org.springframework.dao.PessimisticLockingFailureException;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -72,19 +72,14 @@ public final class ErrorHandler {
 
         ROLLBACK("40"), // Transaction rollback
         DEADLOCK("60"), // Oracle: deadlock
-        HY00("HY", "Lock wait timeout exceeded"), // MySql deadlock HY00
-        ;
+        HY00("HY", "Lock wait timeout exceeded", "Record has changed since last read");
 
         private final String code;
-        private final String msg;
+        private final ImmutableList<String> messages;
 
-        PessimisticLockingFailureCode(String code, String msg) {
+        PessimisticLockingFailureCode(String code, String... messages) {
             this.code = code;
-            this.msg = msg;
-        }
-
-        PessimisticLockingFailureCode(String code) {
-            this(code, null);
+            this.messages = ImmutableList.copyOf(messages);
         }
 
         private static Throwable match(Throwable t) {
@@ -92,21 +87,14 @@ public final class ErrorHandler {
             return rootCause instanceof SQLException sqle && Arrays.stream(values()).anyMatch(e -> e.matches(sqle)) ? rootCause : null;
         }
 
-        private boolean matches(SQLException ex) {
-            return code.equals(getSqlClassCode(ex)) && (msg == null || ex.getMessage().contains(msg));
+        private boolean matches(SQLException e) {
+            String sqlState = e.getSQLState();
+            String message = e.getMessage();
+
+            return sqlState != null && sqlState.startsWith(code)
+                    && (messages.isEmpty() || (message != null && messages.stream().anyMatch(message::contains)));
         }
 
-        @Nullable
-        private static String getSqlClassCode(SQLException ex) {
-            String sqlState = ex.getSQLState();
-            if (sqlState == null) {
-                SQLException nestedEx = ex.getNextException();
-                if (nestedEx != null) {
-                    sqlState = nestedEx.getSQLState();
-                }
-            }
-            return sqlState != null && sqlState.length() > 2 ? sqlState.substring(0, 2) : sqlState;
-        }
     }
 
     @Autowired
@@ -116,6 +104,7 @@ public final class ErrorHandler {
     private final DefaultExceptionMapper defaultExceptionMapper;
 
     @NotNull
+    @SuppressWarnings("unchecked")
     public <T extends RuntimeException> ExceptionMapper<T> findMostSpecificExceptionHandler(T exception) {
         Class<?> clazz = exception.getClass();
         do {
@@ -123,23 +112,19 @@ public final class ErrorHandler {
             Set<String> fineractErrorMappers = createSet(ctx.getBeanNamesForType(FineractExceptionMapper.class));
             SetUtils.SetView<String> intersection = SetUtils.intersection(exceptionMappers, fineractErrorMappers);
             if (!intersection.isEmpty()) {
-                // noinspection unchecked
                 return (ExceptionMapper<T>) ctx.getBean(intersection.iterator().next());
             }
             if (!exceptionMappers.isEmpty()) {
-                // noinspection unchecked
                 return (ExceptionMapper<T>) ctx.getBean(exceptionMappers.iterator().next());
             }
             clazz = clazz.getSuperclass();
         } while (!clazz.equals(Exception.class));
-        // noinspection unchecked
         return (ExceptionMapper<T>) defaultExceptionMapper;
     }
 
     /**
      * Returns an object of ErrorInfo type containing the information regarding the raised error.
      *
-     * @param exception
      * @return ErrorInfo
      */
     public ErrorInfo handle(@NotNull RuntimeException exception) {

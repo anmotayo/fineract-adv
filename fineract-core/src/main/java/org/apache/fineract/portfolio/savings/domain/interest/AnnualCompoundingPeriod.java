@@ -72,7 +72,7 @@ public final class AnnualCompoundingPeriod implements CompoundingPeriod {
             final BigDecimal minOverdraftForInterestCalculation) {
 
         BigDecimal cumulativeBalance = BigDecimal.ZERO;
-        Integer numberOfDays = Integer.valueOf(0);
+        Integer numberOfDays = 0;
 
         for (final EndOfDayBalance balance : this.endOfDayBalances) {
             final BigDecimal endOfDayCumulativeBalance = balance.cumulativeBalance(interestToCompound);
@@ -126,23 +126,7 @@ public final class AnnualCompoundingPeriod implements CompoundingPeriod {
                             daysInYear, minBalanceForInterestCalculation, overdraftInterestRateAsFraction,
                             minOverdraftForInterestCalculation);
                 break;
-                case MONTHLY:
-                    interestOnBalanceUnrounded = balance.calculateInterestOnBalance(interestToCompound, interestRateAsFraction, daysInYear,
-                            minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
-                break;
-                case QUATERLY:
-                    interestOnBalanceUnrounded = balance.calculateInterestOnBalance(interestToCompound, interestRateAsFraction, daysInYear,
-                            minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
-                break;
-                // case WEEKLY:
-                // break;
-                // case BIWEEKLY:
-                // break;
-                case BI_ANNUAL:
-                    interestOnBalanceUnrounded = balance.calculateInterestOnBalance(interestToCompound, interestRateAsFraction, daysInYear,
-                            minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
-                break;
-                case ANNUAL:
+                case MONTHLY, ANNUAL, BI_ANNUAL, QUATERLY:
                     interestOnBalanceUnrounded = balance.calculateInterestOnBalance(interestToCompound, interestRateAsFraction, daysInYear,
                             minBalanceForInterestCalculation, overdraftInterestRateAsFraction, minOverdraftForInterestCalculation);
                 break;

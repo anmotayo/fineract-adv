@@ -576,12 +576,13 @@ public class DynamicDepositAccount extends SavingsAccount {
 
     /**
      * Regroups the rate sub-periods into core posting boundaries so one interest transaction is written per period; the
-     * create/correct/withhold logic mirrors {@code SavingsAccount#postInterest}.
+     * create/correct/withhold logic mirrors {@code SavingsAccountPostInterestServiceImpl}. Called through
+     * {@code AdvanclySavingsAccountPostInterestService}, which dispatches dynamic deposits here.
      */
-    @Override
-    public void postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
-            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
-            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
+    public void postInterestForDynamicDeposit(final MathContext mc, final LocalDate interestPostingUpToDate,
+            final boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
+            final Integer financialYearBeginningMonth, final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill,
+            final boolean postReversals) {
 
         // Only the boundaries are capped: the guard below needs the raw date, as the final posting lands the day
         // after the last boundary.

@@ -7035,6 +7035,8 @@ GET https://DomainName/api/v1/clients/{clientId}/identifiers
       "name": "Drivers License"
     },
     "documentKey": "12345",
+    "issuanceDate": [2024, 1, 1],
+    "expiryDate": [2034, 1, 1],
     "description": "Issued in the year 2--7"
   }
 ]
@@ -7120,6 +7122,8 @@ GET https://DomainName/api/v1/clients/{clientId}/identifiers/{identifierId}
     "name": "Drivers License"
   },
   "documentKey": "12345",
+  "issuanceDate": [2024, 1, 1],
+  "expiryDate": [2034, 1, 1],
   "description": "Issued in 2007"
 }
 					</code>
@@ -7151,7 +7155,11 @@ Request Body:
 {
 "documentTypeId":"1",
 "documentKey":"KA-54677",
-"description":"Document has been verified"
+"description":"Document has been verified",
+"issuanceDate":"01 January 2024",
+"expiryDate":"01 January 2034",
+"dateFormat":"dd MMMM yyyy",
+"locale":"en"
 }
 					</code>
 					<code class="method-response">
@@ -7180,7 +7188,11 @@ Request Body:
 {
 "documentTypeId":"4",
 "documentKey":"KA-94667",
-"description":"Document has been updated"
+"description":"Document has been updated",
+"issuanceDate":"01 February 2024",
+"expiryDate":"01 February 2034",
+"dateFormat":"dd MMMM yyyy",
+"locale":"en"
 }
 					</code>
 					<code class="method-response">
@@ -7191,7 +7203,9 @@ Request Body:
   "changes": {
     "documentTypeId": 4,
     "documentKey": "KA-94667",
-    "description": "Document has been updated"
+    "description": "Document has been updated",
+    "issuanceDate": [2024, 2, 1],
+    "expiryDate": [2034, 2, 1]
   }
 }
 					</code>
@@ -10303,7 +10317,7 @@ GET  https://DomainName/fineract-provider/api/v1/groups/{groupId}/glimaccounts
 							<td class=fielddesc><span>Example Values:</span> 0=Daily, 1=Same as repayment period</td>
 						</tr>
 						<tr class=alt>
-							<td>allowPartialPeriodInterestCalcualtion</td>
+							<td>allowPartialPeriodInterestCalculation</td>
 						</tr>
 						<tr>
 							<td class=fielddesc>This value will be supported along with interestCalculationPeriodType as Same as repayment period to calculate interest for partial periods.
@@ -11629,7 +11643,7 @@ Request Body:
 							<td><div class="fineractHeading2">Optional Fields</div></td>
 						</tr>
 						<tr class=alt>
-							<td>graceOnPrincipalPayment, graceOnInterestPayment, graceOnInterestCharged, linkAccountId, allowPartialPeriodInterestCalcualtion,
+							<td>graceOnPrincipalPayment, graceOnInterestPayment, graceOnInterestCharged, linkAccountId, allowPartialPeriodInterestCalculation,
 								 fixedEmiAmount, maxOutstandingLoanBalance, disbursementData, graceOnArrearsAgeing, createStandingInstructionAtDisbursement (requires linkedAccountId if set to true), daysInYearType
 							</td>
 						</tr>
@@ -15688,7 +15702,7 @@ Request Body:
 							<td class=fielddesc><span>Example Values:</span> 0=Daily, 1=Same as repayment period</td>
 						</tr>
 						<tr class=alt>
-							<td>allowPartialPeriodInterestCalcualtion</td>
+							<td>allowPartialPeriodInterestCalculation</td>
 						</tr>
 						<tr>
 							<td class=fielddesc>This value will be supported along with interestCalculationPeriodType as Same as repayment period to calculate interest for partial periods.
@@ -17172,7 +17186,7 @@ GET https://DomainName/api/v1/loanproducts/{productId}
 							numberOfRepaymentVariationsForBorrowerCycle,
 							interestRateVariationsForBorrowerCycle,
 							multiDisburseLoan,maxTrancheCount,
-							outstandingLoanBalance,overdueDaysForNPA,holdGuaranteeFunds, principalThresholdForLastInstalment, accountMovesOutOfNPAOnlyOnArrearsCompletion, canDefineInstallmentAmount, installmentAmountInMultiplesOf, allowAttributeOverrides, allowPartialPeriodInterestCalcualtion, rates
+							outstandingLoanBalance,overdueDaysForNPA,holdGuaranteeFunds, principalThresholdForLastInstalment, accountMovesOutOfNPAOnlyOnArrearsCompletion, canDefineInstallmentAmount, installmentAmountInMultiplesOf, allowAttributeOverrides, allowPartialPeriodInterestCalculation, rates
 							</td>
 						</tr>
 					</table>
@@ -18436,6 +18450,7 @@ Request Body:
 						<li><b>savings-interest-posting-current-period-end</b> - Set it at the database level before any savings interest is posted. When set as false(default), interest will be posted on the first date of next period. If set as true, interest will be posted on last date of current period. There is no difference in the interest amount posted.</li>
 						<li><b>financial-year-beginning-month</b> - Set it at the database level before any savings interest is posted. Allowed values 1 - 12 (January - December). Interest posting periods are evaluated based on this configuration.</li>
 						<li><b>meetings-mandatory-for-jlg-loans</b> - if set to true, enforces all JLG loans to follow a meeting schedule belonging to either the parent group or Center.</li>
+						<li><b>max-login-retry-attempts</b> - defaults to 5 - when enabled, limits failed login attempts and locks the user after N failed attempts.</li>
 					</ol>
 				</div>
 			</div>
@@ -34779,7 +34794,7 @@ No Request Body:
 	        </code>
 	    </div>
 	</div>
-<!-- end of acount transfers api -->
+<!-- end of account transfers api -->
 
 <!-- Start Account Trasfer Standing Instrution-->
 
@@ -44729,7 +44744,7 @@ No Request Body:
 							</td>
 						</tr>
 						<tr class=alt>
-							<td>debitAcountId</td>
+							<td>debitAccountId</td>
 						</tr>
 						<tr>
 							<td class=fielddesc>
@@ -44742,7 +44757,7 @@ No Request Body:
 							</td>
 						</tr>
 						<tr class=alt>
-							<td>debitAcountId</td>
+							<td>debitAccountId</td>
 						</tr>
 						<tr>
 							<td class=fielddesc>
@@ -44786,13 +44801,13 @@ No Request Body:
 							<td>debitAccountType</td>
 						</tr>
 						<tr class=alt>
-							<td>debitAcountId</td>
+							<td>debitAccountId</td>
 						</tr>
 						<tr class=alt>
 							<td>creditAccountType</td>
 						</tr>
 						<tr class=alt>
-							<td>creditAcountId</td>
+							<td>creditAccountId</td>
 						</tr>
 						<tr class=alt>
 							<td>startDate</td>
@@ -44811,7 +44826,7 @@ No Request Body:
 						"name": "tax component 1",
 						"percentage": "10",
 						"creditAccountType": 2,
-						"creditAcountId": 4,
+						"creditAccountId": 4,
 						"locale": "en",
 						"dateFormat": "dd MMMM yyyy",
 						"startDate": "11 April 2016"
@@ -48399,7 +48414,7 @@ Request Body:
 							<td><div class="fineractHeading2">Optional Fields</div></td>
 						</tr>
 						<tr class=alt>
-							<td>graceOnPrincipalPayment, graceOnInterestPayment, graceOnInterestCharged, linkAccountId, allowPartialPeriodInterestCalcualtion,
+							<td>graceOnPrincipalPayment, graceOnInterestPayment, graceOnInterestCharged, linkAccountId, allowPartialPeriodInterestCalculation,
 								 fixedEmiAmount, maxOutstandingLoanBalance, disbursementData, graceOnArrearsAgeing, createStandingInstructionAtDisbursement (requires linkedAccountId if set to true)
 							</td>
 						</tr>
@@ -51616,7 +51631,7 @@ No Request Body:
 							<td class=fielddesc><span>Example Values:</span> 0=Daily, 1=Same as repayment period</td>
 						</tr>
 						<tr class=alt>
-							<td>allowPartialPeriodInterestCalcualtion</td>
+							<td>allowPartialPeriodInterestCalculation</td>
 						</tr>
 						<tr>
 							<td class=fielddesc>This value will be supported along with interestCalculationPeriodType as Same as repayment period to calculate interest for partial periods.

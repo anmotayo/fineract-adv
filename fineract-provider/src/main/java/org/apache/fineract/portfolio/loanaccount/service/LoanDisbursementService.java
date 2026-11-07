@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.configuration.service.TemporaryConfigurationServiceContainer;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
@@ -58,7 +59,7 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepositor
 import org.apache.fineract.portfolio.loanaccount.serialization.LoanChargeValidator;
 import org.apache.fineract.portfolio.loanaccount.serialization.LoanDisbursementValidator;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -70,6 +71,7 @@ public class LoanDisbursementService {
     private final LoanBalanceService loanBalanceService;
     private final LoanJournalEntryPoster loanJournalEntryPoster;
     private final LoanTransactionRepository loanTransactionRepository;
+    private final ConfigurationDomainService configurationDomainService;
 
     public void updateDisbursementDetails(final Loan loan, final JsonCommand jsonCommand, final Map<String, Object> actualChanges) {
         final List<Long> disbursementList = loan.fetchDisbursementIds();
@@ -138,7 +140,7 @@ public class LoanDisbursementService {
                 disburseAmount = disburseAmount.zero();
                 for (LoanDisbursementDetails disbursementDetails : details) {
                     disbursementDetails.updateActualDisbursementDate(actualDisbursementDate);
-                    disburseAmount = disburseAmount.plus(disbursementDetails.principal());
+                    disburseAmount = disburseAmount.plus(disbursementDetails.getPrincipal());
                 }
             }
         } else {
@@ -162,7 +164,7 @@ public class LoanDisbursementService {
                     // First try to find a tranche that exactly matches the requested disbursement amount
                     for (LoanDisbursementDetails disbursementDetails : details) {
                         if (disbursementDetails.actualDisbursementDate() == null
-                                && disbursementDetails.principal().compareTo(principalDisbursed) == 0) {
+                                && disbursementDetails.getPrincipal().compareTo(principalDisbursed) == 0) {
                             selectedTranche = disbursementDetails;
                             break;
                         }
@@ -198,9 +200,9 @@ public class LoanDisbursementService {
                 BigDecimal setPrincipalAmount = BigDecimal.ZERO;
                 for (LoanDisbursementDetails disbursementDetails : loanDisburseDetails) {
                     if (disbursementDetails.actualDisbursementDate() != null) {
-                        setPrincipalAmount = setPrincipalAmount.add(disbursementDetails.principal());
+                        setPrincipalAmount = setPrincipalAmount.add(disbursementDetails.getPrincipal());
                     }
-                    totalAmount = totalAmount.add(disbursementDetails.principal());
+                    totalAmount = totalAmount.add(disbursementDetails.getPrincipal());
                 }
                 loan.getLoanRepaymentScheduleDetail().setPrincipal(setPrincipalAmount);
             } else {
@@ -208,12 +210,13 @@ public class LoanDisbursementService {
                         .setPrincipal(loan.getLoanRepaymentScheduleDetail().getPrincipal().minus(diff).getAmount());
                 totalAmount = loan.getLoanRepaymentScheduleDetail().getPrincipal().getAmount();
             }
-            loanDisbursementValidator.compareDisbursedToApprovedOrProposedPrincipal(loan, disburseAmount.getAmount(), totalAmount);
+            loanDisbursementValidator.compareDisbursedToApprovedOrProposedPrincipal(loan, totalAmount);
         }
         return disburseAmount;
     }
 
-    public void handleDisbursementTransaction(final Loan loan, final LocalDate disbursedOn, final PaymentDetail paymentDetail) {
+    public void handleDisbursementTransaction(final Loan loan, final LocalDate disbursedOn, final PaymentDetail paymentDetail,
+            final boolean isAccountTransfer) {
         // add repayment transaction to track incoming money from client to mfi
         // for (charges due at time of disbursement)
 
@@ -242,7 +245,8 @@ public class LoanDisbursementService {
                     && !charge.isWaived() && !charge.isFullyPaid();
 
             /*
-             * create a Charge applied transaction if Up front Accrual, None or Cash based accounting is enabled
+             * create a Charge applied transaction only when Up front Accrual accounting is enabled. No accrual
+             * transactions should be created for None or Cash based accounting.
              */
             if (isDisbursementCharge || isTrancheDisbursementCharge) {
                 if (totalFeeChargesDueAtDisbursement.isGreaterThanZero() && !charge.getChargePaymentMode().isPaymentModeAccountTransfer()) {
@@ -253,8 +257,9 @@ public class LoanDisbursementService {
                     chargesPayment.getLoanChargesPaid().add(loanChargePaidBy);
                     disbursentMoney = disbursentMoney.plus(charge.amount());
                 }
-            } else if (disbursedOn.equals(loan.getActualDisbursementDate())
-                    && loan.isNoneOrCashOrUpfrontAccrualAccountingEnabledOnLoanProduct()) {
+            } else if (disbursedOn.equals(loan.getActualDisbursementDate()) && (configurationDomainService.isAllowCashAndNonCashAccrual()
+                    ? loan.isNoneOrCashOrUpfrontAccrualAccountingEnabledOnLoanProduct()
+                    : loan.isUpfrontAccrualAccountingEnabledOnLoanProduct())) {
                 final LoanTransaction applyLoanChargeTransaction = loanChargeService.handleChargeAppliedTransaction(loan, charge,
                         disbursedOn);
                 if (applyLoanChargeTransaction != null) {
@@ -270,7 +275,7 @@ public class LoanDisbursementService {
             chargesPayment.updateLoan(loan);
             loan.addLoanTransaction(chargesPayment);
             loanTransactionRepository.saveAndFlush(chargesPayment);
-            loanJournalEntryPoster.postJournalEntriesForLoanTransaction(chargesPayment, false, false);
+            loanJournalEntryPoster.postJournalEntriesForLoanTransaction(chargesPayment, isAccountTransfer, false);
             loanBalanceService.updateLoanOutstandingBalances(loan);
         }
 
@@ -435,7 +440,7 @@ public class LoanDisbursementService {
             LoanDisbursementDetails singleDetail = undisbursedDetails.iterator().next();
             BigDecimal loanPrincipal = loan.getLoanRepaymentScheduleDetail().getPrincipal().getAmount();
 
-            if (singleDetail.principal().compareTo(loanPrincipal) == 0) {
+            if (singleDetail.getPrincipal().compareTo(loanPrincipal) == 0) {
                 return false;
             }
         }
@@ -452,7 +457,8 @@ public class LoanDisbursementService {
 
         return disbursementDetails.stream()
                 .sorted(Comparator.comparing(LoanDisbursementDetails::expectedDisbursementDate)
-                        .thenComparing((LoanDisbursementDetails d1, LoanDisbursementDetails d2) -> d2.principal().compareTo(d1.principal()))
+                        .thenComparing(
+                                (LoanDisbursementDetails d1, LoanDisbursementDetails d2) -> d2.getPrincipal().compareTo(d1.getPrincipal()))
                         .thenComparing(LoanDisbursementDetails::getId))
                 .collect(Collectors.toList());
     }

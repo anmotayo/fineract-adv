@@ -48,6 +48,7 @@ import org.apache.fineract.avro.loan.v1.LoanAccountDelinquencyRangeDataV1;
 import org.apache.fineract.avro.loan.v1.LoanInstallmentDelinquencyBucketDataV1;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
+import org.apache.fineract.infrastructure.configuration.domain.NextPaymentDueDateConfig;
 import org.apache.fineract.infrastructure.core.domain.ActionContext;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
@@ -71,6 +72,7 @@ import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.delinquency.data.DelinquencyRangeData;
 import org.apache.fineract.portfolio.delinquency.data.LoanInstallmentDelinquencyTagData;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyBucketRepository;
+import org.apache.fineract.portfolio.delinquency.domain.DelinquencyMinimumPaymentPeriodAndRuleRepository;
 import org.apache.fineract.portfolio.delinquency.domain.DelinquencyRangeRepository;
 import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyActionRepository;
 import org.apache.fineract.portfolio.delinquency.domain.LoanDelinquencyTagHistoryRepository;
@@ -99,9 +101,11 @@ import org.apache.fineract.portfolio.loanaccount.service.LoanBalanceService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanChargeReadPlatformService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanChargeService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanReadPlatformService;
+import org.apache.fineract.portfolio.loanaccount.service.LoanScheduleGeneratorService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanTransactionProcessingService;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRelatedDetail;
+import org.apache.fineract.portfolio.tax.service.ChargeTaxApplicationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -131,7 +135,8 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
     private AvroDateTimeMapper mapper;
 
     private final LoanChargeService loanChargeService = new LoanChargeService(mock(LoanChargeValidator.class),
-            mock(LoanTransactionProcessingService.class), mock(LoanLifecycleStateMachine.class), mock(LoanBalanceService.class));
+            mock(LoanTransactionProcessingService.class), mock(LoanLifecycleStateMachine.class), mock(LoanBalanceService.class),
+            mock(LoanScheduleGeneratorService.class), mock(ChargeTaxApplicationService.class));
 
     private MockedStatic<MoneyHelper> moneyHelper = Mockito.mockStatic(MoneyHelper.class);
 
@@ -349,6 +354,8 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         // given
         DelinquencyRangeRepository repositoryRange = Mockito.mock(DelinquencyRangeRepository.class);
         DelinquencyBucketRepository repositoryBucket = Mockito.mock(DelinquencyBucketRepository.class);
+        DelinquencyMinimumPaymentPeriodAndRuleRepository minimumPaymentPeriodAndRuleRepository = Mockito
+                .mock(DelinquencyMinimumPaymentPeriodAndRuleRepository.class);
         LoanDelinquencyTagHistoryRepository repositoryLoanDelinquencyTagHistory = Mockito.mock(LoanDelinquencyTagHistoryRepository.class);
         DelinquencyRangeMapper mapperRange = Mockito.mock(DelinquencyRangeMapper.class);
         DelinquencyBucketMapper mapperBucket = Mockito.mock(DelinquencyBucketMapper.class);
@@ -360,12 +367,13 @@ public class LoanAccountDelinquencyRangeEventSerializerTest {
         LoanDelinquencyActionRepository loanDelinquencyActionRepository = Mockito.mock(LoanDelinquencyActionRepository.class);
         DelinquencyEffectivePauseHelper delinquencyEffectivePauseHelper = Mockito.mock(DelinquencyEffectivePauseHelper.class);
         ConfigurationDomainService configurationDomainService = Mockito.mock(ConfigurationDomainService.class);
+        when(configurationDomainService.getNextPaymentDateConfigForLoan()).thenReturn(NextPaymentDueDateConfig.EARLIEST_UNPAID_DATE);
 
         DelinquencyReadPlatformService delinquencyReadPlatformService = new DelinquencyReadPlatformServiceImpl(repositoryRange,
-                repositoryBucket, repositoryLoanDelinquencyTagHistory, mapperRange, mapperBucket, mapperLoanDelinquencyTagHistory,
-                loanRepository, loanDelinquencyDomainService, repositoryLoanInstallmentDelinquencyTag, loanDelinquencyActionRepository,
-                delinquencyEffectivePauseHelper, configurationDomainService, Mockito.mock(LoanTransactionRepository.class),
-                Mockito.mock(PossibleNextRepaymentCalculationServiceDiscovery.class));
+                repositoryBucket, minimumPaymentPeriodAndRuleRepository, repositoryLoanDelinquencyTagHistory, mapperRange, mapperBucket,
+                mapperLoanDelinquencyTagHistory, loanRepository, loanDelinquencyDomainService, repositoryLoanInstallmentDelinquencyTag,
+                loanDelinquencyActionRepository, delinquencyEffectivePauseHelper, configurationDomainService,
+                Mockito.mock(LoanTransactionRepository.class), Mockito.mock(PossibleNextRepaymentCalculationServiceDiscovery.class));
 
         LoanProduct loanProduct = Mockito.mock(LoanProduct.class);
         when(loanProduct.isMultiDisburseLoan()).thenReturn(false);

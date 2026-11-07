@@ -84,7 +84,7 @@ public class LoanTermVariationsMapper {
         RecalculationFrequencyType compoundingFrequencyType = null;
         LoanRescheduleStrategyMethod rescheduleStrategyMethod = null;
         CalendarHistoryDataWrapper calendarHistoryDataWrapper;
-        RepaymentStartDateType repaymentStartDateType = loan.getLoanProduct().getRepaymentStartDateType();
+        RepaymentStartDateType repaymentStartDateType = loan.getRepaymentStartDateType();
         boolean allowCompoundingOnEod = false;
         if (loan.getLoanProductRelatedDetail().isInterestRecalculationEnabled()) {
             restCalendarInstance = scheduleGeneratorDTO.getCalendarInstanceForInterestRecalculation();
@@ -120,7 +120,8 @@ public class LoanTermVariationsMapper {
                 scheduleGeneratorDTO.getNumberOfdays(), scheduleGeneratorDTO.isSkipRepaymentOnFirstDayofMonth(), holidayDetailDTO,
                 allowCompoundingOnEod, scheduleGeneratorDTO.isFirstRepaymentDateAllowedOnHoliday(),
                 scheduleGeneratorDTO.isInterestToBeRecoveredFirstWhenGreaterThanEMI(), loan.getFixedPrincipalPercentagePerInstallment(),
-                scheduleGeneratorDTO.isPrincipalCompoundingDisabledForOverdueLoans(), repaymentStartDateType, loan.getSubmittedOnDate());
+                scheduleGeneratorDTO.isPrincipalCompoundingDisabledForOverdueLoans(), repaymentStartDateType, loan.getSubmittedOnDate(),
+                loan.isAllowFullTermForTranche());
     }
 
     private BigDecimal constructFloatingInterestRates(final BigDecimal annualNominalInterestRate, final FloatingRateDTO floatingRateDTO,

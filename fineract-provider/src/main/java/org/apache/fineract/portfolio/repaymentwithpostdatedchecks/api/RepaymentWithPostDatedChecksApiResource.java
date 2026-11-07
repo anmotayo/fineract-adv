@@ -62,7 +62,6 @@ public class RepaymentWithPostDatedChecksApiResource {
     private final RepaymentWithPostDatedChecksReadPlatformService repaymentWithPostDatedChecksReadPlatformService;
 
     @GET
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
     @Operation(summary = "Get All Post Dated Checks", description = "Get All Post dated Checks")
     @ApiResponses({
@@ -76,11 +75,10 @@ public class RepaymentWithPostDatedChecksApiResource {
 
     @GET
     @Path("{installmentId}")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
     @Operation(summary = "Get Post Dated Check", description = "Get Post Dated Check")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(array = @ArraySchema(schema = @Schema(implementation = PostDatedChecksApiResourceSwagger.GetPostDatedChecks.class)))) })
+            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = PostDatedChecksApiResourceSwagger.GetPostDatedChecks.class))) })
     public String getPostDatedCheck(@PathParam("installmentId") @Parameter(description = "installmentId") final Integer installmentId,
             @PathParam("loanId") @Parameter(description = "loanId") final Long loanId) {
         this.context.authenticatedUser();
@@ -117,7 +115,6 @@ public class RepaymentWithPostDatedChecksApiResource {
 
     @DELETE
     @Path("{postDatedCheckId}")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
     @Operation(summary = "Delete Post Dated Check", description = "Delete Post Dated Check")
     @ApiResponses({

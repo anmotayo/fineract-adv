@@ -48,7 +48,7 @@ import org.apache.fineract.investor.domain.InvestorBusinessEvent;
 import org.apache.fineract.investor.service.ExternalAssetOwnersReadService;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanCharge;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -63,9 +63,8 @@ public class InvestorBusinessEventSerializer extends AbstractBusinessEventWithCu
 
     private static CurrencyDataV1 getCurrencyFromEvent(InvestorBusinessEvent event) {
         MonetaryCurrency loanCurrency = event.getLoan().getCurrency();
-        CurrencyDataV1 currency = CurrencyDataV1.newBuilder().setCode(loanCurrency.getCode())
-                .setDecimalPlaces(loanCurrency.getDigitsAfterDecimal()).setInMultiplesOf(loanCurrency.getInMultiplesOf()).build();
-        return currency;
+        return CurrencyDataV1.newBuilder().setCode(loanCurrency.getCode()).setDecimalPlaces(loanCurrency.getDigitsAfterDecimal())
+                .setInMultiplesOf(loanCurrency.getInMultiplesOf()).build();
     }
 
     @Override

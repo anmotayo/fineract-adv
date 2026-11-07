@@ -71,7 +71,6 @@ public class GuarantorWorkbookPopulator extends AbstractWorkbookPopulator {
         populateSavingsTable(addGuarantorSheet, dateFormat);
         populateGuarantorRelationshipTypes(addGuarantorSheet, dateFormat);
         setRules(addGuarantorSheet);
-
     }
 
     private void setLayout(Sheet worksheet) {
@@ -155,8 +154,7 @@ public class GuarantorWorkbookPopulator extends AbstractWorkbookPopulator {
                 row = addGuarantorSheet.getRow(rowIndex++);
             }
             writeString(GuarantorConstants.LOOKUP_CLIENT_NAME_COL, row, loan.getClientName() + "(" + loan.getClientId() + ")");
-            writeString(GuarantorConstants.LOOKUP_ACCOUNT_NO_COL, row,
-                    Long.parseLong(loan.getAccountNo()) + "-" + loan.getStatus().getValue());
+            writeString(GuarantorConstants.LOOKUP_ACCOUNT_NO_COL, row, loan.getAccountNo() + "-" + loan.getStatus().getValue());
         }
     }
 
@@ -209,8 +207,9 @@ public class GuarantorWorkbookPopulator extends AbstractWorkbookPopulator {
                 "INDIRECT(CONCATENATE(\"Account_\",SUBSTITUTE(SUBSTITUTE(SUBSTITUTE($B1,\" \",\"_\"),\"(\",\"_\"),\")\",\"_\")))");
         DataValidationConstraint savingsaccountNumberConstraint = validationHelper.createFormulaListConstraint(
                 "INDIRECT(CONCATENATE(\"SavingsAccount_\",SUBSTITUTE(SUBSTITUTE(SUBSTITUTE($G1,\" \",\"_\"),\"(\",\"_\"),\")\",\"_\")))");
-        DataValidationConstraint guranterTypeConstraint = validationHelper.createExplicitListConstraint(
-                new String[] { TemplatePopulateImportConstants.GUARANTOR_INTERNAL, TemplatePopulateImportConstants.GUARANTOR_EXTERNAL });
+        DataValidationConstraint guranterTypeConstraint = validationHelper
+                .createExplicitListConstraint(new String[] { TemplatePopulateImportConstants.GUARANTOR_INTERNAL,
+                        TemplatePopulateImportConstants.GUARANTOR_EXTERNAL, TemplatePopulateImportConstants.GUARANTOR_GROUP });
         DataValidationConstraint guarantorRelationshipConstraint = validationHelper.createFormulaListConstraint("GuarantorRelationship");
         DataValidationConstraint entityofficeNameConstraint = validationHelper.createFormulaListConstraint("Office");
         DataValidationConstraint entityclientNameConstraint = validationHelper

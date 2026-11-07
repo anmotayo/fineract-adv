@@ -51,7 +51,6 @@ war {
     def legalFiles = [
         file("$rootDir/LICENSE_RELEASE"),
         file("$rootDir/NOTICE_RELEASE"),
-        file("$rootDir/DISCLAIMER")
     ].findAll { it.exists() }
     
     if (!legalFiles.empty) {
@@ -86,13 +85,15 @@ dependencies {
     implementation project(':fineract-charge')
     implementation project(':fineract-rates')
     implementation project(':fineract-loan')
+    implementation project(':fineract-loan-origination')
     implementation project(':fineract-progressive-loan')
     implementation project(':fineract-savings')
     implementation project(':fineract-provider')
+    implementation project(':fineract-working-capital-loan')
 }
 
 tasks.withType(Tar) {
-    compression Compression.GZIP
+    compression = Compression.GZIP
     archiveExtension = 'tar.gz'
     
     // Enable caching for all tar tasks
@@ -123,7 +124,10 @@ distributions {
                 exclude 'fineract-provider-*-plain.jar'
             }
             from war
-            from("$rootDir/licenses/") {
+            // Taken from the task rather than from the path, so the merged dependency licence
+            // report is a declared input of the distribution and is regenerated on demand instead
+            // of being whatever happens to be sitting in $rootDir/licenses.
+            from(rootProject.tasks.named('aggregateLicenseReport')) {
                 into "licenses/"
             }
             from "$rootDir/LICENSE_RELEASE"
@@ -131,7 +135,6 @@ distributions {
             rename ('LICENSE_RELEASE', 'LICENSE')
             rename ('NOTICE_RELEASE', 'NOTICE')
 
-            from "$rootDir/DISCLAIMER"
             from "$rootDir/README.md"
 
             from "$rootDir/fineract-doc/build/docs/pdf/en/index.pdf"
@@ -150,7 +153,7 @@ distributions {
                         '**/.classpath', '.idea', 'out', '._.DS_Store', '.DS_Store', 'WebContent', 
                         '**/.externalToolbuilders', '.theia', 'LICENSE_RELEASE', 
                         'NOTICE_RELEASE', '**/licenses', '*.class', '**/bin', '*.log', '.dockerignore', 
-                        '**/.gitkeep', '*.swp', '.atr-rat-excludes-bin.txt', '**/jquery-1.7.min.js'
+                        '**/.gitkeep', '*.swp', '.atr-rat-excludes-bin.txt'
                 
                 // Ensure consistent file paths for caching
                 eachFile { details ->
@@ -182,5 +185,5 @@ tasks.named('srcDistTar') {
 }
 
 // Disable zip distributions as they're not needed
-binaryDistZip.enabled false
-srcDistZip.enabled false
+binaryDistZip.enabled = false
+srcDistZip.enabled = false

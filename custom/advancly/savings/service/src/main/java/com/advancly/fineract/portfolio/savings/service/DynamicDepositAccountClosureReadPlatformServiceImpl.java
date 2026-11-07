@@ -52,7 +52,7 @@ import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
-import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
+import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadService;
 import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.apache.fineract.portfolio.savings.DepositsApiConstants;
@@ -92,7 +92,7 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
     private final FromJsonHelper fromJsonHelper;
     private final CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private final AdvanclyInterestChargeApplicationService advanclyInterestChargeApplicationService;
-    private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
+    private final PaymentTypeReadService paymentTypeReadPlatformService;
     private final SavingsAccountReadPlatformService savingsAccountReadPlatformService;
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
 
@@ -175,7 +175,8 @@ public class DynamicDepositAccountClosureReadPlatformServiceImpl implements Dyna
         // A matured account already had its final interest posted.
         if (!account.isMatured()) {
             final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
-            account.postInterest(mc, closedOnDate, false, this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
+            account.postInterestForDynamicDeposit(mc, closedOnDate, false,
+                    this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd(),
                     this.configurationDomainService.retrieveFinancialYearBeginningMonth(),
                     account.interestPostingTransactionDateForClosure(closedOnDate), false, false);
             // Mirror the closure's maturity tax (a cumulative forfeiture settles tax its own way).

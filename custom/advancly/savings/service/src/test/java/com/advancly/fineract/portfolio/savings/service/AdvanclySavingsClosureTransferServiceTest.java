@@ -54,6 +54,7 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountAssembler;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionRepository;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountPostInterestService;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -104,6 +105,9 @@ class AdvanclySavingsClosureTransferServiceTest {
     private AdvanclySavingsClosureTransferService service;
     private final LocalDate closedDate = LocalDate.of(2026, 10, 19);
 
+    private final SavingsAccountPostInterestService savingsAccountPostInterestService = org.mockito.Mockito
+            .mock(SavingsAccountPostInterestService.class);
+
     @BeforeEach
     void setUp() {
         final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
@@ -113,7 +117,7 @@ class AdvanclySavingsClosureTransferServiceTest {
         service = new AdvanclySavingsClosureTransferService(context, savingsAccountAssembler, savingsAccountRepository,
                 savingsAccountTransactionRepository, configurationDomainService, journalEntryWritePlatformService,
                 interestChargeApplicationService, accountTransfersWritePlatformService, new FromJsonHelper(),
-                coreSavingsAccountWritePlatformService);
+                savingsAccountPostInterestService, coreSavingsAccountWritePlatformService);
         ReflectionTestUtils.setField(service, "entityManager", entityManager);
 
         when(savingsAccountAssembler.assembleFrom(SAVINGS_ID, false)).thenReturn(account);

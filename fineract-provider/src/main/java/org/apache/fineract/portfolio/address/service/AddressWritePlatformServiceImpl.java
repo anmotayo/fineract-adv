@@ -68,7 +68,10 @@ public class AddressWritePlatformServiceImpl implements AddressWritePlatformServ
         final ClientAddress clientAddress = createClientAddress(client, jsonObject, addressTypeIdCodeValue, address);
         clientAddressRepository.saveAndFlush(clientAddress);
 
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(clientAddress.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(clientAddress.getId()) //
+                .build();
     }
 
     @Override
@@ -96,7 +99,10 @@ public class AddressWritePlatformServiceImpl implements AddressWritePlatformServ
 
         // This is confusing because only the last client address id is returned
         // TODO: clean this up
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(clientAddress.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(clientAddress.getId()) //
+                .build();
     }
 
     private ClientAddress createClientAddress(Client client, JsonObject jsonObject, CodeValue addressTypeIdCodeValue, Address address) {
@@ -151,6 +157,12 @@ public class AddressWritePlatformServiceImpl implements AddressWritePlatformServ
         }
 
         final Address addobj = this.addressRepository.getReferenceById(addressId);
+
+        if (!command.stringValueOfParameterNamed("street").isEmpty()) {
+            is_address_update = true;
+            final String street = command.stringValueOfParameterNamed("street");
+            addobj.setStreet(street);
+        }
 
         if (!command.stringValueOfParameterNamed("addressLine1").isEmpty()) {
 
@@ -245,6 +257,9 @@ public class AddressWritePlatformServiceImpl implements AddressWritePlatformServ
             clientAddressObj.setIs_active(active);
         }
 
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(clientAddressObj.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(clientAddressObj.getId()) //
+                .build();
     }
 }

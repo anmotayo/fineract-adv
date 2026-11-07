@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.persistence.FlushModeHandler;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
@@ -35,9 +36,9 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanDisbursementDetails;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanInstallmentCharge;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleProcessingWrapper;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanSummary;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransaction;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionComparator;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionRepository;
 import org.apache.fineract.portfolio.loanproduct.domain.CreditAllocationTransactionType;
 import org.springframework.stereotype.Service;
 
@@ -47,7 +48,6 @@ public class LoanBalanceService {
 
     private final CapitalizedIncomeBalanceService capitalizedIncomeBalanceService;
     private final FlushModeHandler flushModeHandler;
-    private final LoanTransactionRepository loanTransactionRepository;
 
     public Money calculateTotalOverpayment(final Loan loan) {
         Money totalPaidInRepayments = loan.getTotalPaidInRepayments();
@@ -121,13 +121,45 @@ public class LoanBalanceService {
         final Money capitalizedIncomeAdjustment = capitalizedIncomeBalanceService.calculateCapitalizedIncomeAdjustment(loan);
         loan.getSummary().updateSummary(loan.getCurrency(), principal, loan.getRepaymentScheduleInstallments(), loan.getLoanCharges(),
                 capitalizedIncome, capitalizedIncomeAdjustment);
+        reconcileChargeStatusWithSummary(loan);
         updateLoanOutstandingBalances(loan);
     }
 
-    private Money calculateTotalRecoveredPayments(Loan loan) {
-        // in case logic for reversing recovered payment is implemented handle subtraction from totalRecoveredPayments
-        final BigDecimal totalRecoveryAmount = loanTransactionRepository.calculateTotalRecoveryPaymentAmount(loan);
-        return Money.of(loan.getCurrency(), totalRecoveryAmount);
+    private void reconcileChargeStatusWithSummary(final Loan loan) {
+        final LoanSummary summary = loan.getSummary();
+        final Set<LoanCharge> charges = loan.getLoanCharges();
+        if (summary == null || charges == null) {
+            return;
+        }
+        if (MathUtil.isZero(summary.getTotalFeeChargesOutstanding())) {
+            for (final LoanCharge charge : charges) {
+                if (charge.isActive() && charge.isFeeCharge() && !charge.isPaid() && !charge.isWaived()
+                        && MathUtil.isGreaterThanZero(charge.getAmount())) {
+                    charge.reconcileFullyPaid();
+                }
+            }
+        }
+        if (MathUtil.isZero(summary.getTotalPenaltyChargesOutstanding())) {
+            for (final LoanCharge charge : charges) {
+                if (charge.isActive() && charge.isPenaltyCharge() && !charge.isPaid() && !charge.isWaived()
+                        && MathUtil.isGreaterThanZero(charge.getAmount())) {
+                    charge.reconcileFullyPaid();
+                }
+            }
+        }
+    }
+
+    Money calculateTotalRecoveredPayments(final Loan loan) {
+        // Summed from the loan's transactions rather than queried: the summary is refreshed with FlushModeType.COMMIT
+        // before a new recovery payment is saved, so a query would not see it yet.
+        final MonetaryCurrency currency = loan.getCurrency();
+        Money totalRecovered = Money.zero(currency);
+        for (final LoanTransaction transaction : loan.getLoanTransactions()) {
+            if (transaction.isRecoveryRepayment()) {
+                totalRecovered = totalRecovered.plus(transaction.getAmount(currency));
+            }
+        }
+        return totalRecovered;
     }
 
     public void updateLoanOutstandingBalances(Loan loan) {
@@ -187,7 +219,7 @@ public class LoanBalanceService {
                 charge.resetToOriginal(loan.getCurrency());
             }
         }
-        loan.getLoanRepaymentScheduleDetail().setPrincipal(loan.getDisbursedAmount().subtract(disbursementDetail.principal()));
+        loan.getLoanRepaymentScheduleDetail().setPrincipal(loan.getDisbursedAmount().subtract(disbursementDetail.getPrincipal()));
         disbursementDetail.updateActualDisbursementDate(null);
         disbursementDetail.reverse();
         updateLoanSummaryDerivedFields(loan);

@@ -60,7 +60,10 @@ public class FundWritePlatformServiceJpaRepositoryImpl implements FundWritePlatf
 
             this.fundRepository.saveAndFlush(fund);
 
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(fund.getId()).build();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(fund.getId()) //
+                    .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             handleFundDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
             return CommandProcessingResult.empty();
@@ -88,7 +91,11 @@ public class FundWritePlatformServiceJpaRepositoryImpl implements FundWritePlatf
                 this.fundRepository.saveAndFlush(fund);
             }
 
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(fund.getId()).with(changes).build();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(fund.getId()) //
+                    .with(changes) //
+                    .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             handleFundDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
             return CommandProcessingResult.empty();
@@ -113,7 +120,7 @@ public class FundWritePlatformServiceJpaRepositoryImpl implements FundWritePlatf
                     "name", name);
         }
 
-        log.error("Error occured.", dve);
+        log.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.fund.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }

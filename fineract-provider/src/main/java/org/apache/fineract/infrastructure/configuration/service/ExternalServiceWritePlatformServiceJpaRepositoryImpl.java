@@ -53,7 +53,6 @@ public class ExternalServiceWritePlatformServiceJpaRepositoryImpl implements Ext
     @Transactional
     @Override
     public CommandProcessingResult updateExternalServicesProperties(String externalServiceName, JsonCommand command) {
-        // TODO Auto-generated method stub
         this.context.authenticatedUser();
         this.fromApiJsonDeserializer.validateForUpdate(command.json(), externalServiceName);
         Set<String> keyName = this.fromApiJsonDeserializer.getNameKeys(command.json());
@@ -72,7 +71,10 @@ public class ExternalServiceWritePlatformServiceJpaRepositoryImpl implements Ext
             }
         }
         return new CommandProcessingResultBuilder() //
-                .withCommandId(command.commandId()).withEntityId(externalServiceId).with(changesList).build();
+                .withCommandId(command.commandId()) //
+                .withEntityId(externalServiceId) //
+                .with(changesList) //
+                .build();
         //
 
     }

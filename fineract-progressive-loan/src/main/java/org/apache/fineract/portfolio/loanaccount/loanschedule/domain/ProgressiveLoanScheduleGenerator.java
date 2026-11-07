@@ -208,11 +208,10 @@ public class ProgressiveLoanScheduleGenerator implements LoanScheduleGenerator {
                 .interest(outstandingAmounts.getOutstandingInterest());//
 
         if (loan.isProgressiveSchedule()) {
-            final LoanRepaymentScheduleInstallment downPaymentInstallment = loan.getRepaymentScheduleInstallments(i -> i.isDownPayment())
-                    .stream().findFirst().orElse(null);
-            if (downPaymentInstallment != null) {
-                result.principal(downPaymentInstallment.getPrincipalOutstanding(loan.getCurrency())
-                        .add(outstandingAmounts.getOutstandingPrincipal()));
+            final List<LoanRepaymentScheduleInstallment> downPaymentInstallments = loan
+                    .getRepaymentScheduleInstallments(LoanRepaymentScheduleInstallment::isDownPayment).stream().toList();
+            for (final LoanRepaymentScheduleInstallment installment : downPaymentInstallments) {
+                result.plusPrincipal(installment.getPrincipalOutstanding(loan.getCurrency()));
             }
         }
         // We need to deduct any paid amount if there is no interest recalculation
@@ -243,15 +242,16 @@ public class ProgressiveLoanScheduleGenerator implements LoanScheduleGenerator {
         Loan loan = installment.getLoan();
         LoanRepaymentScheduleTransactionProcessor transactionProcessor = loanTransactionProcessingService
                 .getTransactionProcessor(loan.getTransactionProcessingStrategyCode());
-        if (!(transactionProcessor instanceof AdvancedPaymentScheduleTransactionProcessor processor)) {
+
+        if (!(transactionProcessor instanceof AdvancedPaymentScheduleTransactionProcessor)) {
             throw new IllegalStateException("Expected an AdvancedPaymentScheduleTransactionProcessor");
         }
-        if (installment.isAdditional() || installment.isDownPayment() || installment.isReAged()) {
+        if (installment.isAdditional() || installment.isDownPayment()) {
             return Money.zero(loan.getCurrency());
         }
         Optional<ProgressiveLoanInterestScheduleModel> savedModel = interestScheduleModelRepositoryWrapper.getSavedModel(loan, targetDate);
         ProgressiveLoanInterestScheduleModel model = savedModel.orElseThrow();
-        return emiCalculator.getPeriodInterestTillDate(model, installment.getFromDate(), installment.getDueDate(), targetDate, false);
+        return emiCalculator.getPeriodInterestTillDate(model, installment.getFromDate(), installment.getDueDate(), targetDate, false, true);
     }
 
     // Private, internal methods

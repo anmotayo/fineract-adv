@@ -51,12 +51,14 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * @author vishwas
  *
  */
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService {
 
     private final CurrencyReadPlatformService currencyReadPlatformService;
@@ -112,13 +114,33 @@ public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService 
     }
 
     @Override
-    public ChargeData retrieveNewChargeDetails() {
+    public ChargeData retrieveNewChargeDetails(Long chargeAppliesTo, Long chargeTimeType) {
+        if (chargeAppliesTo != null && ChargeAppliesTo.WORKING_CAPITAL_LOAN.getValue().longValue() == chargeAppliesTo) {
+            final List<EnumOptionData> allowedChargeAppliesToOptions = this.chargeDropdownReadPlatformService.retrieveApplicableToTypes();
+            final Collection<CurrencyData> currencyOptions = this.currencyReadPlatformService.retrieveAllowedCurrencies();
+            final List<EnumOptionData> allowedChargeTimeOptions = this.chargeDropdownReadPlatformService
+                    .retrieveCollectionTimeTypes(ChargeAppliesTo.WORKING_CAPITAL_LOAN);
+            final List<EnumOptionData> allowedChargeCalculationTypeOptions = this.chargeDropdownReadPlatformService
+                    .retrieveCalculationTypes(ChargeAppliesTo.WORKING_CAPITAL_LOAN,
+                            chargeTimeType != null ? ChargeTimeType.fromInt(chargeTimeType.intValue()) : null);
+            final List<EnumOptionData> chargePaymentOptions = this.chargeDropdownReadPlatformService
+                    .retrievePaymentModes(ChargeAppliesTo.WORKING_CAPITAL_LOAN);
 
+            return ChargeData.builder().currencyOptions(currencyOptions).chargeCalculationTypeOptions(allowedChargeCalculationTypeOptions)
+                    .chargeAppliesToOptions(allowedChargeAppliesToOptions).chargeTimeTypeOptions(allowedChargeTimeOptions)
+                    .chargePaymetModeOptions(chargePaymentOptions).build();
+
+        }
+        return retrieveNewChargeDetails();
+    }
+
+    @Override
+    public ChargeData retrieveNewChargeDetails() {
         final Collection<CurrencyData> currencyOptions = this.currencyReadPlatformService.retrieveAllowedCurrencies();
         final List<EnumOptionData> allowedChargeCalculationTypeOptions = this.chargeDropdownReadPlatformService.retrieveCalculationTypes();
         final List<EnumOptionData> allowedChargeAppliesToOptions = this.chargeDropdownReadPlatformService.retrieveApplicableToTypes();
         final List<EnumOptionData> allowedChargeTimeOptions = this.chargeDropdownReadPlatformService.retrieveCollectionTimeTypes();
-        final List<EnumOptionData> chargePaymentOptions = this.chargeDropdownReadPlatformService.retrivePaymentModes();
+        final List<EnumOptionData> chargePaymentOptions = this.chargeDropdownReadPlatformService.retrievePaymentModes();
         final List<EnumOptionData> loansChargeCalculationTypeOptions = this.chargeDropdownReadPlatformService
                 .retrieveLoanCalculationTypes();
         final List<EnumOptionData> loansChargeTimeTypeOptions = this.chargeDropdownReadPlatformService.retrieveLoanCollectionTimeTypes();
@@ -207,8 +229,6 @@ public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService 
     /**
      * @param excludeChargeTimes
      * @param excludeClause
-     * @param params
-     * @return
      */
     private void processChargeExclusionsForLoans(ChargeTimeType[] excludeChargeTimes, StringBuilder excludeClause) {
         if (excludeChargeTimes != null && excludeChargeTimes.length > 0) {
@@ -339,7 +359,7 @@ public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService 
             final Integer feeOnMonth = JdbcSupport.getInteger(rs, "feeOnMonth");
             final Integer feeOnDay = JdbcSupport.getInteger(rs, "feeOnDay");
             if (feeOnDay != null && feeOnMonth != null) {
-                feeOnMonthDay = MonthDay.now(DateUtils.getDateTimeZoneOfTenant()).withDayOfMonth(feeOnDay).withMonth(feeOnMonth);
+                feeOnMonthDay = DateUtils.safeMonthDay(feeOnMonth, feeOnDay);
             }
             final BigDecimal minCap = rs.getBigDecimal("minCap");
             final BigDecimal maxCap = rs.getBigDecimal("maxCap");
@@ -371,7 +391,7 @@ public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService 
             final String paymentTypeName = rs.getString("paymentTypeName");
             PaymentTypeData paymentTypeData = null;
             if (paymentTypeId != null) {
-                paymentTypeData = PaymentTypeData.instance(paymentTypeId, paymentTypeName);
+                paymentTypeData = PaymentTypeData.builder().id(paymentTypeId).name(paymentTypeName).build();
             }
 
             return ChargeData.builder().id(id).name(name).amount(amount).currency(currency).chargeTimeType(chargeTimeType)
@@ -430,6 +450,21 @@ public class ChargeReadPlatformServiceImpl implements ChargeReadPlatformService 
         sql += addInClauseToSQL_toLimitChargesMappedToOffice_ifOfficeSpecificProductsEnabled();
 
         return this.jdbcTemplate.query(sql, rm, new Object[] { shareProductId }); // NOSONAR
+    }
+
+    @Override
+    public List<ChargeData> retrieveWorkingCapitalLoanAccountApplicableCharges(Long loanId) {
+        final ChargeMapper rm = new ChargeMapper();
+        Map<String, Object> paramMap = new HashMap<>();
+        paramMap.put("loanId", loanId);
+        paramMap.put("chargeAppliesTo", ChargeAppliesTo.WORKING_CAPITAL_LOAN.getValue());
+        paramMap.put("chargeTimeTypes", ChargeTimeType.validWorkingCapitalLoanAccountValues());
+        String sql = "select " + rm.chargeSchema() + " join m_wc_loan la on la.currency_code = c.currency_code" + " where la.id=:loanId"
+                + " and c.is_deleted=false and c.is_active=true and c.charge_applies_to_enum=:chargeAppliesTo"
+                + " and c.charge_time_enum in (:chargeTimeTypes) ";
+        sql += addInClauseToSQL_toLimitChargesMappedToOffice_ifOfficeSpecificProductsEnabled();
+        sql += " order by c.name ";
+        return this.namedParameterJdbcTemplate.query(sql, paramMap, rm);
     }
 
     @Override

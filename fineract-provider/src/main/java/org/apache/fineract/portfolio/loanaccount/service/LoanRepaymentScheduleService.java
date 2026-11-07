@@ -60,6 +60,10 @@ public class LoanRepaymentScheduleService {
                 isInterestRecalculationEnabled, loanScheduleType);
     }
 
+    public Integer countInstallmentsByLoanIdWhereIsAdditionalFalseAndIsDownPaymentFalse(Long loanId) {
+        return Math.toIntExact(loanRepaymentScheduleInstallmentRepository.countLoanRepaymentScheduleInstallments(loanId, false, false));
+    }
+
     public LoanScheduleData extractLoanScheduleData(final List<LoanRepaymentScheduleInstallment> installments,
             final RepaymentScheduleRelatedLoanData repaymentScheduleRelatedLoanData, Collection<DisbursementData> disbursementData,
             Collection<LoanTransactionRepaymentPeriodData> capitalizedIncomeData, boolean isInterestRecalculationEnabled,
@@ -132,6 +136,15 @@ public class LoanRepaymentScheduleService {
             combinedDataList.addAll(collectEligibleDisbursementData(loanScheduleType, disbursementData, fromDate, dueDate,
                     disbursementPeriodIds, disbursement, excludePastUnDisbursed));
             combinedDataList.addAll(collectEligibleCapitalizedIncomeData(capitalizedIncomeData, fromDate, dueDate, disbursementPeriodIds));
+            // A charge-off that accelerates the maturity date shortens the current period so that it ends on the
+            // charge-off date, and folds every future principal into it - the principal of a tranche disbursed on that
+            // very date included. The progressive [fromDate, dueDate) rule books such a tranche into the next period,
+            // so the period would consume principal that has not been added to the running balance yet, leaving a
+            // negative balance behind. Pull the tranche in before the period consumes it.
+            if (isPrincipalExceedingRunningBalance(installment, combinedDataList, outstandingLoanPrincipalBalance)) {
+                combinedDataList.addAll(collectEligibleDisbursementData(loanScheduleType, disbursementData, dueDate, dueDate,
+                        disbursementPeriodIds, disbursement, excludePastUnDisbursed));
+            }
             combinedDataList.sort(this::sortPeriodDataHolders);
             outstandingLoanPrincipalBalance = fillLoanSchedulePeriodData(periods, combinedDataList, disbursementChargeAmount,
                     waivedChargeAmount, outstandingLoanPrincipalBalance);
@@ -360,7 +373,12 @@ public class LoanRepaymentScheduleService {
             if (dataItem.isDisbursement()) {
                 // Process disbursement data
                 DisbursementData data = (DisbursementData) dataItem.getData();
-                periodData = createLoanSchedulePeriodData(data, disbursementChargeAmount, waivedChargeAmount);
+                if (periods.isEmpty()) {
+                    periodData = createLoanSchedulePeriodData(data, disbursementChargeAmount, waivedChargeAmount);
+                } else {
+                    periodData = createLoanSchedulePeriodData(data, disbursementChargeAmount.subtract(data.getDisburseChargeAmount()),
+                            waivedChargeAmount);
+                }
             } else {
                 // Process capitalized income data
                 LoanTransactionRepaymentPeriodData data = (LoanTransactionRepaymentPeriodData) dataItem.getData();
@@ -372,6 +390,20 @@ public class LoanRepaymentScheduleService {
             outstandingLoanPrincipalBalance = outstandingLoanPrincipalBalance.add(periodData.getPrincipalDisbursed());
         }
         return outstandingLoanPrincipalBalance;
+    }
+
+    /**
+     * Tells whether the installment is about to claim more principal than the schedule has disbursed so far, which is
+     * the symptom of a tranche that belongs to the period but has not been collected into it.
+     */
+    private boolean isPrincipalExceedingRunningBalance(final LoanRepaymentScheduleInstallment installment,
+            final List<LoanSchedulePeriodDataWrapper> combinedDataList, final BigDecimal outstandingLoanPrincipalBalance) {
+        final BigDecimal principalDue = installment.getPrincipal() != null ? installment.getPrincipal() : BigDecimal.ZERO;
+        final BigDecimal principalCredits = installment.getCreditedPrincipal() != null ? installment.getCreditedPrincipal()
+                : BigDecimal.ZERO;
+        final BigDecimal availableBalance = outstandingLoanPrincipalBalance.add(calculateDisbursedAmount(combinedDataList))
+                .add(principalCredits);
+        return principalDue.compareTo(availableBalance) > 0;
     }
 
     private BigDecimal calculateDisbursedAmount(List<LoanSchedulePeriodDataWrapper> combinedDataList) {

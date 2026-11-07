@@ -2,18 +2,19 @@
 
 == Description
 
-Following are the typical things we need to verify before voting on a release candidate. And the release manager should verify them too before calling out a vote.
+Following are the typical things we need to verify before voting on a release candidate. And the release manager should verify them too before calling out a vote. Some of these checks are duplicated by https://release-test.apache.org[the ATR (ASF Trusted Releases) tool], and will need to continue to be duplicated until we get more comfortable with that tool.
 
-Make sure release artifacts are hosted at https://dist.apache.org/repos/dist/dev/fineract
+Make sure release artifacts are hosted at both https://release-test.apache.org/compose/fineract/{revnumber} AND https://dist.apache.org/repos/dist/dev/fineract
 
 * Release candidate files should match filenames mentioned earlier, and will be moved without renaming if/when the release vote passes.
 * Verify signatures and hashes. You may have to import the public key of the release manager to verify the signatures. (`gpg --import KEYS` or `gpg --recv-key <key id>`)
 * Git tag matches the released bits (`diff -rf`)
 * Can compile docs and code successfully from source
-* Verify DISCLAIMER, NOTICE and LICENSE (year etc)
+* Verify NOTICE and LICENSE (year etc)
 * All files have correct headers (Rat check should be clean - `./gradlew rat`)
 * No jar files in the source artifacts
 * All tests pass both in CI and locally
+* All ATR checks pass
 
 === Artifact verification
 
@@ -68,6 +69,7 @@ Now it's time to build and run the release candidate.
 ----
 tar -xzf $src
 cd apache-fineract-src-{revnumber}
+chmod +x gradlew
 ./gradlew build -x test -x doc
 cd ..
 ----
@@ -75,6 +77,9 @@ cd ..
 === Run from binary
 
 Before running Fineract you must first start a <<Database support,supported relational database server>> and ensure the `fineract_default` and `fineract_tenants` databases exist. Detailed steps for database preparation are left as an exercise for the reader. You can find ideas on how to prepare your database in the `build-mariadb.yml`, `build-mysql.yml`, and `build-postgresql.yml` files in source control, and in <<Database Setup>>.
+
+NOTE: The binary distribution does not include MySQL Connector/J (GPL) or MariaDB Connector/J (LGPL) due to license incompatibilities with the Apache License 2.0.
+The PostgreSQL driver is included. To use MySQL or MariaDB, download the appropriate JDBC driver from the vendor's website and supply it at runtime via `-Dloader.path=/path/to/driver.jar`.
 
 Finally, start your Fineract server:
 
@@ -86,7 +91,7 @@ export FINERACT_SERVER_SSL_ENABLED=false
 export FINERACT_SERVER_PORT=8080
 export BACKEND_PROTOCOL=http
 export BACKEND_PORT=$FINERACT_SERVER_PORT
-# assumes reachable, healthy mariadb with default username, password, and port
+# assumes reachable, healthy postgresql with default username, password, and port
 java -jar fineract-provider-{revnumber}.jar
 ----
 
@@ -100,7 +105,7 @@ FINERACT_SERVER_PORT=8080
 BACKEND_PROTOCOL=http
 BACKEND_PORT=$FINERACT_SERVER_PORT
 EndOfRcenv
-# assumes reachable, healthy mariadb with default username, password, and port
+# assumes reachable, healthy postgresql with default username, password, and port
 docker run --rm -it -v "$(pwd):/usr/local/tomcat/webapps" \
   --net=host --env-file=rcenv tomcat:jre21
 ----

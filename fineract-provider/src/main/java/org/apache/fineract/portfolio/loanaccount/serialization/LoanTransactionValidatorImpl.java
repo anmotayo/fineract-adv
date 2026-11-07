@@ -37,6 +37,8 @@ import lombok.AllArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.infrastructure.codes.domain.CodeValue;
 import org.apache.fineract.infrastructure.codes.domain.CodeValueRepository;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
+import org.apache.fineract.infrastructure.configuration.service.BackdatedTransactionValidationService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
@@ -93,7 +95,7 @@ import org.apache.fineract.portfolio.loanaccount.exception.LoanRepaymentSchedule
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType;
 import org.apache.fineract.portfolio.loanaccount.service.LoanUtilService;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProduct;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
 @Component("loanTransactionValidator")
@@ -111,6 +113,8 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
     private final LoanDownPaymentTransactionValidator loanDownPaymentTransactionValidator;
     private final LoanDisbursementValidator loanDisbursementValidator;
     private final CodeValueRepository codeValueRepository;
+    private final ConfigurationDomainService configurationDomainService;
+    private final BackdatedTransactionValidationService backdatedTransactionValidationService;
 
     private void throwExceptionIfValidationWarningsExist(final List<ApiParameterError> dataValidationErrors) {
         if (!dataValidationErrors.isEmpty()) {
@@ -162,8 +166,9 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
             validateLoanClientIsActive(loan);
             validateLoanGroupIsActive(loan);
 
-            final BigDecimal disbursedAmount = loan.getSummary().getTotalPrincipalDisbursed();
-            loanDisbursementValidator.compareDisbursedToApprovedOrProposedPrincipal(loan, principal, disbursedAmount);
+            final BigDecimal totalDisbursedAmount = principal != null ? loan.getDisbursedAmount().add(principal)
+                    : loan.getDisbursedAmount();
+            loanDisbursementValidator.compareDisbursedToApprovedOrProposedPrincipal(loan, totalDisbursedAmount);
 
             if (loan.isChargedOff()) {
                 throw new GeneralPlatformDomainRuleException("error.msg.loan.disbursal.not.allowed.on.charged.off",
@@ -186,9 +191,9 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
             if ((loanCollateralManagements != null && !loanCollateralManagements.isEmpty()) && loan.getLoanType().isIndividualAccount()) {
                 BigDecimal totalCollateral = collectTotalCollateral(loanCollateralManagements);
 
-                // Validate the loan collateral value against the disbursedAmount
-                if (disbursedAmount.compareTo(totalCollateral) > 0) {
-                    throw new LoanCollateralAmountNotSufficientException(disbursedAmount);
+                // Validate the loan collateral value against the total disbursed amount after this transaction
+                if (totalDisbursedAmount.compareTo(totalCollateral) > 0) {
+                    throw new LoanCollateralAmountNotSufficientException(totalDisbursedAmount);
                 }
             }
 
@@ -345,6 +350,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
         baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().zeroOrPositiveAmount();
@@ -420,6 +426,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final String note = this.fromApiJsonHelper.extractStringNamed("note", element);
         baseDataValidator.reset().parameter("note").value(note).notExceedingLengthOf(1000);
@@ -452,6 +459,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final String note = fromApiJsonHelper.extractStringNamed("note", element);
         baseDataValidator.reset().parameter("note").value(note).ignoreIfNull().notExceedingLengthOf(1000);
@@ -606,6 +614,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
         baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();
@@ -639,6 +648,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final String note = this.fromApiJsonHelper.extractStringNamed("note", element);
         baseDataValidator.reset().parameter("note").value(note).notExceedingLengthOf(1000);
@@ -663,6 +673,23 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final Group group = loan.group();
         if (group != null && group.isNotActive()) {
             throw new GroupNotActiveException(group.getId());
+        }
+    }
+
+    @Override
+    public void validateLoanNotClosedOrOverpaidForTransactions(Loan loan) {
+        validateLoanNotClosedOrOverpaidForTransactions(loan, null);
+    }
+
+    @Override
+    public void validateLoanNotClosedOrOverpaidForTransactions(Loan loan, LoanTransactionType loanTransactionType) {
+        boolean blockTransactions = configurationDomainService.isBlockTransactionsOnClosedOverpaidLoansEnabled();
+        if (LoanTransactionType.CREDIT_BALANCE_REFUND.equals(loanTransactionType)) {
+            return;
+        }
+        if (blockTransactions && (loan.isClosed() || loan.getStatus().isOverpaid())) {
+            throw new GeneralPlatformDomainRuleException("error.msg.loan.transaction.not.allowed.on.closed.or.overpaid",
+                    "Monetary transactions are not allowed on closed or overpaid loan accounts", loan.getId());
         }
     }
 
@@ -788,6 +815,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         validateLoanClientIsActive(loan);
         validateLoanHasCurrency(loan);
         validateLoanGroupIsActive(loan);
+        validateLoanNotClosedOrOverpaidForTransactions(loan, LoanTransactionType.INTEREST_PAYMENT_WAIVER);
         loanDownPaymentTransactionValidator.validateLoanStatusIsActiveOrFullyPaidOrOverpaid(loan);
         validateLoanDisbursementIsBeforeTransactionDate(loan, transactionDate);
         validateLoanHasNoLaterChargeRefundTransactionToReverseOrCreateATransaction(loan, transactionDate, "created");
@@ -825,6 +853,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
     public void validateRefund(final Loan loan, LoanTransactionType loanTransactionType, final LocalDate transactionDate,
             ScheduleGeneratorDTO scheduleGeneratorDTO) {
         checkClientOrGroupActive(loan);
+        validateLoanNotClosedOrOverpaidForTransactions(loan, loanTransactionType);
         loanDownPaymentTransactionValidator.validateLoanStatusIsActiveOrFullyPaidOrOverpaid(loan);
         validateActivityNotBeforeClientOrGroupTransferDate(loan, transactionDate);
         validateRepaymentTypeTransactionNotBeforeAChargeRefund(loan, loanTransactionType, transactionDate);
@@ -944,12 +973,13 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         if (isAccountTransfer) {
             disbursementParameters = new HashSet<>(Arrays.asList("actualDisbursementDate", "externalId", "note", "locale", "dateFormat",
                     LoanApiConstants.principalDisbursedParameterName, LoanApiConstants.fixedEmiAmountParameterName,
-                    LoanApiConstants.disbursementNetDisbursalAmountParameterName));
+                    LoanApiConstants.disbursementNetDisbursalAmountParameterName, LoanApiConstants.ORIGINATORS_PARAM));
         } else {
             disbursementParameters = new HashSet<>(Arrays.asList("actualDisbursementDate", "externalId", "note", "locale", "dateFormat",
                     "paymentTypeId", "accountNumber", "checkNumber", "routingCode", "receiptNumber", "bankNumber", "adjustRepaymentDate",
                     LoanApiConstants.principalDisbursedParameterName, LoanApiConstants.fixedEmiAmountParameterName,
-                    LoanApiConstants.postDatedChecks, LoanApiConstants.disbursementNetDisbursalAmountParameterName));
+                    LoanApiConstants.postDatedChecks, LoanApiConstants.disbursementNetDisbursalAmountParameterName,
+                    LoanApiConstants.ORIGINATORS_PARAM));
         }
         return disbursementParameters;
     }
@@ -970,6 +1000,7 @@ public class LoanTransactionValidatorImpl implements LoanTransactionValidator {
         final JsonElement element = this.fromApiJsonHelper.parse(json);
         final LocalDate transactionDate = this.fromApiJsonHelper.extractLocalDateNamed("transactionDate", element);
         baseDataValidator.reset().parameter("transactionDate").value(transactionDate).notNull();
+        this.backdatedTransactionValidationService.validateTransactionDate(transactionDate);
 
         final BigDecimal transactionAmount = this.fromApiJsonHelper.extractBigDecimalWithLocaleNamed("transactionAmount", element);
         baseDataValidator.reset().parameter("transactionAmount").value(transactionAmount).notNull().positiveAmount();

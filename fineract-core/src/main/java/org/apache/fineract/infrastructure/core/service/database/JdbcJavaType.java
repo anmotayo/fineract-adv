@@ -21,8 +21,9 @@ package org.apache.fineract.infrastructure.core.service.database;
 import com.google.common.collect.ImmutableList;
 import java.io.Serializable;
 import java.sql.JDBCType;
+import java.util.Locale;
 import org.apache.fineract.infrastructure.core.exception.PlatformServiceUnavailableException;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 
 public enum JdbcJavaType {
 
@@ -34,7 +35,7 @@ public enum JdbcJavaType {
             return value == null ? null : (Boolean.TRUE.equals(value) ? 1 : 0);
         }
     },
-    BOOLEAN(JavaType.BOOLEAN, new DialectType(JDBCType.BIT), new DialectType(JDBCType.BOOLEAN, null, "BOOL")) { //
+    BOOLEAN(JavaType.BOOLEAN, new DialectType(JDBCType.BIT, null, "BOOL", "BOOLEAN"), new DialectType(JDBCType.BOOLEAN, null, "BOOL")) { //
 
         @Override
         public Object toJdbcValueImpl(@NonNull DatabaseType dialect, Object value) {
@@ -131,7 +132,7 @@ public enum JdbcJavaType {
         if (name == null) {
             return null;
         }
-        name = name.toUpperCase();
+        name = name.toUpperCase(Locale.ROOT);
 
         for (JdbcJavaType type : values()) {
             DialectType dialectType = type.getDialectType(dialect);

@@ -275,6 +275,19 @@ public final class JsonCommand {
         return this.fromApiJsonHelper.parameterHasValue(parameterName, this.parsedCommand);
     }
 
+    /**
+     * Checks whether a request parameter is present with a non-null JSON value. Empty arrays and empty objects are
+     * considered present.
+     *
+     * @param parameterName
+     *            request parameter to inspect
+     * @return true when the parameter exists and is not JSON null
+     */
+    public boolean hasNonNullParameter(final String parameterName) {
+        final JsonElement parameter = jsonElement(parameterName);
+        return parameter != null && !parameter.isJsonNull();
+    }
+
     public String dateFormat() {
         return stringValueOfParameterNamed("dateFormat");
     }
@@ -540,7 +553,7 @@ public final class JsonCommand {
      */
     public boolean booleanPrimitiveValueOfParameterNamed(final String parameterName) {
         final Boolean value = this.fromApiJsonHelper.extractBooleanNamed(parameterName, this.parsedCommand);
-        return ObjectUtils.defaultIfNull(value, Boolean.FALSE);
+        return ObjectUtils.getIfNull(value, Boolean.FALSE);
     }
 
     public boolean isChangeInArrayParameterNamed(final String parameterName, final String[] existingValue) {

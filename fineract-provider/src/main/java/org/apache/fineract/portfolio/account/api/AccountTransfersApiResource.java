@@ -24,7 +24,6 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.Consumes;
@@ -39,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.infrastructure.core.annotation.AlternativeOperationId;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.service.Page;
@@ -63,15 +63,14 @@ public class AccountTransfersApiResource {
 
     @GET
     @Path("template")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve Account Transfer Template", description = "This is a convenience resource. It can be useful when building maintenance user interface screens for client applications. The template data returned consists of any or all of:\n\n"
+    @Operation(summary = "Retrieve Account Transfer Template", operationId = "retrieveTemplateAccountTransfer", description = "This is a convenience resource. It can be useful when building maintenance user interface screens for client applications. The template data returned consists of any or all of:\n\n"
             + "\n\n" + "Field Defaults\n\n" + "Allowed Value Lists\n\n" + "Example Requests:\n\n" + "\n\n"
             + "accounttransfers/template?fromAccountType=2&fromOfficeId=1\n\n" + "\n\n"
             + "accounttransfers/template?fromAccountType=2&fromOfficeId=1&fromClientId=1\n\n" + "\n\n"
             + "accounttransfers/template?fromClientId=1&fromAccountType=2&fromAccountId=1")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersTemplateResponse.class))) })
+    @AlternativeOperationId("template_5")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersTemplateResponse.class)))
     public AccountTransferData template(@BeanParam AccountTransSearchParam accountTransSearchParam) {
 
         context.authenticatedUser().validateHasReadPermission(AccountTransfersApiConstants.ACCOUNT_TRANSFER_RESOURCE_NAME);
@@ -86,7 +85,8 @@ public class AccountTransfersApiResource {
     @POST
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Create new Transfer", description = "Ability to create new transfer of monetary funds from one account to another.")
+    @Operation(summary = "Create new Transfer", operationId = "createAccountTransfer", description = "Ability to create new transfer of monetary funds from one account to another.")
+    @AlternativeOperationId("create_4")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = AccountTransferRequest.class)))
     @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.PostAccountTransfersResponse.class)))
     public CommandProcessingResult create(@Parameter(hidden = true) AccountTransferRequest accountTransferRequest) {
@@ -97,12 +97,11 @@ public class AccountTransfersApiResource {
     }
 
     @GET
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "List account transfers", description = "Lists account's transfers\n\n" + "Example Requests:\n\n" + "\n\n"
-            + "accounttransfers")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersResponse.class))) })
+    @Operation(summary = "List account transfers", operationId = "retrieveAllAccountTransfers", description = "Lists account's transfers\n\n"
+            + "Example Requests:\n\n" + "\n\n" + "accounttransfers")
+    @AlternativeOperationId("retrieveAll_18")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersResponse.class)))
     public Page<AccountTransferData> retrieveAll(@QueryParam("externalId") @Parameter(description = "externalId") final String externalId,
             @QueryParam("offset") @Parameter(description = "offset") final Integer offset,
             @QueryParam("limit") @Parameter(example = "limit") final Integer limit,
@@ -120,12 +119,11 @@ public class AccountTransfersApiResource {
 
     @GET
     @Path("{transferId}")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve account transfer", description = "Retrieves account transfer\n\n" + "Example Requests :\n\n" + "\n\n"
-            + "accounttransfers/1")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersResponse.GetAccountTransfersPageItems.class))) })
+    @Operation(summary = "Retrieve account transfer", operationId = "retrieveOneAccountTransfer", description = "Retrieves account transfer\n\n"
+            + "Example Requests :\n\n" + "\n\n" + "accounttransfers/1")
+    @AlternativeOperationId("retrieveOne_9")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersResponse.GetAccountTransfersPageItems.class)))
     public AccountTransferData retrieveOne(@PathParam("transferId") @Parameter(description = "transferId") final Long transferId) {
         context.authenticatedUser().validateHasReadPermission(AccountTransfersApiConstants.ACCOUNT_TRANSFER_RESOURCE_NAME);
         return accountTransfersReadPlatformService.retrieveOne(transferId);
@@ -133,13 +131,12 @@ public class AccountTransfersApiResource {
 
     @GET
     @Path("templateRefundByTransfer")
-    @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Retrieve Refund of an Active Loan by Transfer Template", description = "Retrieves Refund of an Active Loan by Transfer Template"
+    @Operation(summary = "Retrieve Refund of an Active Loan by Transfer Template", operationId = "retrieveTemplateRefundByTransfer", description = "Retrieves Refund of an Active Loan by Transfer Template"
             + "Example Requests :\n\n" + "\n\n"
             + "accounttransfers/templateRefundByTransfer?fromAccountId=2&fromAccountType=1& toAccountId=1&toAccountType=2&toClientId=1&toOfficeId=1")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersTemplateRefundByTransferResponse.class))) })
+    @AlternativeOperationId("templateRefundByTransfer")
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.GetAccountTransfersTemplateRefundByTransferResponse.class)))
     public AccountTransferData templateRefundByTransfer(@BeanParam AccountTransSearchParam accountTransSearchParam) {
         context.authenticatedUser().validateHasReadPermission(AccountTransfersApiConstants.ACCOUNT_TRANSFER_RESOURCE_NAME);
         return accountTransfersReadPlatformService.retrieveRefundByTransferTemplate(accountTransSearchParam.getFromAccountId(),
@@ -153,13 +150,29 @@ public class AccountTransfersApiResource {
     @Path("refundByTransfer")
     @Consumes({ MediaType.APPLICATION_JSON })
     @Produces({ MediaType.APPLICATION_JSON })
-    @Operation(summary = "Refund of an Active Loan by Transfer", description = "Ability to refund an active loan by transferring to a savings account.")
+    @Operation(summary = "Refund of an Active Loan by Transfer", operationId = "refundByTransfer", description = "Ability to refund an active loan by transferring to a savings account.")
+    @AlternativeOperationId("templateRefundByTransferPost")
     @RequestBody(required = true, content = @Content(schema = @Schema(implementation = AccountTransferRequest.class)))
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.PostAccountTransfersRefundByTransferResponse.class))) })
+    @ApiResponse(responseCode = "200", description = "OK", content = @Content(schema = @Schema(implementation = AccountTransfersApiResourceSwagger.PostAccountTransfersRefundByTransferResponse.class)))
     public CommandProcessingResult templateRefundByTransferPost(@Parameter(hidden = true) AccountTransferRequest accountTransferRequest) {
         final CommandWrapper commandRequest = new CommandWrapperBuilder().refundByTransfer()
                 .withJson(toApiJsonSerializer.serialize(accountTransferRequest)).build();
+        return commandsSourceWritePlatformService.logCommandSource(commandRequest);
+    }
+
+    @POST
+    @Path("{accountTransferId}")
+    @Consumes({ MediaType.APPLICATION_JSON })
+    @Produces({ MediaType.APPLICATION_JSON })
+    @Operation(summary = "Operation on active account transfer", operationId = "accountTransferOperation", description = "In case of command=`undo`: Ability to undo a transfer of monetary funds from one account to another.")
+    public CommandProcessingResult accountTransferOperation(
+            @PathParam("accountTransferId") @Parameter(description = "accountTransferId") final Long accountTransferId,
+            @QueryParam("command") @Parameter(description = "command") final String commandParam) {
+        final CommandWrapper commandRequest = switch (commandParam) {
+            case "undo" -> new CommandWrapperBuilder().undoAccountTransfer(accountTransferId).build();
+            default -> throw new UnsupportedOperationException("Unsupported command: " + commandParam);
+        };
+
         return commandsSourceWritePlatformService.logCommandSource(commandRequest);
     }
 }

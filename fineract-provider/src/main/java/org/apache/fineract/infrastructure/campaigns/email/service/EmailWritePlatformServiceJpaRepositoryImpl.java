@@ -112,7 +112,9 @@ public class EmailWritePlatformServiceJpaRepositoryImpl implements EmailWritePla
             handleDataIntegrityIssues(null, throwable, dve);
             return CommandProcessingResult.empty();
         }
-        return new CommandProcessingResultBuilder().withEntityId(resourceId).build();
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(resourceId) //
+                .build();
     }
 
     /*
@@ -125,7 +127,7 @@ public class EmailWritePlatformServiceJpaRepositoryImpl implements EmailWritePla
                     "The group, client or staff provided has no email address.", "id");
         }
 
-        LOG.error("Error occured.", dve);
+        LOG.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.email.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }

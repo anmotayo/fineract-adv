@@ -25,16 +25,18 @@ import org.apache.fineract.infrastructure.codes.domain.CodeValueRepositoryWrappe
 import org.apache.fineract.infrastructure.codes.service.CodeValueReadPlatformService;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.data.PaginationParametersDataValidator;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.PaginationHelper;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
 import org.apache.fineract.infrastructure.dataqueries.service.EntityDatatableChecksWritePlatformService;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
+import org.apache.fineract.infrastructure.security.service.InputValidator;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.utils.ColumnValidator;
 import org.apache.fineract.organisation.office.domain.OfficeRepositoryWrapper;
 import org.apache.fineract.organisation.office.service.OfficeReadPlatformService;
 import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
-import org.apache.fineract.organisation.staff.service.StaffReadPlatformService;
+import org.apache.fineract.organisation.staff.service.StaffReadService;
 import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
 import org.apache.fineract.portfolio.calendar.domain.CalendarInstanceRepository;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
@@ -72,11 +74,11 @@ public class GroupConfiguration {
     @ConditionalOnMissingBean(CenterReadPlatformService.class)
     public CenterReadPlatformService centerReadPlatformService(JdbcTemplate jdbcTemplate, PlatformSecurityContext context,
             ClientReadPlatformService clientReadPlatformService, OfficeReadPlatformService officeReadPlatformService,
-            StaffReadPlatformService staffReadPlatformService, CodeValueReadPlatformService codeValueReadPlatformService,
-            ConfigurationDomainService configurationDomainService, ColumnValidator columnValidator, PaginationHelper paginationHelper,
+            StaffReadService staffReadPlatformService, CodeValueReadPlatformService codeValueReadPlatformService,
+            ConfigurationDomainService configurationDomainService, InputValidator inputValidator, PaginationHelper paginationHelper,
             DatabaseSpecificSQLGenerator sqlGenerator, PaginationParametersDataValidator paginationParametersDataValidator) {
         return new CenterReadPlatformServiceImpl(jdbcTemplate, context, clientReadPlatformService, officeReadPlatformService,
-                staffReadPlatformService, codeValueReadPlatformService, configurationDomainService, columnValidator, paginationHelper,
+                staffReadPlatformService, codeValueReadPlatformService, configurationDomainService, inputValidator, paginationHelper,
                 sqlGenerator, paginationParametersDataValidator);
     }
 
@@ -91,14 +93,15 @@ public class GroupConfiguration {
             ConfigurationDomainService configurationDomainService, SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper,
             AccountNumberFormatRepositoryWrapper accountNumberFormatRepository, AccountNumberGenerator accountNumberGenerator,
             EntityDatatableChecksWritePlatformService entityDatatableChecksWritePlatformService,
-            BusinessEventNotifierService businessEventNotifierService, LoanOfficerService loanOfficerService
+            BusinessEventNotifierService businessEventNotifierService, LoanOfficerService loanOfficerService,
+            ExternalIdFactory externalIdFactory
 
     ) {
         return new GroupingTypesWritePlatformServiceJpaRepositoryImpl(context, groupRepository, clientRepositoryWrapper,
                 officeRepositoryWrapper, staffRepository, noteRepository, groupLevelRepository, fromApiJsonDeserializer,
                 loanRepositoryWrapper, codeValueRepository, commandProcessingService, calendarInstanceRepository,
                 configurationDomainService, savingsAccountRepositoryWrapper, accountNumberFormatRepository, accountNumberGenerator,
-                entityDatatableChecksWritePlatformService, businessEventNotifierService, loanOfficerService
+                entityDatatableChecksWritePlatformService, businessEventNotifierService, loanOfficerService, externalIdFactory
 
         );
     }
@@ -112,7 +115,7 @@ public class GroupConfiguration {
     @Bean
     @ConditionalOnMissingBean(GroupReadPlatformService.class)
     public GroupReadPlatformService groupReadPlatformService(JdbcTemplate jdbcTemplate, PlatformSecurityContext context,
-            OfficeReadPlatformService officeReadPlatformService, StaffReadPlatformService staffReadPlatformService,
+            OfficeReadPlatformService officeReadPlatformService, StaffReadService staffReadPlatformService,
             CenterReadPlatformService centerReadPlatformService, CodeValueReadPlatformService codeValueReadPlatformService,
             PaginationHelper paginationHelper, DatabaseSpecificSQLGenerator sqlGenerator,
             PaginationParametersDataValidator paginationParametersDataValidator, ColumnValidator columnValidator,

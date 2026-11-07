@@ -44,6 +44,7 @@ import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.core.service.MathUtil;
 import org.apache.fineract.infrastructure.event.business.domain.loan.reaging.LoanReAgeBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.loan.reaging.LoanUndoReAgeBusinessEvent;
+import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.LoanTransactionFlagsData;
 import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.reaging.LoanReAgeTransactionBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.loan.transaction.reaging.LoanUndoReAgeTransactionBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
@@ -77,6 +78,7 @@ import org.apache.fineract.portfolio.loanaccount.service.ReprocessLoanTransactio
 import org.apache.fineract.portfolio.note.domain.Note;
 import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -104,6 +106,8 @@ public class LoanReAgingService {
         reAgingValidator.validateReAge(loan, command);
         BigDecimal userProvidedTxnAmount = command.bigDecimalValueOfParameterNamed(LoanReAgingApiConstants.transactionAmountParamName);
 
+        final long termsBefore = loan.getTermsCount();
+
         final LoanTransaction reAgeTransaction = createReAgeTransaction(loan, command);
         processReAgeTransaction(loan, reAgeTransaction, true);
         validateUserProvidedTransactionAmount(userProvidedTxnAmount, reAgeTransaction);
@@ -115,9 +119,12 @@ public class LoanReAgingService {
         changes.put(LoanReAgingApiConstants.dateFormatParameterName, command.dateFormat());
         persistNote(loan, command, changes);
 
+        final long termsAfter = loan.getTermsCount();
+
         // delinquency recalculation will be triggered by the event in a decoupled way via a listener
         businessEventNotifierService.notifyPostBusinessEvent(new LoanReAgeBusinessEvent(loan));
-        businessEventNotifierService.notifyPostBusinessEvent(new LoanReAgeTransactionBusinessEvent(reAgeTransaction));
+        businessEventNotifierService.notifyPostBusinessEvent(
+                new LoanReAgeTransactionBusinessEvent(reAgeTransaction, new LoanTransactionFlagsData(termsAfter != termsBefore)));
         return new CommandProcessingResultBuilder() //
                 .withCommandId(command.commandId()) //
                 .withEntityId(reAgeTransaction.getId()) //
@@ -126,10 +133,11 @@ public class LoanReAgingService {
                 .withClientId(loan.getClientId()) //
                 .withGroupId(loan.getGroupId()) //
                 .withLoanId(command.getLoanId()) //
-                .with(changes).build();
+                .with(changes) //
+                .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public LoanScheduleData previewReAge(final Long loanId, final String loanExternalId, final ReAgePreviewRequest reAgePreviewRequest) {
         final Loan loan = loanId != null ? loanAssembler.assembleFrom(loanId)
                 : loanAssembler.assembleFrom(ExternalIdFactory.produce(loanExternalId), false);
@@ -191,7 +199,8 @@ public class LoanReAgingService {
                 .withClientId(loan.getClientId()) //
                 .withGroupId(loan.getGroupId()) //
                 .withLoanId(command.getLoanId()) //
-                .with(changes).build();
+                .with(changes) //
+                .build();
     }
 
     private void processReAgeTransaction(final Loan loan, final LoanTransaction reAgeTransaction, final boolean withPostTransactionChecks) {
@@ -199,7 +208,9 @@ public class LoanReAgingService {
                 || LoanReAgeInterestHandlingType.EQUAL_AMORTIZATION_FULL_INTEREST
                         .equals(reAgeTransaction.getLoanReAgeParameter().getInterestHandlingType())
                 || LoanReAgeInterestHandlingType.EQUAL_AMORTIZATION_PAYABLE_INTEREST
-                        .equals(reAgeTransaction.getLoanReAgeParameter().getInterestHandlingType())) {
+                        .equals(reAgeTransaction.getLoanReAgeParameter().getInterestHandlingType())
+                || loan.getActiveLoanTermVariations().stream()
+                        .anyMatch(ltv -> ltv.getTermApplicableFrom().isAfter(reAgeTransaction.getSubmittedOnDate()))) {
             final ScheduleGeneratorDTO scheduleGeneratorDTO = loanUtilService.buildScheduleGeneratorDTO(loan, null);
             loanScheduleService.regenerateRepaymentSchedule(loan, scheduleGeneratorDTO);
             if (withPostTransactionChecks) {

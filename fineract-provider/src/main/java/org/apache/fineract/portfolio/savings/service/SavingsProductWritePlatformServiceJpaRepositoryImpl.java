@@ -89,7 +89,7 @@ public class SavingsProductWritePlatformServiceJpaRepositoryImpl implements Savi
             msgCode += ".unknown.data.integrity.issue";
             msgArgs = new Object[] { dae };
         }
-        log.error("Error occured.", dae);
+        log.error("Error occurred.", dae);
         throw ErrorHandler.getMappable(dae, msgCode, msg, param, msgArgs);
     }
 
@@ -172,7 +172,8 @@ public class SavingsProductWritePlatformServiceJpaRepositoryImpl implements Savi
 
             return new CommandProcessingResultBuilder() //
                     .withEntityId(product.getId()) //
-                    .with(changes).build();
+                    .with(changes) //
+                    .build();
         } catch (final DataAccessException e) {
             handleDataIntegrityIssues(command, e.getMostSpecificCause(), e);
             return CommandProcessingResult.empty();

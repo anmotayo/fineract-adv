@@ -114,6 +114,11 @@ public class AdvanclyAccountTransfersWritePlatformService implements AccountTran
     private final DynamicDepositRateHistoryService dynamicDepositRateHistoryService;
     private final AdvanclySavingsAccountLockRepository savingsAccountLockRepository;
 
+    @Override
+    public CommandProcessingResult undo(final JsonCommand command) {
+        return this.coreAccountTransfersWritePlatformService.undo(command);
+    }
+
     /** Returns the {@code m_account_transfer_details} id, not the transfer leg id. */
     @Transactional
     @Override

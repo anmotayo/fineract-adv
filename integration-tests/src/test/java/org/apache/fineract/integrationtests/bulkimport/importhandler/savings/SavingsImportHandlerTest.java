@@ -27,10 +27,10 @@ import io.restassured.specification.ResponseSpecification;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -38,25 +38,30 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.fineract.client.models.GetOfficesResponse;
 import org.apache.fineract.infrastructure.bulkimport.constants.SavingsConstants;
 import org.apache.fineract.infrastructure.bulkimport.constants.TemplatePopulateImportConstants;
+import org.apache.fineract.integrationtests.bulkimport.importhandler.BulkImportOutputTemplateHelper;
 import org.apache.fineract.integrationtests.common.GroupHelper;
-import org.apache.fineract.integrationtests.common.OfficeDomain;
 import org.apache.fineract.integrationtests.common.OfficeHelper;
 import org.apache.fineract.integrationtests.common.Utils;
 import org.apache.fineract.integrationtests.common.organisation.StaffHelper;
 import org.apache.fineract.integrationtests.common.savings.SavingsAccountHelper;
 import org.apache.fineract.integrationtests.common.savings.SavingsProductHelper;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.fineract.integrationtests.common.savings.SavingsTestLifecycleExtension;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@ExtendWith({ SavingsTestLifecycleExtension.class })
 public class SavingsImportHandlerTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(SavingsImportHandlerTest.class);
@@ -80,11 +85,11 @@ public class SavingsImportHandlerTest {
 
         requestSpec.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON);
         // in order to populate helper sheets
-        OfficeHelper officeHelper = new OfficeHelper(requestSpec, responseSpec);
-        Integer outcome_office_creation = officeHelper.createOffice("02 May 2000");
+        OfficeHelper officeHelper = new OfficeHelper();
+        Integer outcome_office_creation = officeHelper.createOffice(java.time.LocalDate.of(2000, 5, 2)).getResourceId().intValue();
         Assertions.assertNotNull(outcome_office_creation, "Could not create office");
 
-        OfficeDomain office = officeHelper.retrieveOfficeByID(outcome_office_creation);
+        GetOfficesResponse office = officeHelper.retrieveOffice(outcome_office_creation.longValue());
         Assertions.assertNotNull(office, "Could not retrieve created office");
 
         String firstName = Utils.randomStringGenerator("Client_FirstName_", 5);
@@ -145,8 +150,7 @@ public class SavingsImportHandlerTest {
                 .setCellValue(savingsProductSheet.getRow(1).getCell(10).getStringCellValue());
         firstSavingsRow.createCell(SavingsConstants.DECIMAL_PLACES_COL)
                 .setCellValue(savingsProductSheet.getRow(1).getCell(11).getNumericCellValue());
-        firstSavingsRow.createCell(SavingsConstants.IN_MULTIPLES_OF_COL)
-                .setCellValue(savingsProductSheet.getRow(1).getCell(12).getNumericCellValue());
+        safeNumericValueSetter(firstSavingsRow, SavingsConstants.IN_MULTIPLES_OF_COL, savingsProductSheet, 1, 12);
         firstSavingsRow.createCell(SavingsConstants.NOMINAL_ANNUAL_INTEREST_RATE_COL)
                 .setCellValue(savingsProductSheet.getRow(1).getCell(2).getNumericCellValue());
         firstSavingsRow.createCell(SavingsConstants.INTEREST_COMPOUNDING_PERIOD_COL)
@@ -165,35 +169,47 @@ public class SavingsImportHandlerTest {
         firstSavingsRow.createCell(SavingsConstants.OVER_DRAFT_LIMIT_COL)
                 .setCellValue(savingsProductSheet.getRow(1).getCell(15).getNumericCellValue());
 
-        String currentdirectory = new File("").getAbsolutePath();
-        File directory = new File(currentdirectory + File.separator + "src" + File.separator + "integrationTest" + File.separator
-                + "resources" + File.separator + "bulkimport" + File.separator + "importhandler" + File.separator + "savings");
-        if (!directory.exists()) {
-            directory.mkdirs();
+        Path directory = Path.of("").toAbsolutePath().resolve("src").resolve("integrationTest").resolve("resources").resolve("bulkimport")
+                .resolve("importhandler").resolve("savings");
+        if (!directory.toFile().exists()) {
+            directory.toFile().mkdirs();
         }
-        File file = new File(directory + File.separator + "Savings.xls");
-        OutputStream outputStream = new FileOutputStream(file);
-        workbook.write(outputStream);
-        outputStream.close();
+        File file = directory.resolve("Savings.xls").toFile();
+        try (OutputStream outputStream = Files.newOutputStream(file.toPath())) {
+            workbook.write(outputStream);
+        }
 
         String importDocumentId = savingsAccountHelper.importSavingsTemplate(file);
         file.delete();
         Assertions.assertNotNull(importDocumentId);
 
         // Wait for the creation of output excel
-        Thread.sleep(10000);
+        Thread.sleep(1000);
 
         // check status column of output excel
-        String location = savingsAccountHelper.getOutputTemplateLocation(importDocumentId);
-        FileInputStream fileInputStream = new FileInputStream(location);
-        Workbook Outputworkbook = new HSSFWorkbook(fileInputStream);
-        Sheet OutputSavingsSheet = Outputworkbook.getSheet(TemplatePopulateImportConstants.SAVINGS_ACCOUNTS_SHEET_NAME);
-        Row row = OutputSavingsSheet.getRow(1);
+        try (Workbook wb = BulkImportOutputTemplateHelper.waitForWorkbook(
+                () -> savingsAccountHelper.downloadOutputTemplate(importDocumentId),
+                TemplatePopulateImportConstants.SAVINGS_ACCOUNTS_SHEET_NAME, 1, SavingsConstants.STATUS_COL)) {
+            Sheet sheet = wb.getSheet(TemplatePopulateImportConstants.SAVINGS_ACCOUNTS_SHEET_NAME);
+            Row row = sheet.getRow(1);
 
-        LOG.info("Output location: {}", location);
-        LOG.info("Failure reason column: {}", row.getCell(SavingsConstants.STATUS_COL).getStringCellValue());
+            LOG.info("Failure reason column: {}", row.getCell(SavingsConstants.STATUS_COL).getStringCellValue());
 
-        Assertions.assertEquals("Imported", row.getCell(SavingsConstants.STATUS_COL).getStringCellValue());
-        Outputworkbook.close();
+            Assertions.assertEquals("Imported", row.getCell(SavingsConstants.STATUS_COL).getStringCellValue());
+        }
+    }
+
+    private void safeNumericValueSetter(Row targetRow, int targetColId, Sheet sourceSheet, int rowId, int colId) {
+        Row row = sourceSheet.getRow(rowId);
+        if (row == null) {
+            targetRow.createCell(targetColId).setBlank();
+        } else {
+            Cell cell = row.getCell(colId);
+            if (cell == null || cell.getCellType() == CellType.BLANK) {
+                targetRow.createCell(targetColId).setBlank();
+            } else {
+                targetRow.createCell(targetColId).setCellValue(cell.getNumericCellValue());
+            }
+        }
     }
 }

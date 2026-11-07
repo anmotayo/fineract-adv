@@ -56,7 +56,7 @@ import org.apache.fineract.portfolio.note.domain.NoteRepository;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
-import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepository;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
@@ -97,7 +97,7 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
     @Mock
     private SavingsAccountWritePlatformServiceJpaRepositoryImpl delegate;
     @Mock
-    private PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
+    private PaymentTypeRepository paymentTypeRepositoryWrapper;
     @Mock
     private PaymentDetailRepository paymentDetailRepository;
     @Mock
@@ -179,8 +179,8 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
         withCharge(true, true, false);
         stubAssembledForBulk();
         final PaymentDetail paymentDetail = Mockito.mock(PaymentDetail.class);
-        when(this.paymentTypeRepositoryWrapper.findOneWithNotFoundDetection(1L))
-                .thenReturn(Mockito.mock(org.apache.fineract.portfolio.paymenttype.domain.PaymentType.class));
+        when(this.paymentTypeRepositoryWrapper.findById(1L))
+                .thenReturn(java.util.Optional.of(Mockito.mock(org.apache.fineract.portfolio.paymenttype.domain.PaymentType.class)));
         when(this.paymentDetailRepository.saveAndFlush(any(PaymentDetail.class))).thenReturn(paymentDetail);
         final SavingsAccountTransaction deposit = new SavingsAccountTransactionTestBuilder().withId(101L).withSavingsAccount(this.account)
                 .withRunningBalance(BigDecimal.valueOf(6000)).build();

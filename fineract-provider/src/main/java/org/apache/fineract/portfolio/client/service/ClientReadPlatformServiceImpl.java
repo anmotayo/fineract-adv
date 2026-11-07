@@ -31,6 +31,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.infrastructure.codes.data.CodeValueData;
+import org.apache.fineract.infrastructure.codes.domain.CodeValue;
 import org.apache.fineract.infrastructure.codes.service.CodeValueReadPlatformService;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
@@ -42,6 +43,8 @@ import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.infrastructure.core.service.PaginationHelper;
 import org.apache.fineract.infrastructure.core.service.SearchParameters;
 import org.apache.fineract.infrastructure.core.service.database.DatabaseSpecificSQLGenerator;
+import org.apache.fineract.infrastructure.security.exception.InputValidationException;
+import org.apache.fineract.infrastructure.security.service.InputValidator;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.infrastructure.security.utils.ColumnValidator;
 import org.apache.fineract.portfolio.client.data.ClientCollateralManagementData;
@@ -50,6 +53,8 @@ import org.apache.fineract.portfolio.client.data.ClientNonPersonData;
 import org.apache.fineract.portfolio.client.data.ClientTimelineData;
 import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.client.domain.ClientEnumerations;
+import org.apache.fineract.portfolio.client.domain.ClientNonPerson;
+import org.apache.fineract.portfolio.client.domain.ClientNonPersonRepositoryWrapper;
 import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
 import org.apache.fineract.portfolio.client.domain.ClientStatus;
 import org.apache.fineract.portfolio.client.exception.ClientNotFoundException;
@@ -62,9 +67,11 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ClientReadPlatformServiceImpl implements ClientReadPlatformService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -81,7 +88,9 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
     private final ColumnValidator columnValidator;
     private final ClientCollateralManagementRepositoryWrapper clientCollateralManagementRepositoryWrapper;
     private final ClientRepositoryWrapper clientRepositoryWrapper;
+    private final ClientNonPersonRepositoryWrapper clientNonPersonRepositoryWrapper;
     private final ClientMapper clientMapper;
+    private final InputValidator inputValidator;
 
     @Override
     public Page<ClientData> retrieveAll(final SearchParameters searchParameters) {
@@ -98,7 +107,6 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
 
         final String userOfficeHierarchy = this.context.officeHierarchy();
         final String underHierarchySearchString = userOfficeHierarchy + "%";
-        final String appUserID = String.valueOf(context.authenticatedUser().getId());
 
         // if (searchParameters.isScopedByOfficeHierarchy()) {
         // this.context.validateAccessRights(searchParameters.getHierarchy());
@@ -111,11 +119,6 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         sqlBuilder.append(" where (o.hierarchy like ? or transferToOffice.hierarchy like ?) ");
 
         if (searchParameters != null) {
-            if (searchParameters.getIsSelfUser()) {
-                sqlBuilder.append(
-                        " and c.id in (select umap.client_id from m_selfservice_user_client_mapping as umap where umap.appuser_id = ? ) ");
-                paramList.add(appUserID);
-            }
 
             final String extraCriteria = buildSqlStringFromClientCriteria(this.clientToDataMapper.schema(), searchParameters, paramList);
 
@@ -124,11 +127,15 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             }
 
             if (searchParameters.hasOrderBy()) {
-                sqlBuilder.append(" order by ").append(searchParameters.getOrderBy());
-                this.columnValidator.validateSqlInjection(sqlBuilder.toString(), searchParameters.getOrderBy());
+                String orderBy = searchParameters.getOrderBy();
+                this.inputValidator.validate("client-order-by", orderBy);
+                sqlBuilder.append(" order by ").append(orderBy);
                 if (searchParameters.hasSortOrder()) {
-                    sqlBuilder.append(' ').append(searchParameters.getSortOrder());
-                    this.columnValidator.validateSqlInjection(sqlBuilder.toString(), searchParameters.getSortOrder());
+                    String sortOrder = searchParameters.getSortOrder();
+                    if (!"ASC".equalsIgnoreCase(sortOrder) && !"DESC".equalsIgnoreCase(sortOrder)) {
+                        throw new InputValidationException(String.format("invalid sortOrder value '%s'", sortOrder));
+                    }
+                    sqlBuilder.append(' ').append(sortOrder);
                 }
             }
 
@@ -200,6 +207,11 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             extraCriteria += " and c.legal_form_enum = ? ";
         }
 
+        if (searchParameters.hasStaffId()) {
+            paramList.add(searchParameters.getStaffId());
+            extraCriteria += " and c.staff_id = ? ";
+        }
+
         if (StringUtils.isNotBlank(extraCriteria)) {
             extraCriteria = extraCriteria.substring(4);
         }
@@ -214,6 +226,11 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
 
             final Client client = clientRepositoryWrapper.getClientByClientIdAndHierarchy(clientId, hierarchySearchString);
             final ClientData clientData = clientMapper.map(client);
+
+            final ClientNonPerson clientNonPerson = clientNonPersonRepositoryWrapper.findOneByClientId(clientId);
+            if (clientNonPerson != null) {
+                clientData.setClientNonPersonDetails(toClientNonPersonData(clientNonPerson));
+            }
 
             // Get client collaterals
             final Collection<ClientCollateralManagement> clientCollateralManagements = this.clientCollateralManagementRepositoryWrapper
@@ -240,6 +257,19 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         } catch (final EmptyResultDataAccessException e) {
             throw new ClientNotFoundException(clientId, e);
         }
+    }
+
+    private static ClientNonPersonData toClientNonPersonData(final ClientNonPerson clientNonPerson) {
+        return new ClientNonPersonData(toCodeValueData(clientNonPerson.getConstitution()), clientNonPerson.getIncorpNumber(),
+                clientNonPerson.getIncorpValidityTill(), toCodeValueData(clientNonPerson.getMainBusinessLine()),
+                clientNonPerson.getRemarks());
+    }
+
+    private static CodeValueData toCodeValueData(final CodeValue codeValue) {
+        if (codeValue == null) {
+            return null;
+        }
+        return CodeValueData.instance(codeValue.getId(), codeValue.getLabel());
     }
 
     @Override
@@ -559,41 +589,11 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
             final String lastname = rs.getString("lastname");
             final String fullname = rs.getString("fullname");
             final String displayName = rs.getString("displayName");
-
             final Long officeId = rs.getLong("officeId");
             final String officeName = rs.getString("officeName");
 
             return ClientData.clientIdentifier(id, accountNo, firstname, middlename, lastname, fullname, displayName, officeId, officeName);
         }
-    }
-
-    @Override
-    public ClientData retrieveAllNarrations(final String clientNarrations) {
-        final List<CodeValueData> narrations = new ArrayList<>(
-                this.codeValueReadPlatformService.retrieveCodeValuesByCode(clientNarrations));
-        final Collection<CodeValueData> clientTypeOptions = null;
-        final Collection<CodeValueData> clientClassificationOptions = null;
-        final Collection<CodeValueData> clientNonPersonConstitutionOptions = null;
-        final Collection<CodeValueData> clientNonPersonMainBusinessLineOptions = null;
-        final List<EnumOptionData> clientLegalFormOptions = null;
-        return ClientData.template(null, null, null, null, narrations, null, null, clientTypeOptions, clientClassificationOptions,
-                clientNonPersonConstitutionOptions, clientNonPersonMainBusinessLineOptions, clientLegalFormOptions, null, null, null, null);
-    }
-
-    @Override
-    public LocalDate retrieveClientTransferProposalDate(Long clientId) {
-        final String sql = "SELECT cl.proposed_transfer_date FROM m_client cl WHERE cl.id = ? ";
-        try {
-            return this.jdbcTemplate.queryForObject(sql, LocalDate.class, clientId);
-        } catch (final EmptyResultDataAccessException e) {
-            return null;
-        }
-    }
-
-    @Override
-    public Collection<Long> retrieveUserClients(Long aUserID) {
-        String sql = "SELECT  m.client_id FROM m_selfservice_user_client_mapping m INNER JOIN m_client c ON c.id = m.client_id WHERE m.appuser_id = ?";
-        return jdbcTemplate.queryForList(sql, Long.class, aUserID);
     }
 
     @Override
@@ -774,4 +774,26 @@ public class ClientReadPlatformServiceImpl implements ClientReadPlatformService 
         }
     }
 
+    @Override
+    public ClientData retrieveAllNarrations(final String clientNarrations) {
+        final List<CodeValueData> narrations = new ArrayList<>(
+                this.codeValueReadPlatformService.retrieveCodeValuesByCode(clientNarrations));
+        final Collection<CodeValueData> clientTypeOptions = null;
+        final Collection<CodeValueData> clientClassificationOptions = null;
+        final Collection<CodeValueData> clientNonPersonConstitutionOptions = null;
+        final Collection<CodeValueData> clientNonPersonMainBusinessLineOptions = null;
+        final List<EnumOptionData> clientLegalFormOptions = null;
+        return ClientData.template(null, null, null, null, narrations, null, null, clientTypeOptions, clientClassificationOptions,
+                clientNonPersonConstitutionOptions, clientNonPersonMainBusinessLineOptions, clientLegalFormOptions, null, null, null, null);
+    }
+
+    @Override
+    public LocalDate retrieveClientTransferProposalDate(final Long clientId) {
+        final String sql = "SELECT cl.proposed_transfer_date FROM m_client cl WHERE cl.id = ?";
+        try {
+            return this.jdbcTemplate.queryForObject(sql, LocalDate.class, clientId);
+        } catch (final EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
 }

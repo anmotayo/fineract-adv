@@ -68,7 +68,7 @@ public class ChargeDropdownReadPlatformServiceImpl implements ChargeDropdownRead
     }
 
     @Override
-    public List<EnumOptionData> retrivePaymentModes() {
+    public List<EnumOptionData> retrievePaymentModes() {
         return Arrays.asList(chargePaymentMode(ChargePaymentMode.REGULAR), chargePaymentMode(ChargePaymentMode.ACCOUNT_TRANSFER));
     }
 
@@ -124,5 +124,32 @@ public class ChargeDropdownReadPlatformServiceImpl implements ChargeDropdownRead
     public List<EnumOptionData> retrieveSharesCollectionTimeTypes() {
         return Arrays.asList(chargeTimeType(ChargeTimeType.SHAREACCOUNT_ACTIVATION), chargeTimeType(ChargeTimeType.SHARE_PURCHASE),
                 chargeTimeType(ChargeTimeType.SHARE_REDEEM));
+    }
+
+    @Override
+    public List<EnumOptionData> retrieveCalculationTypes(ChargeAppliesTo chargeAppliesTo, ChargeTimeType chargeTimeType) {
+        if (ChargeAppliesTo.WORKING_CAPITAL_LOAN.equals(chargeAppliesTo)) {
+            final List<ChargeCalculationType> allowedCalculationTypes = chargeTimeType == null
+                    ? ChargeCalculationType.validEnumsForWorkingCapitalLoan()
+                    : ChargeCalculationType.validEnumsForWorkingCapitalLoan(chargeTimeType);
+            return allowedCalculationTypes.stream().map(ChargeEnumerations::chargeCalculationType).toList();
+        }
+        return retrieveCalculationTypes();
+    }
+
+    @Override
+    public List<EnumOptionData> retrieveCollectionTimeTypes(ChargeAppliesTo chargeAppliesTo) {
+        if (ChargeAppliesTo.WORKING_CAPITAL_LOAN.equals(chargeAppliesTo)) {
+            return ChargeTimeType.validWorkingCapitalLoanProduct().stream().map(ChargeEnumerations::chargeTimeType).toList();
+        }
+        return retrieveCollectionTimeTypes();
+    }
+
+    @Override
+    public List<EnumOptionData> retrievePaymentModes(ChargeAppliesTo chargeAppliesTo) {
+        if (ChargeAppliesTo.WORKING_CAPITAL_LOAN.equals(chargeAppliesTo)) {
+            return ChargePaymentMode.validEnumsForWorkingCapitalLoan().stream().map(ChargeEnumerations::chargePaymentMode).toList();
+        }
+        return retrievePaymentModes();
     }
 }

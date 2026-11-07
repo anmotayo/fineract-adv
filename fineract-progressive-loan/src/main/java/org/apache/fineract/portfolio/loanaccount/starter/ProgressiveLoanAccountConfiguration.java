@@ -21,6 +21,7 @@ package org.apache.fineract.portfolio.loanaccount.starter;
 import org.apache.fineract.infrastructure.codes.domain.CodeValueRepository;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
+import org.apache.fineract.infrastructure.core.service.TransactionBoundApplicationEventPublisher;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanLifecycleStateMachine;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
@@ -42,7 +43,6 @@ import org.apache.fineract.portfolio.loanaccount.service.LoanScheduleService;
 import org.apache.fineract.portfolio.loanaccount.service.ProgressiveLoanTransactionValidator;
 import org.apache.fineract.portfolio.loanaccount.service.ProgressiveLoanTransactionValidatorImpl;
 import org.apache.fineract.portfolio.loanaccount.service.ReprocessLoanTransactionsService;
-import org.apache.fineract.portfolio.note.service.NoteWritePlatformService;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -56,15 +56,15 @@ public class ProgressiveLoanAccountConfiguration {
     public CapitalizedIncomePlatformService capitalizedIncomePlatformService(ProgressiveLoanTransactionValidator loanTransactionValidator,
             LoanAssembler loanAssembler, LoanTransactionRepository loanTransactionRepository,
             PaymentDetailWritePlatformService paymentDetailWritePlatformService, LoanJournalEntryPoster journalEntryPoster,
-            NoteWritePlatformService noteWritePlatformService, ExternalIdFactory externalIdFactory,
-            LoanCapitalizedIncomeBalanceRepository capitalizedIncomeBalanceRepository,
+            ExternalIdFactory externalIdFactory, LoanCapitalizedIncomeBalanceRepository capitalizedIncomeBalanceRepository,
             ReprocessLoanTransactionsService reprocessLoanTransactionsService, LoanBalanceService loanBalanceService,
             LoanLifecycleStateMachine loanLifecycleStateMachine, BusinessEventNotifierService businessEventNotifierService,
-            CodeValueRepository codeValueRepository, LoanScheduleService loanScheduleService) {
+            CodeValueRepository codeValueRepository, LoanScheduleService loanScheduleService,
+            TransactionBoundApplicationEventPublisher eventPublisher) {
         return new CapitalizedIncomeWritePlatformServiceImpl(loanTransactionValidator, loanAssembler, loanTransactionRepository,
-                paymentDetailWritePlatformService, journalEntryPoster, noteWritePlatformService, externalIdFactory,
-                capitalizedIncomeBalanceRepository, reprocessLoanTransactionsService, loanBalanceService, loanLifecycleStateMachine,
-                businessEventNotifierService, codeValueRepository, loanScheduleService);
+                paymentDetailWritePlatformService, journalEntryPoster, externalIdFactory, capitalizedIncomeBalanceRepository,
+                reprocessLoanTransactionsService, loanBalanceService, loanLifecycleStateMachine, businessEventNotifierService,
+                codeValueRepository, loanScheduleService, eventPublisher);
     }
 
     @Bean

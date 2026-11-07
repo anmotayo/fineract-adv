@@ -39,6 +39,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormat;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormatRepositoryWrapper;
 import org.apache.fineract.infrastructure.accountnumberformat.domain.EntityAccountType;
+import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.ApiParameterError;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
@@ -104,6 +105,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private final AccountAssociationsRepository accountAssociationsRepository;
     private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
     private final SavingsHelper savingsHelper;
+    private final ConfigurationDomainService configurationDomainService;
     private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
     private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
     private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
@@ -123,7 +125,8 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
             final AccountTransfersWritePlatformService accountTransfersWritePlatformService,
-            final DynamicDepositMaturityAmountService maturityAmountService) {
+            final DynamicDepositMaturityAmountService maturityAmountService, final ConfigurationDomainService configurationDomainService) {
+        this.configurationDomainService = configurationDomainService;
         this.context = context;
         this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
         this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
@@ -434,7 +437,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
     private DynamicDepositAccount findAccount(final Long accountId) {
         final DynamicDepositAccount account = this.dynamicDepositAccountRepository.findById(accountId)
                 .orElseThrow(() -> new DynamicDepositAccountNotFoundException(accountId));
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
         return account;
     }
 

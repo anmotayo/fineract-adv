@@ -826,6 +826,14 @@
         },
         {
             "default": null,
+            "name": "repaymentStartDateType",
+            "type": [
+                "null",
+                "org.apache.fineract.avro.generic.v1.EnumOptionDataV1"
+            ]
+        },
+        {
+            "default": null,
             "name": "interestRecognitionOnDisbursementDate",
             "type": [
                 "null",
@@ -841,6 +849,25 @@
                     "values": "bytes",
                     "type": "map"
                 }
+            ]
+        },
+        {
+            "default": null,
+            "name": "originators",
+            "type": [
+                "null",
+                {
+                    "type": "array",
+                    "items": "org.apache.fineract.avro.loan.v1.OriginatorDetailsV1"
+                }
+            ]
+        },
+        {
+            "default": null,
+            "name": "actualNoTerm",
+            "type": [
+                "null",
+                "int"
             ]
         }
     ]

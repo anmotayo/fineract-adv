@@ -21,10 +21,18 @@ package org.apache.fineract.commands.data.request;
 import jakarta.ws.rs.QueryParam;
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.ZonedDateTime;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.fineract.infrastructure.core.service.DateUtils;
 
 @Setter
 @Getter
@@ -42,10 +50,12 @@ public class MakerCheckerRequest implements Serializable {
     private Long resourceId;
     @QueryParam("makerId")
     private Long makerId;
+    @QueryParam("username")
+    private String username;
     @QueryParam("makerDateTimeFrom")
-    private ZonedDateTime makerDateTimeFrom;
+    private String makerDateTimeFrom;
     @QueryParam("makerDateTimeTo")
-    private ZonedDateTime makerDateTimeTo;
+    private String makerDateTimeTo;
     @QueryParam("clientId")
     private Long clientId;
     @QueryParam("loanid")
@@ -56,4 +66,34 @@ public class MakerCheckerRequest implements Serializable {
     private Long groupId;
     @QueryParam("savingsAccountId")
     private Long savingsAccountId;
+    @QueryParam("dateFormat")
+    private String dateFormat;
+    @QueryParam("locale")
+    private String locale;
+
+    public OffsetDateTime getMakerDateTimeFrom() {
+        OffsetDateTime parsed = tryParseDayMonthYear(makerDateTimeFrom, LocalTime.MIN);
+        return parsed != null ? parsed
+                : DateUtils.convertDateTimeStringToOffsetDateTime(makerDateTimeFrom, dateFormat, locale, LocalTime.MIN);
+    }
+
+    public OffsetDateTime getMakerDateTimeTo() {
+        OffsetDateTime parsed = tryParseDayMonthYear(makerDateTimeTo, LocalTime.MAX);
+        return parsed != null ? parsed
+                : DateUtils.convertDateTimeStringToOffsetDateTime(makerDateTimeTo, dateFormat, locale, LocalTime.MAX);
+    }
+
+    private static final DateTimeFormatter DAY_MONTH_YEAR = DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.ENGLISH);
+
+    private static OffsetDateTime tryParseDayMonthYear(String value, LocalTime time) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        try {
+            LocalDate date = LocalDate.parse(value.trim(), DAY_MONTH_YEAR);
+            return date.atTime(time).atOffset(ZoneOffset.UTC);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
 }

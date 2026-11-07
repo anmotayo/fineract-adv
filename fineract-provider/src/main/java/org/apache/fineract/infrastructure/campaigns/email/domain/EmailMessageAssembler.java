@@ -75,13 +75,14 @@ public class EmailMessageAssembler {
         if (this.fromApiJsonHelper.parameterExists(EmailApiConstants.staffIdParamName, element)) {
             final Long staffId = this.fromApiJsonHelper.extractLongNamed(EmailApiConstants.staffIdParamName, element);
             staff = this.staffRepository.findOneWithNotFoundDetection(staffId);
-            emailAddress = staff.emailAddress();
+            emailAddress = staff.getEmailAddress();
         }
 
         final String message = this.fromApiJsonHelper.extractStringNamed(EmailApiConstants.messageParamName, element);
         final String emailSubject = this.fromApiJsonHelper.extractStringNamed(EmailApiConstants.subjectParamName, element);
 
-        return EmailMessage.pendingEmail(group, client, staff, null, emailSubject, message, emailAddress, null);
+        return EmailMessage.instance(group, client, staff, null, EmailMessageStatusType.PENDING, emailSubject, message, null, emailAddress,
+                null);
     }
 
     public EmailMessage assembleFromResourceId(final Long resourceId) {

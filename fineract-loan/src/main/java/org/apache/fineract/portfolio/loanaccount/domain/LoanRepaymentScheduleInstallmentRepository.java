@@ -72,4 +72,8 @@ public interface LoanRepaymentScheduleInstallmentRepository
             """)
     List<LoanRepaymentScheduleInstallment> findByLoanId(@Param("loanId") Long loanId);
 
+    @Query("SELECT COUNT(i) FROM LoanRepaymentScheduleInstallment i WHERE i.loan.id = :loanId AND i.additional = :additional AND i.isDownPayment = :isDownPayment")
+    long countLoanRepaymentScheduleInstallments(@Param("loanId") Long loanId, @Param("additional") boolean additional,
+            @Param("isDownPayment") boolean isDownPayment);
+
 }

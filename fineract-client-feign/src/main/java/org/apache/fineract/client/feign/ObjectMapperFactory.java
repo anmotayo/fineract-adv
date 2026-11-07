@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.fineract.client.adapter.ExternalIdAdapter;
+import org.openapitools.jackson.nullable.JsonNullableModule;
 
 /**
  * Factory for creating and configuring Jackson ObjectMapper instances.
@@ -53,12 +54,14 @@ public final class ObjectMapperFactory {
         // Register Java 8 date/time support
         mapper.registerModule(new JavaTimeModule());
 
+        // Support OpenAPI-generated JsonNullable fields
+        mapper.registerModule(new JsonNullableModule());
+
         // Register ExternalId adapter
         mapper.registerModule(ExternalIdAdapter.createModule());
 
         // Disable FAIL_ON_EMPTY_BEANS for empty responses
         mapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
-
         return mapper;
     }
 

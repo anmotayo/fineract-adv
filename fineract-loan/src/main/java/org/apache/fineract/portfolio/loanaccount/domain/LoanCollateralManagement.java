@@ -35,7 +35,7 @@ public class LoanCollateralManagement extends AbstractPersistableCustom<Long> {
     @Column(name = "quantity", nullable = false, scale = 5, precision = 20)
     private BigDecimal quantity;
 
-    @ManyToOne()
+    @ManyToOne
     @JoinColumn(name = "transaction_id")
     private LoanTransaction loanTransaction = null;
 
@@ -118,7 +118,8 @@ public class LoanCollateralManagement extends AbstractPersistableCustom<Long> {
     }
 
     public LoanCollateralManagementData toCommand() {
-        return new LoanCollateralManagementData(this.clientCollateralManagement.getId(), this.getQuantity(), null, null, getId());
+        return new LoanCollateralManagementData(this.clientCollateralManagement.getId(), this.getQuantity(), null, null, getId(), null,
+                null, null);
     }
 
 }

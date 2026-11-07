@@ -34,6 +34,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.accounting.common.AccountingConstants.LoanProductAccountingParams;
@@ -121,6 +123,7 @@ public final class LoanProductDataValidator {
     public static final String IS_FLOATING_INTEREST_RATE_CALCULATION_ALLOWED = "isFloatingInterestRateCalculationAllowed";
     public static final String ACCOUNTING_RULE = "accountingRule";
     public static final String ENABLE_ACCRUAL_ACTIVITY_POSTING = "enableAccrualActivityPosting";
+    public static final String DATATABLES = "datatables";
 
     /**
      * The parameters supported for this command.
@@ -212,6 +215,9 @@ public final class LoanProductDataValidator {
             LoanProductConstants.ALLOW_FULL_TERM_FOR_TRANCHE_PARAM_NAME //
     ));
 
+    private static final Set<String> SUPPORTED_CREATE_PARAMETERS = Stream.concat(SUPPORTED_PARAMETERS.stream(), Stream.of(DATATABLES))
+            .collect(Collectors.toUnmodifiableSet());
+
     private static final String[] SUPPORTED_LOAN_CONFIGURABLE_ATTRIBUTES = { LoanProductConstants.amortizationTypeParamName,
             LoanProductConstants.interestTypeParamName, LoanProductConstants.transactionProcessingStrategyCodeParamName,
             LoanProductConstants.interestCalculationPeriodTypeParamName, LoanProductConstants.inArrearsToleranceParamName,
@@ -236,7 +242,7 @@ public final class LoanProductDataValidator {
         }
 
         final Type typeOfMap = new TypeToken<Map<String, Object>>() {}.getType();
-        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, SUPPORTED_PARAMETERS);
+        this.fromApiJsonHelper.checkForUnsupportedParameters(typeOfMap, json, SUPPORTED_CREATE_PARAMETERS);
 
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors).resource(LOANPRODUCT);
@@ -1088,7 +1094,8 @@ public final class LoanProductDataValidator {
             effectiveAllowFullTermForTranche = loanProduct.getLoanProductTrancheDetails().isAllowFullTermForTranche();
         }
 
-        // Validate: allowFullTermForTranche requires multi-disburse and PROGRESSIVE schedule
+        // Validate: allowFullTermForTranche requires multi-disburse and PROGRESSIVE
+        // schedule
         if (Boolean.TRUE.equals(effectiveAllowFullTermForTranche)) {
             if (!Boolean.TRUE.equals(effectiveMultiDisburseLoan)) {
                 baseDataValidator.reset().parameter(LoanProductConstants.ALLOW_FULL_TERM_FOR_TRANCHE_PARAM_NAME).failWithCode(
@@ -2125,7 +2132,8 @@ public final class LoanProductDataValidator {
             final JsonArray reasonToExpenseMappingArray = this.fromApiJsonHelper.extractJsonArrayNamed(parameterName, element);
             if (reasonToExpenseMappingArray != null && !reasonToExpenseMappingArray.isEmpty()) {
                 Map<Long, Set<Long>> reasonToAccounts = new HashMap<>();
-                List<JsonObject> processedMappings = new ArrayList<>(); // Collect processed mappings for the new method
+                List<JsonObject> processedMappings = new ArrayList<>(); // Collect processed mappings
+                                                                        // for the new method
 
                 int i = 0;
                 do {
@@ -2189,7 +2197,8 @@ public final class LoanProductDataValidator {
             final JsonArray classificationToIncomeMappingArray = this.fromApiJsonHelper.extractJsonArrayNamed(parameterName, element);
             if (classificationToIncomeMappingArray != null && classificationToIncomeMappingArray.size() > 0) {
                 Map<Long, Set<Long>> classificationToAccounts = new HashMap<>();
-                List<JsonObject> processedMappings = new ArrayList<>(); // Collect processed mappings for the new method
+                List<JsonObject> processedMappings = new ArrayList<>(); // Collect processed mappings
+                                                                        // for the new method
 
                 int i = 0;
                 do {
@@ -2797,8 +2806,12 @@ public final class LoanProductDataValidator {
     private void validateLoanScheduleType(final String transactionProcessingStrategyCode, final DataValidatorBuilder baseDataValidator,
             final JsonElement element) {
         final String loanScheduleType = this.fromApiJsonHelper.extractStringNamed(LoanProductConstants.LOAN_SCHEDULE_TYPE, element);
-        baseDataValidator.reset().parameter(LoanProductConstants.LOAN_SCHEDULE_TYPE).value(loanScheduleType)
+        baseDataValidator.reset().parameter(LoanProductConstants.LOAN_SCHEDULE_TYPE).value(loanScheduleType).ignoreIfNull()
                 .isOneOfEnumValues(LoanScheduleType.class);
+
+        if (loanScheduleType == null || baseDataValidator.hasError()) {
+            return;
+        }
 
         if (!LoanScheduleType.PROGRESSIVE.equals(LoanScheduleType.valueOf(loanScheduleType))
                 && AdvancedPaymentScheduleTransactionProcessor.ADVANCED_PAYMENT_ALLOCATION_STRATEGY

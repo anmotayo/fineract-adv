@@ -1,0 +1,351 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.apache.fineract.portfolio.workingcapitalloan.api;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import org.apache.fineract.organisation.monetary.data.CurrencyData;
+
+/**
+ * Swagger documentation classes for Working Capital Loan Transactions API (GET list / GET one).
+ */
+public final class WorkingCapitalLoanTransactionsApiResourceSwagger {
+
+    private WorkingCapitalLoanTransactionsApiResourceSwagger() {}
+
+    @Schema(description = "GetWorkingCapitalLoanTransactionsResponse (Spring Data Page: content, totalElements, totalPages, number, size, first, last)")
+    public static final class GetWorkingCapitalLoanTransactionsResponse {
+
+        private GetWorkingCapitalLoanTransactionsResponse() {}
+
+        public List<GetWorkingCapitalLoanTransactionIdResponse> content;
+        @Schema(example = "5")
+        public Long totalElements;
+        @Schema(example = "1")
+        public Integer totalPages;
+        @Schema(example = "0")
+        public Integer number;
+        @Schema(example = "20")
+        public Integer size;
+        public Boolean first;
+        public Boolean last;
+    }
+
+    @Schema(description = "Working Capital Loan transaction (e.g. disbursement) in GET transaction response.")
+    public static final class GetWorkingCapitalLoanTransactionIdResponse {
+
+        private GetWorkingCapitalLoanTransactionIdResponse() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "1")
+        public Long wcLoanId;
+        @Schema(example = "loan-ext-001", description = "External id of the loan this transaction belongs to")
+        public String externalLoanId;
+        @Schema(description = "Transaction type")
+        public LoanTransactionEnumData type;
+        @Schema(example = "[2024, 2, 1]")
+        public LocalDate transactionDate;
+        @Schema(example = "[2024, 2, 1]")
+        public LocalDate submittedOnDate;
+        @Schema(example = "10000.00")
+        public BigDecimal transactionAmount;
+        @Schema(description = "Payment detail")
+        public WorkingCapitalLoanTransactionPaymentDetailData paymentDetailData;
+        @Schema(example = "txn-ext-001")
+        public String externalId;
+        @Schema(example = "false")
+        public Boolean reversed;
+        @Schema(example = "reversal-ext-001")
+        public String reversalExternalId;
+        @Schema(example = "[2024, 2, 5]")
+        public LocalDate reversedOnDate;
+        @Schema(description = "Transaction classification (code value)")
+        public CodeValueData classification;
+        @Schema(example = "10000.00", description = "Principal portion from allocation")
+        public BigDecimal principalPortion;
+        @Schema(example = "0.00", description = "Fee charges portion from allocation")
+        public BigDecimal feeChargesPortion;
+        @Schema(example = "0.00", description = "Penalty charges portion from allocation")
+        public BigDecimal penaltyChargesPortion;
+        public BigDecimal overpaymentPortion;
+        @Schema(description = "Which charges this transaction settled, and for how much")
+        public List<GetWorkingCapitalLoanChargePaidByData> chargePaidByList;
+    }
+
+    @Schema(description = "How much of a transaction settled one specific charge")
+    public static final class GetWorkingCapitalLoanChargePaidByData {
+
+        private GetWorkingCapitalLoanChargePaidByData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "100.00")
+        public BigDecimal amount;
+        @Schema(example = "12")
+        public Long chargeId;
+        @Schema(example = "34")
+        public Long transactionId;
+        @Schema(example = "Processing fee")
+        public String name;
+    }
+
+    @Schema(description = "Loan transaction type enum data (same as basic loan)")
+    public static final class LoanTransactionEnumData {
+
+        private LoanTransactionEnumData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "loanTransactionType.disbursement")
+        public String code;
+        @Schema(example = "Disbursement")
+        public String value;
+    }
+
+    @Schema(description = "Payment detail data")
+    public static final class WorkingCapitalLoanTransactionPaymentDetailData {
+
+        private WorkingCapitalLoanTransactionPaymentDetailData() {}
+
+        @Schema(example = "62")
+        public Long id;
+        @Schema(description = "Payment type")
+        public PaymentTypeData paymentType;
+        @Schema(example = "acc123")
+        public String accountNumber;
+        @Schema(example = "che123")
+        public String checkNumber;
+        @Schema(example = "rou123")
+        public String routingCode;
+        @Schema(example = "rec123")
+        public String receiptNumber;
+        @Schema(example = "ban123")
+        public String bankNumber;
+    }
+
+    @Schema(description = "Payment type data")
+    public static final class PaymentTypeData {
+
+        private PaymentTypeData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "Money Transfer")
+        public String name;
+        @Schema(example = "Transfer via banking network")
+        public String description;
+        @Schema(example = "false")
+        public Boolean isCashPayment;
+        @Schema(example = "1")
+        public Long position;
+        @Schema(example = "PAYMENT_TYPE_CODE")
+        public String codeName;
+        @Schema(example = "false")
+        public Boolean isSystemDefined;
+    }
+
+    @Schema(description = "Payment details for transaction request payload")
+    public static final class PostWorkingCapitalLoanTransactionsPaymentDetailRequest {
+
+        private PostWorkingCapitalLoanTransactionsPaymentDetailRequest() {}
+
+        @Schema(example = "4", description = "Payment type identifier (e.g. AUTOPAYMENT)")
+        public Long paymentTypeId;
+        @Schema(example = "acc123")
+        public String accountNumber;
+        @Schema(example = "che123")
+        public String checkNumber;
+        @Schema(example = "rou123")
+        public String routingCode;
+        @Schema(example = "rec123")
+        public String receiptNumber;
+        @Schema(example = "ban123")
+        public String bankNumber;
+    }
+
+    @Schema(description = "Code value data (id + name)")
+    public static final class CodeValueData {
+
+        private CodeValueData() {}
+
+        @Schema(example = "1")
+        public Long id;
+        @Schema(example = "Some classification")
+        public String name;
+    }
+
+    @Schema(description = "Request for transaction command: repayment, creditBalanceRefund, discountFee, discountFeeAdjustment, "
+            + "chargeOff, undoChargeOff, writeOff or undoWriteOff")
+    public static final class PostWorkingCapitalLoanTransactionsRequest {
+
+        private PostWorkingCapitalLoanTransactionsRequest() {}
+
+        @Schema(example = "en_GB")
+        public String locale;
+        @Schema(example = "dd MMMM yyyy")
+        public String dateFormat;
+        @Schema(example = "28 June 2024", description = "Transaction date. For command=discountFee it is optional, defaults to the date of the related disbursement and, when sent, must be equal to it")
+        public String transactionDate;
+        @Schema(example = "42", description = "Disbursement transaction id for discountFee, optional when transactionDate is sent (the active disbursement on that date is used); discount fee transaction id for discountFeeAdjustment. Cannot be combined with relatedExternalResourceId. Not accepted on transactions/{transactionId} and transactions/external-id/{transactionExternalId}, where the path names the related transaction")
+        public Long relatedResourceId;
+        @Schema(example = "txn-ext-001", description = "External id of the same transaction that relatedResourceId names: the disbursement for discountFee, the discount fee for discountFeeAdjustment. Cannot be combined with relatedResourceId. Not accepted on transactions/{transactionId} and transactions/external-id/{transactionExternalId}, where the path names the related transaction")
+        public String relatedExternalResourceId;
+        @Schema(example = "100.0", description = "Transaction amount. For command=recoveryPayment it may not exceed the loan's writtenOffOutstanding")
+        public BigDecimal transactionAmount;
+        @Schema(example = "12", description = "Optional code value id for transaction classification")
+        public Long classificationId;
+        @Schema(example = "7", description = "Optional charge-off reason code value id (command=chargeOff)")
+        public Long chargeOffReasonId;
+        @Schema(example = "3", description = "Optional write-off reason code value id (command=writeOff)")
+        public Long writeoffReasonId;
+        @Schema(example = "undo-write-off-ext-001", description = "Optional external id for the reversal (command=undoChargeOff, undoWriteOff)")
+        public String reversalExternalId;
+        @Schema(example = "Repayment note")
+        public String note;
+        @Schema(example = "repayment-ext-001")
+        public String externalId;
+        @Schema(description = "Payment details")
+        public PostWorkingCapitalLoanTransactionsPaymentDetailRequest paymentDetails;
+    }
+
+    @Schema(description = "Response for repayment, creditBalanceRefund, discountFee, or discountFeeAdjustment transaction command")
+    public static final class PostWorkingCapitalLoanTransactionsResponse {
+
+        private PostWorkingCapitalLoanTransactionsResponse() {}
+
+        @Schema(example = "1")
+        public Long officeId;
+        @Schema(example = "2")
+        public Long clientId;
+        @Schema(example = "3")
+        public Long loanId;
+        @Schema(example = "4")
+        public Long resourceId;
+        @Schema(example = "repayment-ext-001")
+        public String resourceExternalId;
+    }
+
+    @Schema(description = "Request for transaction command executed on a transaction named in the path: undo, adjust, adjustByDelta, "
+            + "discountFee or discountFeeAdjustment. For command=undo use only note and reversalExternalId. "
+            + "For command=adjust and command=adjustByDelta dateFormat / locale / transactionDate / transactionAmount / classificationId / "
+            + "note / reversalExternalId / externalId / paymentDetails are accepted.")
+    public static final class ExecuteWorkingCapitalLoanTransactionCommandRequest {
+
+        private ExecuteWorkingCapitalLoanTransactionCommandRequest() {}
+
+        @Schema(example = "loan-ext-001", description = "Optional external id stamped on the reversed transaction (command=undo, adjust, adjustByDelta)")
+        public String reversalExternalId;
+        @Schema(example = "en_GB")
+        public String locale;
+        @Schema(example = "dd MMMM yyyy")
+        public String dateFormat;
+        @Schema(example = "28 June 2024", description = "Transaction date (command=discountFeeAdjustment); for command=discountFee it defaults to the date of the related disbursement and, when sent, must be equal to it; "
+                + "command=adjust required when transactionAmount > 0: date of the replacement transaction. "
+                + "Optional when transactionAmount is 0 (undo). "
+                + "command=adjustByDelta optional: moves the replacement to this date; when omitted the replacement keeps the original's date.")
+        public String transactionDate;
+        @Schema(example = "100.0", description = "Transaction amount (command=discountFee, discountFeeAdjustment); command=adjust zero reverses the existing transaction (same as undo). A positive amount reverses it and creates a replacement. "
+                + "command=adjustByDelta: a signed delta on the existing amount (positive increases, negative decreases) - the replacement is "
+                + "existing + transactionAmount; a delta that cancels the existing amount only reverses it, zero is rejected (400) and a "
+                + "decrease beyond the existing amount is refused (403)")
+        public BigDecimal transactionAmount;
+        @Schema(example = "12", description = "Optional code value id for transaction classification (command=discountFee, discountFeeAdjustment, adjust, adjustByDelta)")
+        public Long classificationId;
+        @Schema(example = "Discount applied")
+        public String note;
+        @Schema(example = "replacement-ext-001", description = "Optional external id for the created transaction. For command=adjust and command=adjustByDelta this is the id of the replacement, when there is one "
+                + "(same as term-loan adjust). The reversed transaction keeps its original external id. "
+                + "If omitted and auto-generation is enabled, a new id is generated for the replacement.")
+        public String externalId;
+        @Schema(description = "Optional nested payment details. If command=adjust or command=adjustByDelta then it is for the replacement, when there is one. "
+                + "If omitted / null, the original transaction's PaymentDetail is reused.")
+        public PostWorkingCapitalLoanTransactionsPaymentDetailRequest paymentDetails;
+    }
+
+    @Schema(description = "Response for working capital loan transaction command execution")
+    public static final class ExecuteWorkingCapitalLoanTransactionCommandResponse {
+
+        private ExecuteWorkingCapitalLoanTransactionCommandResponse() {}
+
+        @Schema(example = "1")
+        public Long officeId;
+        @Schema(example = "2")
+        public Long clientId;
+        @Schema(example = "3")
+        public Long loanId;
+        @Schema(example = "loan-ext-001")
+        public String loanExternalId;
+        @Schema(example = "4")
+        public Long resourceId;
+        @Schema(example = "repayment-ext-001")
+        public String resourceExternalId;
+        @Schema(example = "{}")
+        public Map<String, Object> changes;
+    }
+
+    @Schema(description = "Transaction template for one command. Every command fills expectedAmount; the remaining fields "
+            + "are the extras that only some commands carry, and are left null otherwise. Amounts that come from what is "
+            + "owed are reported as of the requested transactionDate; amounts that come from what has been paid, written "
+            + "off or recovered do not vary with it.")
+    public static final class WorkingCapitalLoanTransactionTemplateResponse {
+
+        private WorkingCapitalLoanTransactionTemplateResponse() {}
+
+        @Schema(example = "1")
+        public Long wcLoanId;
+        @Schema(description = "Loan currency")
+        public CurrencyData currency;
+        @Schema(description = "Transaction type")
+        public LoanTransactionEnumData type;
+        @Schema(example = "[2024, 2, 1]")
+        public LocalDate transactionDate;
+        @Schema(example = "9000.00", description = "Suggested amount to pre-fill, which the user may change. Its meaning "
+                + "follows the requested command: outstanding principal for repayment and goodwillCredit, the overpayment "
+                + "for creditBalanceRefund, the still-recoverable amount for recoveryPayment, the approved principal for "
+                + "disburse, the full payoff for prepayLoan, and the outstanding balance for chargeOff")
+        public BigDecimal expectedAmount;
+        @Schema(example = "[2024, 2, 1]", description = "disburse only: expected disbursement date")
+        public LocalDate expectedDisbursementDate;
+        @Schema(example = "0.00", description = "disburse only: approved discount amount")
+        public BigDecimal discountAmount;
+        @Schema(example = "false", description = "disburse only: whether the product forbids overriding the default discount")
+        public Boolean overrideDiscountDisabled;
+
+        @Schema(example = "10000.00", description = "prepayLoan only: outstanding principal portion of the payoff amount")
+        public BigDecimal principalPortion;
+        @Schema(example = "0.00", description = "prepayLoan only: outstanding fee portion of the payoff amount")
+        public BigDecimal feeChargesPortion;
+        @Schema(example = "0.00", description = "prepayLoan only: outstanding penalty portion of the payoff amount")
+        public BigDecimal penaltyChargesPortion;
+
+        @Schema(example = "[2024, 2, 1]", description = "chargeOff only: defaults to the business date")
+        public LocalDate chargeOffDate;
+
+        @Schema(description = "Payment type options, where the command records a payment")
+        public List<PaymentTypeData> paymentTypeOptions;
+        @Schema(description = "Classification options for the command's classification code")
+        public List<CodeValueData> classificationOptions;
+        @Schema(description = "chargeOff only: charge-off reason options")
+        public List<CodeValueData> chargeOffReasonOptions;
+    }
+}

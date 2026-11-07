@@ -332,7 +332,7 @@ public class SavingsAccountAssembler {
                 minRequiredOpeningBalance, lockinPeriodFrequency, lockinPeriodFrequencyType, iswithdrawalFeeApplicableForTransfer, charges,
                 allowOverdraft, overdraftLimit, enforceMinRequiredBalance, minRequiredBalance, maxAllowedLienLimit, lienAllowed,
                 nominalAnnualInterestRateOverdraft, minOverdraftForInterestCalculation, withHoldTax);
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
 
         account.validateNewApplicationState(SAVINGS_ACCOUNT_RESOURCE_NAME);
 
@@ -360,8 +360,10 @@ public class SavingsAccountAssembler {
                     savingsAccountTransactions = this.savingsAccountRepository.findTransactionsAfterPivotDate(account,
                             interestPostedTillDate.minusDays(relaxingDaysForPivotDate));
 
-                    savingsAccountTransactions.get(0).getSavingsAccount()
-                            .setStartInterestCalculationDate(interestPostedTillDate.minusDays(relaxingDaysForPivotDate));
+                    if (savingsAccountTransactions != null && !savingsAccountTransactions.isEmpty()) {
+                        savingsAccountTransactions.get(0).getSavingsAccount()
+                                .setStartInterestCalculationDate(interestPostedTillDate.minusDays(relaxingDaysForPivotDate));
+                    }
                     Pageable sortedByDateAndIdDesc = PageRequest.of(0, 1, Sort.by("dateOf", "createdDate", "id").descending());
                     List<SavingsAccountTransaction> pivotDateTransaction = this.savingsAccountRepository.findTransactionsBeforePivotDate(
                             account.getId(), interestPostedTillDate.minusDays(relaxingDaysForPivotDate), sortedByDateAndIdDesc);
@@ -399,7 +401,7 @@ public class SavingsAccountAssembler {
             loadTransactionsForStartInterestCalculationDate(account, backdatedTxnsAllowedTill);
         }
 
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
         return account;
     }
 
@@ -457,7 +459,7 @@ public class SavingsAccountAssembler {
     }
 
     public void setHelpers(final SavingsAccount account) {
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
     }
 
     /**
@@ -501,7 +503,7 @@ public class SavingsAccountAssembler {
                 product.isMinRequiredBalanceEnforced(), product.minRequiredBalance(), product.maxAllowedLienLimit(),
                 product.isLienAllowed(), product.nominalAnnualInterestRateOverdraft(), product.minOverdraftForInterestCalculation(),
                 product.withHoldTax());
-        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
 
         account.validateNewApplicationState(SAVINGS_ACCOUNT_RESOURCE_NAME);
 
@@ -511,7 +513,7 @@ public class SavingsAccountAssembler {
     }
 
     public void assignSavingAccountHelpers(final SavingsAccount savingsAccount) {
-        savingsAccount.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        savingsAccount.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper, this.configurationDomainService);
     }
 
     public void assignSavingAccountHelpers(final SavingsAccountData savingsAccountData) {

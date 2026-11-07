@@ -19,21 +19,26 @@
 package org.apache.fineract.investor.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 import org.apache.fineract.infrastructure.core.service.Page;
 import org.apache.fineract.investor.data.ExternalTransferLoanProductAttributesData;
+import org.apache.fineract.investor.data.ExternalTransferLoanProductAttributesTemplateData;
+import org.apache.fineract.investor.data.attribute.ExcludedTransactionTypesExternalAssetOwnerLoanProductAttribute;
 import org.apache.fineract.investor.domain.ExternalAssetOwnerLoanProductAttributes;
 import org.apache.fineract.investor.domain.ExternalAssetOwnerLoanProductAttributesRepository;
+import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
 import org.apache.fineract.portfolio.loanproduct.domain.LoanProductRepository;
 import org.apache.fineract.portfolio.loanproduct.exception.LoanProductNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +47,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,14 +70,14 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
 
     private ExternalAssetOwnerLoanProductAttributesReadService underTest;
 
-    private int offset = 0;
+    private static final int OFFSET = 0;
 
-    private int limit = 100;
+    private static final int LIMIT = 100;
 
     @BeforeEach
     public void setUp() {
         underTest = new ExternalAssetOwnerLoanProductAttributesReadServiceImpl(externalAssetOwnerLoanProductAttributesRepository,
-                loanProductRepository, mapper);
+                loanProductRepository, mapper, new ExternalAssetOwnerLoanProductAttributeProvider());
     }
 
     @ParameterizedTest
@@ -80,11 +86,12 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
         // given
         ExternalAssetOwnerLoanProductAttributes attributes = Mockito.mock(ExternalAssetOwnerLoanProductAttributes.class);
         ExternalTransferLoanProductAttributesData data = Mockito.mock(ExternalTransferLoanProductAttributesData.class);
-        PageRequest pageRequest = PageRequest.of(offset, limit, Sort.by("id").ascending());
+        PageRequest pageRequest = PageRequest.of(OFFSET, LIMIT, Sort.by("id").ascending());
         org.springframework.data.domain.Page<ExternalAssetOwnerLoanProductAttributes> attributesPage = new PageImpl<>(List.of(attributes),
                 pageRequest, 1);
 
-        when(externalAssetOwnerLoanProductAttributesRepository.findAll(any(Specification.class), eq(pageRequest)))
+        when(externalAssetOwnerLoanProductAttributesRepository
+                .findAll(ArgumentMatchers.<Specification<ExternalAssetOwnerLoanProductAttributes>>any(), eq(pageRequest)))
                 .thenReturn(attributesPage);
         when(loanProductRepository.existsById(loanProductId)).thenReturn(true);
         when(mapper.mapLoanProductAttributes(attributes)).thenReturn(data);
@@ -95,9 +102,48 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
 
         // then
         assertEquals(1, result.getTotalFilteredRecords());
-        assertEquals(data, result.getPageItems().get(0));
+        assertEquals(data, result.getPageItems().getFirst());
         verify(loanProductRepository, times(1)).existsById(loanProductId);
         verify(mapper, times(1)).mapLoanProductAttributes(attributes);
+    }
+
+    @Test
+    public void testRetrieveExternalAssetOwnerLoanProductAttributesTemplate() {
+        // when
+        List<ExternalTransferLoanProductAttributesTemplateData> result = underTest
+                .retrieveExternalAssetOwnerLoanProductAttributesTemplate();
+
+        // then
+        // verify available attribute size
+        assertEquals(4, result.size());
+
+        // verify SETTLEMENT_MODEL
+        ExternalTransferLoanProductAttributesTemplateData settlementModel = result.stream()
+                .filter(attribute -> "SETTLEMENT_MODEL".equals(attribute.getAttributeKey())).findFirst().orElseThrow();
+        assertEquals(List.of("DEFAULT_SETTLEMENT", "DELAYED_SETTLEMENT"), settlementModel.getAttributeValues());
+        assertFalse(settlementModel.isMultiValue());
+
+        // verify EXCLUDED_TRANSACTION_TYPES
+        ExternalTransferLoanProductAttributesTemplateData excludedTransactionTypes = result.stream()
+                .filter(attribute -> ExcludedTransactionTypesExternalAssetOwnerLoanProductAttribute.ATTRIBUTE_KEY
+                        .equals(attribute.getAttributeKey()))
+                .findFirst().orElseThrow();
+        assertTrue(excludedTransactionTypes.isMultiValue());
+        assertEquals(Arrays.stream(LoanTransactionType.values()).filter(type -> !LoanTransactionType.INVALID.equals(type)).map(Enum::name)
+                .toList(), excludedTransactionTypes.getAttributeValues());
+
+        // verify CAPITALIZED_INCOME_AMORTIZATION_STRATEGY
+        ExternalTransferLoanProductAttributesTemplateData capitalizedIncomeAmortizationStrategy = result.stream()
+                .filter(attribute -> "CAPITALIZED_INCOME_AMORTIZATION_STRATEGY".equals(attribute.getAttributeKey())).findFirst()
+                .orElseThrow();
+        assertEquals(List.of("DEFERRED", "IMMEDIATE"), capitalizedIncomeAmortizationStrategy.getAttributeValues());
+        assertFalse(capitalizedIncomeAmortizationStrategy.isMultiValue());
+
+        // verify BUY_DOWN_FEE_AMORTIZATION_STRATEGY
+        ExternalTransferLoanProductAttributesTemplateData buyDownFeeAmortizationStrategy = result.stream()
+                .filter(attribute -> "BUY_DOWN_FEE_AMORTIZATION_STRATEGY".equals(attribute.getAttributeKey())).findFirst().orElseThrow();
+        assertEquals(List.of("DEFERRED", "IMMEDIATE"), buyDownFeeAmortizationStrategy.getAttributeValues());
+        assertFalse(buyDownFeeAmortizationStrategy.isMultiValue());
     }
 
     @Test
@@ -105,11 +151,12 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
         // given
         Long loanProductId = 1L;
         ExternalAssetOwnerLoanProductAttributes attributes = Mockito.mock(ExternalAssetOwnerLoanProductAttributes.class);
-        PageRequest pageRequest = PageRequest.of(offset, limit, Sort.by("id").ascending());
+        PageRequest pageRequest = PageRequest.of(OFFSET, LIMIT, Sort.by("id").ascending());
         org.springframework.data.domain.Page<ExternalAssetOwnerLoanProductAttributes> attributesPage = new PageImpl<>(List.of(attributes),
                 pageRequest, 0);
 
-        when(externalAssetOwnerLoanProductAttributesRepository.findAll(any(Specification.class), eq(pageRequest)))
+        when(externalAssetOwnerLoanProductAttributesRepository
+                .findAll(ArgumentMatchers.<Specification<ExternalAssetOwnerLoanProductAttributes>>any(), eq(pageRequest)))
                 .thenReturn(attributesPage);
         when(loanProductRepository.existsById(loanProductId)).thenReturn(true);
         when(mapper.mapLoanProductAttributes(attributes)).thenReturn(null);
@@ -120,8 +167,9 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
 
         // then
         assertEquals(1, result.getTotalFilteredRecords());
-        assertNull(result.getPageItems().get(0));
-        verify(externalAssetOwnerLoanProductAttributesRepository, times(1)).findAll(any(Specification.class), eq(pageRequest));
+        assertNull(result.getPageItems().getFirst());
+        verify(externalAssetOwnerLoanProductAttributesRepository, times(1))
+                .findAll(ArgumentMatchers.<Specification<ExternalAssetOwnerLoanProductAttributes>>any(), eq(pageRequest));
         verify(loanProductRepository, times(1)).existsById(loanProductId);
         verify(mapper, times(1)).mapLoanProductAttributes(attributes);
     }
@@ -159,6 +207,7 @@ public class ExternalAssetOwnerLoanProductAttributesReadServiceTest {
     }
 
     private static Stream<Arguments> testRetrieveAllLoanProductAttributesByLoanProductIdDataProvider() {
-        return Stream.of(Arguments.of(1L, "SETTLEMENT_MODEL"), Arguments.of(1L, null));
+        return Stream.of(Arguments.of(1L, "CAPITALIZED_INCOME_AMORTIZATION_STRATEGY"), Arguments.of(1L, "SETTLEMENT_MODEL"),
+                Arguments.of(1L, null));
     }
 }

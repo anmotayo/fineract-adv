@@ -19,16 +19,17 @@
 package org.apache.fineract.cob.loan;
 
 import org.apache.fineract.cob.COBBusinessStepService;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.annotation.BeforeStep;
+import org.apache.fineract.portfolio.loanaccount.service.ProgressiveLoanModelProcessingService;
+import org.springframework.batch.core.step.StepExecution;
 
 public class InlineCOBLoanItemProcessor extends AbstractLoanItemProcessor {
 
-    public InlineCOBLoanItemProcessor(COBBusinessStepService cobBusinessStepService) {
-        super(cobBusinessStepService);
+    public InlineCOBLoanItemProcessor(COBBusinessStepService cobBusinessStepService,
+            ProgressiveLoanModelProcessingService progressiveLoanModelProcessingService) {
+        super(cobBusinessStepService, progressiveLoanModelProcessingService);
     }
 
-    @BeforeStep
+    @Override
     public void beforeStep(StepExecution stepExecution) {
         setExecutionContext(stepExecution.getJobExecution().getExecutionContext());
         setBusinessDate(stepExecution);

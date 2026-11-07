@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.cucumber.java8.En;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -35,14 +34,15 @@ import org.apache.fineract.infrastructure.core.domain.ActionContext;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.useradministration.domain.AppUser;
 import org.apache.fineract.useradministration.domain.AppUserRepositoryWrapper;
-import org.springframework.batch.core.JobExecution;
-import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.JobInstance;
+import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.scope.context.StepContext;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.core.step.StepExecution;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-@SuppressFBWarnings(value = "RV_EXCEPTION_NOT_THROWN", justification = "False positive")
 public class InitialisationTaskletStepDefinitions implements En {
 
     private static final LocalDate TODAY = LocalDate.now(ZoneId.systemDefault());
@@ -69,7 +69,7 @@ public class InitialisationTaskletStepDefinitions implements En {
             businessDates.put(BusinessDateType.BUSINESS_DATE, businessDate);
             businessDates.put(BusinessDateType.COB_DATE, cobBusinessDate);
             ThreadLocalContextUtil.setBusinessDates(businessDates);
-            JobExecution jobExecution = new JobExecution(1L);
+            JobExecution jobExecution = new JobExecution(1L, new JobInstance(1L, "test"), new JobParameters());
             jobExecution.getExecutionContext().put(LoanCOBConstant.BUSINESS_DATE_PARAMETER_NAME,
                     cobBusinessDate.format(DateTimeFormatter.ISO_DATE));
             StepExecution stepExecution = new StepExecution("step", jobExecution);

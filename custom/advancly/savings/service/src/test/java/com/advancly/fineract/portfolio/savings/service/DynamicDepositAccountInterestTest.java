@@ -97,7 +97,7 @@ class DynamicDepositAccountInterestTest {
 
         final MathContext mc = MoneyHelper.getMathContext();
         // January's posting is dated Feb 1, so the bound must reach Feb 1.
-        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
@@ -135,13 +135,13 @@ class DynamicDepositAccountInterestTest {
 
         final MathContext mc = MoneyHelper.getMathContext();
 
-        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
         final List<SavingsAccountTransaction> afterFirstCall = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
         assertThat(afterFirstCall).hasSize(1);
         final BigDecimal amountAfterFirstCall = afterFirstCall.get(0).getAmount();
 
-        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
         final List<SavingsAccountTransaction> afterSecondCall = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
 
@@ -170,7 +170,7 @@ class DynamicDepositAccountInterestTest {
 
         final MathContext mc = MoneyHelper.getMathContext();
         // Through Mar 1 so both the Feb 1 and Mar 1 postings are created.
-        this.account.postInterest(mc, LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
@@ -203,7 +203,8 @@ class DynamicDepositAccountInterestTest {
         this.account = buildAccount();
         stubSingleRateHistoryForJanuary();
 
-        this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(MoneyHelper.getMathContext(), LocalDate.of(2026, 2, 1), false, false, 1, null, false,
+                true);
 
         assertThat(this.account.getTransactions()).noneMatch(SavingsAccountTransaction::isInterestCharge);
     }
@@ -232,7 +233,8 @@ class DynamicDepositAccountInterestTest {
                     .withAmount(BigDecimal.valueOf(500)).build());
         }
 
-        this.account.postInterest(MoneyHelper.getMathContext(), LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(MoneyHelper.getMathContext(), LocalDate.of(2026, 3, 1), false, false, 1, null, false,
+                true);
 
         return this.account.getTransactions().stream().filter(SavingsAccountTransaction::isInterestPostingAndNotReversed)
                 .filter(posting -> posting.getTransactionDate().isAfter(LocalDate.of(2026, 2, 1))).findFirst()
@@ -277,7 +279,7 @@ class DynamicDepositAccountInterestTest {
                 BigDecimal.valueOf(3), BigDecimal.valueOf(3), DynamicDepositRateSource.INTEREST_RATE_CHART)));
 
         final MathContext mc = MoneyHelper.getMathContext();
-        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
@@ -314,7 +316,7 @@ class DynamicDepositAccountInterestTest {
                 BigDecimal.valueOf(5), BigDecimal.valueOf(5), DynamicDepositRateSource.INTEREST_RATE_CHART)));
 
         final MathContext mc = MoneyHelper.getMathContext();
-        this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
+        this.account.postInterestForDynamicDeposit(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final SavingsAccountTransaction posting = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).findFirst().orElseThrow();

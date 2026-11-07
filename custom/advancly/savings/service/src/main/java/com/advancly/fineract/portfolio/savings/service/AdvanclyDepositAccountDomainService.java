@@ -346,7 +346,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         final boolean isInterestTransfer = false;
         final boolean backdatedTxnsAllowedTill = false;
         final boolean postReversals = false;
-        account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
+        account.postInterestForDynamicDeposit(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                 financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill, postReversals);
         // postInterest doesn't write maturity-withheld tax.
         account.withholdMaturityTaxAtClosure(postingDate);

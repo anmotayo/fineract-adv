@@ -20,6 +20,7 @@ package org.apache.fineract.test.helper;
 
 import static org.apache.fineract.client.feign.util.FeignCalls.ok;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,7 @@ public class BusinessDateHelper {
         BusinessDateUpdateRequest businessDateRequest = defaultBusinessDateRequest().date(businessDate);
         try {
             BusinessDateUpdateResponse response = ok(
-                    () -> fineractClient.businessDateManagement().updateBusinessDate(null, businessDateRequest, Map.of()));
+                    () -> fineractClient.businessDateManagement().updateBusinessDate(businessDateRequest, Map.of()));
             TestContext.INSTANCE.set(TestContextKey.BUSINESS_DATE_RESPONSE, response);
             ok(() -> fineractClient.businessDateManagement().getBusinessDate(BUSINESS_DATE, Map.of()));
 
@@ -67,6 +68,14 @@ public class BusinessDateHelper {
     public BusinessDateUpdateRequest defaultBusinessDateRequest() {
         return new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE).dateFormat(DATE_FORMAT)
                 .locale(DEFAULT_LOCALE);
+    }
+
+    /**
+     * The business date as a date, for requests that have to state one. {@link #getBusinessDate()} returns the whole
+     * response rendered as a string, which is only good for logging.
+     */
+    public LocalDate getBusinessLocalDate() {
+        return ok(() -> fineractClient.businessDateManagement().getBusinessDate(BUSINESS_DATE, Map.of())).getDate();
     }
 
     public String getBusinessDate() {

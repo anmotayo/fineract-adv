@@ -18,16 +18,13 @@
  */
 package org.apache.fineract.infrastructure.campaigns.email.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
 import com.google.gson.Gson;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
-import java.io.IOException;
-import java.io.StringReader;
+import java.io.Reader;
 import java.io.StringWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -76,6 +73,9 @@ import org.springframework.dao.NonTransientDataAccessException;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @Slf4j
@@ -127,7 +127,10 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
 
         this.emailCampaignRepository.saveAndFlush(emailCampaign);
 
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(emailCampaign.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(emailCampaign.getId()) //
+                .build();
     }
 
     @Transactional
@@ -154,7 +157,11 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
             if (!changes.isEmpty()) {
                 this.emailCampaignRepository.saveAndFlush(emailCampaign);
             }
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(resourceId).with(changes).build();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(resourceId) //
+                    .with(changes) //
+                    .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             final Throwable throwable = dve.getMostSpecificCause();
             handleDataIntegrityIssues(command, throwable, dve);
@@ -206,8 +213,9 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
                     }
                 }
             }
-        } catch (final IOException e) {
-            // TODO throw something here
+        } catch (final JacksonException e) {
+            log.error("Failed to parse campaign params while inserting direct campaign into email outbound table for campaign {} ({})",
+                    emailCampaign.getId(), emailCampaign.getCampaignName(), e);
         }
 
     }
@@ -239,8 +247,9 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
                     }
                 }
             }
-        } catch (final IOException e) {
-            // TODO throw something here
+        } catch (final JacksonException e) {
+            log.error("Failed to parse campaign params while inserting direct campaign into email outbound table for campaign {} ({})",
+                    campaignId, campaignName, e);
         }
 
     }
@@ -336,7 +345,7 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
     private String compileEmailTemplate(final String textMessageTemplate, final String campaignName,
             final Map<String, Object> emailParams) {
         final MustacheFactory mf = new DefaultMustacheFactory();
-        final Mustache mustache = mf.compile(new StringReader(textMessageTemplate), campaignName);
+        final Mustache mustache = mf.compile(Reader.of(textMessageTemplate), campaignName);
 
         final StringWriter stringWriter = new StringWriter();
         mustache.execute(stringWriter, emailParams);
@@ -346,8 +355,7 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
 
     @SuppressWarnings({ "unused", "rawtypes" })
     @Override
-    public List<HashMap<String, Object>> getRunReportByServiceImpl(final String reportName, final Map<String, String> queryParams)
-            throws IOException {
+    public List<HashMap<String, Object>> getRunReportByServiceImpl(final String reportName, final Map<String, String> queryParams) {
         final String reportType = "report";
 
         List<HashMap<String, Object>> resultList;
@@ -402,8 +410,8 @@ public class EmailCampaignWritePlatformCommandHandlerImpl implements EmailCampai
                     }
                 }
             }
-        } catch (final IOException e) {
-            // TODO throw something here
+        } catch (final JacksonException e) {
+            log.error("Failed to parse campaign params while generating email campaign preview message", e);
         }
 
         return campaignMessage;

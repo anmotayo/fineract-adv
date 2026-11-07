@@ -40,7 +40,14 @@ import org.apache.fineract.infrastructure.core.exception.InvalidJsonException;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
+import org.apache.fineract.infrastructure.core.validator.PhoneNumberValidationService;
+import org.apache.fineract.infrastructure.dataqueries.data.EntityTables;
+import org.apache.fineract.infrastructure.dataqueries.data.StatusEnum;
+import org.apache.fineract.infrastructure.dataqueries.domain.EntityDatatableChecks;
+import org.apache.fineract.infrastructure.dataqueries.domain.EntityDatatableChecksRepository;
 import org.apache.fineract.portfolio.client.api.ClientApiConstants;
+import org.apache.fineract.portfolio.client.domain.LegalForm;
+import org.apache.fineract.validation.constraints.DateFormatValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -49,12 +56,18 @@ public final class ClientDataValidator {
 
     private final FromJsonHelper fromApiJsonHelper;
     private final ConfigurationReadPlatformService configurationReadPlatformService;
+    private final EntityDatatableChecksRepository entityDatatableChecksRepository;
+    private final PhoneNumberValidationService phoneNumberValidationService;
 
     @Autowired
     public ClientDataValidator(final FromJsonHelper fromApiJsonHelper,
-            final ConfigurationReadPlatformService configurationReadPlatformService) {
+            final ConfigurationReadPlatformService configurationReadPlatformService,
+            final EntityDatatableChecksRepository entityDatatableChecksRepository,
+            final PhoneNumberValidationService phoneNumberValidationService) {
         this.fromApiJsonHelper = fromApiJsonHelper;
         this.configurationReadPlatformService = configurationReadPlatformService;
+        this.entityDatatableChecksRepository = entityDatatableChecksRepository;
+        this.phoneNumberValidationService = phoneNumberValidationService;
     }
 
     public void validateForCreate(final String json) {
@@ -163,7 +176,7 @@ public final class ClientDataValidator {
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.mobileNoParamName, element)) {
             final String mobileNo = this.fromApiJsonHelper.extractStringNamed(ClientApiConstants.mobileNoParamName, element);
             baseDataValidator.reset().parameter(ClientApiConstants.mobileNoParamName).value(mobileNo).ignoreIfNull()
-                    .notExceedingLengthOf(50);
+                    .matchesRegularExpression(phoneNumberValidationService.getRegex()).notExceedingLengthOf(50);
         }
 
         final Boolean active = this.fromApiJsonHelper.extractBooleanNamed(ClientApiConstants.activeParamName, element);
@@ -212,12 +225,20 @@ public final class ClientDataValidator {
                     .integerGreaterThanZero();
         }
 
+        if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.dateFormatParamName, element)) {
+            final String dateFormat = this.fromApiJsonHelper.extractStringNamed(ClientApiConstants.dateFormatParamName, element);
+            baseDataValidator.reset().parameter(ClientApiConstants.dateFormatParamName).value(dateFormat).notBlank()
+                    .validDateTimeFormatPattern();
+        }
+
         final Integer legalFormId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(ClientApiConstants.legalFormIdParamName, element);
         baseDataValidator.reset().parameter(ClientApiConstants.legalFormIdParamName).value(legalFormId).notNull().inMinMaxRange(1, 2);
 
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.datatables, element)) {
             final JsonArray datatables = this.fromApiJsonHelper.extractJsonArrayNamed(ClientApiConstants.datatables, element);
-            baseDataValidator.reset().parameter(ClientApiConstants.datatables).value(datatables).notNull().jsonArrayNotEmpty();
+            if (areDatatablesRequiredForLegalForm(legalFormId)) {
+                baseDataValidator.reset().parameter(ClientApiConstants.datatables).value(datatables).notNull().jsonArrayNotEmpty();
+            }
         }
 
         if (this.fromApiJsonHelper.parameterExists("isStaff", element)) {
@@ -229,6 +250,8 @@ public final class ClientDataValidator {
             final JsonArray address = this.fromApiJsonHelper.extractJsonArrayNamed(ClientApiConstants.address, element);
             baseDataValidator.reset().parameter(ClientApiConstants.address).value(address).ignoreIfNull().jsonArrayNotEmpty();
         }
+
+        validateDateFormatWhenPresent(element, dataValidationErrors);
 
         List<ApiParameterError> dataValidationErrorsForClientNonPerson = getDataValidationErrorsForCreateOnClientNonPerson(
                 element.getAsJsonObject().get(ClientApiConstants.clientNonPersonDetailsParamName));
@@ -440,7 +463,8 @@ public final class ClientDataValidator {
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.mobileNoParamName, element)) {
             atLeastOneParameterPassedForUpdate = true;
             final String mobileNo = this.fromApiJsonHelper.extractStringNamed(ClientApiConstants.mobileNoParamName, element);
-            baseDataValidator.reset().parameter(ClientApiConstants.mobileNoParamName).value(mobileNo).notExceedingLengthOf(50);
+            baseDataValidator.reset().parameter(ClientApiConstants.mobileNoParamName).value(mobileNo).ignoreIfNull()
+                    .matchesRegularExpression(phoneNumberValidationService.getRegex()).notExceedingLengthOf(50);
         }
 
         final Boolean active = this.fromApiJsonHelper.extractBooleanNamed(ClientApiConstants.activeParamName, element);
@@ -501,6 +525,12 @@ public final class ClientDataValidator {
                     .validateDateBefore(DateUtils.getBusinessLocalDate()).validateDateBefore(submittedDate);
         }
 
+        if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.dateFormatParamName, element)) {
+            final String dateFormat = this.fromApiJsonHelper.extractStringNamed(ClientApiConstants.dateFormatParamName, element);
+            baseDataValidator.reset().parameter(ClientApiConstants.dateFormatParamName).value(dateFormat).notBlank()
+                    .validDateTimeFormatPattern();
+        }
+
         if (this.fromApiJsonHelper.parameterExists(ClientApiConstants.legalFormIdParamName, element)) {
             atLeastOneParameterPassedForUpdate = true;
             final Integer legalFormId = this.fromApiJsonHelper.extractIntegerSansLocaleNamed(ClientApiConstants.legalFormIdParamName,
@@ -512,6 +542,8 @@ public final class ClientDataValidator {
             final Boolean isStaffFlag = this.fromApiJsonHelper.extractBooleanNamed("isStaff", element);
             baseDataValidator.reset().parameter("isStaff").value(isStaffFlag).notNull();
         }
+
+        validateDateFormatWhenPresent(element, dataValidationErrors);
 
         Map<String, Object> parameterUpdateStatusDetails = getParameterUpdateStatusAndDataValidationErrorsForUpdateOnClientNonPerson(
                 element.getAsJsonObject().get(ClientApiConstants.clientNonPersonDetailsParamName));
@@ -602,6 +634,21 @@ public final class ClientDataValidator {
         baseDataValidator.reset().parameter(ClientApiConstants.activationDateParamName).value(activationDate).notNull();
 
         throwExceptionIfValidationWarningsExist(dataValidationErrors);
+    }
+
+    private void validateDateFormatWhenPresent(final JsonElement element, final List<ApiParameterError> dataValidationErrors) {
+        if (!this.fromApiJsonHelper.parameterExists(ClientApiConstants.dateFormatParamName, element)) {
+            return;
+        }
+        final String dateFormat = this.fromApiJsonHelper.extractStringNamed(ClientApiConstants.dateFormatParamName, element);
+        if (StringUtils.isBlank(dateFormat)) {
+            return;
+        }
+        if (!DateFormatValidator.isValidPattern(dateFormat)) {
+            final String message = "Invalid dateFormat: `" + dateFormat + "`. Use a valid Java date/time pattern (e.g. dd MMMM yyyy).";
+            dataValidationErrors.add(ApiParameterError.parameterError("validation.msg.invalid.dateFormat.format", message,
+                    ClientApiConstants.dateFormatParamName));
+        }
     }
 
     private void throwExceptionIfValidationWarningsExist(final List<ApiParameterError> dataValidationErrors) {
@@ -857,4 +904,34 @@ public final class ClientDataValidator {
 
     }
 
+    /**
+     * Determines whether datatables are required for client creation based on configured entity datatable checks and
+     * legal form.
+     *
+     * @param legalFormId
+     *            the legal form ID (e.g. PERSON, ENTITY)
+     * @return true if at least one required datatable is configured, false otherwise
+     */
+    private boolean areDatatablesRequiredForLegalForm(final Integer legalFormId) {
+        final String entityName = EntityTables.CLIENT.getName();
+        final Integer createStatus = StatusEnum.CREATE.getValue();
+        final String entitySubtype = resolveEntitySubtype(legalFormId);
+
+        final List<EntityDatatableChecks> requiredDatatables = entitySubtype == null
+                ? entityDatatableChecksRepository.findByEntityAndStatus(entityName, createStatus)
+                : entityDatatableChecksRepository.findByEntityAndStatusAndSubtype(entityName, createStatus, entitySubtype);
+
+        return requiredDatatables != null && !requiredDatatables.isEmpty();
+    }
+
+    /**
+     * Resolves the entity subtype label from the legal form ID. Returns null if the legal form is missing or invalid.
+     */
+    private String resolveEntitySubtype(final Integer legalFormId) {
+        if (legalFormId == null) {
+            return null;
+        }
+        final LegalForm legalForm = LegalForm.fromInt(legalFormId);
+        return legalForm != null ? legalForm.getLabel().toUpperCase() : null;
+    }
 }

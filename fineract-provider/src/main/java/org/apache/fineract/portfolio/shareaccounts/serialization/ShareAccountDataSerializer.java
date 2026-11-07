@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -151,13 +152,15 @@ public class ShareAccountDataSerializer {
         baseDataValidator.reset().parameter(ShareAccountApiConstants.requestedshares_paramname).value(requestedShares).notNull()
                 .longGreaterThanZero();
 
-        if (shareProduct.getMinimumClientShares() != null && requestedShares < shareProduct.getMinimumClientShares()) {
+        if (requestedShares != null && shareProduct.getMinimumClientShares() != null
+                && requestedShares < shareProduct.getMinimumClientShares()) {
             baseDataValidator.reset().parameter(ShareAccountApiConstants.requestedshares_paramname).value(requestedShares).failWithCode(
                     "client.can.not.purchase.shares.lessthan.product.definition",
                     "Client can not purchase shares less than product definition");
         }
 
-        if (shareProduct.getMaximumClientShares() != null && requestedShares > shareProduct.getMaximumClientShares()) {
+        if (requestedShares != null && shareProduct.getMaximumClientShares() != null
+                && requestedShares > shareProduct.getMaximumClientShares()) {
             baseDataValidator.reset().parameter(ShareAccountApiConstants.requestedshares_paramname).value(requestedShares).failWithCode(
                     "client.can.not.purchase.shares.morethan.product.definition",
                     "Client can not purchase shares more than product definition");
@@ -239,9 +242,10 @@ public class ShareAccountDataSerializer {
         LocalDate currentDate = DateUtils.getBusinessLocalDate();
         for (ShareAccountCharge charge : charges) {
             if (charge.isActive() && charge.isShareAccountActivation()) {
-                charge.deriveChargeAmount(totalChargeAmount, account.getCurrency());
+                BigDecimal amount = charge.deriveChargeAmount(totalChargeAmount, account.getCurrency());
+                validateChargeAmountNotZero(amount);
                 ShareAccountTransaction chargeTransaction = ShareAccountTransaction.createChargeTransaction(currentDate, charge);
-                ShareAccountChargePaidBy paidBy = new ShareAccountChargePaidBy(chargeTransaction, charge, charge.percentageOrAmount());
+                ShareAccountChargePaidBy paidBy = new ShareAccountChargePaidBy(chargeTransaction, charge, amount);
                 chargeTransaction.addShareAccountChargePaidBy(paidBy);
                 account.addChargeTransaction(chargeTransaction);
             }
@@ -252,6 +256,7 @@ public class ShareAccountDataSerializer {
             for (ShareAccountCharge charge : charges) {
                 if (charge.isActive() && charge.isSharesPurchaseCharge()) {
                     BigDecimal amount = charge.deriveChargeAmount(pending.amount(), account.getCurrency());
+                    validateChargeAmountNotZero(amount);
                     ShareAccountChargePaidBy paidBy = new ShareAccountChargePaidBy(pending, charge, amount);
                     pending.addShareAccountChargePaidBy(paidBy);
                     totalChargeAmount = totalChargeAmount.add(amount);
@@ -706,16 +711,8 @@ public class ShareAccountDataSerializer {
             }
         }
         boolean isTransactionBeforeExistingTransactions = false;
-        Set<ShareAccountTransaction> transactions = account.getShareAccountTransactions();
-        for (ShareAccountTransaction transaction : transactions) {
-            if (!transaction.isChargeTransaction()) {
-                LocalDate transactionDate = transaction.getPurchasedDate();
-                if (DateUtils.isBefore(requestedDate, transactionDate)) {
-                    isTransactionBeforeExistingTransactions = true;
-                    break;
-                }
-            }
-        }
+        isTransactionBeforeExistingTransactions = isTransactionBeforeExistingTransactions(requestedDate,
+                isTransactionBeforeExistingTransactions, account);
         if (isTransactionBeforeExistingTransactions) {
             baseDataValidator.reset().parameter(ShareAccountApiConstants.requesteddate_paramname).value(requestedDate)
                     .failWithCodeNoParameterAddedToErrorCode("purchase.transaction.date.cannot.be.before.existing.transactions");
@@ -730,6 +727,23 @@ public class ShareAccountDataSerializer {
         handleAdditionalSharesChargeTransactions(account, purchaseTransaction);
         actualChanges.put(ShareAccountApiConstants.additionalshares_paramname, purchaseTransaction);
         return actualChanges;
+    }
+
+    private boolean isTransactionBeforeExistingTransactions(LocalDate requestedDate, boolean isTransactionBeforeExistingTransactions,
+            ShareAccount shareAccount) {
+        Collection<ShareAccountTransaction> activeTransactions = shareAccount.getShareAccountTransactions().stream()
+                .filter(tr -> tr.isActive() && !tr.isChargeTransaction() && !tr.isPurchaseRejectedTransaction()).toList();
+
+        for (ShareAccountTransaction transaction : activeTransactions) {
+            if (!transaction.isChargeTransaction() && transaction.isActive() && !transaction.isPurchaseRejectedTransaction()) {
+                LocalDate transactionDate = transaction.getPurchasedDate();
+                if (DateUtils.isBefore(requestedDate, transactionDate)) {
+                    isTransactionBeforeExistingTransactions = true;
+                    break;
+                }
+            }
+        }
+        return isTransactionBeforeExistingTransactions;
     }
 
     private void handleAdditionalSharesChargeTransactions(final ShareAccount account, final ShareAccountTransaction purchaseTransaction) {
@@ -863,16 +877,8 @@ public class ShareAccountDataSerializer {
         baseDataValidator.reset().parameter(ShareAccountApiConstants.requestedshares_paramname).value(sharesRequested).notNull()
                 .longGreaterThanZero();
         boolean isTransactionBeforeExistingTransactions = false;
-        Set<ShareAccountTransaction> transactions = account.getShareAccountTransactions();
-        for (ShareAccountTransaction transaction : transactions) {
-            if (!transaction.isChargeTransaction() && transaction.isActive()) {
-                LocalDate transactionDate = transaction.getPurchasedDate();
-                if (DateUtils.isBefore(requestedDate, transactionDate)) {
-                    isTransactionBeforeExistingTransactions = true;
-                    break;
-                }
-            }
-        }
+        isTransactionBeforeExistingTransactions = isTransactionBeforeExistingTransactions(requestedDate,
+                isTransactionBeforeExistingTransactions, account);
         if (isTransactionBeforeExistingTransactions) {
             baseDataValidator.reset().parameter(ShareAccountApiConstants.requesteddate_paramname).value(requestedDate)
                     .failWithCodeNoParameterAddedToErrorCode("redeem.transaction.date.cannot.be.before.existing.transactions");
@@ -1018,16 +1024,8 @@ public class ShareAccountDataSerializer {
             throw new PlatformApiDataValidationException(dataValidationErrors);
         }
         boolean isTransactionBeforeExistingTransactions = false;
-        Set<ShareAccountTransaction> transactions = account.getShareAccountTransactions();
-        for (ShareAccountTransaction transaction : transactions) {
-            if (!transaction.isChargeTransaction()) {
-                LocalDate transactionDate = transaction.getPurchasedDate();
-                if (DateUtils.isBefore(closedDate, transactionDate)) {
-                    isTransactionBeforeExistingTransactions = true;
-                    break;
-                }
-            }
-        }
+        isTransactionBeforeExistingTransactions = isTransactionBeforeExistingTransactions(closedDate,
+                isTransactionBeforeExistingTransactions, account);
         if (isTransactionBeforeExistingTransactions) {
             baseDataValidator.reset().parameter(ShareAccountApiConstants.closeddate_paramname).value(closedDate)
                     .failWithCodeNoParameterAddedToErrorCode("share.account.cannot.be.closed.before.existing.transactions");
@@ -1046,5 +1044,14 @@ public class ShareAccountDataSerializer {
         handleRedeemSharesChargeTransactions(account, transaction);
         actualChanges.put(ShareAccountApiConstants.requestedshares_paramname, transaction);
         return actualChanges;
+    }
+
+    private void validateChargeAmountNotZero(BigDecimal amount) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            List<ApiParameterError> errors = new ArrayList<>();
+            errors.add(ApiParameterError.parameterError("error.msg.share.charge.amount.rounded.to.zero",
+                    "This charge cannot be added because the calculated amount becomes zero after rounding.", "amount"));
+            throw new PlatformApiDataValidationException(errors);
+        }
     }
 }

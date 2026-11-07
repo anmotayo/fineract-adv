@@ -38,9 +38,9 @@ import org.apache.fineract.organisation.monetary.service.CurrencyReadPlatformSer
 import org.apache.fineract.portfolio.charge.data.ChargeData;
 import org.apache.fineract.portfolio.charge.service.ChargeReadPlatformService;
 import org.apache.fineract.portfolio.interestratechart.data.InterestRateChartData;
-import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartReadPlatformService;
+import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartReadService;
 import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
-import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadPlatformService;
+import org.apache.fineract.portfolio.paymenttype.service.PaymentTypeReadService;
 import org.apache.fineract.portfolio.savings.service.SavingsDropdownReadPlatformService;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
@@ -61,15 +61,15 @@ public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepo
     private final SavingsDropdownReadPlatformService savingsDropdownReadPlatformService;
     private final AccountingDropdownReadPlatformService accountingDropdownReadPlatformService;
     private final ChargeReadPlatformService chargeReadPlatformService;
-    private final InterestRateChartReadPlatformService chartReadPlatformService;
-    private final PaymentTypeReadPlatformService paymentTypeReadPlatformService;
+    private final InterestRateChartReadService chartReadPlatformService;
+    private final PaymentTypeReadService paymentTypeReadPlatformService;
 
     public DynamicDepositProductReadPlatformServiceImpl(final PlatformSecurityContext context, final JdbcTemplate jdbcTemplate,
             final CurrencyReadPlatformService currencyReadPlatformService,
             final SavingsDropdownReadPlatformService savingsDropdownReadPlatformService,
             final AccountingDropdownReadPlatformService accountingDropdownReadPlatformService,
-            final ChargeReadPlatformService chargeReadPlatformService, final InterestRateChartReadPlatformService chartReadPlatformService,
-            final PaymentTypeReadPlatformService paymentTypeReadPlatformService) {
+            final ChargeReadPlatformService chargeReadPlatformService, final InterestRateChartReadService chartReadPlatformService,
+            final PaymentTypeReadService paymentTypeReadPlatformService) {
         this.context = context;
         this.jdbcTemplate = jdbcTemplate;
         this.currencyReadPlatformService = currencyReadPlatformService;

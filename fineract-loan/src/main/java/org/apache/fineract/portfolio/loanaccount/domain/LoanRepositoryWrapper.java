@@ -30,6 +30,7 @@ import org.apache.fineract.infrastructure.core.config.FineractProperties;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
 import org.apache.fineract.portfolio.loanaccount.exception.LoanNotFoundException;
+import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleType;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -174,7 +175,7 @@ public class LoanRepositoryWrapper {
     @Transactional(readOnly = true)
     public List<Loan> findByClientIdAndGroupId(@Param("clientId") Long clientId, @Param("groupId") Long groupId) {
         List<Loan> loans = this.repository.findByClientIdAndGroupId(clientId, groupId);
-        if (loans != null && loans.size() > 0) {
+        if (loans != null && !loans.isEmpty()) {
             for (Loan loan : loans) {
                 loan.initializeLoanOfficerHistory();
             }
@@ -186,7 +187,7 @@ public class LoanRepositoryWrapper {
     @Transactional(readOnly = true)
     public List<Loan> findLoanByClientId(@Param("clientId") Long clientId) {
         List<Loan> loans = this.repository.findLoanByClientId(clientId);
-        if (loans != null && loans.size() > 0) {
+        if (loans != null && !loans.isEmpty()) {
             for (Loan loan : loans) {
                 loan.initializeTransactions();
                 loan.initializeLoanOfficerHistory();
@@ -207,7 +208,7 @@ public class LoanRepositoryWrapper {
         List<List<Long>> partitions = Lists.partition(ids.stream().toList(), fineractProperties.getQuery().getInClauseParameterSizeLimit());
         partitions
                 .forEach(partition -> loans.addAll(this.repository.findByIdsAndLoanStatusAndLoanType(partition, loanStatuses, loanTypes)));
-        if (loans.size() > 0) {
+        if (!loans.isEmpty()) {
             for (Loan loan : loans) {
                 loan.initializeLazyCollections();
             }
@@ -224,7 +225,7 @@ public class LoanRepositoryWrapper {
     public List<Loan> findByClientOfficeIdsAndLoanStatus(@Param("officeIds") Collection<Long> officeIds,
             @Param("loanStatuses") Collection<LoanStatus> loanStatuses) {
         List<Loan> loans = this.repository.findByClientOfficeIdsAndLoanStatus(officeIds, loanStatuses);
-        if (loans != null && loans.size() > 0) {
+        if (loans != null && !loans.isEmpty()) {
             for (Loan loan : loans) {
                 loan.initializeRepaymentSchedule();
             }
@@ -236,7 +237,7 @@ public class LoanRepositoryWrapper {
     public List<Loan> findByGroupOfficeIdsAndLoanStatus(@Param("officeIds") Collection<Long> officeIds,
             @Param("loanStatuses") Collection<LoanStatus> loanStatuses) {
         List<Loan> loans = this.repository.findByGroupOfficeIdsAndLoanStatus(officeIds, loanStatuses);
-        if (loans != null && loans.size() > 0) {
+        if (loans != null && !loans.isEmpty()) {
             for (Loan loan : loans) {
                 loan.initializeRepaymentSchedule();
             }
@@ -294,12 +295,16 @@ public class LoanRepositoryWrapper {
         return repository.findLoanIdByStatus(LoanStatus.fromInt(statusId));
     }
 
-    public List<Loan> findLoansForPeriodicAccrual(AccountingRuleType accountingType, LocalDate tillDate, boolean futureCharges) {
-        return repository.findLoansForPeriodicAccrual(accountingType, tillDate, futureCharges, LoanStatus.ACTIVE);
+    public List<Loan> findLoansForPeriodicAccrual(AccountingRuleType accountingType, LocalDate tillDate, boolean futureCharges,
+            boolean progressiveFutureCharges) {
+        return repository.findLoansForPeriodicAccrual(accountingType, tillDate, futureCharges, progressiveFutureCharges,
+                LoanScheduleType.PROGRESSIVE, LoanStatus.ACTIVE);
     }
 
-    public List<Loan> findLoansForAddAccrual(AccountingRuleType accountingType, LocalDate tillDate, boolean futureCharges) {
-        return repository.findLoansForAddAccrual(accountingType, tillDate, futureCharges, LoanStatus.ACTIVE);
+    public List<Loan> findLoansForAddAccrual(AccountingRuleType accountingType, LocalDate tillDate, boolean futureCharges,
+            boolean progressiveFutureCharges) {
+        return repository.findLoansForAddAccrual(accountingType, tillDate, futureCharges, progressiveFutureCharges,
+                LoanScheduleType.PROGRESSIVE, LoanStatus.ACTIVE);
     }
 
     public List<Long> findIdByExternalIds(List<ExternalId> externalIds) {
@@ -312,5 +317,13 @@ public class LoanRepositoryWrapper {
 
     public boolean isEnabledCapitalizedIncome(Long loanId) {
         return repository.isEnabledCapitalizedIncome(loanId);
+    }
+
+    public boolean isLoanInAllowedStatus(Long loanId, List<LoanStatus> allowedLoanStatuses) {
+        return repository.isLoanInAllowedStatus(loanId, allowedLoanStatuses);
+    }
+
+    public LocalDate findMaxTransactionDateOfActiveLoans() {
+        return repository.findMaxTransactionDateOfActiveLoans();
     }
 }

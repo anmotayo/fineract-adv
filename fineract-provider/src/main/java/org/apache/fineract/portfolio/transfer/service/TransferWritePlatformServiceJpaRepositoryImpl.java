@@ -31,6 +31,7 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
+import org.apache.fineract.infrastructure.core.service.TransactionBoundApplicationEventPublisher;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.office.domain.Office;
 import org.apache.fineract.organisation.office.domain.OfficeRepositoryWrapper;
@@ -57,7 +58,8 @@ import org.apache.fineract.portfolio.loanaccount.domain.LoanRepositoryWrapper;
 import org.apache.fineract.portfolio.loanaccount.domain.LoanStatus;
 import org.apache.fineract.portfolio.loanaccount.service.LoanOfficerService;
 import org.apache.fineract.portfolio.loanaccount.service.LoanWritePlatformService;
-import org.apache.fineract.portfolio.note.service.NoteWritePlatformService;
+import org.apache.fineract.portfolio.note.data.NoteCreateRequest;
+import org.apache.fineract.portfolio.note.domain.NoteType;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
 import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
@@ -81,11 +83,11 @@ public class TransferWritePlatformServiceJpaRepositoryImpl implements TransferWr
     private final LoanRepositoryWrapper loanRepositoryWrapper;
     private final SavingsAccountRepositoryWrapper savingsAccountRepositoryWrapper;
     private final TransfersDataValidator transfersDataValidator;
-    private final NoteWritePlatformService noteWritePlatformService;
     private final StaffRepositoryWrapper staffRepositoryWrapper;
     private final ClientTransferDetailsRepositoryWrapper clientTransferDetailsRepositoryWrapper;
     private final PlatformSecurityContext context;
     private final LoanOfficerService loanOfficerService;
+    private final TransactionBoundApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -466,7 +468,8 @@ public class TransferWritePlatformServiceJpaRepositoryImpl implements TransferWr
                 client.updateProposedTransferDate(null);
         }
 
-        this.noteWritePlatformService.createAndPersistClientNote(client, jsonCommand);
+        this.eventPublisher.publishEvent(NoteCreateRequest.builder().type(NoteType.CLIENT).resourceId(client.getId())
+                .note(jsonCommand.stringValueOfParameterNamed("note")).build());
         this.clientTransferDetailsRepositoryWrapper
                 .save(ClientTransferDetails.instance(client.getId(), client.getOffice().getId(), destinationOffice.getId(), transferDate,
                         transferEventType.getValue(), DateUtils.getBusinessLocalDate(), this.context.authenticatedUser().getId()));

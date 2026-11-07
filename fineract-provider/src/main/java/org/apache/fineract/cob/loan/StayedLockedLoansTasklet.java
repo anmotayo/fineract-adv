@@ -26,20 +26,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.fineract.cob.data.COBIdAndExternalIdAndAccountNo;
 import org.apache.fineract.cob.data.LoanAccountStayedLockedData;
 import org.apache.fineract.cob.data.LoanAccountsStayedLockedData;
+import org.apache.fineract.cob.service.RetrieveIdService;
 import org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.infrastructure.event.business.service.BusinessEventNotifierService;
-import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 
 @Slf4j
 @RequiredArgsConstructor
 public class StayedLockedLoansTasklet implements Tasklet {
 
     private final BusinessEventNotifierService businessEventNotifierService;
-    private final RetrieveLoanIdService retrieveLoanIdService;
+    private final RetrieveIdService retrieveIdService;
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
@@ -52,7 +53,7 @@ public class StayedLockedLoansTasklet implements Tasklet {
 
     private LoanAccountsStayedLockedData buildLoanAccountData() {
         LocalDate cobBusinessDate = ThreadLocalContextUtil.getBusinessDateByType(BusinessDateType.COB_DATE);
-        List<COBIdAndExternalIdAndAccountNo> stayedLockedLoanAccounts = retrieveLoanIdService
+        List<COBIdAndExternalIdAndAccountNo> stayedLockedLoanAccounts = retrieveIdService
                 .findAllStayedLockedByCobBusinessDate(cobBusinessDate);
         List<LoanAccountStayedLockedData> loanAccounts = new ArrayList<>();
         stayedLockedLoanAccounts.forEach(loanAccount -> {

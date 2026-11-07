@@ -10,6 +10,11 @@ The [JIRA Dashboard](https://issues.apache.org/jira/secure/Dashboard.jspa?select
 
 You don't need to be a committer to provide pull requests, but [Becoming a Committer](https://cwiki.apache.org/confluence/display/FINERACT/Becoming+a+Committer) explains the process of becoming one - just in case...
 
+## Non-code contributions
+
+We need a lot of help besides code changes. For example, we also welcome wiki edits! If you wish to make non-code contributions, please first get involved on the [developer mailing list](https://lists.apache.org/list.html?dev@fineract.apache.org) and in [chat](https://app.element.io/#/room/#apache-fineract-home:matrix.org). Around the time you [request wiki access](https://selfserve.apache.org/confluence-account.html), tell us something like:
+
+> Hello! I'm Adam from Seattle, USA and I'd like to help improve the FSIP-78 wiki page. I've submitted a request for wiki edit access.
 
 ## Developer How To's
 
@@ -20,13 +25,77 @@ You don't need to be a committer to provide pull requests, but [Becoming a Commi
 Here's how to run the set of relatively fast and independent Fineract tests:
 
 ```bash
-./gradlew test -x :twofactor-tests:test -x :oauth2-tests:test -x :integration-tests:test
+./gradlew test -x :twofactor-tests:test -x :oauth2-tests:test -x :integration-tests:test -x :fineract-e2e-tests-runner:test
 ```
 
-This runs nearly 1,000 tests and completes in a few minutes on decent hardware.
+This runs over 1,500 tests and completes in ~5 minutes on decent hardware.
 They shouldn't need any special servers/services running.
 
+The integration, two-factor, OAuth2 and Cucumber E2E suites all require a live Fineract instance over HTTP, and the
+build does not start one for you. Start one first, or every API-dependent test will fail.
+
+#### Cucumber E2E tests
+
+The Cucumber E2E tests run against a live Fineract instance. You must start Fineract yourself.
+Before running them locally, create the required databases and start Fineract:
+
+```bash
+# Create required databases
+./gradlew createPGDB -PdbName=fineract_tenants
+./gradlew createPGDB -PdbName=fineract_default
+
+# Start Fineract in another terminal
+./gradlew bootRun -Dspring.profiles.active=test
+```
+
+The default E2E test connection settings live in `fineract-e2e-tests-core/src/test/resources/fineract-test-application.properties`.
+By default, the test suite connects to `https://localhost:8443`.
+
+Many E2E tests require seeded test data.
+That setup is controlled by the `INITIALIZATION_ENABLED` environment variable, which maps to `fineract-test.initialization.enabled`.
+For a fresh database, run the suite from `fineract-e2e-tests-runner` with initialization enabled first:
+
+```bash
+cd fineract-e2e-tests-runner
+INITIALIZATION_ENABLED=true ../gradlew cucumber
+```
+
+After the initialization data already exists, you can run all E2E tests without it:
+
+```bash
+cd fineract-e2e-tests-runner
+../gradlew cucumber
+```
+
+To run a single feature file:
+
+```bash
+cd fineract-e2e-tests-runner
+../gradlew cucumber -Pcucumber.features="src/test/resources/features/Loan.feature"
+```
+
+See [Cucumber E2E Tests](https://fineract.apache.org/docs/current/#testing-cucumber) for more details and additional options.
+
 #### Integration tests
+
+Like the Cucumber tests, the integration tests also require a live Fineract instance.
+Bring one up first. The Docker stack is what CI uses, so it is the configuration these suites are verified against:
+
+```bash
+# Build the image once
+./gradlew :fineract-provider:jibDockerBuild -Djib.to.image=fineract -x test -x cucumber
+
+# Start Fineract plus its database, LocalStack and the mock OAuth2 server
+docker compose -f docker-compose-postgresql-test.yml up -d
+./gradlew :integration-tests:waitForFineract
+
+./gradlew :integration-tests:test --tests ClientLoanIntegrationTest
+```
+
+Docker is not required, though.
+Starting `ServerApplication` from your IDE or `./gradlew devRun` from the command line both work too provided you have a running, initialized database as shown above for the Cucumber tests (and have customized `BACKEND_PROTOCOL`, `BACKEND_HOST`, and `BACKEND_PORT` environment variables as necessary).
+
+`:twofactor-tests` and `:oauth2-tests` need the server started in a different authentication mode, and `docker-compose-war-test.yml` runs the WAR in a stock Tomcat instead of the Spring Boot jar; see [Integration Testing](https://fineract.apache.org/docs/develop/#testing-integration) for those and for the `BACKEND_*` variables that point the suites at a non-default address.
 
 Running tests with external dependencies is a multi-step process with many moving parts.
 Sometimes there are arbitrary failures and the prerequisite setup can be daunting.
@@ -40,14 +109,14 @@ Incorrect default Java-related executables may cause test failures.
 To fix this on Debian and Ubuntu systems, run the following:
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/zulu21
+export JAVA_HOME=/usr/lib/jvm/zulu25
 sudo update-alternatives --set java $JAVA_HOME/bin/java
 sudo update-alternatives --set javac $JAVA_HOME/bin/javac
 sudo update-alternatives --set javadoc $JAVA_HOME/bin/javadoc
 ```
 
 This would correct, for example, a [class file version error](https://en.wikipedia.org/wiki/Java_class_file#General_layout).
-You might see something like this if a Java 11 executable (class file format version 56) was the system default, but the integration tests were using Java 21 (class file format version 65):
+You might see something like this if a Java 11 executable (class file format version 56) was the system default, but the integration tests were using Java 25 (class file format version 69):
 
 > UnsupportedClassVersionError: com.example.package/ClassName has been compiled by a more recent version of the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes class file versions up to 55.0
 
@@ -65,19 +134,19 @@ git clean --force -dx
 
 # Destroy various caches and configs.
 # ⚠️ This may delete gibibytes of cached data, making the next build very slow.
-rm -rf ~/.gradle ~/.m2 /tmp/cargo*
+rm -rf ~/.gradle ~/.m2
 
-# Destroy any Java containers left running.
-# 💚 This is generally very safe to run between builds.
-ps auxwww | grep [c]argo | awk '{ print $2 }' | xargs -r kill
+# Tear down the test stack, including its database volume.
+# ⚠️ This discards the data of the instance the integration tests were running against.
+docker compose -f docker-compose-postgresql-test.yml down -v
 ```
 
 Integration test runs such as
 ```bash
 ./gradlew --no-daemon --console=plain test -x :twofactor-tests:test \
-  -x :oauth2-tests:test :fineract-e2e-tests-runner:test -PdbType=postgresql
+  -x :oauth2-tests:test -x :fineract-e2e-tests-runner:test
 ```
-in `.github/workflows/build-postgresql.yml` often take an hour or longer to complete.
+in `.github/workflows/run-integration-test-sequentially-postgresql.yml` often take an hour or longer to complete.
 If you notice the `:integration-tests:test` task taking significantly less time, say, one minute, gradle may be skipping it.
 Look for something like this in the test output:
 
@@ -85,8 +154,6 @@ Look for something like this in the test output:
 Custom actions are attached to task ':integration-tests:test'.
 Build cache key for task ':integration-tests:test' is 6aeeec3f58bf9703d4c100fbaa657f5c
 Skipping task ':integration-tests:test' as it is up-to-date.
-Resolve mutations for :integration-tests:cargoStopLocal (Thread[Execution worker Thread 11,5,main]) started.
-:integration-tests:cargoStopLocal (Thread[Execution worker Thread 11,5,main]) started.
 
 
 (This is with the `--info` gradle argument with eyeballs added for emphasis.)
@@ -94,6 +161,34 @@ The `--rerun-tasks` gradle argument may help, or you can try destroying `~/.grad
 This is useful for repeated test runs (say, for timing) when gradle would otherwise assume a task is "up-to-date" and not re-run it.
 
 See the next section for testing in Eclipse and [here](https://fineract-academy.com) for testing in IntelliJ.
+
+### How to run Apache RAT (Release Audit Tool)
+
+1. Extract the archive file to your local directory.
+2. Run `./gradlew rat`. A report will be generated under build/reports/rat/rat-report.txt
+
+### How to build documentation
+
+Run the following command:
+
+```bash
+./gradlew doc
+```
+
+Some dependencies are required (e.g. Ghostscript, Graphviz), see [.github/workflows/build-documentation.yml](https://github.com/apache/fineract/tree/develop/.github/workflows/build-documentation.yml) for hints.
+
+IDEs such as IntelliJ are useful for editing the AsciiDoc source files while providing a live rendered preview.
+
+HTML rendered from the AsciiDoc source files is also available online at <https://fineract.apache.org/docs/develop/>.
+
+## Recommended IDEs
+
+Apache Fineract can be developed using multiple IDEs. The most commonly used and supported IDEs are:
+
+- **Eclipse IDE** – Fully supported and commonly used within the community.
+- **IntelliJ IDEA (Community or Ultimate)** – Recommended for most developers due to excellent Gradle support and debugging experience.
+
+The sections below provide setup guidance for each IDE.
 
 ### How to run and debug in Eclipse IDE
 
@@ -111,40 +206,28 @@ You can also use Eclipse JUnit support to run tests in Eclipse (Run As->JUnit Te
 
 Finally, modifying source code in Eclipse automatically triggers hot code replace to a running instance, allowing you to immediately test your changes
 
-How to download Gradle wrapper
----
-The file gradle/wrapper/gradle-wrapper.jar binary is checked into this projects Git source repository,
-but won't exist in your copy of the Fineract codebase if you downloaded a released source archive from apache.org.
-In that case, you need to download it using the commands below:
-```bash
-wget -P gradle/wrapper https://github.com/apache/fineract/raw/develop/gradle/wrapper/gradle-wrapper.jar
-```
-or
-```bash
-curl -L https://github.com/apache/fineract/raw/develop/gradle/wrapper/gradle-wrapper.jar > \
-    gradle/wrapper/gradle-wrapper.jar
-```
+## How to run and debug in IntelliJ IDEA
 
-### How to run Apache RAT (Release Audit Tool)
+IntelliJ IDEA provides strong Gradle integration and is recommended for most new contributors.
 
-1. Extract the archive file to your local directory.
-2. Run `./gradlew rat`. A report will be generated under build/reports/rat/rat-report.txt
+### Prerequisites
+- IntelliJ IDEA (Community Edition is sufficient)
+- Java 25 (as required by Fineract)
+- Gradle (wrapper included in the repository)
 
+### Steps
 
-### How to build documentation
+1. Open IntelliJ IDEA and select **Open**
+2. Choose the root `fineract` directory
+3. When prompted, import the project as a **Gradle project**
+4. Use the Gradle wrapper (`gradlew`) when asked
+5. Ensure the correct JDK is selected (**Java 25**)
+6. After import completes, run:
+   - `org.apache.fineract.ServerApplication` as a **Java Application**
 
-Run the following command:
-
-```bash
-./gradlew doc
-```
-
-Some dependencies are required (e.g. Ghostscript, Graphviz), see [.github/workflows/build-documentation.yml](https://github.com/apache/fineract/tree/develop/.github/workflows/build-documentation.yml) for hints.
-
-IDEs such as IntelliJ are useful for editing the AsciiDoc source files while providing a live rendered preview.
-
-HTML rendered from the AsciiDoc source files is also available online at [https://fineract.apache.org/docs/current/](https://fineract.apache.org/docs/current/).
-
+### Notes
+- IntelliJ may take several minutes to index the project on first open
+- If you encounter build issues, try running `./gradlew clean build` from the terminal
 
 ## How We Code
 
@@ -178,6 +261,18 @@ The project uses Jacoco to measure unit tests code coverage. To generate a repor
 Generated reports can be found in the build/code-coverage directory.
 
 
+### Lombok
+
+The project uses [Lombok](https://projectlombok.org/) to reduce boilerplate code. Configuration is in [lombok.config](lombok.config).
+
+* Use `@Getter` / `@Setter` / `@NoArgsConstructor` on JPA entities. Never use `@Data` on entities (causes JPA lazy loading issues).
+* Use `@RequiredArgsConstructor` on service classes for constructor-based dependency injection.
+* Use `@Slf4j` for logging instead of manually declaring loggers.
+* Use `@Data` for simple DTOs (includes getters, setters, toString, equals, hashCode).
+* Use `@Builder` with `@Builder.Default` for configuration classes and complex object construction.
+* Never use `@SneakyThrows` - handle exceptions explicitly.
+
+
 ### Error Handling
 
 * When catching exceptions, either rethrow them, or log them.  Either way, include the root cause by using `catch (SomeException e)` and then either `throw AnotherException("..details..", e)` or `LOG.error("...context...", e)`.
@@ -197,6 +292,14 @@ Generated reports can be found in the build/code-coverage directory.
     * `LOG.debug()` can be used anywhere in the code to log things that may be useful during investigations of specific problems.  They are not shown in the default logging configuration, but can be enabled for troubleshooting.  Developers should typically "turn down" most `LOG.info()` which they used while writing a new feature to "follow along what happens during local testing" to `LOG.debug()` for production before we merge their PRs.
     * `LOG.trace()` is not used in Fineract.
 
+### AI Policy
+
+- AI tools may assist contribution work.
+- AI tools must not replace contributor accountability.
+- The human submitter is responsible for correctness, safety, performance, and maintainability of all submitted changes.
+- Follow the [Generative Tooling Guidance by the ASF](https://www.apache.org/legal/generative-tooling.html).
+- Disclose generative AI tool usage with `Assisted-By: TOOL-MODEL-VERSION` trailer(s) in commit log messages, e.g. `Assisted-By: botcoder-poem-5.1`.
+
 ## Change Process
 
 ### Dependency Upgrades
@@ -207,8 +310,8 @@ Our `ClasspathHellDuplicatesCheckRuleTest` detects classes that appear in more t
 
 ### Pull Requests
 
-We request that your commit message includes a FINERACT JIRA issue and a one-liner that describes the changes.
-Start with an upper case imperative verb (not past form), and a short but concise clear description. (E.g. "FINERACT-821: Add enforced HideUtilityClassConstructor checkstyle").
+Your PR title must include a JIRA issue and a one-liner that describes the changes.
+Start your one-liner after the JIRA issue id. Use an upper case present-tense imperative verb and a short but concise clear description. (E.g. "FINERACT-821: Add enforced HideUtilityClassConstructor checkstyle").
 
 If your PR is failing to pass our CI build due to a test failure, then:
 
@@ -224,6 +327,21 @@ If your PR is failing to pass our CI build due to a test failure, then:
 [Pull Request Size Limit](https://cwiki.apache.org/confluence/display/FINERACT/Pull+Request+Size+Limit)
 documents that we cannot accept huge "code dump" Pull Requests, with some related suggestions.
 
+In your PR branch, include as few or as many commits as you feel will be helpful to most clearly communicate your intent, progress, and lessons learned.
+Each commit should be reviewable and logically coherent.
+Add detail and context as necessary in commit log messages to communicate not only *what* you changed, but *why*, including summaries of discussions leading to the changes, ideas/plans for future changes, etc.
+Keep the *what* simple: Use the summary (first line) and let the diff otherwise speak for itself.
+
+If your PR is a single commit, use the PR title verbatim in the first line of the commit log message. Add as much detail as you want in the commit log body.
+
+If your PR is multiple commits, use the first line of the commit log message to summarize changes specific to that commit (using present-tense imperative language, e.g. _update release signing gpg guidance_). You may include the JIRA issue id in the first line or somewhere in the commit log body.
+
+Contributors: squash, rebase, and force-push your PR branches as you see fit.
+You might, for example, rebase on top of `develop`.
+You might also squash several commits with code formatting / whitespace fixes, but keep separate commits for code changes affecting functionality.
+Besides simple clean-ups, PR branch commits should be left as-is/un-squashed.
+Follow this same rule when adding new commits to in-progress PR branches; it's helpful for posterity / intent forensics to see progress along the way, changes reversed, etc.
+
 Guideline for new Feature commits involving Refactoring: If you are submitting a PR for a new feature,
 and it involves refactoring, try to differentiate "new feature code" from "refactored" by placing
 them in different commits. This helps to review your code faster.
@@ -233,8 +351,60 @@ We have an automated bot which marks pull requests as "stale" after a while, and
 
 ### Merge Strategy
 
-This project's committers typically prefer to bring your pull requests in through _Rebase and Merge_ instead of _Create a Merge Commit_. (If you are unfamiliar with GitHub's UI regarding this, note the somewhat hidden little triangle drop-down at the bottom of the PR, visible only to committers, not contributors.)  This avoids the "merge commits" which we consider to be somewhat "polluting" the project's commit log history view.  We understand this doesn't give an easy automatic reference to the original PR (which GitHub automatically adds to the merge commit message it generates), but we consider this an only very minor inconvenience; it's typically relatively easy to find the original PR even just from the commit message, and JIRA.
+After PR review and passing CI build, a committer will merge your PR branch into our primary integration branch, `develop`, either locally or on GitHub using "Merge pull request - Create a merge commit" (not "Squash and merge" and not "Rebase and merge").
 
-We expect most proposed PRs to typically consist of a single commit. Committers may use _Squash and merge_ to combine your commits at merge time, and if they do so, will rewrite your commit message as they see fit.
+If merging the PR resolved a JIRA issue, mark that issue as resolved and set "Fix Version/s" to the next unreleased version. These fix versions only apply to the `apache/fineract` repository. Other repositories should set "Fix Version/s" to "Unknown".
 
-Neither of these two are hard absolute rules, but mere conventions. Multiple commits in single PRs make sense in certain cases (e.g. branch backports).
+### Signing Your Commits
+
+All commits must be signed with GPG keys.
+
+For GPG setup instructions, see the [Fineract GPG Guide](https://fineract.apache.org/docs/develop/#_signing_releases).
+
+Commit signatures may be checked locally with `git log --show-signature`, and a "Verified" badge should appear on GitHub for [every commit](https://github.com/apache/fineract/commits/).
+
+To verify your commits locally before pushing:
+
+```bash
+./scripts/verify-signed-commits.sh
+```
+
+
+### Examining history
+
+Hints for simplifying commit history with git:
+
+```bash
+git switch develop
+git log --first-parent develop
+git log --no-merges
+git log --max-parents=1
+```
+
+## Security reports
+
+We rely on the talent and generosity of security researchers to help us find and fix potential vulnerabilities.
+Here are our guidelines for submitting security reports.
+
+Security reports must:
+
+- Be private. Reporters must follow responsible disclosure.
+- Refer to a release version or a commit on the `develop` (main integration) branch.
+- Describe and demonstrate a vulnerability via reproducible proof-of-concept.
+- Include repro steps performed directly on a Fineract backend (API server) sandbox you control, not `demo.mifos.org` nor `sandbox.mifos.community` nor any other third-party demo/deployment.
+
+The most useful and triage-able reports will:
+
+- Use open data formats such as Markdown text, `curl` or [HTTPie](https://github.com/httpie/cli) commands, Bash script. Consider including a compressed [HAR file](https://en.wikipedia.org/wiki/HAR_%28file_format%29) as well.
+- Include repro environment description (this is your "sandbox")
+    - Host OS or container details
+    - RDBMS vendor and version
+    - Java vendor and version
+    - Any and all non-default configuration, local modifications, Java properties, env vars, etc.
+    - Run command (`./gradlew devRun`, `java -jar ...`, WAR in Tomcat version X.Y.Z, etc.)
+- Include example data (API calls or a loadable database dump).
+- Repro without internal test APIs enabled. Use a production-like profile, not `SPRING_PROFILES_ACTIVE=test`, to avoid dev-only endpoints and warnings. You should not see `DO NOT USE THIS IN PRODUCTION!` in your server log.
+
+Review the [ASF guidance for creating security reports](https://www.apache.org/security/).
+
+[Here's the process](https://www.apache.org/security/committers.html) we'll follow while handling your report.

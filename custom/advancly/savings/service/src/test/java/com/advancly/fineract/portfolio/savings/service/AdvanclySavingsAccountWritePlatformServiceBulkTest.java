@@ -49,7 +49,7 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
-import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
+import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepository;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
@@ -84,7 +84,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
     @Mock
     private SavingsAccountWritePlatformServiceJpaRepositoryImpl delegate;
     @Mock
-    private PaymentTypeRepositoryWrapper paymentTypeRepositoryWrapper;
+    private PaymentTypeRepository paymentTypeRepositoryWrapper;
     @Mock
     private PaymentDetailRepository paymentDetailRepository;
     @Mock
@@ -119,7 +119,7 @@ class AdvanclySavingsAccountWritePlatformServiceBulkTest {
         when(assembler.assembleForAppendPath(savingsId)).thenReturn(assembled);
 
         PaymentType paymentType = Mockito.mock(PaymentType.class);
-        when(paymentTypeRepositoryWrapper.findOneWithNotFoundDetection(1L)).thenReturn(paymentType);
+        when(paymentTypeRepositoryWrapper.findById(1L)).thenReturn(java.util.Optional.of(paymentType));
         PaymentDetail paymentDetail = Mockito.mock(PaymentDetail.class);
         when(paymentDetailRepository.saveAndFlush(any(PaymentDetail.class))).thenReturn(paymentDetail);
 

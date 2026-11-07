@@ -20,14 +20,12 @@ package org.apache.fineract.integrationtests;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.restassured.builder.RequestSpecBuilder;
-import io.restassured.builder.ResponseSpecBuilder;
-import io.restassured.http.ContentType;
-import io.restassured.specification.RequestSpecification;
-import io.restassured.specification.ResponseSpecification;
+import java.util.Collections;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.client.models.GetGlobalConfigurationsResponse;
 import org.apache.fineract.client.models.GlobalConfigurationPropertyData;
@@ -35,7 +33,6 @@ import org.apache.fineract.client.models.PutGlobalConfigurationsRequest;
 import org.apache.fineract.client.util.CallFailedRuntimeException;
 import org.apache.fineract.infrastructure.configuration.api.GlobalConfigurationConstants;
 import org.apache.fineract.integrationtests.common.GlobalConfigurationHelper;
-import org.apache.fineract.integrationtests.common.Utils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,16 +42,10 @@ import org.junit.jupiter.api.Test;
 
 public class GlobalConfigurationTest {
 
-    private ResponseSpecification responseSpec;
-    private RequestSpecification requestSpec;
     private GlobalConfigurationHelper globalConfigurationHelper;
 
     @BeforeEach
     public void setup() {
-        Utils.initializeRESTAssured();
-        this.requestSpec = new RequestSpecBuilder().setContentType(ContentType.JSON).build();
-        this.requestSpec.header("Authorization", "Basic " + Utils.loginIntoServerAndGetBase64EncodedAuthenticationKey());
-        this.responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
         globalConfigurationHelper = new GlobalConfigurationHelper();
     }
 
@@ -124,5 +115,144 @@ public class GlobalConfigurationTest {
                 .updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().enabled(true).value(null)));
         assertEquals(403, exception.getResponse().code());
         assertTrue(exception.getMessage().contains("error.msg.password.reset.days.value.must.be.greater.than.zero"));
+    }
+
+    @Test
+    public void testStringValueNotAllowedIsRejected() {
+        String configName = GlobalConfigurationConstants.WCL_CHARGE_ACCRUAL_TIME;
+
+        CallFailedRuntimeException exception = assertThrows(CallFailedRuntimeException.class, () -> globalConfigurationHelper
+                .updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().stringValue("weekly")));
+        assertEquals(400, exception.getResponse().code());
+        assertTrue(exception.getMessage().contains("validation.msg.globalConfiguration.stringValue.is.not.one.of.expected.enumerations"));
+    }
+
+    @Test
+    public void testAllowedStringValueIsStoredInCanonicalSpelling() {
+        String configName = GlobalConfigurationConstants.WCL_CHARGE_ACCRUAL_TIME;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+        try {
+            globalConfigurationHelper.updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().stringValue("REAL-TIME"));
+
+            assertEquals("real-time", globalConfigurationHelper.getGlobalConfigurationByName(configName).getStringValue());
+        } finally {
+            globalConfigurationHelper.updateGlobalConfiguration(configName,
+                    new PutGlobalConfigurationsRequest().stringValue(config.getStringValue()));
+        }
+    }
+
+    @Test
+    public void testMultipleStringValuesAreValidatedAndStoredInCanonicalSpelling() {
+        String configName = GlobalConfigurationConstants.ALLOWED_LOAN_STATUSES_FOR_EXTERNAL_ASSET_TRANSFER;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+        try {
+            CallFailedRuntimeException exception = assertThrows(CallFailedRuntimeException.class, () -> globalConfigurationHelper
+                    .updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().stringValue("ACTIVE,ACTIV")));
+            assertEquals(400, exception.getResponse().code());
+
+            globalConfigurationHelper.updateGlobalConfiguration(configName,
+                    new PutGlobalConfigurationsRequest().stringValue("active, Overpaid"));
+
+            assertEquals("ACTIVE,OVERPAID", globalConfigurationHelper.getGlobalConfigurationByName(configName).getStringValue());
+        } finally {
+            globalConfigurationHelper.updateGlobalConfiguration(configName,
+                    new PutGlobalConfigurationsRequest().stringValue(config.getStringValue()));
+        }
+    }
+
+    @Test
+    public void testRestrictedConfigurationsHoldAllowedValues() {
+        for (GlobalConfigurationPropertyData config : globalConfigurationHelper.getAllGlobalConfigurations().getGlobalConfiguration()) {
+            if (config.getAllowedValues() == null) {
+                continue;
+            }
+            List<String> elements = Boolean.TRUE.equals(config.getMultipleValuesAllowed())
+                    ? List.of(StringUtils.defaultString(config.getStringValue()).split(",", -1))
+                    : Collections.singletonList(StringUtils.defaultString(config.getStringValue()));
+            // stored values are read ignoring case and surrounding whitespace, and are not rewritten on upgrade
+            assertTrue(
+                    elements.stream().allMatch(
+                            element -> config.getAllowedValues().stream().anyMatch(allowed -> allowed.equalsIgnoreCase(element.trim()))),
+                    config.getName() + " holds " + config.getStringValue() + ", not one of " + config.getAllowedValues());
+        }
+    }
+
+    @Test
+    public void testAllowedValuesAreExposed() {
+        GlobalConfigurationPropertyData restricted = globalConfigurationHelper
+                .getGlobalConfigurationByName(GlobalConfigurationConstants.CHARGE_ACCRUAL_DATE);
+        assertEquals(List.of("due-date", "submitted-date"), restricted.getAllowedValues());
+        assertEquals(Boolean.FALSE, restricted.getMultipleValuesAllowed());
+
+        GlobalConfigurationPropertyData multiple = globalConfigurationHelper
+                .getGlobalConfigurationByName(GlobalConfigurationConstants.ACCOUNT_MAPPING_FOR_CHARGE);
+        assertEquals(List.of("Income", "Liability", "Expense"), multiple.getAllowedValues());
+        assertEquals(Boolean.TRUE, multiple.getMultipleValuesAllowed());
+
+        GlobalConfigurationPropertyData unrestricted = globalConfigurationHelper
+                .getGlobalConfigurationByName(GlobalConfigurationConstants.PENALTY_WAIT_PERIOD);
+        assertNull(unrestricted.getAllowedValues());
+    }
+
+    @Test
+    public void testOriginatorCreationConfigurationExists() {
+        String configName = GlobalConfigurationConstants.ENABLE_ORIGINATOR_CREATION_DURING_LOAN_APPLICATION;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+
+        Assertions.assertNotNull(config, "Configuration should exist");
+        assertEquals(configName, config.getName(), "Configuration name should match");
+        assertEquals(false, config.getEnabled(), "Configuration should be disabled by default");
+        assertEquals(false, config.getTrapDoor(), "Configuration should not be a trap door");
+    }
+
+    @Test
+    public void testOriginatorCreationConfigurationCanBeEnabled() {
+        String configName = GlobalConfigurationConstants.ENABLE_ORIGINATOR_CREATION_DURING_LOAN_APPLICATION;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+        Assertions.assertNotNull(config);
+
+        try {
+            globalConfigurationHelper.updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().enabled(true));
+            GlobalConfigurationPropertyData enabledConfig = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+            assertEquals(true, enabledConfig.getEnabled(), "Configuration should be enabled after update");
+
+            globalConfigurationHelper.updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().enabled(false));
+            GlobalConfigurationPropertyData disabledConfig = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+            assertEquals(false, disabledConfig.getEnabled(), "Configuration should be disabled after update");
+        } finally {
+            globalConfigurationHelper.updateGlobalConfiguration(configName,
+                    new PutGlobalConfigurationsRequest().enabled(config.getEnabled()));
+        }
+    }
+
+    @Test
+    public void testInstantDelinquencyCalculationConfigurationExists() {
+        String configName = GlobalConfigurationConstants.ENABLE_INSTANT_DELINQUENCY_CALCULATION;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+
+        Assertions.assertNotNull(config, "Configuration should exist");
+        assertEquals(configName, config.getName(), "Configuration name should match");
+        assertEquals(true, config.getEnabled(), "Configuration should be enabled by default");
+        assertEquals(false, config.getTrapDoor(), "Configuration should not be a trap door");
+    }
+
+    @Test
+    public void testInstantDelinquencyCalculationConfigurationCanBeEnabled() {
+        String configName = GlobalConfigurationConstants.ENABLE_INSTANT_DELINQUENCY_CALCULATION;
+        GlobalConfigurationPropertyData config = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+        Assertions.assertNotNull(config);
+
+        try {
+            globalConfigurationHelper.updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().enabled(true));
+            GlobalConfigurationPropertyData enabledConfig = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+            assertEquals(true, enabledConfig.getEnabled(), "Configuration should be enabled after update");
+
+            globalConfigurationHelper.updateGlobalConfiguration(configName, new PutGlobalConfigurationsRequest().enabled(false));
+            GlobalConfigurationPropertyData disabledConfig = globalConfigurationHelper.getGlobalConfigurationByName(configName);
+            assertEquals(false, disabledConfig.getEnabled(), "Configuration should be disabled after update");
+        } finally {
+            globalConfigurationHelper.updateGlobalConfiguration(configName,
+                    new PutGlobalConfigurationsRequest().enabled(config.getEnabled()));
+        }
     }
 }

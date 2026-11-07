@@ -64,7 +64,11 @@ public class GlobalConfigurationWritePlatformServiceJpaRepositoryImpl implements
                 this.repository.save(configItemForUpdate);
             }
 
-            return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(configId).with(changes).build();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(configId) //
+                    .with(changes) //
+                    .build();
 
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             final Throwable throwable = dve.getMostSpecificCause();
@@ -91,7 +95,7 @@ public class GlobalConfigurationWritePlatformServiceJpaRepositoryImpl implements
      * Guaranteed to throw an exception no matter what the data integrity issue is.
      */
     private void handleDataIntegrityIssues(final Throwable realCause, final NonTransientDataAccessException dve) {
-        LOG.error("Error occured.", dve);
+        LOG.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.globalConfiguration.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }

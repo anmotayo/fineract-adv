@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.apache.fineract.portfolio.TransactionEntryType;
 
@@ -154,6 +155,8 @@ final class SavingsAccountTransactionsApiResourceSwagger {
             public Long accountId;
             @Schema(example = "000000001")
             public String accountNo;
+            @Schema(example = "5dd80a7c-ccba-4446-b378-01eb6f53e871")
+            public String externalId;
             @Schema(example = "[2023, 05, 01]")
             public LocalDate date;
             public GetTransactionsCurrency currency;
@@ -186,13 +189,21 @@ final class SavingsAccountTransactionsApiResourceSwagger {
 
         @Schema(example = "2")
         public Long total;
-        public Set<GetSavingsAccountTransactionsPageItem> content;
+        /**
+         * A page of search results is ordered by the request's {@code orderBy}/{@code sortOrder} (defaulting to most
+         * recent first), so it is documented as an ordered list. Declaring it as a set made generated clients drop that
+         * ordering. The serialized response is a JSON array either way, so the wire format is unchanged.
+         */
+        public List<GetSavingsAccountTransactionsPageItem> content;
     }
 
     @Schema(description = "PostSavingsAccountTransactionsRequest")
     public static final class PostSavingsAccountTransactionsRequest {
 
         private PostSavingsAccountTransactionsRequest() {}
+
+        @Schema(description = "command=gsimDeposit: the child accounts of a GSIM parent to deposit into, and how much into each")
+        public List<SavingsAccountsApiResourceSwagger.PostSavingsAccountsGsimRequest.PostSavingsAccountsGsimSavings> savingsArray;
 
         @Schema(example = "27 March 2022")
         public String transactionDate;
@@ -202,12 +213,26 @@ final class SavingsAccountTransactionsApiResourceSwagger {
         public String locale;
         @Schema(example = "dd MMMM yyyy")
         public String dateFormat;
+        @Schema(example = "5dd80a7c-ccba-4446-b378-01eb6f53e871")
+        public String externalId;
+        @Schema(example = "true")
+        public Boolean isPostInterestAsOn;
+        @Schema(example = "true")
+        public Boolean postInterestManualOrAutomatic;
         @Schema(example = "true")
         public String lienAllowed;
         @Schema(example = "String")
         public String reasonForBlock;
         @Schema(example = "1")
         public Integer paymentTypeId;
+        @Schema(example = "CHQ-001")
+        public String checkNumber;
+        @Schema(example = "ROUTE-001")
+        public String routingCode;
+        @Schema(example = "RCPT-001")
+        public String receiptNumber;
+        @Schema(example = "A note about this transaction")
+        public String note;
         @Schema(example = "true")
         public Boolean applyEarlyWithdrawalCharge;
         @Schema(example = "30")
@@ -238,7 +263,19 @@ final class SavingsAccountTransactionsApiResourceSwagger {
 
         private PostSavingsAccountBulkReversalTransactionsRequest() {}
 
+        @Schema(example = "5dd80a7c-ccba-4446-b378-01eb6f53e871")
+        public String externalId;
         @Schema(example = "true")
         public String isBulk;
+        @Schema(example = "en")
+        public String locale;
+        @Schema(example = "dd MMMM yyyy")
+        public String dateFormat;
+        @Schema(example = "01 March 2013")
+        public String transactionDate;
+        @Schema(example = "500")
+        public BigDecimal transactionAmount;
+        @Schema(example = "1")
+        public Long paymentTypeId;
     }
 }

@@ -18,15 +18,11 @@
  */
 package org.apache.fineract.infrastructure.campaigns.sms.service;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
 import com.google.gson.JsonElement;
-import java.io.IOException;
-import java.io.StringReader;
+import java.io.Reader;
 import java.io.StringWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -47,6 +43,7 @@ import org.apache.fineract.infrastructure.campaigns.sms.domain.SmsCampaign;
 import org.apache.fineract.infrastructure.campaigns.sms.domain.SmsCampaignRepository;
 import org.apache.fineract.infrastructure.campaigns.sms.exception.SmsCampaignMustBeClosedToBeDeletedException;
 import org.apache.fineract.infrastructure.campaigns.sms.exception.SmsCampaignMustBeClosedToEditException;
+import org.apache.fineract.infrastructure.campaigns.sms.exception.SmsCampaignNameAlreadyExistsException;
 import org.apache.fineract.infrastructure.campaigns.sms.exception.SmsCampaignNotFound;
 import org.apache.fineract.infrastructure.campaigns.sms.serialization.SmsCampaignValidator;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
@@ -55,6 +52,7 @@ import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
 import org.apache.fineract.infrastructure.core.exception.GeneralPlatformDomainRuleException;
+import org.apache.fineract.infrastructure.core.exception.PlatformDataIntegrityException;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.dataqueries.data.GenericResultsetData;
@@ -81,6 +79,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @Slf4j
@@ -104,20 +106,35 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
     @Transactional
     @Override
     public CommandProcessingResult create(JsonCommand command) {
-        final AppUser currentUser = this.context.authenticatedUser();
-        this.smsCampaignValidator.validateCreate(command.json());
-        final Long runReportId = command.longValueOfParameterNamed(SmsCampaignValidator.runReportId);
-        Report report = this.reportRepository.findById(runReportId).orElseThrow(() -> new ReportNotFoundException(runReportId));
-        LocalDateTime tenantDateTime = DateUtils.getLocalDateTimeOfTenant();
-        SmsCampaign smsCampaign = SmsCampaign.instance(currentUser, report, command);
-        LocalDateTime recurrenceStartDate = smsCampaign.getRecurrenceStartDate();
-        if (recurrenceStartDate != null && DateUtils.isBefore(recurrenceStartDate, tenantDateTime)) {
-            throw new GeneralPlatformDomainRuleException("error.msg.campaign.recurrenceStartDate.in.the.past",
-                    "Recurrence start date cannot be the past date.", recurrenceStartDate);
-        }
-        this.smsCampaignRepository.saveAndFlush(smsCampaign);
+        try {
+            final AppUser currentUser = this.context.authenticatedUser();
+            this.smsCampaignValidator.validateCreate(command.json());
 
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(smsCampaign.getId()).build();
+            final String campaignName = command.stringValueOfParameterNamed(SmsCampaignValidator.campaignName);
+            if (this.smsCampaignRepository.existsByCampaignName(campaignName)) {
+                throw new SmsCampaignNameAlreadyExistsException(campaignName);
+            }
+
+            final Long runReportId = command.longValueOfParameterNamed(SmsCampaignValidator.runReportId);
+            Report report = this.reportRepository.findById(runReportId).orElseThrow(() -> new ReportNotFoundException(runReportId));
+            LocalDateTime tenantDateTime = DateUtils.getLocalDateTimeOfTenant();
+            SmsCampaign smsCampaign = SmsCampaign.instance(currentUser, report, command);
+            LocalDateTime recurrenceStartDate = smsCampaign.getRecurrenceStartDate();
+            if (recurrenceStartDate != null && DateUtils.isBefore(recurrenceStartDate, tenantDateTime)) {
+                throw new GeneralPlatformDomainRuleException("error.msg.campaign.recurrenceStartDate.in.the.past",
+                        "Recurrence start date cannot be the past date.", recurrenceStartDate);
+            }
+            this.smsCampaignRepository.saveAndFlush(smsCampaign);
+
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(smsCampaign.getId()) //
+                    .build();
+        } catch (final JpaSystemException | DataIntegrityViolationException dve) {
+            final Throwable throwable = dve.getMostSpecificCause();
+            handleDataIntegrityIssues(command, throwable);
+            return CommandProcessingResult.empty();
+        }
     }
 
     @Transactional
@@ -134,6 +151,13 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                 throw new SmsCampaignMustBeClosedToEditException(smsCampaign.getId());
             }
             final Map<String, Object> changes = smsCampaign.update(command);
+
+            if (changes.containsKey(SmsCampaignValidator.campaignName)) {
+                final String newName = (String) changes.get(SmsCampaignValidator.campaignName);
+                if (this.smsCampaignRepository.existsByCampaignNameAndIdNot(newName, resourceId)) {
+                    throw new SmsCampaignNameAlreadyExistsException(newName);
+                }
+            }
 
             if (changes.containsKey(SmsCampaignValidator.runReportId)) {
                 final Long newValue = command.longValueOfParameterNamed(SmsCampaignValidator.runReportId);
@@ -174,7 +198,9 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
         smsCampaign.delete();
         this.smsCampaignRepository.saveAndFlush(smsCampaign);
 
-        return new CommandProcessingResultBuilder().withEntityId(smsCampaign.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(smsCampaign.getId()) //
+                .build();
 
     }
 
@@ -207,7 +233,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                     }
                 }
             }
-        } catch (final IOException e) {
+        } catch (final JacksonException e) {
             log.error("Error occurred.", e);
         }
 
@@ -269,8 +295,8 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                     }
                 }
             }
-        } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+        } catch (final RuntimeException e) {
+            log.error("Error occurred.", e);
         }
     }
 
@@ -311,8 +337,8 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                     }
                 }
             }
-        } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+        } catch (final RuntimeException e) {
+            log.error("Error occurred.", e);
         }
     }
 
@@ -352,8 +378,8 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
                     }
                 }
             }
-        } catch (final IOException | RuntimeException e) {
-            log.error("Error occured.", e);
+        } catch (final RuntimeException e) {
+            log.error("Error occurred.", e);
         }
     }
 
@@ -396,7 +422,10 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
          * if campaign is direct insert campaign message into sms outbound table else if its a schedule create a job
          * process for it
          */
-        return new CommandProcessingResultBuilder().withCommandId(command.commandId()).withEntityId(smsCampaign.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(smsCampaign.getId()) //
+                .build();
     }
 
     @Transactional
@@ -427,7 +456,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
     @Override
     public String compileSmsTemplate(final String textMessageTemplate, final String campaignName, final Map<String, Object> smsParams) {
         final MustacheFactory mf = new DefaultMustacheFactory();
-        final Mustache mustache = mf.compile(new StringReader(textMessageTemplate), campaignName);
+        final Mustache mustache = mf.compile(Reader.of(textMessageTemplate), campaignName);
 
         final StringWriter stringWriter = new StringWriter();
         mustache.execute(stringWriter, smsParams);
@@ -435,8 +464,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
         return stringWriter.toString();
     }
 
-    private List<HashMap<String, Object>> getRunReportByServiceImpl(final String reportName, final Map<String, String> queryParams)
-            throws IOException {
+    private List<HashMap<String, Object>> getRunReportByServiceImpl(final String reportName, final Map<String, String> queryParams) {
         final String reportType = "report";
 
         List<HashMap<String, Object>> resultList = new ArrayList<>();
@@ -446,7 +474,7 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
         try {
             final String response = this.genericDataService.generateJsonFromGenericResultsetData(results);
             resultList = new ObjectMapper().readValue(response, new TypeReference<List<HashMap<String, Object>>>() {});
-        } catch (JsonParseException e) {
+        } catch (StreamReadException e) {
             log.warn("Conversion of report query results to JSON failed", e);
             return resultList;
         }
@@ -497,8 +525,9 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
             } else {
                 campaignMessage = new CampaignPreviewData(textMessageTemplate, 0);
             }
-        } catch (final IOException e) {
-            // TODO throw something here
+        } catch (final JacksonException e) {
+            throw new PlatformDataIntegrityException("error.msg.sms.campaign.preview.parsing.error",
+                    "Error occurred while parsing campaign params for SMS campaign preview message", e.getMessage(), e);
         }
         return campaignMessage;
     }
@@ -534,10 +563,16 @@ public class SmsCampaignWritePlatformServiceJpaImpl implements SmsCampaignWriteP
         }
         this.smsCampaignRepository.saveAndFlush(smsCampaign);
 
-        return new CommandProcessingResultBuilder().withEntityId(smsCampaign.getId()).build();
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(smsCampaign.getId()) //
+                .build();
     }
 
     private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause) {
+        if (realCause.getMessage().contains("campaign_name_UNIQUE")) {
+            final String name = command.stringValueOfParameterNamed(SmsCampaignValidator.campaignName);
+            throw new SmsCampaignNameAlreadyExistsException(name);
+        }
         throw ErrorHandler.getMappable(realCause, "error.msg.sms.campaign.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }

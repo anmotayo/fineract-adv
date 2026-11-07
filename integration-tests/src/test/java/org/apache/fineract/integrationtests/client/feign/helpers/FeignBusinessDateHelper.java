@@ -28,10 +28,14 @@ import org.apache.fineract.integrationtests.client.feign.modules.LoanTestData;
 
 public class FeignBusinessDateHelper {
 
+    private static final String ENABLE_BUSINESS_DATE = "enable-business-date";
+
     private final FineractFeignClient fineractClient;
+    private final FeignGlobalConfigurationHelper configHelper;
 
     public FeignBusinessDateHelper(FineractFeignClient fineractClient) {
         this.fineractClient = fineractClient;
+        this.configHelper = new FeignGlobalConfigurationHelper(fineractClient);
     }
 
     public BusinessDateResponse getBusinessDate(String type) {
@@ -39,24 +43,30 @@ public class FeignBusinessDateHelper {
     }
 
     public void updateBusinessDate(String type, String date) {
+        updateBusinessDate(type, date, LoanTestData.ISO_DATE_PATTERN);
+    }
+
+    public void updateBusinessDate(String type, String date, String dateFormat) {
         BusinessDateUpdateRequest request = new BusinessDateUpdateRequest()//
                 .type(BusinessDateUpdateRequest.TypeEnum.fromValue(type))//
                 .date(date)//
-                .dateFormat("yyyy-MM-dd")//
+                .dateFormat(dateFormat)//
                 .locale(LoanTestData.LOCALE);
 
-        ok(() -> fineractClient.businessDateManagement().updateBusinessDate(null, request, Collections.emptyMap()));
+        ok(() -> fineractClient.businessDateManagement().updateBusinessDate(request, Collections.emptyMap()));
     }
 
     public void runAt(String date, Runnable action) {
-        BusinessDateResponse originalDate = getBusinessDate("BUSINESS_DATE");
+        runAt(date, LoanTestData.ISO_DATE_PATTERN, action);
+    }
+
+    public void runAt(String date, String dateFormat, Runnable action) {
         try {
-            updateBusinessDate("BUSINESS_DATE", date);
+            configHelper.updateConfigurationByName(ENABLE_BUSINESS_DATE, true);
+            updateBusinessDate("BUSINESS_DATE", date, dateFormat);
             action.run();
         } finally {
-            if (originalDate != null && originalDate.getDate() != null) {
-                updateBusinessDate("BUSINESS_DATE", originalDate.getDate().toString());
-            }
+            configHelper.updateConfigurationByName(ENABLE_BUSINESS_DATE, false);
         }
     }
 }

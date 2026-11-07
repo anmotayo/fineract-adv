@@ -26,15 +26,16 @@ import java.util.List;
 import java.util.Optional;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
 import org.apache.fineract.organisation.monetary.domain.Money;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanRepaymentScheduleInstallment;
-import org.apache.fineract.portfolio.loanaccount.domain.reaging.LoanReAgeParameter;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanApplicationTerms;
 import org.apache.fineract.portfolio.loanaccount.loanschedule.domain.LoanScheduleModelRepaymentPeriod;
 import org.apache.fineract.portfolio.loanproduct.calc.data.EqualAmortizationValues;
+import org.apache.fineract.portfolio.loanproduct.calc.data.LoanReAgeParameterData;
 import org.apache.fineract.portfolio.loanproduct.calc.data.OutstandingDetails;
 import org.apache.fineract.portfolio.loanproduct.calc.data.PeriodDueDetails;
+import org.apache.fineract.portfolio.loanproduct.calc.data.ProcessedTransactionData;
 import org.apache.fineract.portfolio.loanproduct.calc.data.ProgressiveLoanInterestScheduleModel;
 import org.apache.fineract.portfolio.loanproduct.calc.data.RepaymentPeriod;
+import org.apache.fineract.portfolio.loanproduct.calc.data.RepaymentScheduleInstallmentData;
 import org.apache.fineract.portfolio.loanproduct.domain.ILoanConfigurationDetails;
 
 public interface EMICalculator {
@@ -53,7 +54,7 @@ public interface EMICalculator {
      */
     @NotNull
     ProgressiveLoanInterestScheduleModel generateInstallmentInterestScheduleModel(
-            @NotNull List<LoanRepaymentScheduleInstallment> installments, @NotNull ILoanConfigurationDetails loanProductRelatedDetail,
+            @NotNull List<RepaymentScheduleInstallmentData> installments, @NotNull ILoanConfigurationDetails loanProductRelatedDetail,
             Integer installmentAmountInMultiplesOf, MathContext mc);
 
     /**
@@ -61,6 +62,19 @@ public interface EMICalculator {
      */
     Optional<RepaymentPeriod> findRepaymentPeriod(ProgressiveLoanInterestScheduleModel scheduleModel, LocalDate fromDate,
             LocalDate dueDate);
+
+    /**
+     * Corrects the repayment periods which an EMI recalculation left with a smaller amount than what has already been
+     * paid on the repayment schedule installment they belong to. Such a period would end up with a negative outstanding
+     * amount, therefore its amount is raised back to the paid amount and the difference is moved onto a period which
+     * still has room for it.
+     * <p>
+     * Loans whose payments are not reported to the interest model need the paid amounts of the installments to be able
+     * to do this. They are taken over only when there is a period to correct, hence a model which is in line with its
+     * installments is left untouched.
+     */
+    void alignPeriodsWithPaidAmounts(ProgressiveLoanInterestScheduleModel scheduleModel,
+            List<RepaymentScheduleInstallmentData> installments, LocalDate tillDate);
 
     /**
      * Applies the disbursement on the interest model. This method recalculates the EMI amounts from the action date.
@@ -81,7 +95,7 @@ public interface EMICalculator {
             BigDecimal newInterestRate);
 
     void addRepaymentPeriods(ProgressiveLoanInterestScheduleModel scheduleModel, LocalDate submittedOnDate,
-            int numberOfRepaymentPeriodsToAdd);
+            int numberOfRepaymentPeriodsToAdd, List<ProcessedTransactionData> alreadyProcessedTransactions);
 
     /**
      * This method applies outstanding balance correction on the interest model. Negative amount decreases the
@@ -123,15 +137,33 @@ public interface EMICalculator {
             @NotNull LocalDate periodDueDate, @NotNull LocalDate targetDate);
 
     /**
-     * Gives back the sum of the interest from the whole model on the given date.
+     * Gives back the sum of the interest from the whole model on the given date. Fixed interest till date calculation
+     * flag indicates that the fixed interest should be calculated only till date or not. This flag should be true for
+     * accrual calculation. It should be false for repayment or repayment schedule related calculation.
+     *
+     * @param fixedInterestTillDate
+     *            indicates that fixed interest should be calculated till the date.
      */
     @NotNull
     Money getPeriodInterestTillDate(@NotNull ProgressiveLoanInterestScheduleModel scheduleModel, @NotNull LocalDate periodFromDate,
-            @NotNull LocalDate periodDueDate, @NotNull LocalDate targetDate, boolean includeChargebackInterest);
+            @NotNull LocalDate periodDueDate, @NotNull LocalDate targetDate, boolean includeChargebackInterest,
+            boolean fixedInterestTillDate);
 
     Money getOutstandingLoanBalanceOfPeriod(ProgressiveLoanInterestScheduleModel interestScheduleModel, LocalDate targetDate);
 
     OutstandingDetails getOutstandingAmountsTillDate(ProgressiveLoanInterestScheduleModel model, LocalDate targetDate);
+
+    /**
+     * Gives back the outstanding principal and interest of the whole model on the given date. Fixed interest till date
+     * calculation flag indicates that the fixed interest should be counted only till date or not. This flag should be
+     * true for accrued interest calculation. It should be false for repayment or repayment schedule related
+     * calculation, which needs the whole fixed interest that is ultimately payable.
+     *
+     * @param fixedInterestTillDate
+     *            indicates that fixed interest should be counted till the date.
+     */
+    OutstandingDetails getOutstandingAmountsTillDate(ProgressiveLoanInterestScheduleModel model, LocalDate targetDate,
+            boolean fixedInterestTillDate);
 
     void calculateRateFactorForRepaymentPeriod(RepaymentPeriod repaymentPeriod, ProgressiveLoanInterestScheduleModel scheduleModel);
 
@@ -155,10 +187,10 @@ public interface EMICalculator {
     Money getOutstandingInterestTillDate(@NotNull ProgressiveLoanInterestScheduleModel scheduleModel, @NotNull LocalDate tillDate);
 
     OutstandingDetails precalculateReAgeEqualAmortizationAmount(ProgressiveLoanInterestScheduleModel interestSchedule,
-            LocalDate transactionDate, LoanReAgeParameter reageParameter);
+            LocalDate transactionDate, LoanReAgeParameterData reageParameter);
 
     void reAgeEqualAmortization(ProgressiveLoanInterestScheduleModel interestSchedule, LocalDate transactionDate,
-            LoanReAgeParameter reageParameter, Money feesPenaltiesOutstanding,
+            LoanReAgeParameterData reageParameter, Money feesPenaltiesOutstanding,
             EqualAmortizationValues feesPenaltiesEqualAmortizationValues);
 
     EqualAmortizationValues calculateEqualAmortizationValues(Money totalOutstanding, Integer numberOfInstallments,

@@ -82,7 +82,7 @@ public class CodeValueWritePlatformServiceJpaRepositoryImpl implements CodeValue
             return new CommandProcessingResultBuilder() //
                     .withCommandId(command.commandId()) //
                     .withEntityId(code.getId()) //
-                    .withSubEntityId(codeValue.getId())//
+                    .withSubEntityId(codeValue.getId()) //
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
             final Throwable throwable = dve.getMostSpecificCause();
@@ -104,7 +104,7 @@ public class CodeValueWritePlatformServiceJpaRepositoryImpl implements CodeValue
                     "A code value with lable '" + name + "' already exists", "name", name);
         }
 
-        LOG.error("Error occured.", dve);
+        LOG.error("Error occurred.", dve);
         throw ErrorHandler.getMappable(dve, "error.msg.code.value.unknown.data.integrity.issue",
                 "Unknown data integrity issue with resource: " + realCause.getMessage());
     }
@@ -160,10 +160,10 @@ public class CodeValueWritePlatformServiceJpaRepositoryImpl implements CodeValue
 
             return new CommandProcessingResultBuilder() //
                     .withEntityId(codeId) //
-                    .withSubEntityId(codeValueId)//
+                    .withSubEntityId(codeValueId) //
                     .build();
         } catch (final JpaSystemException | DataIntegrityViolationException dve) {
-            LOG.error("Error occured.", dve);
+            LOG.error("Error occurred.", dve);
             final Throwable realCause = dve.getMostSpecificCause();
             if (realCause.getMessage().contains("code_value")) {
                 throw new PlatformDataIntegrityException("error.msg.codeValue.in.use", "This code value is in use", codeValueId, dve);

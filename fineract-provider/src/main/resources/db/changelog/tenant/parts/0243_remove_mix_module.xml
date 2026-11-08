@@ -40,6 +40,14 @@
         </preConditions>
         <dropTable tableName="mix_xbrl_namespace"/>
     </changeSet>
+    <changeSet author="advancly" id="3a">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">SELECT COUNT(1) FROM m_permission WHERE code = 'UPDATE_XBRLMAPPING'</sqlCheck>
+        </preConditions>
+        <delete tableName="m_role_permission">
+            <where>permission_id IN (SELECT id FROM m_permission WHERE code = 'UPDATE_XBRLMAPPING')</where>
+        </delete>
+    </changeSet>
     <changeSet author="fineract" id="4">
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="1">SELECT COUNT(1) FROM m_permission WHERE code = 'UPDATE_XBRLMAPPING'</sqlCheck>

@@ -18,6 +18,7 @@
  */
 package org.apache.fineract.infrastructure.bulkimport.importhandler.journalentry;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.fineract.accounting.journalentry.data.CreditDebit;
 import org.apache.fineract.accounting.journalentry.data.JournalEntryData;
-import org.apache.fineract.accounting.journalentry.service.JournalEntryWritePlatformService;
+import org.apache.fineract.accounting.journalentry.service.JournalEntryValidator;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
@@ -39,8 +40,8 @@ import org.apache.fineract.infrastructure.bulkimport.importhandler.ImportHandler
 import org.apache.fineract.infrastructure.bulkimport.importhandler.helper.CurrencyDateCodeSerializer;
 import org.apache.fineract.infrastructure.bulkimport.importhandler.helper.DateSerializer;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
-import org.apache.fineract.infrastructure.core.serialization.GoogleGsonSerializerHelper;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
+import org.apache.fineract.infrastructure.core.serialization.GoogleGsonSerializerHelper;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.IndexedColors;
@@ -58,14 +59,14 @@ public class JournalEntriesImportHandler implements ImportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(JournalEntriesImportHandler.class);
 
     private final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService;
-    private final JournalEntryWritePlatformService journalEntryWritePlatformService;
+    private final JournalEntryValidator journalEntryValidator;
     private final FromJsonHelper fromApiJsonHelper;
 
     @Autowired
     public JournalEntriesImportHandler(final PortfolioCommandSourceWritePlatformService commandsSourceWritePlatformService,
-            final JournalEntryWritePlatformService journalEntryWritePlatformService, final FromJsonHelper fromApiJsonHelper) {
+            final JournalEntryValidator journalEntryValidator, final FromJsonHelper fromApiJsonHelper) {
         this.commandsSourceWritePlatformService = commandsSourceWritePlatformService;
-        this.journalEntryWritePlatformService = journalEntryWritePlatformService;
+        this.journalEntryValidator = journalEntryValidator;
         this.fromApiJsonHelper = fromApiJsonHelper;
     }
 
@@ -137,7 +138,9 @@ public class JournalEntriesImportHandler implements ImportHandler {
             prevTransactionId = currentTransactionId;
         }
         // Adding last JE
-        glTransactions.add(journalEntry);
+        if (journalEntry != null) {
+            glTransactions.add(journalEntry);
+        }
         return glTransactions;
     }
 
@@ -241,22 +244,33 @@ public class JournalEntriesImportHandler implements ImportHandler {
         int successCount = 0;
         int errorCount = 0;
         List<BulkImportValidationErrorData> errors = new ArrayList<>();
+        List<String> validationMessages = new ArrayList<>();
         GsonBuilder gsonBuilder = GoogleGsonSerializerHelper.createGsonBuilder();
         gsonBuilder.registerTypeAdapter(LocalDate.class, new DateSerializer(dateFormat));
         gsonBuilder.registerTypeAdapter(CurrencyData.class, new CurrencyDateCodeSerializer());
+        Gson gson = gsonBuilder.create();
 
         for (JournalEntryData transaction : glTransactions) {
+            final Integer rowNumber = transaction == null ? null : transaction.getRowIndex() + 1;
             try {
-                String payload = gsonBuilder.create().toJson(transaction);
+                if (transaction == null) {
+                    throw new IllegalArgumentException("Journal entry row data is empty");
+                }
+                String payload = gson.toJson(transaction);
                 JsonCommand command = JsonCommand.from(payload, this.fromApiJsonHelper.parse(payload), this.fromApiJsonHelper,
                         "JOURNALENTRY", null, null, null, null, null, null, null, "/journalentries/template", null, null, null, null);
-                this.journalEntryWritePlatformService.validateJournalEntry(command);
+                this.journalEntryValidator.validateJournalEntry(command);
                 successCount++;
             } catch (RuntimeException ex) {
                 errorCount++;
-                LOG.error("Problem occurred in validateEntity function", ex);
-                errors.add(BulkImportValidationErrorData.instance(transaction.getRowIndex() + 1, ImportHandlerUtils.getErrorMessage(ex)));
+                final String errorMessage = ImportHandlerUtils.getErrorMessage(ex);
+                validationMessages.add("row " + rowNumber + ": " + errorMessage);
+                errors.add(BulkImportValidationErrorData.instance(rowNumber, errorMessage));
             }
+        }
+        if (!validationMessages.isEmpty()) {
+            LOG.warn("Journal entries bulk validation completed with {} validation error(s): {}", validationMessages.size(),
+                    validationMessages);
         }
         return BulkImportValidationResultData.instance(glTransactions.size(), successCount, errorCount, errors);
     }

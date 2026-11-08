@@ -202,7 +202,6 @@ public class SavingsSchedularInterestPoster {
                             savingsAccountTransactionData.getRunningBalance(), savingsAccountTransactionData.getCumulativeBalance(),
                             savingsAccountTransactionData.isReversalTransaction(), auditTime, userId,
                             savingsAccountTransactionData.getId() });
-                    //transRefNo.add(savingsAccountTransactionData.getRefNo());
                 }
             }
             savingsAccountData.setUpdatedTransactions(savingsAccountTransactionDataList);

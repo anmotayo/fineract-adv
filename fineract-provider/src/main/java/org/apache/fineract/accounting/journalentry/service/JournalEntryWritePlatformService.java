@@ -29,8 +29,6 @@ public interface JournalEntryWritePlatformService {
 
     CommandProcessingResult createJournalEntry(JsonCommand command);
 
-    void validateJournalEntry(JsonCommand command);
-
     CommandProcessingResult revertJournalEntry(JsonCommand command);
 
     void createJournalEntriesForLoan(Map<String, Object> accountingBridgeData);

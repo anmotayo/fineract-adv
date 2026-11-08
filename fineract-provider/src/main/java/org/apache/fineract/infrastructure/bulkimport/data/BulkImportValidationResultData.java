@@ -28,8 +28,8 @@ public final class BulkImportValidationResultData {
     private final Boolean valid;
     private final List<BulkImportValidationErrorData> errors;
 
-    public static BulkImportValidationResultData instance(final Integer totalRecords, final Integer successCount,
-            final Integer errorCount, final List<BulkImportValidationErrorData> errors) {
+    public static BulkImportValidationResultData instance(final Integer totalRecords, final Integer successCount, final Integer errorCount,
+            final List<BulkImportValidationErrorData> errors) {
         return new BulkImportValidationResultData(totalRecords, successCount, errorCount, errors);
     }
 

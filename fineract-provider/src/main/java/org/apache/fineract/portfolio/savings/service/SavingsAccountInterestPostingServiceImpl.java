@@ -140,7 +140,7 @@ public class SavingsAccountInterestPostingServiceImpl implements SavingsAccountI
                             applyWithHoldTaxForOldTransaction = true;
                         }
 
-                        if (applyWithHoldTax){
+                        if (applyWithHoldTax) {
                             applyWithHoldTaxForOldTransaction = true;
                         }
 

@@ -69,6 +69,32 @@ final class JournalEntriesApiResourceSwagger {
         public Long officeId;
     }
 
+    @Schema(description = "ValidateJournalEntriesTemplateResponse")
+    public static final class ValidateJournalEntriesTemplateResponse {
+
+        private ValidateJournalEntriesTemplateResponse() {}
+
+        @Schema(example = "4")
+        public Integer totalRecords;
+        @Schema(example = "3")
+        public Integer successCount;
+        @Schema(example = "1")
+        public Integer errorCount;
+        @Schema(example = "false")
+        public Boolean valid;
+        public List<ValidateJournalEntriesTemplateError> errors;
+    }
+
+    public static final class ValidateJournalEntriesTemplateError {
+
+        private ValidateJournalEntriesTemplateError() {}
+
+        @Schema(example = "3")
+        public Integer rowNumber;
+        @Schema(example = "The journal entry is unbalanced")
+        public String message;
+    }
+
     static final class EnumOptionType {
 
         private EnumOptionType() {}

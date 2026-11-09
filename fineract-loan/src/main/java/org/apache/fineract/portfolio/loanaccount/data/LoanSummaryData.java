@@ -20,13 +20,10 @@ package org.apache.fineract.portfolio.loanaccount.data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Collection;
 import lombok.Builder;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
-import org.apache.fineract.portfolio.loanaccount.domain.LoanTransactionType;
-import org.springframework.util.CollectionUtils;
 
 /**
  * Immutable data object representing loan summary information.
@@ -37,6 +34,9 @@ import org.springframework.util.CollectionUtils;
 public class LoanSummaryData {
 
     private final CurrencyData currency;
+    private final BigDecimal totalPrincipal;
+    private final BigDecimal totalCapitalizedIncome;
+    private final BigDecimal totalCapitalizedIncomeAdjustment;
     private final BigDecimal principalDisbursed;
     private final BigDecimal principalAdjustments;
     private final BigDecimal principalPaid;
@@ -91,104 +91,12 @@ public class LoanSummaryData {
     private BigDecimal totalCreditBalanceRefundReversed;
     private BigDecimal totalRepaymentTransaction;
     private BigDecimal totalRepaymentTransactionReversed;
+    private BigDecimal totalInterestPaymentWaiver;
+    private BigDecimal totalInterestRefund;
     private final Long chargeOffReasonId;
     private final String chargeOffReason;
 
-    public static LoanSummaryData withTransactionAmountsSummary(final LoanSummaryData defaultSummaryData,
-            final Collection<LoanTransactionData> loanTransactions) {
+    private BigDecimal totalUnpaidPayableDueInterest;
+    private BigDecimal totalUnpaidPayableNotDueInterest;
 
-        BigDecimal totalMerchantRefund = BigDecimal.ZERO;
-        BigDecimal totalMerchantRefundReversed = BigDecimal.ZERO;
-        BigDecimal totalPayoutRefund = BigDecimal.ZERO;
-        BigDecimal totalPayoutRefundReversed = BigDecimal.ZERO;
-        BigDecimal totalGoodwillCredit = BigDecimal.ZERO;
-        BigDecimal totalGoodwillCreditReversed = BigDecimal.ZERO;
-        BigDecimal totalChargeAdjustment = BigDecimal.ZERO;
-        BigDecimal totalChargeAdjustmentReversed = BigDecimal.ZERO;
-        BigDecimal totalChargeback = BigDecimal.ZERO;
-        BigDecimal totalCreditBalanceRefund = BigDecimal.ZERO;
-        BigDecimal totalCreditBalanceRefundReversed = BigDecimal.ZERO;
-        BigDecimal totalRepaymentTransaction = BigDecimal.ZERO;
-        BigDecimal totalRepaymentTransactionReversed = BigDecimal.ZERO;
-
-        if (!CollectionUtils.isEmpty(loanTransactions)) {
-
-            totalMerchantRefund = computeTotalAmountForNonReversedTransactions(LoanTransactionType.MERCHANT_ISSUED_REFUND,
-                    loanTransactions);
-            totalMerchantRefundReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.MERCHANT_ISSUED_REFUND,
-                    loanTransactions);
-            totalPayoutRefund = computeTotalAmountForNonReversedTransactions(LoanTransactionType.PAYOUT_REFUND, loanTransactions);
-            totalPayoutRefundReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.PAYOUT_REFUND, loanTransactions);
-            totalGoodwillCredit = computeTotalAmountForNonReversedTransactions(LoanTransactionType.GOODWILL_CREDIT, loanTransactions);
-            totalGoodwillCreditReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.GOODWILL_CREDIT, loanTransactions);
-            totalChargeAdjustment = computeTotalAmountForNonReversedTransactions(LoanTransactionType.CHARGE_ADJUSTMENT, loanTransactions);
-            totalChargeAdjustmentReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.CHARGE_ADJUSTMENT,
-                    loanTransactions);
-            totalChargeback = computeTotalAmountForNonReversedTransactions(LoanTransactionType.CHARGEBACK, loanTransactions);
-            totalCreditBalanceRefund = computeTotalAmountForNonReversedTransactions(LoanTransactionType.CREDIT_BALANCE_REFUND,
-                    loanTransactions);
-            totalCreditBalanceRefundReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.CREDIT_BALANCE_REFUND,
-                    loanTransactions);
-            totalRepaymentTransaction = computeTotalRepaymentTransactionAmount(loanTransactions);
-            totalRepaymentTransactionReversed = computeTotalAmountForReversedTransactions(LoanTransactionType.REPAYMENT, loanTransactions);
-        }
-
-        return LoanSummaryData.builder().currency(defaultSummaryData.currency).principalDisbursed(defaultSummaryData.principalDisbursed)
-                .principalAdjustments(defaultSummaryData.principalAdjustments).principalPaid(defaultSummaryData.principalPaid)
-                .principalWrittenOff(defaultSummaryData.principalWrittenOff).principalOutstanding(defaultSummaryData.principalOutstanding)
-                .principalOverdue(defaultSummaryData.principalOverdue).interestCharged(defaultSummaryData.interestCharged)
-                .interestPaid(defaultSummaryData.interestPaid).interestWaived(defaultSummaryData.interestWaived)
-                .interestWrittenOff(defaultSummaryData.interestWrittenOff).interestOutstanding(defaultSummaryData.interestOutstanding)
-                .interestOverdue(defaultSummaryData.interestOverdue).feeChargesCharged(defaultSummaryData.feeChargesCharged)
-                .feeAdjustments(defaultSummaryData.feeAdjustments)
-                .feeChargesDueAtDisbursementCharged(defaultSummaryData.feeChargesDueAtDisbursementCharged)
-                .feeChargesPaid(defaultSummaryData.feeChargesPaid).feeChargesWaived(defaultSummaryData.feeChargesWaived)
-                .feeChargesWrittenOff(defaultSummaryData.feeChargesWrittenOff)
-                .feeChargesOutstanding(defaultSummaryData.feeChargesOutstanding).feeChargesOverdue(defaultSummaryData.feeChargesOverdue)
-                .penaltyChargesCharged(defaultSummaryData.penaltyChargesCharged).penaltyAdjustments(defaultSummaryData.penaltyAdjustments)
-                .penaltyChargesPaid(defaultSummaryData.penaltyChargesPaid).penaltyChargesWaived(defaultSummaryData.penaltyChargesWaived)
-                .penaltyChargesWrittenOff(defaultSummaryData.penaltyChargesWrittenOff)
-                .penaltyChargesOutstanding(defaultSummaryData.penaltyChargesOutstanding)
-                .penaltyChargesOverdue(defaultSummaryData.penaltyChargesOverdue)
-                .totalExpectedRepayment(defaultSummaryData.totalExpectedRepayment).totalRepayment(defaultSummaryData.totalRepayment)
-                .totalExpectedCostOfLoan(defaultSummaryData.totalExpectedCostOfLoan).totalCostOfLoan(defaultSummaryData.totalCostOfLoan)
-                .totalWaived(defaultSummaryData.totalWaived).totalWrittenOff(defaultSummaryData.totalWrittenOff)
-                .totalOutstanding(defaultSummaryData.totalOutstanding).totalOverdue(defaultSummaryData.totalOverdue)
-                .overdueSinceDate(defaultSummaryData.overdueSinceDate).writeoffReasonId(defaultSummaryData.writeoffReasonId)
-                .writeoffReason(defaultSummaryData.writeoffReason).totalRecovered(defaultSummaryData.totalRecovered)
-                .chargeOffReasonId(defaultSummaryData.chargeOffReasonId).chargeOffReason(defaultSummaryData.chargeOffReason)
-                .totalMerchantRefund(totalMerchantRefund).totalMerchantRefundReversed(totalMerchantRefundReversed)
-                .totalPayoutRefund(totalPayoutRefund).totalPayoutRefundReversed(totalPayoutRefundReversed)
-                .totalGoodwillCredit(totalGoodwillCredit).totalGoodwillCreditReversed(totalGoodwillCreditReversed)
-                .totalChargeAdjustment(totalChargeAdjustment).totalChargeAdjustmentReversed(totalChargeAdjustmentReversed)
-                .totalChargeback(totalChargeback).totalCreditBalanceRefund(totalCreditBalanceRefund)
-                .totalCreditBalanceRefundReversed(totalCreditBalanceRefundReversed).totalRepaymentTransaction(totalRepaymentTransaction)
-                .totalRepaymentTransactionReversed(totalRepaymentTransactionReversed).build();
-    }
-
-    public static LoanSummaryData withOnlyCurrencyData(CurrencyData currencyData) {
-        return LoanSummaryData.builder().currency(currencyData).build();
-    }
-
-    private static BigDecimal computeTotalAmountForReversedTransactions(LoanTransactionType transactionType,
-            Collection<LoanTransactionData> loanTransactions) {
-        return loanTransactions.stream().filter(
-                transaction -> transaction.getType().getCode().equals(transactionType.getCode()) && transaction.getReversedOnDate() != null)
-                .map(txn -> txn.getAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private static BigDecimal computeTotalAmountForNonReversedTransactions(LoanTransactionType transactionType,
-            Collection<LoanTransactionData> loanTransactions) {
-        return loanTransactions.stream().filter(
-                transaction -> transaction.getType().getCode().equals(transactionType.getCode()) && transaction.getReversedOnDate() == null)
-                .map(txn -> txn.getAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private static BigDecimal computeTotalRepaymentTransactionAmount(Collection<LoanTransactionData> loanTransactions) {
-        BigDecimal totalRepaymentTransaction = computeTotalAmountForNonReversedTransactions(LoanTransactionType.REPAYMENT,
-                loanTransactions);
-        BigDecimal totalDownPaymentTransaction = computeTotalAmountForNonReversedTransactions(LoanTransactionType.DOWN_PAYMENT,
-                loanTransactions);
-        return totalRepaymentTransaction.add(totalDownPaymentTransaction);
-    }
 }

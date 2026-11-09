@@ -70,9 +70,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.extern.slf4j.Slf4j;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.infrastructure.configuration.domain.ConfigurationDomainService;
 import org.apache.fineract.infrastructure.configuration.service.TemporaryConfigurationServiceContainer;
@@ -100,7 +99,15 @@ import org.apache.fineract.portfolio.client.domain.Client;
 import org.apache.fineract.portfolio.common.domain.PeriodFrequencyType;
 import org.apache.fineract.portfolio.group.domain.Group;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
-import org.apache.fineract.portfolio.savings.*;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
+import org.apache.fineract.portfolio.savings.SavingsApiConstants;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDTO;
 import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
 import org.apache.fineract.portfolio.savings.domain.interest.SavingsAccountTransactionDetailsForPostingPeriod;
@@ -112,26 +119,26 @@ import org.apache.fineract.portfolio.savings.exception.SavingsAccountTransaction
 import org.apache.fineract.portfolio.savings.exception.SavingsActivityPriorToClientTransferException;
 import org.apache.fineract.portfolio.savings.exception.SavingsOfficerAssignmentDateException;
 import org.apache.fineract.portfolio.savings.exception.SavingsOfficerUnassignmentDateException;
-import org.apache.fineract.portfolio.savings.exception.SavingsTransferTransactionsAlreadyUndoneException;
 import org.apache.fineract.portfolio.savings.exception.SavingsTransferTransactionsCannotBeUndoneException;
 import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.apache.fineract.portfolio.tax.domain.TaxComponent;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.service.TaxUtils;
 import org.apache.fineract.useradministration.domain.AppUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 
-@Slf4j
 @Entity
-@Getter
-@Setter
 @Table(name = "m_savings_account", uniqueConstraints = { @UniqueConstraint(columnNames = { "account_no" }, name = "sa_account_no_UNIQUE"),
         @UniqueConstraint(columnNames = { "external_id" }, name = "sa_external_id_UNIQUE") })
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "deposit_type_enum", discriminatorType = DiscriminatorType.INTEGER)
 @DiscriminatorValue("100")
 @SuppressWarnings({ "MemberName" })
-public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long> {
+public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long> implements IDepositAccountType {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SavingsAccount.class);
 
     @Version
     int version;
@@ -333,7 +340,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     private TaxGroup taxGroup;
 
     @Column(name = "accrued_till_date")
-    protected LocalDate accruedTillDate;
+    private LocalDate accruedTillDate;
 
     @Column(name = "total_savings_amount_on_hold", scale = 6, precision = 19, nullable = true)
     private BigDecimal savingsOnHoldAmount;
@@ -503,6 +510,151 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return identifiers;
     }
 
+    public void postInterest(final MathContext mc, final LocalDate interestPostingUpToDate, final boolean isInterestTransfer,
+            final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
+            final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
+        final List<PostingPeriod> postingPeriods = calculateInterestUsing(mc, interestPostingUpToDate, isInterestTransfer,
+                isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, postInterestOnDate, backdatedTxnsAllowedTill,
+                postReversals);
+        if (postingPeriods.isEmpty()) {
+            return;
+        }
+
+        Money interestPostedToDate = Money.zero(this.currency);
+
+        if (backdatedTxnsAllowedTill) {
+            interestPostedToDate = Money.of(this.currency, this.summary.getTotalInterestPosted());
+        }
+
+        boolean recalucateDailyBalanceDetails = false;
+        boolean applyWithHoldTax = isWithHoldTaxApplicable(withHoldTaxPostingType());
+        final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
+
+        if (backdatedTxnsAllowedTill) {
+            withholdTransactions.addAll(findWithHoldSavingsTransactionsWithPivotConfig());
+        } else {
+            withholdTransactions.addAll(findWithHoldTransactions());
+        }
+
+        Money totalCorrectionAmount = Money.zero(this.currency);
+        for (final PostingPeriod interestPostingPeriod : postingPeriods) {
+            final LocalDate interestPostingTransactionDate = interestPostingPeriod.dateOfPostingTransaction();
+            final Money interestEarnedToBePostedForPeriod = interestPostingPeriod.getInterestEarned();
+
+            if (!DateUtils.isAfter(interestPostingTransactionDate, interestPostingUpToDate)) {
+                interestPostedToDate = interestPostedToDate.plus(interestEarnedToBePostedForPeriod);
+
+                SavingsAccountTransaction postingTransaction = null;
+                if (backdatedTxnsAllowedTill) {
+                    postingTransaction = findInterestPostingSavingsTransactionWithPivotConfig(interestPostingTransactionDate);
+                } else {
+                    postingTransaction = findInterestPostingTransactionFor(interestPostingTransactionDate);
+                }
+                if (postingTransaction == null) {
+                    SavingsAccountTransaction newPostingTransaction = null;
+                    if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(currency))) {
+                        if (interestEarnedToBePostedForPeriod.isGreaterThan(Money.zero(currency))) {
+                            newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
+                                    interestPostingPeriod.isUserPosting());
+                        }
+                    } else {
+                        newPostingTransaction = SavingsAccountTransaction.overdraftInterest(this, office(), interestPostingTransactionDate,
+                                interestEarnedToBePostedForPeriod.negated(), interestPostingPeriod.isUserPosting());
+                    }
+                    if (newPostingTransaction != null) {
+                        if (backdatedTxnsAllowedTill) {
+                            addTransactionToExisting(newPostingTransaction);
+                        } else {
+                            addTransaction(newPostingTransaction);
+                        }
+
+                        if (applyWithHoldTax) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
+                        }
+                        recalucateDailyBalanceDetails = true;
+                    }
+
+                } else {
+                    boolean correctionRequired = false;
+                    if (postingTransaction.isInterestPostingAndNotReversed()) {
+                        correctionRequired = postingTransaction.hasNotAmount(interestEarnedToBePostedForPeriod);
+                    } else {
+                        correctionRequired = postingTransaction.hasNotAmount(interestEarnedToBePostedForPeriod.negated());
+                    }
+                    if (correctionRequired) {
+                        totalCorrectionAmount = totalCorrectionAmount.plus(postingTransaction.getAmount());
+                        boolean applyWithHoldTaxForOldTransaction = false;
+                        postingTransaction.reverse();
+                        SavingsAccountTransaction reversal = null;
+                        if (postReversals) {
+                            reversal = SavingsAccountTransaction.reversal(postingTransaction);
+                        }
+                        final SavingsAccountTransaction withholdTransaction = findTransactionFor(interestPostingTransactionDate,
+                                withholdTransactions);
+                        if (withholdTransaction != null) {
+                            withholdTransaction.reverse();
+                            applyWithHoldTaxForOldTransaction = true;
+                        }
+                        SavingsAccountTransaction newPostingTransaction;
+                        if (interestEarnedToBePostedForPeriod.isGreaterThanOrEqualTo(Money.zero(currency))) {
+                            newPostingTransaction = SavingsAccountTransaction.interestPosting(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod,
+                                    interestPostingPeriod.isUserPosting());
+                        } else {
+                            newPostingTransaction = SavingsAccountTransaction.overdraftInterest(this, office(),
+                                    interestPostingTransactionDate, interestEarnedToBePostedForPeriod.negated(),
+                                    interestPostingPeriod.isUserPosting());
+                        }
+                        if (backdatedTxnsAllowedTill) {
+                            addTransactionToExisting(newPostingTransaction);
+                            if (reversal != null) {
+                                addTransactionToExisting(reversal);
+                            }
+                        } else {
+                            addTransaction(newPostingTransaction);
+                            if (reversal != null) {
+                                addTransaction(reversal);
+                            }
+                        }
+                        if (applyWithHoldTaxForOldTransaction) {
+                            createWithHoldTransaction(interestEarnedToBePostedForPeriod.getAmount(), interestPostingTransactionDate,
+                                    backdatedTxnsAllowedTill);
+                        }
+                        recalucateDailyBalanceDetails = true;
+                    }
+                }
+            }
+        }
+
+        if (recalucateDailyBalanceDetails) {
+            // no openingBalance concept supported yet but probably will to
+            // allow
+            // for migrations.
+            Money openingAccountBalance = Money.zero(this.currency);
+
+            if (backdatedTxnsAllowedTill) {
+                if (this.summary.getLastInterestCalculationDate() == null) {
+                    openingAccountBalance = Money.zero(this.currency);
+                } else {
+                    openingAccountBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
+                }
+            }
+
+            // update existing transactions so derived balance fields are
+            // correct.
+            recalculateDailyBalances(openingAccountBalance, interestPostingUpToDate, backdatedTxnsAllowedTill, postReversals);
+        }
+
+        if (!backdatedTxnsAllowedTill) {
+            this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+        } else {
+            this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
+                    this.savingsAccountTransactions);
+        }
+    }
+
     protected List<SavingsAccountTransaction> findWithHoldTransactions() {
         final List<SavingsAccountTransaction> withholdTransactions = new ArrayList<>();
         List<SavingsAccountTransaction> trans = getTransactions();
@@ -587,6 +739,13 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return isTaxAdded;
     }
 
+    /** Withholds tax on an already-capped amount (e.g. interest surviving cumulative forfeiture). */
+    public void withholdTaxIfApplicable(final BigDecimal amount, final LocalDate date, final boolean backdatedTxnsAllowedTill) {
+        if (isWithHoldTaxApplicable(withHoldTaxPostingType())) {
+            createWithHoldTransaction(amount, date, backdatedTxnsAllowedTill);
+        }
+    }
+
     protected boolean updateWithHoldTransaction(final BigDecimal amount, final SavingsAccountTransaction withholdTransaction) {
         boolean isTaxAdded = false;
         if (this.taxGroup != null && amount.compareTo(BigDecimal.ZERO) > 0) {
@@ -618,7 +777,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         SavingsAccountTransaction savingsTransaction = null;
         List<SavingsAccountTransaction> trans = getTransactions();
         for (final SavingsAccountTransaction transaction : trans) {
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)) {
+            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)
+                    && !transaction.isAccrual()) {
                 savingsTransaction = transaction;
                 break;
             }
@@ -631,7 +791,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         SavingsAccountTransaction savingsTransaction = null;
         List<SavingsAccountTransaction> trans = getSavingsAccountTransactionsWithPivotConfig();
         for (final SavingsAccountTransaction transaction : trans) {
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)) {
+            if (transaction.isNotReversed() && !transaction.isReversalTransaction() && transaction.occursOn(date)
+                    && !transaction.isAccrual()) {
                 savingsTransaction = transaction;
                 break;
             }
@@ -678,7 +839,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             boolean isInterestTransfer, final boolean isSavingsInterestPostingAtCurrentPeriodEnd, final Integer financialYearBeginningMonth,
             final LocalDate postInterestOnDate, final boolean backdatedTxnsAllowedTill, final boolean postReversals) {
 
-        log.debug("  calculateInterestUsing: {} {} {}", upToInterestCalculationDate, isInterestTransfer, postInterestOnDate);
         // no openingBalance concept supported yet but probably will to allow for migrations.
         // Check global configurations and 'pivot' date is null
         Money openingAccountBalance = backdatedTxnsAllowedTill ? Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate())
@@ -710,15 +870,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             if (postInterestOnDate != null) {
                 postedAsOnDates.add(postInterestOnDate);
             }
-            log.debug("  postedAsOnDates: {}", postedAsOnDates.size());
             final List<LocalDateInterval> postingPeriodIntervals = this.savingsHelper.determineInterestPostingPeriods(
                     getStartInterestCalculationDate(), upToInterestCalculationDate, postingPeriodType, financialYearBeginningMonth,
                     postedAsOnDates);
-            log.debug("  postingPeriodIntervals: {}", postingPeriodIntervals.size());
 
             Money periodStartingBalance;
-            log.debug("  startInterestCalculationDate: {}", this.startInterestCalculationDate);
-            if (this.startInterestCalculationDate != null && !this.getStartInterestCalculationDate().equals(this.getActivationDate())) {
+            if (hasStartInterestCalculationDate()) {
                 LocalDate startInterestCalculationDate = this.startInterestCalculationDate;
                 SavingsAccountTransaction transaction = null;
                 if (backdatedTxnsAllowedTill) {
@@ -727,15 +884,18 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                     transaction = findLastTransaction(startInterestCalculationDate);
                 }
 
-                if (transaction == null) {
-                    periodStartingBalance = Money.zero(this.currency);
+                if (transaction == null) { // no transaction occured on start interest calculation date
+                    if (this.summary.getRunningBalanceOnPivotDate() != null) {
+                        periodStartingBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
+                    } else {
+                        periodStartingBalance = Money.zero(this.currency);
+                    }
                 } else {
                     periodStartingBalance = Money.of(this.currency, this.summary.getRunningBalanceOnPivotDate());
                 }
             } else {
                 periodStartingBalance = Money.zero(this.currency);
             }
-            log.debug("  periodStartingBalance: {}", periodStartingBalance);
 
             final SavingsInterestCalculationType interestCalculationType = SavingsInterestCalculationType
                     .fromInt(this.interestCalculationType);
@@ -745,8 +905,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             final Money minBalanceForInterestCalculation = Money.of(getCurrency(), minBalanceForInterestCalculation());
             final Money minOverdraftForInterestCalculation = Money.of(getCurrency(), this.minOverdraftForInterestCalculation);
 
+            List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = null;
+            if (backdatedTxnsAllowedTill) {
+                orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingSavingsTransactionsWithPivotConfig();
+            } else {
+                orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingTransactions();
+            }
+
             for (final LocalDateInterval periodInterval : postingPeriodIntervals) {
-                log.debug("  periodInterval: {} {}", periodInterval.startDate(), periodInterval.endDate());
 
                 boolean isUserPosting = false;
                 if (postedAsOnDates.contains(periodInterval.endDate().plusDays(1))) {
@@ -754,12 +920,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 }
 
                 PostingPeriod postingPeriod = null;
-                List<SavingsAccountTransaction> orderedNonInterestPostingTransactions = null;
-                if (backdatedTxnsAllowedTill) {
-                    orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingSavingsTransactionsWithPivotConfig();
-                } else {
-                    orderedNonInterestPostingTransactions = retreiveOrderedNonInterestPostingTransactions();
-                }
 
                 List<SavingsAccountTransactionDetailsForPostingPeriod> savingsAccountTransactionDetailsForPostingPeriod = toSavingsAccountTransactionDetailsForPostingPeriodList(
                         orderedNonInterestPostingTransactions);
@@ -778,8 +938,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             this.savingsHelper.calculateInterestForAllPostingPeriods(this.currency, allPostingPeriods, getLockedInUntilDate(),
                     isTransferInterestToOtherAccount());
 
-            this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods);
         }
+
+        if (hasStartInterestCalculationDate()) {
+            BigDecimal preStartInterest = this.savingsHelper.sumInterestPostingsOnOrBeforeDate(getId(), getStartInterestCalculationDate());
+            this.summary.setPreStartDateInterestEarned(preStartInterest);
+        }
+
+        this.summary.updateFromInterestPeriodSummaries(this.currency, allPostingPeriods, hasStartInterestCalculationDate());
 
         if (backdatedTxnsAllowedTill) {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
@@ -799,30 +965,26 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.nominalAnnualInterestRateOverdraft.divide(BigDecimal.valueOf(100L), mc);
     }
 
-    public BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate upToInterestCalculationDate) {
+    public BigDecimal getEffectiveInterestRateAsFractionAccrual(final MathContext mc, final LocalDate upToInterestCalculationDate) {
         return this.nominalAnnualInterestRate.divide(BigDecimal.valueOf(100L), mc);
     }
 
-    private boolean hasInterestCalculation() {
+    @SuppressWarnings("unused")
+    protected BigDecimal getEffectiveInterestRateAsFraction(final MathContext mc, final LocalDate upToInterestCalculationDate) {
+        return this.nominalAnnualInterestRate.divide(BigDecimal.valueOf(100L), mc);
+    }
+
+    public boolean hasInterestCalculation() {
         return !MathUtil.isEmpty(nominalAnnualInterestRate);
     }
 
-    private boolean hasOverdraftInterestCalculation() {
+    public boolean hasOverdraftInterestCalculation() {
         return isAllowOverdraft() && !MathUtil.isEmpty(getOverdraftLimit()) && !MathUtil.isEmpty(nominalAnnualInterestRateOverdraft);
     }
 
-    public List<SavingsAccountTransaction> retreiveOrderedAccrualTransactions() {
-        final List<SavingsAccountTransaction> listOfTransactionsSorted = retrieveListOfTransactions();
-
-        final List<SavingsAccountTransaction> orderedAccrualTransactions = new ArrayList<>();
-
-        for (final SavingsAccountTransaction transaction : listOfTransactionsSorted) {
-            if (transaction.isAccrual()) {
-                orderedAccrualTransactions.add(transaction);
-            }
-        }
-        orderedAccrualTransactions.sort(new SavingsAccountTransactionComparator());
-        return orderedAccrualTransactions;
+    public List<SavingsAccountTransaction> retrieveOrderedAccrualTransactions() {
+        return retrieveListOfTransactions().stream().filter(SavingsAccountTransaction::isAccrual)
+                .sorted(new SavingsAccountTransactionComparator()).collect(Collectors.toList());
     }
 
     protected List<SavingsAccountTransaction> retreiveOrderedNonInterestPostingTransactions() {
@@ -864,6 +1026,15 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     }
 
     protected List<SavingsAccountTransaction> retrieveListOfTransactions() {
+        final List<SavingsAccountTransaction> listOfTransactionsSorted = new ArrayList<>();
+        listOfTransactionsSorted.addAll(this.transactions);
+
+        final SavingsAccountTransactionComparator transactionComparator = new SavingsAccountTransactionComparator();
+        Collections.sort(listOfTransactionsSorted, transactionComparator);
+        return listOfTransactionsSorted;
+    }
+
+    protected List<SavingsAccountTransaction> retrieveInterestPostingAndOverdraftTransactions() {
         final List<SavingsAccountTransaction> listOfTransactionsSorted = new ArrayList<>();
         listOfTransactionsSorted.addAll(this.transactions);
 
@@ -917,7 +1088,8 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 }
                 if (!calculateInterest || transaction.getId() == null || transaction.getOverdraftAmount(this.currency).isZero()) {
                     transaction.setOverdraftAmount(overdraftAmount);
-                } else if (!MathUtil.isEqualTo(overdraftAmount, transaction.getOverdraftAmount(this.currency))) {
+                } else if (!MathUtil.isEqualTo(overdraftAmount, transaction.getOverdraftAmount(this.currency))
+                        && !transaction.isAccrual()) {
                     SavingsAccountTransaction accountTransaction = SavingsAccountTransaction.copyTransaction(transaction);
                     if (transaction.isChargeTransaction()) {
                         Set<SavingsAccountChargePaidBy> chargesPaidBy = transaction.getSavingsAccountChargesPaid();
@@ -968,9 +1140,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         LocalDate endOfBalanceDate = interestPostingUpToDate;
         for (int i = accountTransactionsSorted.size() - 1; i >= 0; i--) {
             final SavingsAccountTransaction transaction = accountTransactionsSorted.get(i);
-            if (transaction.isNotReversed() && !transaction.isReversalTransaction()
-                    && !(transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())
-                    && !transaction.isAccrualAndNotReversed()) {
+            if (transaction.isBalanceBearing()) {
                 transaction.updateCumulativeBalanceAndDates(this.currency, endOfBalanceDate);
                 // this transactions transaction date is end of balance date for
                 // previous transaction.
@@ -1045,13 +1215,11 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         if (backdatedTxnsAllowedTill) {
             addTransactionToExisting(transaction);
         } else {
+            this.accrualsForSavingsReverse(transactionDTO, backdatedTxnsAllowedTill);
             addTransaction(transaction);
         }
 
-        if (this.sub_status.equals(SavingsAccountSubStatusEnum.INACTIVE.getValue())
-                || this.sub_status.equals(SavingsAccountSubStatusEnum.DORMANT.getValue())) {
-            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
-        }
+        clearInactivityOnTransaction();
 
         if (backdatedTxnsAllowedTill) {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, transaction,
@@ -1059,6 +1227,14 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
 
         return transaction;
+    }
+
+    /** Shared by deposit, withdraw and the append path, which builds the transaction itself. */
+    public void clearInactivityOnTransaction() {
+        if (SavingsAccountSubStatusEnum.INACTIVE.getValue().equals(this.sub_status)
+                || SavingsAccountSubStatusEnum.DORMANT.getValue().equals(this.sub_status)) {
+            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
+        }
     }
 
     public void validatePivotDateTransaction(LocalDate transactionDate, final boolean backdatedTxnsAllowedTill,
@@ -1110,6 +1286,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     public void setStartInterestCalculationDate(LocalDate startInterestCalculationDate) {
         this.startInterestCalculationDate = startInterestCalculationDate;
+    }
+
+    public boolean hasStartInterestCalculationDate() {
+        return this.startInterestCalculationDate != null && !getStartInterestCalculationDate().equals(getActivationDate());
     }
 
     public SavingsAccountTransaction withdraw(final SavingsAccountTransactionDTO transactionDTO, final boolean applyWithdrawFee,
@@ -1180,13 +1360,11 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         if (backdatedTxnsAllowedTill) {
             addTransactionToExisting(transaction);
         } else {
+            this.accrualsForSavingsReverse(transactionDTO, backdatedTxnsAllowedTill);
             addTransaction(transaction);
         }
 
-        if (this.sub_status.equals(SavingsAccountSubStatusEnum.INACTIVE.getValue())
-                || this.sub_status.equals(SavingsAccountSubStatusEnum.DORMANT.getValue())) {
-            this.sub_status = SavingsAccountSubStatusEnum.NONE.getValue();
-        }
+        clearInactivityOnTransaction();
         if (backdatedTxnsAllowedTill) {
             this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, transaction,
                     this.savingsAccountTransactions);
@@ -1198,7 +1376,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         BigDecimal result = BigDecimal.ZERO;
         if (isWithdrawalFeeApplicableForTransfer()) {
             for (SavingsAccountCharge charge : this.charges()) {
-                if (charge.isWithdrawalFee() && charge.isActive()) {
+                if (isAutoPayableWithdrawalFee(charge)) {
                     result = result.add(charge.calculateWithdralFeeAmount(transactionAmount), MoneyHelper.getMathContext());
                 }
             }
@@ -1209,7 +1387,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     private void payWithdrawalFee(final BigDecimal transactionAmount, final LocalDate transactionDate, final PaymentDetail paymentDetail,
             final boolean backdatedTxnsAllowedTill, final String refNo) {
         for (SavingsAccountCharge charge : this.charges()) {
-            if (charge.isWithdrawalFee() && charge.isActive()) {
+            if (isAutoPayableWithdrawalFee(charge)) {
 
                 if (charge.getFreeWithdrawalCount() == null) {
                     charge.setFreeWithdrawalCount(0);
@@ -1238,6 +1416,10 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 }
             }
         }
+    }
+
+    private boolean isAutoPayableWithdrawalFee(final SavingsAccountCharge charge) {
+        return charge.isWithdrawalFee() && charge.isActive() && !charge.isPercentageOfInterest();
     }
 
     private void resetFreeChargeDaysCount(SavingsAccountCharge charge, final BigDecimal transactionAmount, final LocalDate transactionDate,
@@ -1480,12 +1662,17 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     public void validateAccountBalanceDoesNotViolateOverdraft(final List<SavingsAccountTransaction> savingsAccountTransaction,
             final BigDecimal amountPaid) {
-        if (savingsAccountTransaction != null) {
+        if (savingsAccountTransaction != null && savingsAccountTransaction.size() > 0) {
             SavingsAccountTransaction savingsAccountTransactionFirst = savingsAccountTransaction.get(0);
             if (!this.allowOverdraft) {
                 if (savingsAccountTransactionFirst.getRunningBalance(this.currency).minus(amountPaid).isLessThanZero()) {
                     throw new InsufficientAccountBalanceException("transactionAmount", getAccountBalance(), null, amountPaid);
                 }
+            }
+
+        } else {
+            if (!this.allowOverdraft) {
+                throw new InsufficientAccountBalanceException("transactionAmount", BigDecimal.ZERO, null, amountPaid);
             }
         }
     }
@@ -1733,13 +1920,13 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                     .inMinMaxRange(0, 3);
 
             if (this.lockinPeriodFrequencyType != null) {
-                baseDataValidator.reset().parameter(lockinPeriodFrequencyParamName).value(this.lockinPeriodFrequency).notNull()
+                baseDataValidator.reset().parameter(lockinPeriodFrequencyParamName).value(this.lockinPeriodFrequency).ignoreIfNull()
                         .integerZeroOrGreater();
             }
         } else {
             baseDataValidator.reset().parameter(lockinPeriodFrequencyParamName).value(this.lockinPeriodFrequencyType)
                     .integerZeroOrGreater();
-            baseDataValidator.reset().parameter(lockinPeriodFrequencyTypeParamName).value(this.lockinPeriodFrequencyType).notNull()
+            baseDataValidator.reset().parameter(lockinPeriodFrequencyTypeParamName).value(this.lockinPeriodFrequencyType).ignoreIfNull()
                     .inMinMaxRange(0, 3);
         }
     }
@@ -1766,14 +1953,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             trans = getTransactions();
         }
 
-        final List<Long> accrualChargeIds = product.accrualChargeIds();
-
         // Adding new transactions to the array
         for (final SavingsAccountTransaction transaction : trans) {
             if (transaction.isReversed() && !existingReversedTransactionIds.contains(transaction.getId())) {
-                newSavingsTransactions.add(transaction.toMapData(currencyCode, accrualChargeIds));
+                newSavingsTransactions.add(transaction.toMapData(currencyCode));
             } else if (!existingTransactionIds.contains(transaction.getId())) {
-                newSavingsTransactions.add(transaction.toMapData(currencyCode, accrualChargeIds));
+                newSavingsTransactions.add(transaction.toMapData(currencyCode));
             }
         }
 
@@ -1860,15 +2045,11 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.product;
     }
 
-    public Boolean isCashBasedAccountingEnabledOnSavingsProduct() {
+    private Boolean isCashBasedAccountingEnabledOnSavingsProduct() {
         return this.product.isCashBasedAccountingEnabled();
     }
 
-    public Boolean isPeriodicAccrualAccounting() {
-        return this.product.isPeriodicAccrualAccounting();
-    }
-
-    public Boolean isAccrualBasedAccountingEnabledOnSavingsProduct() {
+    private Boolean isAccrualBasedAccountingEnabledOnSavingsProduct() {
         return this.product.isAccrualBasedAccountingEnabled();
     }
 
@@ -2263,50 +2444,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         }
     }
 
-    protected Map<String, Object> undoActivate() {
-        final Map<String, Object> actualChanges = new LinkedHashMap<>();
-
-        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
-        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
-                .resource(depositAccountType().resourceName() + SavingsApiConstants.undoActivateAction);
-
-        final SavingsAccountStatusType currentStatus = SavingsAccountStatusType.fromInt(this.status);
-        if (!SavingsAccountStatusType.ACTIVE.hasStateOf(currentStatus)) {
-            baseDataValidator.reset().parameter(SavingsApiConstants.activatedOnDateParamName)
-                    .failWithCodeNoParameterAddedToErrorCode("not.in.active.state");
-
-            if (!dataValidationErrors.isEmpty()) {
-                throw new PlatformApiDataValidationException(dataValidationErrors);
-            }
-        }
-
-        final LocalDate businessDate = DateUtils.getBusinessLocalDate();
-
-        this.status = SavingsAccountStatusType.APPROVED.getValue();
-        actualChanges.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(this.status));
-
-        this.rejectedOnDate = null;
-        this.rejectedBy = null;
-        this.withdrawnOnDate = null;
-        this.withdrawnBy = null;
-        this.closedOnDate = null;
-        this.closedBy = null;
-        this.activatedOnDate = null;
-        this.activatedBy = null;
-        this.lockedInUntilDate = null;
-
-        validateActivityNotBeforeClientOrGroupTransferDate(SavingsEvent.SAVINGS_UNOD_ACTIVATE, businessDate);
-
-        // Undo Transactions
-        for (SavingsAccountTransaction transaction : getTransactions()) {
-            if (!transaction.isReversed()) {
-                undoTransaction(transaction);
-            }
-        }
-
-        return actualChanges;
-    }
-
     public void undoSavingsTransaction(final Long transactionId) {
 
         SavingsAccountTransaction transactionToUndo = null;
@@ -2340,7 +2477,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     public void undoTransaction(final SavingsAccountTransaction transactionToUndo) {
 
         if (transactionToUndo.isReversed()) {
-            throw new SavingsTransferTransactionsAlreadyUndoneException(getAccountNumber(), transactionToUndo.getId());
+            throw new SavingsAccountTransactionNotFoundException(this.getId(), transactionToUndo.getId());
         }
 
         validateAttemptToUndoTransferRelatedTransactions(transactionToUndo);
@@ -2612,98 +2749,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return actualChanges;
     }
 
-    protected Map<String, Object> undoActivate(final AppUser currentUser, final JsonCommand command, final LocalDate operationDate) {
-
-        final Map<String, Object> actualChanges = new LinkedHashMap<>();
-
-        final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
-        final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
-                .resource(depositAccountType().resourceName() + SavingsApiConstants.activateAction);
-
-        final SavingsAccountStatusType currentStatus = SavingsAccountStatusType.fromInt(this.status);
-        if (!SavingsAccountStatusType.ACTIVE.hasStateOf(currentStatus)) {
-
-            baseDataValidator.reset().parameter(SavingsApiConstants.activatedOnDateParamName)
-                    .failWithCodeNoParameterAddedToErrorCode("not.in.active.state");
-
-            if (!dataValidationErrors.isEmpty()) {
-                throw new PlatformApiDataValidationException(dataValidationErrors);
-            }
-        }
-
-        this.status = SavingsAccountStatusType.APPROVED.getValue();
-        actualChanges.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(this.status));
-
-        this.rejectedOnDate = null;
-        this.rejectedBy = null;
-        this.withdrawnOnDate = null;
-        this.withdrawnBy = null;
-        this.closedOnDate = null;
-        this.closedBy = null;
-        this.activatedOnDate = null;
-        this.activatedBy = null;
-        this.lockedInUntilDate = calculateDateAccountIsLockedUntil(getActivationDate());
-
-        if (this.client != null && this.client.isActivatedAfter(operationDate)) {
-            final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(command.extractLocale());
-            final String dateAsString = formatter.format(this.client.getActivationDate());
-            baseDataValidator.reset().parameter(SavingsApiConstants.activatedOnDateParamName).value(dateAsString)
-                    .failWithCodeNoParameterAddedToErrorCode("cannot.be.before.client.activation.date");
-            if (!dataValidationErrors.isEmpty()) {
-                throw new PlatformApiDataValidationException(dataValidationErrors);
-            }
-        }
-
-        if (this.group != null && this.group.isActivatedAfter(operationDate)) {
-            final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(command.extractLocale());
-            final String dateAsString = formatter.format(this.client.getActivationDate());
-            baseDataValidator.reset().parameter(SavingsApiConstants.activatedOnDateParamName).value(dateAsString)
-                    .failWithCodeNoParameterAddedToErrorCode("cannot.be.before.group.activation.date");
-            if (!dataValidationErrors.isEmpty()) {
-                throw new PlatformApiDataValidationException(dataValidationErrors);
-            }
-        }
-
-        final LocalDate approvalDate = getApprovedOnDate();
-        if (operationDate.isBefore(approvalDate)) {
-
-            final DateTimeFormatter formatter = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(command.extractLocale());
-            final String dateAsString = formatter.format(approvalDate);
-
-            baseDataValidator.reset().parameter(SavingsApiConstants.activatedOnDateParamName).value(dateAsString)
-                    .failWithCodeNoParameterAddedToErrorCode("cannot.be.before.approval.date");
-
-            if (!dataValidationErrors.isEmpty()) {
-                throw new PlatformApiDataValidationException(dataValidationErrors);
-            }
-        }
-
-        validateActivityNotBeforeClientOrGroupTransferDate(SavingsEvent.SAVINGS_UNDO_ACTIVATE, operationDate);
-
-        updateSavingsToApprovedState();
-
-        return actualChanges;
-    }
-
-    protected void updateSavingsToApprovedState() {
-        reverseExistingTransactions();
-
-        for (SavingsAccountCharge charge : this.charges()) {
-            charge.resetToOriginal(currency);
-        }
-    }
-
-    protected void reverseExistingTransactions() {
-        Collection<SavingsAccountTransaction> retainTransactions = new ArrayList<>();
-        for (final SavingsAccountTransaction transaction : this.transactions) {
-            transaction.reverse();
-            if (transaction.getId() != null) {
-                retainTransactions.add(transaction);
-            }
-        }
-        this.transactions.retainAll(retainTransactions);
-    }
-
     public void processAccountUponActivation(final boolean isSavingsInterestPostingAtCurrentPeriodEnd,
             final Integer financialYearBeginningMonth) {
         // update annual fee due date
@@ -2739,7 +2784,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             final boolean backdatedTxnsAllowedTill) {
         boolean isSavingsChargeApplied = false;
         boolean postReversals = false;
-        final String refNo = ExternalId.generate().getValue();
+        UUID refNo = UUID.randomUUID();
         for (SavingsAccountCharge savingsAccountCharge : this.charges()) {
             if (savingsAccountCharge.isSavingsActivation()) {
                 isSavingsChargeApplied = true;
@@ -2754,15 +2799,90 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             LocalDate postInterestAsOnDate = null;
             if (this.isBeforeLastPostingPeriod(getActivationDate(), backdatedTxnsAllowedTill)) {
                 final LocalDate today = DateUtils.getBusinessLocalDate();
-                // this.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
-                // financialYearBeginningMonth,
-                // postInterestAsOnDate, backdatedTxnsAllowedTill, postReversals);
+                this.postInterest(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth,
+                        postInterestAsOnDate, backdatedTxnsAllowedTill, postReversals);
             } else {
                 final LocalDate today = DateUtils.getBusinessLocalDate();
                 this.calculateInterestUsing(mc, today, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                         financialYearBeginningMonth, postInterestAsOnDate, backdatedTxnsAllowedTill, postReversals);
             }
         }
+    }
+
+    /**
+     * Closure-settlement hook, called before the balance is read and withdrawn so interest-derived charges (Dynamic
+     * Deposit) are folded into the final posting. No-op by default.
+     */
+    public void prepareClosureSettlement(final LocalDate closedDate) {
+        // no-op by default
+    }
+
+    /** Called once the closure withdrawal has an id, so an implementation can record its charge row against it. */
+    public void completeClosureSettlement(final SavingsAccountTransaction closureWithdrawal) {
+        // no-op by default
+    }
+
+    /**
+     * Starts a premature-closure settlement and returns whether the caller must still post the closing interest. See
+     * {@code DynamicDepositAccount#beginClosureSettlement}.
+     */
+    public boolean beginClosureSettlement(final LocalDate closedDate) {
+        return false;
+    }
+
+    /** Upper bound for closure interest posting; maturity-bearing deposits cap it at the day before maturity. */
+    public LocalDate interestPostingUpToForClosure(final LocalDate closedDate) {
+        return closedDate;
+    }
+
+    /**
+     * Date the final closure interest posting lands on; maturity-bearing deposits return the maturity date when closed
+     * on/after it. Forcing the posting date is what caps accrual at the day before (see
+     * {@code SavingsHelper#determineInterestPostingPeriods}).
+     */
+    public LocalDate interestPostingTransactionDateForClosure(final LocalDate closedDate) {
+        return closedDate;
+    }
+
+    /** Hook for a per-transaction early-withdrawal charge percentage; ignored by types that do not support it. */
+    public void setWithdrawalChargePercentageOverride(final BigDecimal percentage) {
+        // no-op by default
+    }
+
+    /**
+     * Whether regular withdrawals, transfers-out and generic close-with-balance are blocked (Dynamic Deposit
+     * {@code allowWithdrawal}). Callers must only consult it on withdrawal-shaped paths.
+     */
+    public boolean isWithdrawalBlockedByAccountRule() {
+        return false;
+    }
+
+    /**
+     * Re-syncs the summary for callers that add transactions after a posting (e.g. cumulative forfeiture), since
+     * {@code addTransaction} never updates it. The pivot-config branch does not re-apply charge debits.
+     */
+    public void refreshSummary(final boolean backdatedTxnsAllowedTill) {
+        if (backdatedTxnsAllowedTill) {
+            this.summary.updateSummaryWithPivotConfig(this.currency, this.savingsAccountTransactionSummaryWrapper, null,
+                    this.savingsAccountTransactions);
+        } else {
+            this.summary.updateSummary(this.currency, this.savingsAccountTransactionSummaryWrapper, this.transactions);
+        }
+    }
+
+    /** True while a premature closure settles; its withdrawal must not record an early-withdrawal charge. */
+    public boolean isClosureSettlementInProgress() {
+        return false;
+    }
+
+    /** Per-transaction early-withdrawal charge percentage override for the next withdrawal, or {@code null}. */
+    public BigDecimal earlyWithdrawalChargePercentageOverride() {
+        return null;
+    }
+
+    /** Early by the account's own terms; only maturity-bearing types (Dynamic Deposit) can say so. */
+    public boolean isEarlyWithdrawal(final LocalDate transactionDate) {
+        return false;
     }
 
     public Map<String, Object> close(final AppUser currentUser, final JsonCommand command) {
@@ -2867,7 +2987,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 lockedInUntilLocalDate = activationLocalDate.plusYears(this.lockinPeriodFrequency);
             break;
             case WHOLE_TERM:
-                log.error("TODO Implement calculateDateAccountIsLockedUntil for WHOLE_TERM");
+                LOG.error("TODO Implement calculateDateAccountIsLockedUntil for WHOLE_TERM");
             break;
         }
 
@@ -3230,38 +3350,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         } else {
             this.transactions.add(transaction);
         }
-
-        // Charge Accrual Recognition
-        final SavingsAccountTransaction savingsAccountAccrualTransaction = handleAccruedChargeAppliedTransaction(
-                transaction.getTransactionDate(), savingsAccountCharge);
-        if (savingsAccountAccrualTransaction != null) {
-            savingsAccountAccrualTransaction.getSavingsAccountChargesPaid().add(chargePaidBy);
-            if (backdatedTxnsAllowedTill) {
-                this.savingsAccountTransactions.add(savingsAccountAccrualTransaction);
-            } else {
-                this.transactions.add(savingsAccountAccrualTransaction);
-            }
-        }
-    }
-
-    private SavingsAccountTransaction handleAccruedChargeAppliedTransaction(final LocalDate transactionDate,
-            final SavingsAccountCharge savingsAccountCharge) {
-        SavingsAccountTransaction savingsAccountAccrualTransaction = null;
-        if (isPeriodicAccrualAccounting()) {
-            if (isChargeToBeRecognizedAsAccrual(savingsAccountCharge)) {
-                savingsAccountAccrualTransaction = SavingsAccountTransaction.accrual(this, office(), transactionDate,
-                        savingsAccountCharge.getAmount(getCurrency()), false);
-            }
-        }
-        return savingsAccountAccrualTransaction;
-    }
-
-    private boolean isChargeToBeRecognizedAsAccrual(final SavingsAccountCharge savingsAccountCharge) {
-        final Collection<Long> chargeIds = savingsProduct().accrualChargeIds();
-        if (chargeIds.isEmpty()) {
-            return false;
-        }
-        return chargeIds.contains(savingsAccountCharge.getCharge().getId());
     }
 
     private SavingsAccountCharge getCharge(final Long savingsAccountChargeId) {
@@ -3309,10 +3397,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
 
     public LocalDate accountSubmittedOrActivationDate() {
         return getActivationDate() == null ? getSubmittedOnDate() : getActivationDate();
-    }
-
-    public DepositAccountType depositAccountType() {
-        return DepositAccountType.fromInt(depositType);
     }
 
     protected boolean isTransferInterestToOtherAccount() {
@@ -3445,7 +3529,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.accountNumber;
     }
 
-    private Money minRequiredBalanceDerived(final MonetaryCurrency currency) {
+    public Money minRequiredBalanceDerived(final MonetaryCurrency currency) {
         Money minReqBalance = Money.zero(currency);
         if (this.enforceMinRequiredBalance) {
             minReqBalance = minReqBalance.plus(this.minRequiredBalance);
@@ -3528,6 +3612,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
             boolean isWithholdTaxAdded = updateWithHoldTransaction(interestAmountPosted, withholdTransaction);
             recalucateDailyBalance = recalucateDailyBalance || isWithholdTaxAdded;
         }
+
         return recalucateDailyBalance;
     }
 
@@ -3537,7 +3622,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         for (SavingsAccountCharge charge : this.charges()) {
             if (charge.isSavingsNoActivity() && charge.isActive()) {
                 charge.updateWithdralFeeAmount(this.getAccountBalance());
-                final String refNo = ExternalId.generate().getValue();
+                UUID refNo = UUID.randomUUID();
                 this.payCharge(charge, charge.getAmountOutstanding(this.getCurrency()), transactionDate, backdatedTxnsAllowedTill,
                         refNo.toString());
             }
@@ -3778,21 +3863,21 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
     public void validateForAccountBlock() {
         final SavingsAccountSubStatusEnum currentSubStatus = SavingsAccountSubStatusEnum.fromInt(this.getSubStatus());
         if (SavingsAccountSubStatusEnum.BLOCK.hasStateOf(currentSubStatus)) {
-            throw new SavingsAccountBlockedException(this.getAccountNumber());
+            throw new SavingsAccountBlockedException(this.getId());
         }
     }
 
     public void validateForDebitBlock() {
         final SavingsAccountSubStatusEnum currentSubStatus = SavingsAccountSubStatusEnum.fromInt(this.getSubStatus());
         if (SavingsAccountSubStatusEnum.BLOCK_DEBIT.hasStateOf(currentSubStatus)) {
-            throw new SavingsAccountDebitsBlockedException(this.getAccountNumber());
+            throw new SavingsAccountDebitsBlockedException(this.getId());
         }
     }
 
     public void validateForCreditBlock() {
         final SavingsAccountSubStatusEnum currentSubStatus = SavingsAccountSubStatusEnum.fromInt(this.getSubStatus());
         if (SavingsAccountSubStatusEnum.BLOCK_CREDIT.hasStateOf(currentSubStatus)) {
-            throw new SavingsAccountCreditsBlockedException(this.getAccountNumber());
+            throw new SavingsAccountCreditsBlockedException(this.getId());
         }
     }
 
@@ -3846,7 +3931,7 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         this.accountType = accountType;
     }
 
-    private boolean isOverdraft() {
+    public boolean isOverdraft() {
         return allowOverdraft;
     }
 
@@ -3886,10 +3971,6 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.minOverdraftForInterestCalculation;
     }
 
-    public Integer getDepositType() {
-        return this.depositType;
-    }
-
     public BigDecimal getMinRequiredBalance() {
         return this.minRequiredBalance;
     }
@@ -3918,11 +3999,42 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
         return this.withHoldTax;
     }
 
+    public LocalDate getAccruedTillDate() {
+        return this.accruedTillDate;
+    }
+
+    public void setAccruedTillDate(LocalDate accruedTillDate) {
+        this.accruedTillDate = accruedTillDate;
+    }
+
     public List<SavingsAccountTransactionDetailsForPostingPeriod> toSavingsAccountTransactionDetailsForPostingPeriodList(
             List<SavingsAccountTransaction> transactions) {
         return transactions.stream()
                 .map(transaction -> transaction.toSavingsAccountTransactionDetailsForPostingPeriod(this.currency, this.allowOverdraft))
                 .toList();
+    }
+
+    public void accrualsForSavingsReverse(SavingsAccountTransactionDTO transactionDTO, final boolean backdatedTxnsAllowedTill) {
+        List<SavingsAccountTransaction> accountTransactionsSorted = null;
+
+        if (this.accruedTillDate != null && !DateUtils.isAfter(transactionDTO.getTransactionDate(), this.accruedTillDate)) {
+            this.accruedTillDate = DateUtils.isAfter(transactionDTO.getTransactionDate(), getStartInterestCalculationDate())
+                    ? transactionDTO.getTransactionDate().minusDays(1)
+                    : null;
+        }
+
+        if (backdatedTxnsAllowedTill) {
+            accountTransactionsSorted = retrieveSortedTransactions();
+        } else {
+            accountTransactionsSorted = retrieveListOfTransactions();
+        }
+        for (final SavingsAccountTransaction transaction : accountTransactionsSorted) {
+            boolean typeTransaccionValidation = transaction.getTransactionType() == SavingsAccountTransactionType.ACCRUAL;
+            if (typeTransaccionValidation && (transaction.getDateOf().isAfter(transactionDTO.getTransactionDate())
+                    || transaction.getDateOf().isEqual(transactionDTO.getTransactionDate()))) {
+                transaction.reverse();
+            }
+        }
     }
 
     public List<SavingsAccountTransactionDetailsForPostingPeriod> toSavingsAccountTransactionDetailsForPostingPeriodList() {
@@ -3931,4 +4043,12 @@ public class SavingsAccount extends AbstractAuditableWithUTCDateTimeCustom<Long>
                 .toList();
     }
 
+    @Override
+    public DepositAccountType depositAccountType() {
+        return DepositAccountType.fromInt(100);
+    }
+
+    protected WithHoldTaxPostingType withHoldTaxPostingType() {
+        return null;
+    }
 }

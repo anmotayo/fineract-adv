@@ -203,6 +203,18 @@ public class NoteWritePlatformServiceJpaRepositoryImpl implements NoteWritePlatf
 
     }
 
+    @Override
+    public void createLoanTransactionNote(final Long loanTransactionId, final String note) {
+        final LoanTransaction loanTransaction = this.loanTransactionRepository.findById(loanTransactionId)
+                .orElseThrow(() -> new LoanTransactionNotFoundException(loanTransactionId));
+
+        final Loan loan = loanTransaction.getLoan();
+
+        final Note newNote = Note.loanTransactionNote(loan, loanTransaction, note);
+
+        this.noteRepository.save(newNote);
+    }
+
     private String getResourceUrlFromCommand(JsonCommand command) {
 
         final String resourceUrl;

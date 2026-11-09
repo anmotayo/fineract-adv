@@ -46,10 +46,15 @@ public class SavingsAccountConstant extends SavingsApiConstants {
      * get response parameters to match those of request parameters.
      */
 
-    protected static final Set<String> SAVINGS_ACCOUNT_TRANSACTION_REQUEST_DATA_PARAMETERS = new HashSet<>(
-            Arrays.asList(localeParamName, dateFormatParamName, transactionDateParamName, transactionAmountParamName,
-                    paymentTypeIdParamName, transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName,
-                    receiptNumberParamName, bankNumberParamName, retailEntriesParamName, childAccountIdParamName, noteParamName));
+    protected static final Set<String> SAVINGS_ACCOUNT_TRANSACTION_REQUEST_DATA_PARAMETERS = new HashSet<>(Arrays.asList(localeParamName,
+            dateFormatParamName, transactionDateParamName, transactionAmountParamName, paymentTypeIdParamName,
+            transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName, receiptNumberParamName, bankNumberParamName,
+            retailEntriesParamName, childAccountIdParamName, noteParamName, amountParamName, dateParamName, isManualTransaction,
+            lienTransaction, chargesPaidByData, submittedOnDateParamName, accountIdParamName, accountNoParamName,
+            // Advancly params, allow-listed here because the custom module can't extend this core validator.
+            "earlyWithdrawalChargePercentage", "selectedFromDate", "selectedToDate", "applyEarlyWithdrawalCharge",
+            // Forwarded by the Advancly bulk-transaction endpoint (see delegateBulkTransactionToCore).
+            "type"));
 
     protected static final Set<String> SAVINGS_ACCOUNT_TRANSACTION_RESPONSE_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(idParamName, accountNoParamName));
@@ -60,7 +65,9 @@ public class SavingsAccountConstant extends SavingsApiConstants {
     protected static final Set<String> SAVINGS_ACCOUNT_CLOSE_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(localeParamName, dateFormatParamName, closedOnDateParamName, noteParamName, paymentTypeIdParamName,
                     withdrawBalanceParamName, transactionAccountNumberParamName, checkNumberParamName, routingCodeParamName,
-                    receiptNumberParamName, bankNumberParamName, postInterestValidationOnClosure));
+                    receiptNumberParamName, bankNumberParamName, postInterestValidationOnClosure,
+                    // Advancly param, see SAVINGS_ACCOUNT_TRANSACTION_REQUEST_DATA_PARAMETERS.
+                    "applyEarlyWithdrawalCharge"));
 
     protected static final Set<String> SAVINGS_ACCOUNT_CHARGES_ADD_REQUEST_DATA_PARAMETERS = new HashSet<>(
             Arrays.asList(chargeIdParamName, amountParamName, dueAsOfDateParamName, dateFormatParamName, localeParamName,

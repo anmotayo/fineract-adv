@@ -26,5 +26,7 @@ public final class ChargesApiConstants {
 
     public static final String glAccountIdParamName = "incomeAccountId";
     public static final String taxGroupIdParamName = "taxGroupId";
+    public static final String interestBasisModeParamName = "interestBasisMode";
+    public static final String customPeriodReapplyPolicyParamName = "customPeriodReapplyPolicy";
 
 }

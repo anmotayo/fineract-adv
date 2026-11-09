@@ -28,13 +28,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.springframework.lang.NonNull;
 
 class AdvancedPaymentAllocationsValidatorTest {
 
@@ -165,7 +164,7 @@ class AdvancedPaymentAllocationsValidatorTest {
         assertPlatformException(message, code, validationException);
     }
 
-    @NotNull
+    @NonNull
     private static LoanProductPaymentAllocationRule createLoanProductAllocationRule1() {
         LoanProductPaymentAllocationRule lppr1 = new LoanProductPaymentAllocationRule();
         lppr1.setTransactionType(DEFAULT);
@@ -174,7 +173,7 @@ class AdvancedPaymentAllocationsValidatorTest {
         return lppr1;
     }
 
-    @NotNull
+    @NonNull
     private static LoanProductPaymentAllocationRule createLoanProductAllocationRule2() {
         LoanProductPaymentAllocationRule lppr2 = new LoanProductPaymentAllocationRule();
         lppr2.setTransactionType(REPAYMENT);
@@ -185,7 +184,7 @@ class AdvancedPaymentAllocationsValidatorTest {
         return lppr2;
     }
 
-    @NotNull
+    @NonNull
     private static LoanProductPaymentAllocationRule createLoanProductAllocationRule3() {
         LoanProductPaymentAllocationRule lppr = new LoanProductPaymentAllocationRule();
         lppr.setTransactionType(REPAYMENT);
@@ -198,7 +197,7 @@ class AdvancedPaymentAllocationsValidatorTest {
         return lppr;
     }
 
-    @NotNull
+    @NonNull
     private static LoanProductPaymentAllocationRule createLoanProductAllocationRule4() {
         LoanProductPaymentAllocationRule lppr = new LoanProductPaymentAllocationRule();
         lppr.setTransactionType(DEFAULT);
@@ -212,10 +211,15 @@ class AdvancedPaymentAllocationsValidatorTest {
         return lppr;
     }
 
-    @NotNull
+    @NonNull
     private static List<Pair<Integer, PaymentAllocationType>> createPaymentAllocationTypeList() {
-        AtomicInteger i = new AtomicInteger(1);
-        return EnumSet.allOf(PaymentAllocationType.class).stream().map(p -> Pair.of(i.getAndIncrement(), p)).toList();
+        return EnumSet.allOf(PaymentAllocationType.class).stream().map(p -> {
+            try {
+                return Pair.of(Integer.parseInt(String.valueOf(Integer.parseInt(String.valueOf(p.ordinal())) + 1)), p);
+            } catch (NumberFormatException e) {
+                throw new RuntimeException("Failed to create payment allocation type list", e);
+            }
+        }).toList();
     }
 
     private void assertPlatformException(String expectedMessage, String expectedCode,

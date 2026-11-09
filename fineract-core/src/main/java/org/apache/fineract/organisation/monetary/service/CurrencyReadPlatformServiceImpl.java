@@ -20,10 +20,9 @@ package org.apache.fineract.organisation.monetary.service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Collection;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.domain.JdbcSupport;
-import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -31,23 +30,18 @@ import org.springframework.jdbc.core.RowMapper;
 @RequiredArgsConstructor
 public class CurrencyReadPlatformServiceImpl implements CurrencyReadPlatformService {
 
-    private final PlatformSecurityContext context;
     private final JdbcTemplate jdbcTemplate;
-    private final CurrencyMapper currencyRowMapper = new CurrencyMapper();
+    private final CurrencyRowMapper currencyRowMapper = new CurrencyRowMapper();
 
     @Override
-    public Collection<CurrencyData> retrieveAllowedCurrencies() {
-
-        this.context.authenticatedUser();
-
+    public List<CurrencyData> retrieveAllowedCurrencies() {
         final String sql = "select " + this.currencyRowMapper.schema() + " from m_organisation_currency c order by c.name";
 
         return this.jdbcTemplate.query(sql, this.currencyRowMapper); // NOSONAR
     }
 
     @Override
-    public Collection<CurrencyData> retrieveAllPlatformCurrencies() {
-
+    public List<CurrencyData> retrieveAllPlatformCurrencies() {
         final String sql = "select " + this.currencyRowMapper.schema() + " from m_currency c order by c.name";
 
         return this.jdbcTemplate.query(sql, this.currencyRowMapper); // NOSONAR
@@ -55,13 +49,12 @@ public class CurrencyReadPlatformServiceImpl implements CurrencyReadPlatformServ
 
     @Override
     public CurrencyData retrieveCurrency(final String code) {
-
         final String sql = "select " + this.currencyRowMapper.schema() + " from m_currency c  where c.code = ? order by c.name";
 
         return this.jdbcTemplate.queryForObject(sql, this.currencyRowMapper, new Object[] { code }); // NOSONAR
     }
 
-    private static final class CurrencyMapper implements RowMapper<CurrencyData> {
+    private static final class CurrencyRowMapper implements RowMapper<CurrencyData> {
 
         @Override
         public CurrencyData mapRow(final ResultSet rs, @SuppressWarnings("unused") final int rowNum) throws SQLException {

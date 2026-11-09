@@ -22,7 +22,19 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.fineract.accounting.common.AccountingEnumerations;
 import org.apache.fineract.infrastructure.core.data.EnumOptionData;
-import org.apache.fineract.portfolio.savings.*;
+import org.apache.fineract.portfolio.savings.DepositAccountOnClosureType;
+import org.apache.fineract.portfolio.savings.DepositAccountOnHoldTransactionType;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
+import org.apache.fineract.portfolio.savings.RecurringDepositType;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsWithdrawalFeesType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSubStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
@@ -200,6 +212,10 @@ public final class SavingsEnumerations {
             case AMOUNT_RELEASE:
                 optionData = new SavingsAccountTransactionEnumData(SavingsAccountTransactionType.AMOUNT_RELEASE.getValue().longValue(),
                         SavingsAccountTransactionType.AMOUNT_RELEASE.getCode(), "Release Amount");
+            break;
+            case INTEREST_CHARGE:
+                optionData = new SavingsAccountTransactionEnumData(SavingsAccountTransactionType.INTEREST_CHARGE.getValue().longValue(),
+                        SavingsAccountTransactionType.INTEREST_CHARGE.getCode(), "Interest Charge");
             break;
         }
         return optionData;
@@ -711,6 +727,10 @@ public final class SavingsEnumerations {
             case CURRENT_DEPOSIT:
                 optionData = new EnumOptionData(DepositAccountType.CURRENT_DEPOSIT.getValue().longValue(),
                         DepositAccountType.CURRENT_DEPOSIT.getCode(), "Current Deposit");
+            break;
+            case DYNAMIC_DEPOSIT:
+                optionData = new EnumOptionData(DepositAccountType.DYNAMIC_DEPOSIT.getValue().longValue(),
+                        DepositAccountType.DYNAMIC_DEPOSIT.getCode(), "Dynamic Deposit");
             break;
         }
         return optionData;

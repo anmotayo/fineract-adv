@@ -21,4 +21,6 @@ package org.apache.fineract.test.data.job;
 public interface Job {
 
     String getName();
+
+    String getShortName();
 }

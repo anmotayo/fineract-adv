@@ -1,0 +1,134 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
+
+import com.advancly.fineract.portfolio.savings.data.DynamicDepositInterestSummaryData;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplicationRepository;
+import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
+import java.math.BigDecimal;
+import java.util.List;
+import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountSummary;
+import org.apache.fineract.portfolio.savings.service.DepositAccountInterestRateChartReadPlatformService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class DynamicDepositAccountReadPlatformServiceImplTest {
+
+    private static final Long ACCOUNT_ID = 1L;
+
+    @Mock
+    private PlatformSecurityContext context;
+    @Mock
+    private JdbcTemplate jdbcTemplate;
+    @Mock
+    private DynamicDepositProductReadPlatformService dynamicDepositProductReadPlatformService;
+    @Mock
+    private SavingsAccountRepositoryWrapper savingsAccountRepository;
+    @Mock
+    private DepositAccountDynamicRateHistoryRepository rateHistoryRepository;
+    @Mock
+    private DepositInterestChargeApplicationRepository interestChargeApplicationRepository;
+    @Mock
+    private DepositAccountInterestRateChartReadPlatformService accountChartReadPlatformService;
+    @Mock
+    private SavingsAccount account;
+    @Mock
+    private SavingsAccountSummary summary;
+
+    private DynamicDepositAccountReadPlatformServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        MoneyHelperInitializer.initialize();
+        this.service = new DynamicDepositAccountReadPlatformServiceImpl(this.context, this.jdbcTemplate,
+                this.dynamicDepositProductReadPlatformService, this.savingsAccountRepository, this.rateHistoryRepository,
+                this.interestChargeApplicationRepository, this.accountChartReadPlatformService);
+        lenient().when(this.savingsAccountRepository.findOneWithNotFoundDetection(eq(ACCOUNT_ID), eq(DepositAccountType.DYNAMIC_DEPOSIT)))
+                .thenReturn(this.account);
+        lenient().when(this.account.getSummary()).thenReturn(this.summary);
+        lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(ACCOUNT_ID)).thenReturn(List.of());
+    }
+
+    @Test
+    void interestWithdrawnIsZeroWithoutSeparateWithdrawalAttributionTable() {
+        when(this.summary.getTotalInterestEarned()).thenReturn(BigDecimal.valueOf(100));
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(80));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(5));
+
+        final DynamicDepositInterestSummaryData summaryData = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        assertThat(summaryData.interestWithdrawn()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void netInterestIsLifeToDateInterestPostedMinusWithholdingTaxAndCharges() {
+        when(this.summary.getTotalInterestEarned()).thenReturn(BigDecimal.valueOf(120));
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(100));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(10));
+
+        final DynamicDepositInterestSummaryData summaryData = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        // netInterest is based on posted interest, not the unposted accrual.
+        final BigDecimal netInterest = (BigDecimal) ReflectionTestUtils.getField(summaryData, "netInterest");
+        assertThat(netInterest).isEqualByComparingTo("90");
+        assertThat(netInterest).isNotNegative();
+    }
+
+    @Test
+    void interestChargesReportsThePostedTotalAndIsSubtractedFromNetInterest() {
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID))
+                .thenReturn(new BigDecimal("30"));
+
+        final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        assertThat(summary.interestCharges()).isEqualByComparingTo("30");
+        // 500 posted - 50 withholding tax - 30 interest charge
+        assertThat(summary.netInterest()).isEqualByComparingTo("420");
+    }
+
+    @Test
+    void interestChargesIsZeroWhenNoChargeHasEverBeenApplied() {
+        when(this.summary.getTotalInterestPosted()).thenReturn(BigDecimal.valueOf(500));
+        when(this.summary.getTotalWithholdTax()).thenReturn(BigDecimal.valueOf(50));
+        lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(ACCOUNT_ID)).thenReturn(BigDecimal.ZERO);
+
+        final DynamicDepositInterestSummaryData summary = this.service.retrieveInterestSummary(ACCOUNT_ID);
+
+        assertThat(summary.interestCharges()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(summary.netInterest()).isEqualByComparingTo("450");
+    }
+}

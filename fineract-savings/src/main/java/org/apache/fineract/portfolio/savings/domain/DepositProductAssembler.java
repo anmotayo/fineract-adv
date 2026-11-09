@@ -18,7 +18,25 @@
  */
 package org.apache.fineract.portfolio.savings.domain;
 
-import static org.apache.fineract.portfolio.savings.DepositsApiConstants.*;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.FIXED_DEPOSIT_PRODUCT_RESOURCE_NAME;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.RECURRING_DEPOSIT_PRODUCT_RESOURCE_NAME;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.adjustAdvanceTowardsFuturePaymentsParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.allowWithdrawalParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.chartsParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMaxAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositMinAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.inMultiplesOfDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.isMandatoryDepositParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.maxDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.minDepositTermTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalApplicableParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestOnTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.preClosurePenalInterestParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.chargesParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.currencyCodeParamName;
 import static org.apache.fineract.portfolio.savings.SavingsApiConstants.descriptionParamName;
@@ -54,7 +72,14 @@ import org.apache.fineract.portfolio.charge.domain.Charge;
 import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
 import org.apache.fineract.portfolio.interestratechart.service.InterestRateChartAssembler;
-import org.apache.fineract.portfolio.savings.*;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.PreClosurePenalInterestOnType;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -135,7 +160,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
                 depositTermDetail, depositProductAmountDetails, null, withHoldTaxPostingType);
 
         // Savings product charges
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName,
+                DepositAccountType.FIXED_DEPOSIT);
         // Interest rate charts
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
@@ -237,7 +263,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final DepositProductRecurringDetail productRecurringDetail = DepositProductRecurringDetail.createNew(recurringDetail, null);
 
         // Savings product charges
-        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName);
+        final Set<Charge> charges = assembleListOfSavingsProductCharges(command, currencyCode, chargesParamName,
+                DepositAccountType.RECURRING_DEPOSIT);
         // Interest rate charts
         final List<ApiParameterError> dataValidationErrors = new ArrayList<>();
         final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
@@ -283,10 +310,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             }
         }
 
-        DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest,
-                preClosurePenalInterestType);
-
-        return preClosureDetail;
+        return DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest, preClosurePenalInterestType);
     }
 
     public DepositPreClosureDetail assemblePreClosureDetail(final JsonCommand command, DepositPreClosureDetail produPreClosureDetail) {
@@ -318,10 +342,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         preClosurePenalInterestType = preClosurePenalInterestOnTypeId == null ? null
                 : PreClosurePenalInterestOnType.fromInt(preClosurePenalInterestOnTypeId);
 
-        DepositPreClosureDetail preClosureDetail1 = DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest,
-                preClosurePenalInterestType);
-
-        return preClosureDetail1;
+        return DepositPreClosureDetail.createFrom(preClosurePenalApplicable, preClosurePenalInterest, preClosurePenalInterestType);
     }
 
     public DepositTermDetail assembleDepositTermDetail(final JsonCommand command) {
@@ -339,10 +360,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final SavingsPeriodFrequencyType inMultiplesOfDepositTermType = (inMultiplesOfDepositTermTypeId == null) ? null
                 : SavingsPeriodFrequencyType.fromInt(inMultiplesOfDepositTermTypeId);
 
-        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType,
-                maxDepositTermType, inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
-
-        return depositTermDetail;
+        return DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
     }
 
     public DepositTermDetail assembleDepositTermDetail(final JsonCommand command, final DepositTermDetail prodDepositTermDetail) {
@@ -399,10 +418,8 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
         final SavingsPeriodFrequencyType inMultiplesOfDepositTermType = (inMultiplesOfDepositTermTypeId == null) ? null
                 : SavingsPeriodFrequencyType.fromInt(inMultiplesOfDepositTermTypeId);
 
-        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType,
-                maxDepositTermType, inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
-
-        return depositTermDetail;
+        return DepositTermDetail.createFrom(minDepositTerm, maxDepositTerm, minDepositTermType, maxDepositTermType,
+                inMultiplesOfDepositTerm, inMultiplesOfDepositTermType);
     }
 
     public DepositRecurringDetail assembleRecurringDetail(final JsonCommand command) {
@@ -422,10 +439,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             adjustAdvanceTowardsFuturePayments = false;
         }
 
-        final DepositRecurringDetail depositRecurringDetail = DepositRecurringDetail.createFrom(isMandatoryDeposit, allowWithdrawal,
-                adjustAdvanceTowardsFuturePayments);
-
-        return depositRecurringDetail;
+        return DepositRecurringDetail.createFrom(isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments);
     }
 
     private Set<InterestRateChart> assembleListOfCharts(JsonCommand command, String currencyCode, DataValidatorBuilder baseDataValidator) {
@@ -460,10 +474,7 @@ public class DepositProductAssembler extends SavingsProductBaseAssembler {
             depositAmount = command.bigDecimalValueOfParameterNamed(depositAmountParamName);
         }
 
-        final DepositProductAmountDetails depositRecurringDetail = new DepositProductAmountDetails(minDepositAmount, depositAmount,
-                maxDepositAmount);
-
-        return depositRecurringDetail;
+        return new DepositProductAmountDetails(minDepositAmount, depositAmount, maxDepositAmount);
     }
 
 }

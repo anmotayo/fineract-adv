@@ -30,12 +30,14 @@ public final class DepositsApiConstants {
     }
 
     // Deposit products
-    public static final String FIXED_DEPOSIT_PRODUCT_RESOURCE_NAME = "fixeddeposit";
-    public static final String RECURRING_DEPOSIT_PRODUCT_RESOURCE_NAME = "recurringdeposit";
+    public static final String FIXED_DEPOSIT_PRODUCT_RESOURCE_NAME = "fixeddepositproduct";
+    public static final String RECURRING_DEPOSIT_PRODUCT_RESOURCE_NAME = "recurringdepositproduct";
+    public static final String DYNAMIC_DEPOSIT_PRODUCT_RESOURCE_NAME = "dynamicdepositproduct";
 
     // Deposit accounts
     public static final String FIXED_DEPOSIT_ACCOUNT_RESOURCE_NAME = "fixeddepositaccount";
     public static final String RECURRING_DEPOSIT_ACCOUNT_RESOURCE_NAME = "recurringdepositaccount";
+    public static final String DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME = "dynamicdepositaccount";
 
     public static final String SAVINGS_ACCOUNT_RESOURCE_NAME = "savingsaccount";
     public static final String SAVINGS_ACCOUNT_TRANSACTION_RESOURCE_NAME = "savingsaccount.transaction";
@@ -182,6 +184,9 @@ public final class DepositsApiConstants {
     public static final String amountOutstandingParamName = "amountOutstanding";
     public static final String amountOrPercentageParamName = "amountOrPercentage";
     public static final String amountParamName = "amount";
+    public static final String isManualTransaction = "isManualTransaction";
+    public static final String lienTransaction = "lienTransaction";
+    public static final String chargesPaidByData = "chargesPaidByData";
     public static final String amountPaidParamName = "amountPaid";
     public static final String chargeOptionsParamName = "chargeOptions";
     public static final String chargePaymentModeParamName = "chargePaymentMode";

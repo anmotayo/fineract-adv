@@ -91,7 +91,8 @@ public class ChargeDropdownReadPlatformServiceImpl implements ChargeDropdownRead
     @Override
     public List<EnumOptionData> retrieveSavingsCalculationTypes() {
         return Arrays.asList(chargeCalculationType(ChargeCalculationType.FLAT),
-                chargeCalculationType(ChargeCalculationType.PERCENT_OF_AMOUNT));
+                chargeCalculationType(ChargeCalculationType.PERCENT_OF_AMOUNT),
+                chargeCalculationType(ChargeCalculationType.PERCENT_OF_INTEREST));
     }
 
     @Override

@@ -557,7 +557,7 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
 
         if (changes.containsKey("charges")) {
             final Set<SavingsAccountCharge> charges = this.savingsAccountChargeAssembler.fromParsedJson(command.parsedJson(),
-                    account.getCurrency().getCode());
+                    account.getCurrency().getCode(), account.depositAccountType());
             final boolean updated = account.update(charges);
             if (!updated) {
                 changes.remove("charges");
@@ -741,19 +741,17 @@ public class DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl impl
 
     private void checkClientOrGroupActive(final SavingsAccount account) {
         final Client client = account.getClient();
-        if (client != null) {
-            if (client.isNotActive()) {
-                throw new ClientNotActiveException(client.getId());
-            }
+        if (client != null && client.isNotActive()) {
+            throw new ClientNotActiveException(client.getId());
         }
+
         final Group group = account.group();
-        if (group != null) {
-            if (group.isNotActive()) {
-                if (group.isCenter()) {
-                    throw new CenterNotActiveException(group.getId());
-                }
-                throw new GroupNotActiveException(group.getId());
+        if (group != null && group.isNotActive()) {
+            if (group.isCenter()) {
+                throw new CenterNotActiveException(group.getId());
             }
+            throw new GroupNotActiveException(group.getId());
         }
+
     }
 }

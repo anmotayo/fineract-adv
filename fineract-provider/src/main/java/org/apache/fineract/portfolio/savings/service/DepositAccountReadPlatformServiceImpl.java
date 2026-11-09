@@ -91,6 +91,7 @@ import org.apache.fineract.portfolio.savings.data.SavingsAccountStatusEnumData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountSummaryData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargesPaidByData;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountStatusType;
 import org.apache.fineract.portfolio.savings.exception.DepositAccountNotFoundException;
 import org.apache.fineract.portfolio.tax.data.TaxGroupData;
@@ -191,11 +192,11 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         final StringBuilder sqlBuilder = new StringBuilder(200);
         sqlBuilder.append("SELECT ");
         sqlBuilder.append(DEPOSIT_ACCOUNT_FOR_MATURITY_MAPPER.schema());
-        sqlBuilder.append(" WHERE da.deposit_type_enum in (?, ?) and da.status_enum = ?");
+        sqlBuilder.append(" WHERE da.deposit_type_enum in (?, ?, ?) and da.status_enum = ?");
 
         return this.jdbcTemplate.query(sqlBuilder.toString(), DEPOSIT_ACCOUNT_FOR_MATURITY_MAPPER,
                 DepositAccountType.FIXED_DEPOSIT.getValue(), DepositAccountType.RECURRING_DEPOSIT.getValue(),
-                SavingsAccountStatusType.ACTIVE.getValue());
+                DepositAccountType.DYNAMIC_DEPOSIT.getValue(), SavingsAccountStatusType.ACTIVE.getValue());
     }
 
     @Override
@@ -961,6 +962,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String ON_ACCOUNT_CLOSURE_ID = "onAccountClosureId";
         public static final String EXPECTED_FIRST_DEPOSIT_ON_DATE = "expectedFirstDepositOnDate";
         public static final String WITHHOLD_TAX_POSTING_TYPE_ID = "withholdTaxPostingTypeId";
+        public static final String TRANSFER_INTEREST_TO_SAVINGS = "transferInterestToSavings";
         private final String schemaSql;
 
         RecurringDepositAccountMapper() {
@@ -990,6 +992,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             sqlBuilder.append("datp.deposit_period as depositPeriod, ");
             sqlBuilder.append("datp.deposit_period_frequency_enum as depositPeriodFrequencyTypeId, ");
             sqlBuilder.append("datp.on_account_closure_enum as onAccountClosureId, ");
+            sqlBuilder.append("datp.transfer_interest_to_linked_account as transferInterestToSavings, ");
             sqlBuilder.append("datp.withhold_tax_posting_type_enum as withHoldTaxPostingTypeId ");
 
             sqlBuilder.append(this.selectTablesSql());
@@ -1041,6 +1044,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final boolean allowWithdrawal = rs.getBoolean(ALLOW_WITHDRAWAL);
             final boolean adjustAdvanceTowardsFuturePayments = rs.getBoolean(ADJUST_ADVANCE_TOWARDS_FUTURE_PAYMENTS);
             final boolean isCalendarInherited = rs.getBoolean(IS_CALENDAR_INHERITED);
+            final boolean transferInterestToSavings = rs.getBoolean(TRANSFER_INTEREST_TO_SAVINGS);
 
             final Integer onAccountClosureId = JdbcSupport.getInteger(rs, ON_ACCOUNT_CLOSURE_ID);
             final EnumOptionData onAccountClosureType = (onAccountClosureId == null) ? null
@@ -1055,7 +1059,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, depositAmount, maturityAmount, maturityDate, depositPeriod,
                     depositPeriodFrequencyType, mandatoryRecommendedDepositAmount, onAccountClosureType, expectedFirstDepositOnDate,
                     totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments,
-                    isCalendarInherited, withHoldTaxPostingType);
+                    isCalendarInherited, withHoldTaxPostingType, transferInterestToSavings);
 
         }
     }
@@ -1118,6 +1122,12 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
         public static final String SUBMITTED_BY_USERNAME = "submittedByUsername";
         public static final String SUBMITTED_ON_DATE = "submittedOnDate";
         public static final String CREATED_ON_UTC = "createdOnUtc";
+        public static final String CHARGES_PAID_BY_ID = "chargesPaidById";
+        public static final String PAID_BY_AMOUNT = "paidByAmount";
+        public static final String CHARGE_ID = "chargeId";
+        public static final String CHARGE_AMOUNT = "chargeAmount";
+        public static final String CHARGE_TIME_TYPE = "chargeTimeType";
+        public static final String IS_PENALTY_CHARGE = "isPenaltyCharge";
         private final String schemaSql;
 
         SavingsAccountTransactionsMapper() {
@@ -1142,7 +1152,10 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     "sa.currency_code as currencyCode, sa.currency_digits as currencyDigits, sa.currency_multiplesof as inMultiplesOf, ");
             sqlBuilder.append("curr.name as currencyName, curr.internationalized_name_code as currencyNameCode, ");
             sqlBuilder.append("curr.display_symbol as currencyDisplaySymbol, ");
-            sqlBuilder.append("pt.value as paymentTypeName ");
+            sqlBuilder.append("pt.value as paymentTypeName, ");
+            sqlBuilder.append("msacpb.amount as paidByAmount, msacpb.id as chargesPaidById, ");
+            sqlBuilder.append(
+                    "msac.id as chargeId, msac.amount as chargeAmount, msac.charge_time_enum as chargeTimeType, msac.is_penalty as isPenaltyCharge ");
             sqlBuilder.append("from m_savings_account sa ");
             sqlBuilder.append("join m_savings_account_transaction tr on tr.savings_account_id = sa.id ");
             sqlBuilder.append("join m_currency curr on curr.code = sa.currency_code ");
@@ -1150,7 +1163,9 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             sqlBuilder.append("left join m_account_transfer_transaction totran on totran.to_savings_transaction_id = tr.id ");
             sqlBuilder.append("left join m_payment_detail pd on tr.payment_detail_id = pd.id ");
             sqlBuilder.append("left join m_payment_type pt on pd.payment_type_id = pt.id ");
-            sqlBuilder.append("left join m_appuser au on au.id = tr." + CREATED_BY_DB_FIELD);
+            sqlBuilder.append("left join m_appuser au on au.id = tr." + CREATED_BY_DB_FIELD + " ");
+            sqlBuilder.append("left join m_savings_account_charge_paid_by msacpb on msacpb.savings_account_transaction_id = tr.id ");
+            sqlBuilder.append("left join m_savings_account_charge msac on msac.id = msacpb.savings_account_charge_id ");
             this.schemaSql = sqlBuilder.toString();
         }
 
@@ -1223,9 +1238,32 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
             final boolean postInterestAsOn = false;
             final String submittedByUsername = rs.getString(SUBMITTED_BY_USERNAME);
             final String note = null;
-            return SavingsAccountTransactionData.create(id, transactionType, paymentDetailData, savingsId, accountNo, date, currency,
-                    amount, outstandingChargeAmount, runningBalance, reversed, transfer, postInterestAsOn, submittedByUsername, note,
-                    submittedOnDate, createdOnUtc);
+            final SavingsAccountTransactionData transactionData = SavingsAccountTransactionData.create(id, transactionType,
+                    paymentDetailData, savingsId, accountNo, date, currency, amount, outstandingChargeAmount, runningBalance, reversed,
+                    transfer, postInterestAsOn, submittedByUsername, note, submittedOnDate, createdOnUtc);
+            addChargesPaidByData(rs, transactionData);
+            return transactionData;
+        }
+
+        private void addChargesPaidByData(final ResultSet rs, final SavingsAccountTransactionData transactionData) throws SQLException {
+            final Long chargesPaidById = JdbcSupport.getLongDefaultToNullIfZero(rs, CHARGES_PAID_BY_ID);
+            if (chargesPaidById == null) {
+                return;
+            }
+
+            final Long chargeId = JdbcSupport.getLongDefaultToNullIfZero(rs, CHARGE_ID);
+            final BigDecimal chargeAmount = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, CHARGE_AMOUNT);
+            final Integer chargesTimeType = JdbcSupport.getInteger(rs, CHARGE_TIME_TYPE);
+            final EnumOptionData enumOptionDataForChargesTimeType = chargesTimeType == null ? null
+                    : new EnumOptionData(chargesTimeType.longValue(), null, null);
+            final boolean isPenalty = rs.getBoolean(IS_PENALTY_CHARGE);
+            final SavingsAccountChargeData savingsAccountChargeData = new SavingsAccountChargeData(chargeId, chargeAmount,
+                    enumOptionDataForChargesTimeType, isPenalty);
+            final BigDecimal chargesPaid = JdbcSupport.getBigDecimalDefaultToNullIfZero(rs, PAID_BY_AMOUNT);
+            final SavingsAccountChargesPaidByData savingsAccountChargesPaidByData = new SavingsAccountChargesPaidByData(chargesPaidById,
+                    chargesPaid);
+            savingsAccountChargesPaidByData.setSavingsAccountChargeData(savingsAccountChargeData);
+            transactionData.setChargesPaidByData(savingsAccountChargesPaidByData);
         }
     }
 
@@ -1560,7 +1598,7 @@ public class DepositAccountReadPlatformServiceImpl implements DepositAccountRead
                     inMultiplesOfDepositTerm, inMultiplesOfDepositTermType, depositAmount, maturityAmount, maturityDate, depositPeriod,
                     depositPeriodFrequencyType, mandatoryRecommendedDepositAmount, onAccountClosureType, expectedFirstDepositOnDate,
                     totalOverdueAmount, noOfOverdueInstallments, isMandatoryDeposit, allowWithdrawal, adjustAdvanceTowardsFuturePayments,
-                    isCalendarInherited, withholdTaxPostingType);
+                    isCalendarInherited, withholdTaxPostingType, false);
         }
     }
 

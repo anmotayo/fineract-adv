@@ -1,0 +1,32 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings;
+
+public final class AdvanclyInterestChargeApiConstants {
+
+    public static final String APPLY_EARLY_WITHDRAWAL_CHARGE = "applyEarlyWithdrawalCharge";
+    public static final String EARLY_WITHDRAWAL_CHARGE_PERCENTAGE = "earlyWithdrawalChargePercentage";
+    public static final String SELECTED_FROM_DATE = "selectedFromDate";
+    public static final String SELECTED_TO_DATE = "selectedToDate";
+    public static final String WITHDRAWAL_DATE = "withdrawalDate";
+    /** Quote the charge for a closure rather than an ordinary withdrawal. */
+    public static final String FOR_CLOSURE = "forClosure";
+
+    private AdvanclyInterestChargeApiConstants() {}
+}

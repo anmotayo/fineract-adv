@@ -1,0 +1,368 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.domain;
+
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.allowWithdrawalParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.dynamicRateEnabledParamName;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositAmountParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodFrequencyIdParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.depositPeriodParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.expectedFirstDepositOnDateParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.transferInterestToSavingsParamName;
+import static org.apache.fineract.portfolio.savings.DepositsApiConstants.withHoldTaxPostingTypeIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.accountNoParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.clientIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.externalIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.fieldOfficerIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.groupIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.interestCalculationDaysInYearTypeParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.interestCalculationTypeParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.interestCompoundingPeriodTypeParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.interestPostingPeriodTypeParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.lockinPeriodFrequencyParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.lockinPeriodFrequencyTypeParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.minRequiredOpeningBalanceParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.nominalAnnualInterestRateParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.productIdParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.submittedOnDateParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.withHoldTaxParamName;
+import static org.apache.fineract.portfolio.savings.SavingsApiConstants.withdrawalFeeForTransfersParamName;
+
+import com.advancly.fineract.portfolio.savings.service.AdvanclyChargeInterestRuleValidator;
+import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDataValidator;
+import com.google.gson.JsonElement;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
+import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
+import org.apache.fineract.organisation.staff.domain.Staff;
+import org.apache.fineract.organisation.staff.domain.StaffRepositoryWrapper;
+import org.apache.fineract.portfolio.accountdetails.domain.AccountType;
+import org.apache.fineract.portfolio.charge.domain.Charge;
+import org.apache.fineract.portfolio.charge.domain.ChargeCalculationType;
+import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
+import org.apache.fineract.portfolio.client.domain.Client;
+import org.apache.fineract.portfolio.client.domain.ClientRepositoryWrapper;
+import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
+import org.apache.fineract.portfolio.group.domain.Group;
+import org.apache.fineract.portfolio.group.domain.GroupRepositoryWrapper;
+import org.apache.fineract.portfolio.group.exception.CenterNotActiveException;
+import org.apache.fineract.portfolio.group.exception.ClientNotInGroupException;
+import org.apache.fineract.portfolio.group.exception.GroupNotActiveException;
+import org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.SavingsCompoundingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationDaysInYearType;
+import org.apache.fineract.portfolio.savings.SavingsInterestCalculationType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.SavingsPostingInterestPeriodType;
+import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
+import org.apache.fineract.portfolio.savings.domain.DepositProductTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountCharge;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountChargeAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
+import org.apache.fineract.portfolio.savings.exception.SavingsProductNotFoundException;
+import org.springframework.stereotype.Component;
+
+/**
+ * Builds a {@link DynamicDepositAccount} from a submission command, mirroring the fixed-deposit branch of
+ * {@code DepositAccountAssembler#assembleFrom}.
+ */
+@Component
+public class DynamicDepositAccountAssembler {
+
+    private final ClientRepositoryWrapper clientRepository;
+    private final GroupRepositoryWrapper groupRepository;
+    private final StaffRepositoryWrapper staffRepository;
+    private final DynamicDepositProductRepository dynamicDepositProductRepository;
+    private final SavingsAccountChargeAssembler savingsAccountChargeAssembler;
+    private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
+    private final SavingsHelper savingsHelper;
+    private final ExternalIdFactory externalIdFactory;
+    private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
+
+    public DynamicDepositAccountAssembler(final ClientRepositoryWrapper clientRepository, final GroupRepositoryWrapper groupRepository,
+            final StaffRepositoryWrapper staffRepository, final DynamicDepositProductRepository dynamicDepositProductRepository,
+            final SavingsAccountChargeAssembler savingsAccountChargeAssembler,
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
+            final ExternalIdFactory externalIdFactory, final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator) {
+        this.clientRepository = clientRepository;
+        this.groupRepository = groupRepository;
+        this.staffRepository = staffRepository;
+        this.dynamicDepositProductRepository = dynamicDepositProductRepository;
+        this.savingsAccountChargeAssembler = savingsAccountChargeAssembler;
+        this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
+        this.savingsHelper = savingsHelper;
+        this.externalIdFactory = externalIdFactory;
+        this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
+    }
+
+    public DynamicDepositAccount assembleFrom(final JsonCommand command) {
+
+        final JsonElement element = command.parsedJson();
+
+        final String accountNo = command.stringValueOfParameterNamed(accountNoParamName);
+        final String externalId = command.stringValueOfParameterNamed(externalIdParamName);
+        final Long productId = command.longValueOfParameterNamed(productIdParamName);
+
+        final DynamicDepositProduct product = this.dynamicDepositProductRepository.findById(productId)
+                .orElseThrow(() -> new SavingsProductNotFoundException(productId));
+
+        Client client = null;
+        Group group = null;
+        AccountType accountType = AccountType.INVALID;
+        final Long clientId = command.longValueOfParameterNamed(clientIdParamName);
+        if (clientId != null) {
+            client = this.clientRepository.findOneWithNotFoundDetection(clientId);
+            accountType = AccountType.INDIVIDUAL;
+            if (client.isNotActive()) {
+                throw new ClientNotActiveException(clientId);
+            }
+        }
+
+        final Long groupId = command.longValueOfParameterNamed(groupIdParamName);
+        if (groupId != null) {
+            group = this.groupRepository.findOneWithNotFoundDetection(groupId);
+            accountType = AccountType.GROUP;
+        }
+
+        if (group != null && client != null) {
+            if (!group.hasClientAsMember(client)) {
+                throw new ClientNotInGroupException(clientId, groupId);
+            }
+            accountType = AccountType.JLG;
+            if (group.isNotActive()) {
+                if (group.isCenter()) {
+                    throw new CenterNotActiveException(groupId);
+                }
+                throw new GroupNotActiveException(groupId);
+            }
+        }
+
+        Staff fieldOfficer = null;
+        final Long fieldOfficerId = command.longValueOfParameterNamed(fieldOfficerIdParamName);
+        if (fieldOfficerId != null) {
+            fieldOfficer = this.staffRepository.findOneWithNotFoundDetection(fieldOfficerId);
+        }
+
+        final LocalDate submittedOnDate = command.localDateValueOfParameterNamed(submittedOnDateParamName);
+
+        final SavingsCompoundingInterestPeriodType interestCompoundingPeriodType = resolveOrDefault(
+                command.integerValueOfParameterNamed(interestCompoundingPeriodTypeParamName), product.interestCompoundingPeriodType());
+        final SavingsPostingInterestPeriodType interestPostingPeriodType = resolveOrDefault(
+                command.integerValueOfParameterNamed(interestPostingPeriodTypeParamName), product.interestPostingPeriodType());
+        final SavingsInterestCalculationType interestCalculationType = resolveOrDefault(
+                command.integerValueOfParameterNamed(interestCalculationTypeParamName), product.interestCalculationType());
+        final SavingsInterestCalculationDaysInYearType interestCalculationDaysInYearType = resolveOrDefault(
+                command.integerValueOfParameterNamed(interestCalculationDaysInYearTypeParamName),
+                product.interestCalculationDaysInYearType());
+
+        final BigDecimal minRequiredOpeningBalance = command.parameterExists(minRequiredOpeningBalanceParamName)
+                ? command.bigDecimalValueOfParameterNamed(minRequiredOpeningBalanceParamName)
+                : product.minRequiredOpeningBalance();
+
+        final Integer lockinPeriodFrequency = command.parameterExists(lockinPeriodFrequencyParamName)
+                ? command.integerValueOfParameterNamed(lockinPeriodFrequencyParamName)
+                : product.lockinPeriodFrequency();
+        final SavingsPeriodFrequencyType lockinPeriodFrequencyType = command.parameterExists(lockinPeriodFrequencyTypeParamName)
+                ? SavingsPeriodFrequencyType.fromInt(command.integerValueOfParameterNamed(lockinPeriodFrequencyTypeParamName))
+                : product.lockinPeriodFrequencyType();
+
+        final boolean withdrawalFeeApplicableForTransfer = command
+                .booleanPrimitiveValueOfParameterNamed(withdrawalFeeForTransfersParamName);
+
+        final Set<SavingsAccountCharge> charges = withEarlyWithdrawalCharge(new HashSet<>(this.savingsAccountChargeAssembler
+                .fromParsedJson(element, product.currency().getCode(), DepositAccountType.DYNAMIC_DEPOSIT)),
+                resolveProductEarlyWithdrawalCharge(product));
+        this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(product.getId(), charges,
+                interestPostingPeriodType);
+
+        boolean withHoldTax = product.withHoldTax();
+        if (command.parameterExists(withHoldTaxParamName)) {
+            withHoldTax = command.booleanPrimitiveValueOfParameterNamed(withHoldTaxParamName);
+        }
+
+        final boolean allowWithdrawal = command.parameterExists(allowWithdrawalParamName)
+                ? command.booleanPrimitiveValueOfParameterNamed(allowWithdrawalParamName)
+                : product.isAllowWithdrawal();
+        final boolean dynamicRateEnabled = command.parameterExists(dynamicRateEnabledParamName)
+                ? command.booleanPrimitiveValueOfParameterNamed(dynamicRateEnabledParamName)
+                : product.isDynamicRateEnabled();
+
+        final boolean transferInterestToSavings = command.booleanPrimitiveValueOfParameterNamed(transferInterestToSavingsParamName);
+
+        // Required independently of allowWithdrawal: transferring interest is not a regular transaction.
+        final Long linkedAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
+        this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(transferInterestToSavings,
+                linkedAccountId);
+
+        final BigDecimal depositAmount = command.bigDecimalValueOfParameterNamed(depositAmountParamName);
+        final Integer depositPeriod = command.integerValueOfParameterNamed(depositPeriodParamName);
+        final Integer depositPeriodFrequencyId = command.integerValueOfParameterNamed(depositPeriodFrequencyIdParamName);
+        final SavingsPeriodFrequencyType depositPeriodFrequency = SavingsPeriodFrequencyType.fromInt(depositPeriodFrequencyId);
+        final LocalDate expectedFirstDepositOnDate = command.localDateValueOfParameterNamed(expectedFirstDepositOnDateParamName);
+
+        final DepositProductTermAndPreClosure productTermAndPreClosure = product.depositProductTermAndPreClosure();
+        this.dynamicDepositAccountDataValidator.validateDepositAmountAndTermWithinProductRange(depositAmount, depositPeriod,
+                depositPeriodFrequency, productTermAndPreClosure);
+
+        // Account override when sent, else inherited from the product.
+        WithHoldTaxPostingType withHoldTaxPostingType = null;
+        if (command.parameterExists(withHoldTaxPostingTypeIdParamName)) {
+            final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
+            withHoldTaxPostingType = withHoldTaxPostingTypeId == null ? null : WithHoldTaxPostingType.fromInt(withHoldTaxPostingTypeId);
+        } else if (productTermAndPreClosure != null && productTermAndPreClosure.withHoldTaxPostingType() != null) {
+            withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(productTermAndPreClosure.withHoldTaxPostingType());
+        }
+
+        // Snapshot the product chart at submission so later product edits never change an open account's rate;
+        // all later rate resolution reads this snapshot.
+        final InterestRateChart productChart = product.applicableChart(submittedOnDate);
+        final DepositAccountInterestRateChart accountChart = productChart == null ? null
+                : DepositAccountInterestRateChart.from(productChart);
+
+        BigDecimal interestRate = command.bigDecimalValueOfParameterNamed(nominalAnnualInterestRateParamName);
+        if (interestRate == null) {
+            interestRate = resolveInitialRateFromChart(product, accountChart, depositAmount, submittedOnDate, depositPeriod,
+                    depositPeriodFrequency);
+        }
+
+        final DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(false, null, null);
+        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(depositPeriod, depositPeriod, depositPeriodFrequency,
+                depositPeriodFrequency, null, null);
+        final DepositAccountTermAndPreClosure accountTermAndPreClosure = DepositAccountTermAndPreClosure.createNew(preClosureDetail,
+                depositTermDetail, null, depositAmount, null, null, depositPeriod, depositPeriodFrequency, expectedFirstDepositOnDate, null,
+                transferInterestToSavings, null, withHoldTaxPostingType);
+
+        final DynamicDepositAccount account = DynamicDepositAccount.createNewApplicationForSubmittal(client, group, product, fieldOfficer,
+                accountNo, this.externalIdFactory.create(externalId), accountType, submittedOnDate, null, interestRate,
+                interestCompoundingPeriodType, interestPostingPeriodType, interestCalculationType, interestCalculationDaysInYearType,
+                minRequiredOpeningBalance, lockinPeriodFrequency, lockinPeriodFrequencyType, withdrawalFeeApplicableForTransfer, charges,
+                accountTermAndPreClosure, accountChart, withHoldTax);
+
+        accountTermAndPreClosure.updateAccountReference(account);
+
+        final DepositAccountDynamicDetail dynamicDetail = DepositAccountDynamicDetail.createNew(account, allowWithdrawal,
+                dynamicRateEnabled);
+        account.setDynamicDetail(dynamicDetail);
+
+        // Anchored on submittedOnDate; recomputed against the activation date on activate, as FD does.
+        account.updateMaturityDate();
+
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+
+        return account;
+    }
+
+    /** The early-withdrawal penalty: the charge-interest rule whose charge is attached to the product. */
+    private Charge resolveProductEarlyWithdrawalCharge(final DynamicDepositProduct product) {
+        return this.chargeInterestRuleValidator.resolveSingleInterestCharge(product);
+    }
+
+    /**
+     * Adds the product's early-withdrawal charge unless the request already supplied it (keeping its percentage
+     * override). Only this charge is inherited, not every product charge as core's fromSavingsProduct would.
+     */
+    static Set<SavingsAccountCharge> withEarlyWithdrawalCharge(final Set<SavingsAccountCharge> requestCharges,
+            final Charge earlyWithdrawalCharge) {
+        if (earlyWithdrawalCharge == null) {
+            return requestCharges;
+        }
+        for (final SavingsAccountCharge existing : requestCharges) {
+            if (existing.getCharge() != null && earlyWithdrawalCharge.getId().equals(existing.getCharge().getId())) {
+                return requestCharges;
+            }
+        }
+        final ChargeTimeType chargeTime = earlyWithdrawalCharge.getChargeTimeType() == null ? null
+                : ChargeTimeType.fromInt(earlyWithdrawalCharge.getChargeTimeType());
+        final ChargeCalculationType chargeCalculation = earlyWithdrawalCharge.getChargeCalculation() == null ? null
+                : ChargeCalculationType.fromInt(earlyWithdrawalCharge.getChargeCalculation());
+        requestCharges.add(SavingsAccountCharge.createNewWithoutSavingsAccount(earlyWithdrawalCharge, earlyWithdrawalCharge.getAmount(),
+                chargeTime, chargeCalculation, null, true, earlyWithdrawalCharge.getFeeOnMonthDay(), earlyWithdrawalCharge.feeInterval()));
+        return requestCharges;
+    }
+
+    /**
+     * Initial rate from the account's chart snapshot (regardless of dynamicRateEnabled), using an additive tenor-end
+     * estimate; falls back to the product's nominal rate when no chart is configured.
+     */
+    private BigDecimal resolveInitialRateFromChart(final DynamicDepositProduct product, final DepositAccountInterestRateChart accountChart,
+            final BigDecimal depositAmount, final LocalDate submittedOnDate, final Integer depositPeriod,
+            final SavingsPeriodFrequencyType depositPeriodFrequency) {
+        if (accountChart == null) {
+            return product.nominalAnnualInterestRate();
+        }
+
+        final LocalDate estimatedMaturityDate = addPeriod(submittedOnDate, depositPeriod, depositPeriodFrequency);
+        final BigDecimal resolvedRate = accountChart.getApplicableInterestRate(depositAmount, submittedOnDate, estimatedMaturityDate, null);
+        if (resolvedRate == null || resolvedRate.compareTo(BigDecimal.ZERO) == 0) {
+            return product.nominalAnnualInterestRate();
+        }
+        return resolvedRate;
+    }
+
+    private LocalDate addPeriod(final LocalDate from, final Integer period, final SavingsPeriodFrequencyType frequencyType) {
+        if (from == null || period == null || frequencyType == null) {
+            return from;
+        }
+        switch (frequencyType) {
+            case DAYS:
+                return from.plusDays(period);
+            case WEEKS:
+                return from.plusWeeks(period);
+            case MONTHS:
+                return from.plusMonths(period);
+            case YEARS:
+                return from.plusYears(period);
+            default:
+                return from;
+        }
+    }
+
+    private SavingsCompoundingInterestPeriodType resolveOrDefault(final Integer value,
+            final SavingsCompoundingInterestPeriodType fallback) {
+        return value != null ? SavingsCompoundingInterestPeriodType.fromInt(value) : fallback;
+    }
+
+    private SavingsPostingInterestPeriodType resolveOrDefault(final Integer value, final SavingsPostingInterestPeriodType fallback) {
+        return value != null ? SavingsPostingInterestPeriodType.fromInt(value) : fallback;
+    }
+
+    private SavingsInterestCalculationType resolveOrDefault(final Integer value, final SavingsInterestCalculationType fallback) {
+        return value != null ? SavingsInterestCalculationType.fromInt(value) : fallback;
+    }
+
+    private SavingsInterestCalculationDaysInYearType resolveOrDefault(final Integer value,
+            final SavingsInterestCalculationDaysInYearType fallback) {
+        return value != null ? SavingsInterestCalculationDaysInYearType.fromInt(value) : fallback;
+    }
+}

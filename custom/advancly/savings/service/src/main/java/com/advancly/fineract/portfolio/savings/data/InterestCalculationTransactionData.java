@@ -1,0 +1,105 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.data;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import org.apache.fineract.organisation.monetary.data.CurrencyData;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionEnumData;
+
+/** Preview transaction row; a simulated top-up/withdrawal has a {@code null} id and {@code createdOnUtc}. */
+public class InterestCalculationTransactionData implements Serializable {
+
+    private final Long id;
+    private final SavingsAccountTransactionEnumData transactionType;
+    private final LocalDate date;
+    private final BigDecimal amount;
+    private final BigDecimal runningBalance;
+    private final boolean reversed;
+    private final boolean simulated;
+    private final OffsetDateTime createdOnUtc;
+    private final CurrencyData currency;
+    private final Long accountTransferId;
+    private final Long accountTransferTransactionId;
+
+    public InterestCalculationTransactionData(final Long id, final SavingsAccountTransactionEnumData transactionType, final LocalDate date,
+            final BigDecimal amount, final BigDecimal runningBalance, final boolean reversed, final boolean simulated,
+            final OffsetDateTime createdOnUtc, final CurrencyData currency, final Long accountTransferId,
+            final Long accountTransferTransactionId) {
+        this.id = id;
+        this.transactionType = transactionType;
+        this.date = date;
+        this.amount = amount;
+        this.runningBalance = runningBalance;
+        this.reversed = reversed;
+        this.simulated = simulated;
+        this.createdOnUtc = createdOnUtc;
+        this.currency = currency;
+        this.accountTransferId = accountTransferId;
+        this.accountTransferTransactionId = accountTransferTransactionId;
+    }
+
+    public Long id() {
+        return this.id;
+    }
+
+    public SavingsAccountTransactionEnumData transactionType() {
+        return this.transactionType;
+    }
+
+    public LocalDate date() {
+        return this.date;
+    }
+
+    public BigDecimal amount() {
+        return this.amount;
+    }
+
+    public BigDecimal runningBalance() {
+        return this.runningBalance;
+    }
+
+    public OffsetDateTime createdOnUtc() {
+        return this.createdOnUtc;
+    }
+
+    public CurrencyData currency() {
+        return this.currency;
+    }
+
+    /** The {@code m_account_transfer_details} id (the transfer API's {@code resourceId}), else {@code null}. */
+    public Long accountTransferId() {
+        return this.accountTransferId;
+    }
+
+    /** The {@code m_account_transfer_transaction} id, else {@code null}. */
+    public Long accountTransferTransactionId() {
+        return this.accountTransferTransactionId;
+    }
+
+    public boolean isReversed() {
+        return this.reversed;
+    }
+
+    public boolean isSimulated() {
+        return this.simulated;
+    }
+}

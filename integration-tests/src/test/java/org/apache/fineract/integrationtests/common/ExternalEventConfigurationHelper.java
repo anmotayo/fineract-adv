@@ -35,6 +35,10 @@ public class ExternalEventConfigurationHelper {
     private static final String EXTERNAL_EVENT_CONFIGURATION_URL = "/fineract-provider/api/v1/externalevents/configuration?"
             + Utils.TENANT_IDENTIFIER;
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static ArrayList<Map<String, Object>> getAllExternalEventConfigurations(RequestSpecification requestSpec,
             ResponseSpecification responseSpec) {
         Map<String, ArrayList<Map<String, Object>>> response = Utils.performServerGet(requestSpec, responseSpec,
@@ -42,6 +46,10 @@ public class ExternalEventConfigurationHelper {
         return response.get(EXTERNAL_EVENT_CONFIGURATION);
     }
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static ArrayList<Map<String, Object>> getDefaultExternalEventConfigurations() {
         ArrayList<Map<String, Object>> defaults = new ArrayList<>();
 
@@ -64,6 +72,16 @@ public class ExternalEventConfigurationHelper {
         clientRejectBusinessEvent.put("type", "ClientRejectBusinessEvent");
         clientRejectBusinessEvent.put("enabled", false);
         defaults.add(clientRejectBusinessEvent);
+
+        Map<String, Object> documentCreatedBusinessEvent = new HashMap<>();
+        documentCreatedBusinessEvent.put("type", "DocumentCreatedBusinessEvent");
+        documentCreatedBusinessEvent.put("enabled", false);
+        defaults.add(documentCreatedBusinessEvent);
+
+        Map<String, Object> documentDeletedBusinessEvent = new HashMap<>();
+        documentDeletedBusinessEvent.put("type", "DocumentDeletedBusinessEvent");
+        documentDeletedBusinessEvent.put("enabled", false);
+        defaults.add(documentDeletedBusinessEvent);
 
         Map<String, Object> fixedDepositAccountCreateBusinessEvent = new HashMap<>();
         fixedDepositAccountCreateBusinessEvent.put("type", "FixedDepositAccountCreateBusinessEvent");
@@ -89,6 +107,11 @@ public class ExternalEventConfigurationHelper {
         loanAdjustTransactionBusinessEvent.put("type", "LoanAdjustTransactionBusinessEvent");
         loanAdjustTransactionBusinessEvent.put("enabled", false);
         defaults.add(loanAdjustTransactionBusinessEvent);
+
+        Map<String, Object> LoanApplicationModifiedBusinessEvent = new HashMap<>();
+        LoanApplicationModifiedBusinessEvent.put("type", "LoanApplicationModifiedBusinessEvent");
+        LoanApplicationModifiedBusinessEvent.put("enabled", false);
+        defaults.add(LoanApplicationModifiedBusinessEvent);
 
         Map<String, Object> loanApplyOverdueChargeBusinessEvent = new HashMap<>();
         loanApplyOverdueChargeBusinessEvent.put("type", "LoanApplyOverdueChargeBusinessEvent");
@@ -350,6 +373,11 @@ public class ExternalEventConfigurationHelper {
         loanWaiveInterestBusinessEvent.put("enabled", false);
         defaults.add(loanWaiveInterestBusinessEvent);
 
+        Map<String, Object> LoanWithdrawnByApplicantBusinessEvent = new HashMap<>();
+        LoanWithdrawnByApplicantBusinessEvent.put("type", "LoanWithdrawnByApplicantBusinessEvent");
+        LoanWithdrawnByApplicantBusinessEvent.put("enabled", false);
+        defaults.add(LoanWithdrawnByApplicantBusinessEvent);
+
         Map<String, Object> loanWithdrawTransferBusinessEvent = new HashMap<>();
         loanWithdrawTransferBusinessEvent.put("type", "LoanWithdrawTransferBusinessEvent");
         loanWithdrawTransferBusinessEvent.put("enabled", false);
@@ -465,6 +493,11 @@ public class ExternalEventConfigurationHelper {
         loanAccrualTransactionCreatedBusinessEvent.put("enabled", false);
         defaults.add(loanAccrualTransactionCreatedBusinessEvent);
 
+        Map<String, Object> loanAccrualAdjustmentTransactionBusinessEvent = new HashMap<>();
+        loanAccrualAdjustmentTransactionBusinessEvent.put("type", "LoanAccrualAdjustmentTransactionBusinessEvent");
+        loanAccrualAdjustmentTransactionBusinessEvent.put("enabled", false);
+        defaults.add(loanAccrualAdjustmentTransactionBusinessEvent);
+
         Map<String, Object> loanRescheduledDueAdjustScheduleBusinessEvent = new HashMap<>();
         loanRescheduledDueAdjustScheduleBusinessEvent.put("type", "LoanRescheduledDueAdjustScheduleBusinessEvent");
         loanRescheduledDueAdjustScheduleBusinessEvent.put("enabled", false);
@@ -550,10 +583,92 @@ public class ExternalEventConfigurationHelper {
         loanTransactionInterestPaymentWaiverPreBusinessEvent.put("enabled", false);
         defaults.add(loanTransactionInterestPaymentWaiverPreBusinessEvent);
 
-        return defaults;
+        Map<String, Object> loanTransactionAccrualActivityPostBusinessEvent = new HashMap<>();
+        loanTransactionAccrualActivityPostBusinessEvent.put("type", "LoanTransactionAccrualActivityPostBusinessEvent");
+        loanTransactionAccrualActivityPostBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionAccrualActivityPostBusinessEvent);
 
+        Map<String, Object> loanTransactionAccrualActivityPreBusinessEvent = new HashMap<>();
+        loanTransactionAccrualActivityPreBusinessEvent.put("type", "LoanTransactionAccrualActivityPreBusinessEvent");
+        loanTransactionAccrualActivityPreBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionAccrualActivityPreBusinessEvent);
+
+        Map<String, Object> loanTransactionInterestRefundPostBusinessEvent = new HashMap<>();
+        loanTransactionInterestRefundPostBusinessEvent.put("type", "LoanTransactionInterestRefundPostBusinessEvent");
+        loanTransactionInterestRefundPostBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionInterestRefundPostBusinessEvent);
+
+        Map<String, Object> loanTransactionInterestRefundPreBusinessEvent = new HashMap<>();
+        loanTransactionInterestRefundPreBusinessEvent.put("type", "LoanTransactionInterestRefundPreBusinessEvent");
+        loanTransactionInterestRefundPreBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionInterestRefundPreBusinessEvent);
+
+        Map<String, Object> loanCapitalizedIncomeAmortizationTransactionCreatedBusinessEvent = new HashMap<>();
+        loanCapitalizedIncomeAmortizationTransactionCreatedBusinessEvent.put("type",
+                "LoanCapitalizedIncomeAmortizationTransactionCreatedBusinessEvent");
+        loanCapitalizedIncomeAmortizationTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanCapitalizedIncomeAmortizationTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanCapitalizedIncomeAdjustmentTransactionCreatedBusinessEvent = new HashMap<>();
+        loanCapitalizedIncomeAdjustmentTransactionCreatedBusinessEvent.put("type",
+                "LoanCapitalizedIncomeAdjustmentTransactionCreatedBusinessEvent");
+        loanCapitalizedIncomeAdjustmentTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanCapitalizedIncomeAdjustmentTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanTransactionContractTerminationPostBusinessEvent = new HashMap<>();
+        loanTransactionContractTerminationPostBusinessEvent.put("type", "LoanTransactionContractTerminationPostBusinessEvent");
+        loanTransactionContractTerminationPostBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionContractTerminationPostBusinessEvent);
+
+        Map<String, Object> loanCapitalizedIncomeAmortizationAdjustmentTransactionCreatedBusinessEvent = new HashMap<>();
+        loanCapitalizedIncomeAmortizationAdjustmentTransactionCreatedBusinessEvent.put("type",
+                "LoanCapitalizedIncomeAmortizationAdjustmentTransactionCreatedBusinessEvent");
+        loanCapitalizedIncomeAmortizationAdjustmentTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanCapitalizedIncomeAmortizationAdjustmentTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanCapitalizedIncomeTransactionCreatedBusinessEvent = new HashMap<>();
+        loanCapitalizedIncomeTransactionCreatedBusinessEvent.put("type", "LoanCapitalizedIncomeTransactionCreatedBusinessEvent");
+        loanCapitalizedIncomeTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanCapitalizedIncomeTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanTransactionUndoContractTerminationBusinessEvent = new HashMap<>();
+        loanTransactionUndoContractTerminationBusinessEvent.put("type", "LoanUndoContractTerminationBusinessEvent");
+        loanTransactionUndoContractTerminationBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionUndoContractTerminationBusinessEvent);
+
+        Map<String, Object> loanTransactionBuyDownFeePostBusinessEvent = new HashMap<>();
+        loanTransactionBuyDownFeePostBusinessEvent.put("type", "LoanBuyDownFeeTransactionCreatedBusinessEvent");
+        loanTransactionBuyDownFeePostBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionBuyDownFeePostBusinessEvent);
+
+        Map<String, Object> loanTransactionBuyDownFeeAdjustmentPostBusinessEvent = new HashMap<>();
+        loanTransactionBuyDownFeeAdjustmentPostBusinessEvent.put("type", "LoanBuyDownFeeAdjustmentTransactionCreatedBusinessEvent");
+        loanTransactionBuyDownFeeAdjustmentPostBusinessEvent.put("enabled", false);
+        defaults.add(loanTransactionBuyDownFeeAdjustmentPostBusinessEvent);
+
+        Map<String, Object> loanBuyDownFeeAmortizationTransactionCreatedBusinessEvent = new HashMap<>();
+        loanBuyDownFeeAmortizationTransactionCreatedBusinessEvent.put("type", "LoanBuyDownFeeAmortizationTransactionCreatedBusinessEvent");
+        loanBuyDownFeeAmortizationTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanBuyDownFeeAmortizationTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanBuyDownFeeAmortizationAdjustmentTransactionCreatedBusinessEvent = new HashMap<>();
+        loanBuyDownFeeAmortizationAdjustmentTransactionCreatedBusinessEvent.put("type",
+                "LoanBuyDownFeeAmortizationAdjustmentTransactionCreatedBusinessEvent");
+        loanBuyDownFeeAmortizationAdjustmentTransactionCreatedBusinessEvent.put("enabled", false);
+        defaults.add(loanBuyDownFeeAmortizationAdjustmentTransactionCreatedBusinessEvent);
+
+        Map<String, Object> loanApprovedAmountChangedBusinessEvent = new HashMap<>();
+        loanApprovedAmountChangedBusinessEvent.put("type", "LoanApprovedAmountChangedBusinessEvent");
+        loanApprovedAmountChangedBusinessEvent.put("enabled", false);
+        defaults.add(loanApprovedAmountChangedBusinessEvent);
+
+        return defaults;
     }
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static String getExternalEventConfigurationsForUpdateJSON() {
 
         Map<String, Map<String, Boolean>> configurationsForUpdate = new HashMap<>();
@@ -569,6 +684,10 @@ public class ExternalEventConfigurationHelper {
 
     }
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static Map<String, Boolean> updateExternalEventConfigurations(RequestSpecification requestSpec,
             ResponseSpecification responseSpec, String json) {
         Map<String, Map<String, Boolean>> response = Utils.performServerPut(requestSpec, responseSpec, EXTERNAL_EVENT_CONFIGURATION_URL,
@@ -576,6 +695,10 @@ public class ExternalEventConfigurationHelper {
         return response.get(EXTERNAL_EVENT_CONFIGURATION_RESPONSE);
     }
 
+    // TODO: Rewrite to use fineract-client instead!
+    // Example: org.apache.fineract.integrationtests.common.loans.LoanTransactionHelper.disburseLoan(java.lang.Long,
+    // org.apache.fineract.client.models.PostLoansLoanIdRequest)
+    @Deprecated(forRemoval = true)
     public static void resetDefaultConfigurations(RequestSpecification requestSpec, ResponseSpecification responseSpec) {
         Map<String, Map<String, Boolean>> configurationsForReset = new HashMap<>();
 

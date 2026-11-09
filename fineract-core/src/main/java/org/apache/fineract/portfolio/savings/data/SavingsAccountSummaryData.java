@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import lombok.Getter;
+import org.apache.fineract.infrastructure.core.jersey.serializer.legacy.JsonLocalDateArrayFormat;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.organisation.monetary.data.CurrencyData;
 import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
@@ -36,6 +37,7 @@ import org.apache.fineract.portfolio.savings.domain.interest.PostingPeriod;
  * Immutable data object representing Savings Account summary information.
  */
 @Getter
+@JsonLocalDateArrayFormat
 public class SavingsAccountSummaryData implements Serializable {
 
     private final CurrencyData currency;
@@ -56,6 +58,11 @@ public class SavingsAccountSummaryData implements Serializable {
     private LocalDate interestPostedTillDate;
     private LocalDate prevInterestPostedTillDate;
     private transient BigDecimal runningBalanceOnInterestPostingTillDate = BigDecimal.ZERO;
+    private transient BigDecimal preStartDateInterestEarned = BigDecimal.ZERO;
+
+    public void setPreStartDateInterestEarned(BigDecimal preStartDateInterestEarned) {
+        this.preStartDateInterestEarned = preStartDateInterestEarned != null ? preStartDateInterestEarned : BigDecimal.ZERO;
+    }
 
     public SavingsAccountSummaryData(final CurrencyData currency, final BigDecimal totalDeposits, final BigDecimal totalWithdrawals,
             final BigDecimal totalWithdrawalFees, final BigDecimal totalAnnualFees, final BigDecimal totalInterestEarned,
@@ -156,6 +163,13 @@ public class SavingsAccountSummaryData implements Serializable {
                         this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
                     }
                 break;
+                case INTEREST_CHARGE:
+                    if (transaction.isInterestChargeAndNotReversed()) {
+                        // Interest charges are always penalty charges, so bucket them with penalties.
+                        this.totalPenaltyCharge = Money.of(currency, this.totalPenaltyCharge).plus(transactionAmount).getAmount();
+                        this.accountBalance = Money.of(currency, this.accountBalance).minus(transactionAmount).getAmount();
+                    }
+                break;
                 default:
                 break;
             }
@@ -185,8 +199,12 @@ public class SavingsAccountSummaryData implements Serializable {
     }
 
     public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods) {
+        updateFromInterestPeriodSummaries(currency, allPostingPeriods, false);
+    }
 
-        Money totalEarned = Money.zero(currency);
+    public void updateFromInterestPeriodSummaries(final MonetaryCurrency currency, final List<PostingPeriod> allPostingPeriods,
+            final boolean hasStartInterestCalculationDate) {
+        Money totalEarned = hasStartInterestCalculationDate ? Money.of(currency, this.preStartDateInterestEarned) : Money.zero(currency);
         LocalDate interestCalculationDate = DateUtils.getBusinessLocalDate();
         for (final PostingPeriod period : allPostingPeriods) {
             Money interestEarned = period.interest();

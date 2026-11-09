@@ -61,7 +61,6 @@ public class ProvisioningEntriesReadPlatformServiceImpl implements ProvisioningE
 
         private final StringBuilder sqlQuery;
 
-        // Changed total_outstanding_derived to principal_outstanding_derived
         private LoanProductProvisioningEntryMapper(DatabaseSpecificSQLGenerator sqlGenerator) {
             sqlQuery = new StringBuilder().append(
                     "select (CASE WHEN loan.loan_type_enum=1 THEN mclient.office_id ELSE mgroup.office_id END) as office_id, loan.loan_type_enum, pcd.criteria_id as criteriaid, loan.product_id,loan.currency_code,")
@@ -263,7 +262,7 @@ public class ProvisioningEntriesReadPlatformServiceImpl implements ProvisioningE
         LoanProductProvisioningEntryRowMapper mapper = new LoanProductProvisioningEntryRowMapper();
         final String sql = "select " + mapper.getSchema() + " where entry.criteria_id = ?";
         Collection<LoanProductProvisioningEntryData> entries = this.jdbcTemplate.query(sql, mapper, criteriaId); // NOSONAR
-        if (entries != null && entries.size() > 0) {
+        if (entries != null && !entries.isEmpty()) {
             Long entryId = ((LoanProductProvisioningEntryData) entries.toArray()[0]).getHistoryId();
             ProvisioningEntryDataMapper mapper1 = new ProvisioningEntryDataMapper();
             final String sql1 = "select " + mapper1.getSchema() + " where entry.id = ?";

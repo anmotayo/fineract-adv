@@ -50,6 +50,7 @@ import org.apache.fineract.portfolio.charge.domain.ChargeRepositoryWrapper;
 import org.apache.fineract.portfolio.charge.domain.ChargeTimeType;
 import org.apache.fineract.portfolio.charge.exception.ChargeCannotBeAppliedToException;
 import org.apache.fineract.portfolio.charge.exception.SavingsAccountChargeNotFoundException;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -68,7 +69,8 @@ public class SavingsAccountChargeAssembler {
         this.savingsAccountChargeRepository = savingsAccountChargeRepository;
     }
 
-    public Set<SavingsAccountCharge> fromParsedJson(final JsonElement element, final String productCurrencyCode) {
+    public Set<SavingsAccountCharge> fromParsedJson(final JsonElement element, final String productCurrencyCode,
+            final DepositAccountType depositAccountType) {
 
         final Set<SavingsAccountCharge> savingsAccountCharges = new HashSet<>();
 
@@ -106,6 +108,8 @@ public class SavingsAccountChargeAssembler {
                                     + " cannot be applied to Savings product.";
                             throw new ChargeCannotBeAppliedToException("savings.product", errorMessage, chargeDefinition.getId());
                         }
+
+                        validateChargeAllowedForDepositAccountType(chargeDefinition, depositAccountType);
 
                         ChargeTimeType chargeTime = null;
                         if (chargeTimeType != null) {
@@ -162,6 +166,19 @@ public class SavingsAccountChargeAssembler {
             savingsAccountCharges.add(savingsAccountCharge);
         }
         return savingsAccountCharges;
+    }
+
+    public static void validateChargeAllowedForDepositAccountType(final Charge charge, final DepositAccountType depositAccountType) {
+        final ChargeCalculationType calculationType = ChargeCalculationType.fromInt(charge.getChargeCalculation());
+
+        // Defense in depth (see SavingsProductBaseAssembler): unreachable while PERCENT_OF_AMOUNT_AND_INTEREST
+        // charges cannot apply to SAVINGS.
+        if (calculationType.isPercentageOfAmountAndInterest()) {
+            final String errorMessage = "Charge with identifier " + charge.getId()
+                    + " uses a calculation type that is not supported for Savings products.";
+            throw new ChargeCannotBeAppliedToException("savings.account.calculation.type.unsupported", errorMessage, charge.getId());
+        }
+
     }
 
     private void validateSavingsCharges(final Set<SavingsAccountCharge> charges, final String productCurrencyCode) {

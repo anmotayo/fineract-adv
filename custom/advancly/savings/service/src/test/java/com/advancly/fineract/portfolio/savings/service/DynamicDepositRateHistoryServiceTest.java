@@ -1,0 +1,390 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistory;
+import com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicRateHistoryRepository;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateHistoryEventType;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositRateSource;
+import com.advancly.fineract.portfolio.savings.testutil.DepositAccountInterestRateChartTestBuilder;
+import com.advancly.fineract.portfolio.savings.testutil.MoneyHelperInitializer;
+import com.advancly.fineract.portfolio.savings.testutil.SavingsAccountTransactionTestBuilder;
+import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import org.apache.fineract.organisation.monetary.domain.MonetaryCurrency;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
+import org.apache.fineract.portfolio.savings.SavingsPeriodFrequencyType;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChart;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountTermAndPreClosure;
+import org.apache.fineract.portfolio.savings.domain.DepositPreClosureDetail;
+import org.apache.fineract.portfolio.savings.domain.DepositTermDetail;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionComparator;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
+import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+
+/** Invested amount is summed from transactions, and a backdated transaction corrects every later row. */
+class DynamicDepositRateHistoryServiceTest {
+
+    private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
+    private static final SavingsAccountTransactionComparator TRANSACTION_COMPARATOR = new SavingsAccountTransactionComparator();
+
+    private final DynamicDepositRateResolutionService rateResolutionService = new DynamicDepositRateResolutionService();
+    private final List<DepositAccountDynamicRateHistory> savedRows = new ArrayList<>();
+    private DepositAccountDynamicRateHistoryRepository repository;
+    private DynamicDepositRateHistoryService service;
+    private DynamicDepositAccount account;
+
+    @BeforeEach
+    void setUp() {
+        MoneyHelperInitializer.initialize();
+        this.repository = mock(DepositAccountDynamicRateHistoryRepository.class);
+        lenient().when(this.repository.countByAccountId(anyLong())).thenAnswer(invocation -> (long) this.savedRows.size());
+        lenient().when(this.repository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
+            final DepositAccountDynamicRateHistory row = invocation.getArgument(0);
+            this.savedRows.add(row);
+            return row;
+        });
+        lenient().when(this.repository.findByAccountIdOrderByTransactionDateAscIdAsc(anyLong())).thenAnswer(invocation -> sortedRows());
+        lenient().when(this.repository.findFirstByAccountIdOrderByTransactionDateDescIdDesc(anyLong())).thenAnswer(invocation -> {
+            final List<DepositAccountDynamicRateHistory> sorted = sortedRows();
+            return sorted.isEmpty() ? null : sorted.get(sorted.size() - 1);
+        });
+        this.service = new DynamicDepositRateHistoryService(this.repository, this.rateResolutionService);
+    }
+
+    @Test
+    void activationResolvesFromChartWhenDynamicRateIsEnabledEvenIfAccountNominalDiffers() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.ZERO, BigDecimal.valueOf(99999), BigDecimal.valueOf(12)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(20.5), BigDecimal.valueOf(2), chart);
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 5, 28),
+                BigDecimal.valueOf(25000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        assertThat(rowFor(activation).resolvedAnnualInterestRate()).isEqualByComparingTo("12");
+        assertThat(rowFor(activation).baseAnnualInterestRate()).isEqualByComparingTo("12");
+        assertThat(rowFor(activation).rateSource()).isEqualTo(DynamicDepositRateSource.INTEREST_RATE_CHART);
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("12");
+    }
+
+    @Test
+    void activationFallsBackToAccountNominalRateWhenNoChartSlabMatches() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.valueOf(100000), null, BigDecimal.valueOf(12)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(20.5), BigDecimal.valueOf(2), chart);
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 5, 28),
+                BigDecimal.valueOf(25000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        assertThat(rowFor(activation).resolvedAnnualInterestRate()).isEqualByComparingTo("20.5");
+        assertThat(rowFor(activation).baseAnnualInterestRate()).isEqualByComparingTo("20.5");
+        assertThat(rowFor(activation).rateSource()).isEqualTo(DynamicDepositRateSource.ACCOUNT_NOMINAL);
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("20.5");
+    }
+
+    @Test
+    void backdatedDepositRetroactivelyCorrectsAnAlreadyWrittenLaterRow() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        final SavingsAccountTransaction laterDeposit = transaction(2L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 3, 1),
+                BigDecimal.valueOf(500));
+        this.service.recordPrincipalChangeEvent(this.account, laterDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
+
+        assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1500");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1500");
+
+        final SavingsAccountTransaction backdatedDeposit = transaction(3L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 2, 1),
+                BigDecimal.valueOf(300));
+        this.service.recordPrincipalChangeEvent(this.account, backdatedDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
+
+        assertThat(rowFor(backdatedDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1300");
+        assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1800");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1800");
+        // dynamic_rate_enabled = false: rate stays at activation's
+        assertThat(rowFor(backdatedDeposit).resolvedAnnualInterestRate()).isEqualByComparingTo("2");
+        assertThat(rowFor(laterDeposit).resolvedAnnualInterestRate()).isEqualByComparingTo("2");
+    }
+
+    @Test
+    void undoingABackdatedDepositCorrectsTheLaterRowBackDown() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        final SavingsAccountTransaction laterDeposit = transaction(2L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 3, 1),
+                BigDecimal.valueOf(500));
+        this.service.recordPrincipalChangeEvent(this.account, laterDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
+
+        final SavingsAccountTransaction backdatedDeposit = transaction(3L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 2, 1),
+                BigDecimal.valueOf(300));
+        this.service.recordPrincipalChangeEvent(this.account, backdatedDeposit, DynamicDepositRateHistoryEventType.DEPOSIT);
+        assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1800");
+
+        // core's undoTransaction marks it reversed before this hook runs
+        ReflectionTestUtils.setField(backdatedDeposit, "reversed", true);
+        this.service.reverseInvestedAmountForUndo(this.account, backdatedDeposit);
+
+        assertThat(rowFor(laterDeposit).investedAmountAfterTransaction()).isEqualByComparingTo("1500");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1500");
+    }
+
+    @Test
+    void withdrawalReducesInvestedAmountComputedFromTransactions() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+
+        final SavingsAccountTransaction activation = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        this.service.recordPrincipalChangeEvent(this.account, activation, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION);
+
+        final SavingsAccountTransaction withdrawal = transaction(2L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 2, 1),
+                BigDecimal.valueOf(400));
+        this.service.recordPrincipalChangeEvent(this.account, withdrawal, DynamicDepositRateHistoryEventType.WITHDRAWAL);
+
+        assertThat(rowFor(withdrawal).investedAmountAfterTransaction()).isEqualByComparingTo("600");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("600");
+    }
+
+    // ---- recompute ----
+
+    @Test
+    void recomputeCorrectsAClosedAccountsNegativeInvestedAmountAndTheDepositAmountCache() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        closing.setRunningBalance(Money.zero(CURRENCY));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "-24.93", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("-24.93"));
+
+        assertThat(this.service.recompute(this.account)).isTrue();
+
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("0");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void recomputeNeverLeavesANegativeDepositAmountWhenTheClosingPayoutHasNoRunningBalanceYet() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "-24.93", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("1000"));
+
+        this.service.recompute(this.account);
+
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("0");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void recomputeKeepsTheDepositAmountOfAnAccountTheClosingPayoutEmptied() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 3, 1), new BigDecimal("24.93"));
+        final SavingsAccountTransaction closing = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("1024.93"));
+        closing.setRunningBalance(Money.zero(CURRENCY));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(closing, DynamicDepositRateHistoryEventType.WITHDRAWAL, "1000", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(new BigDecimal("1000"));
+
+        this.service.recompute(this.account);
+
+        assertThat(rowFor(closing).investedAmountAfterTransaction()).isEqualByComparingTo("0");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1000");
+    }
+
+    @Test
+    void recordingAnyPrincipalEventRepairsAStaleEarlierRow() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        final SavingsAccountTransaction interestPayout = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL, LocalDate.of(2026, 2, 1),
+                new BigDecimal("22.44"));
+        markAsInterestTransfers(interestPayout);
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        staleRow(interestPayout, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "2");
+
+        final SavingsAccountTransaction topUp = transaction(4L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 3, 1),
+                BigDecimal.valueOf(500));
+        this.service.recordPrincipalChangeEvent(this.account, topUp, DynamicDepositRateHistoryEventType.DEPOSIT);
+
+        assertThat(rowFor(interestPayout).investedAmountAfterTransaction()).isEqualByComparingTo("1000");
+        assertThat(rowFor(topUp).investedAmountAfterTransaction()).isEqualByComparingTo("1500");
+        assertThat(this.account.accountTermAndPreClosure().depositAmount()).isEqualByComparingTo("1500");
+    }
+
+    @Test
+    void recomputeRestoresTheRateSlabTheRealPrincipalEarns() {
+        final DepositAccountInterestRateChart chart = new DepositAccountInterestRateChartTestBuilder()
+                .withSlab(BigDecimal.ZERO, new BigDecimal("999.99"), BigDecimal.valueOf(5))
+                .withSlab(BigDecimal.valueOf(1000), BigDecimal.valueOf(99999), BigDecimal.valueOf(10)).build();
+        this.account = buildAccount(true, BigDecimal.valueOf(10), BigDecimal.valueOf(2), chart);
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        transaction(2L, SavingsAccountTransactionType.INTEREST_POSTING, LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        final SavingsAccountTransaction interestTransfer = transaction(3L, SavingsAccountTransactionType.WITHDRAWAL,
+                LocalDate.of(2026, 2, 1), new BigDecimal("22.44"));
+        markAsInterestTransfers(interestTransfer);
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "10");
+        // Stale row counted the interest transfer as principal: 977.56, the lower slab.
+        staleRow(interestTransfer, DynamicDepositRateHistoryEventType.WITHDRAWAL, "977.56", "5");
+        this.account.updateNominalAnnualInterestRate(BigDecimal.valueOf(5));
+
+        this.service.recompute(this.account);
+
+        assertThat(rowFor(interestTransfer).investedAmountAfterTransaction()).isEqualByComparingTo("1000");
+        assertThat(rowFor(interestTransfer).resolvedAnnualInterestRate()).isEqualByComparingTo("10");
+        assertThat(this.account.getNominalAnnualInterestRate()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void anAccountAlreadyCorrectIsLeftAloneAndReportedUnchanged() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+        final SavingsAccountTransaction deposit = transaction(1L, SavingsAccountTransactionType.DEPOSIT, LocalDate.of(2026, 1, 1),
+                BigDecimal.valueOf(1000));
+        staleRow(deposit, DynamicDepositRateHistoryEventType.ACCOUNT_ACTIVATION, "1000", "2");
+        this.account.accountTermAndPreClosure().updateDepositAmount(BigDecimal.valueOf(1000));
+
+        assertThat(this.service.recompute(this.account)).isFalse();
+    }
+
+    @Test
+    void anAccountWithNoRateHistoryYetHasNothingToRecompute() {
+        this.account = buildAccount(false, BigDecimal.valueOf(2));
+
+        assertThat(this.service.recompute(this.account)).isFalse();
+    }
+
+    private void markAsInterestTransfers(final SavingsAccountTransaction... transfers) {
+        final SavingsHelper savingsHelper = mock(SavingsHelper.class);
+        lenient().when(savingsHelper.fetchPostInterestTransactionIds(anyLong()))
+                .thenReturn(Arrays.stream(transfers).map(SavingsAccountTransaction::getId).collect(Collectors.toList()));
+        ReflectionTestUtils.setField(this.account, "savingsHelper", savingsHelper);
+    }
+
+    private void staleRow(final SavingsAccountTransaction transaction, final DynamicDepositRateHistoryEventType eventType,
+            final String investedAmount, final String rate) {
+        this.savedRows.add(DepositAccountDynamicRateHistory.createNew(this.account, transaction, transaction.getTransactionDate(),
+                eventType, new BigDecimal(investedAmount), 12, 2, null, null, new BigDecimal(rate), new BigDecimal(rate),
+                DynamicDepositRateSource.ACCOUNT_NOMINAL));
+    }
+
+    private DepositAccountDynamicRateHistory rowFor(final SavingsAccountTransaction transaction) {
+        return this.savedRows.stream().filter(row -> row.transaction() == transaction).findFirst()
+                .orElseThrow(() -> new AssertionError("No rate history row recorded for transaction " + transaction.getId()));
+    }
+
+    private List<DepositAccountDynamicRateHistory> sortedRows() {
+        return this.savedRows.stream().sorted((a, b) -> TRANSACTION_COMPARATOR.compare(a.transaction(), b.transaction()))
+                .collect(Collectors.toList());
+    }
+
+    private SavingsAccountTransaction transaction(final Long id, final SavingsAccountTransactionType type, final LocalDate date,
+            final BigDecimal amount) {
+        final SavingsAccountTransaction transaction = new SavingsAccountTransactionTestBuilder().withId(id).withSavingsAccount(this.account)
+                .withType(type).withDate(date).withAmount(amount).build();
+        this.account.getTransactions().add(transaction);
+        return transaction;
+    }
+
+    private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate) {
+        return buildAccount(dynamicRateEnabled, nominalAnnualInterestRate, nominalAnnualInterestRate, null);
+    }
+
+    private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate,
+            final BigDecimal productNominalAnnualInterestRate) {
+        return buildAccount(dynamicRateEnabled, nominalAnnualInterestRate, productNominalAnnualInterestRate, null);
+    }
+
+    private DynamicDepositAccount buildAccount(final boolean dynamicRateEnabled, final BigDecimal nominalAnnualInterestRate,
+            final BigDecimal productNominalAnnualInterestRate, final DepositAccountInterestRateChart chart) {
+        final DynamicDepositAccount newAccount = createInstance(DynamicDepositAccount.class);
+        ReflectionTestUtils.setField(newAccount, "id", 1L);
+        ReflectionTestUtils.setField(newAccount, "currency", CURRENCY);
+        ReflectionTestUtils.setField(newAccount, "status", 300); // ACTIVE
+        ReflectionTestUtils.setField(newAccount, "savingsAccountTransactions", new ArrayList<SavingsAccountTransaction>());
+        ReflectionTestUtils.setField(newAccount, "nominalAnnualInterestRate", nominalAnnualInterestRate);
+
+        final SavingsProduct product = mock(SavingsProduct.class);
+        lenient().when(product.nominalAnnualInterestRate()).thenReturn(productNominalAnnualInterestRate);
+        ReflectionTestUtils.setField(newAccount, "product", product);
+        ReflectionTestUtils.setField(newAccount, "chart", chart);
+        if (chart != null) {
+            chart.updateDepositAccountReference(newAccount);
+        }
+
+        final DepositPreClosureDetail preClosureDetail = DepositPreClosureDetail.createFrom(false, null, null);
+        final DepositTermDetail depositTermDetail = DepositTermDetail.createFrom(12, 12, SavingsPeriodFrequencyType.MONTHS,
+                SavingsPeriodFrequencyType.MONTHS, null, null);
+        final DepositAccountTermAndPreClosure accountTermAndPreClosure = DepositAccountTermAndPreClosure.createNew(preClosureDetail,
+                depositTermDetail, null, BigDecimal.ZERO, null, null, 12, SavingsPeriodFrequencyType.MONTHS, null, null, false, null, null);
+        accountTermAndPreClosure.updateAccountReference(newAccount);
+        ReflectionTestUtils.setField(newAccount, "accountTermAndPreClosure", accountTermAndPreClosure);
+
+        final DepositAccountDynamicDetail dynamicDetail = DepositAccountDynamicDetail.createNew(newAccount, true, dynamicRateEnabled);
+        newAccount.setDynamicDetail(dynamicDetail);
+
+        return newAccount;
+    }
+
+    private static <T> T createInstance(final Class<T> clazz) {
+        try {
+            final Constructor<T> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (final Exception e) {
+            throw new RuntimeException("Failed to create instance of " + clazz.getName(), e);
+        }
+    }
+}

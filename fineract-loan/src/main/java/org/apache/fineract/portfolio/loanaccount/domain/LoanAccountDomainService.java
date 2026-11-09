@@ -23,10 +23,13 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
 import org.apache.fineract.infrastructure.core.domain.ExternalId;
 import org.apache.fineract.portfolio.delinquency.validator.LoanDelinquencyActionData;
 import org.apache.fineract.portfolio.loanaccount.data.HolidayDetailDTO;
+import org.apache.fineract.portfolio.loanaccount.data.LoanRefundRequestData;
+import org.apache.fineract.portfolio.loanaccount.data.ScheduleGeneratorDTO;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 
 public interface LoanAccountDomainService {
@@ -53,17 +56,7 @@ public interface LoanAccountDomainService {
     LoanTransaction makeRefundForActiveLoan(Long accountId, CommandProcessingResultBuilder builderResult, LocalDate transactionDate,
             BigDecimal transactionAmount, PaymentDetail paymentDetail, String noteText, ExternalId txnExternalId);
 
-    void updateLoanCollateralTransaction(Set<LoanCollateralManagement> loanCollateralManagementList);
-
     void updateLoanCollateralStatus(Set<LoanCollateralManagement> loanCollateralManagementSet, boolean isReleased);
-
-    /**
-     * This method is to recalculate and accrue the income till the last accrued date. this method is used when the
-     * schedule changes due to interest recalculation
-     *
-     * @param loan
-     */
-    void recalculateAccruals(Loan loan);
 
     /**
      * This method is to set a Delinquency Tag If the loan is overdue, If the loan after the repayment transaction is
@@ -81,12 +74,6 @@ public interface LoanAccountDomainService {
             boolean isRecoveryRepayment, String chargeRefundChargeType, boolean isAccountTransfer, HolidayDetailDTO holidayDetailDto,
             Boolean isHolidayValidationDone, boolean isLoanToLoanTransfer);
 
-    LoanTransaction saveLoanTransactionWithDataIntegrityViolationChecks(LoanTransaction newRepaymentTransaction);
-
-    Loan saveAndFlushLoanWithDataIntegrityViolationChecks(Loan loan);
-
-    Loan saveLoanWithDataIntegrityViolationChecks(Loan loan);
-
     LoanTransaction foreCloseLoan(Loan loan, LocalDate foreClourseDate, String noteText, ExternalId externalId,
             Map<String, Object> changes);
 
@@ -98,10 +85,19 @@ public interface LoanAccountDomainService {
      */
     void disableStandingInstructionsLinkedToClosedLoan(Loan loan);
 
-    void recalculateAccruals(Loan loan, boolean isInterestCalcualtionHappened);
-
     LoanTransaction creditBalanceRefund(Loan loan, LocalDate transactionDate, BigDecimal transactionAmount, String noteText,
             ExternalId externalId, PaymentDetail paymentDetail);
 
-    void applyFinalIncomeAccrualTransaction(Loan loan);
+    Pair<LoanTransaction, LoanTransaction> makeRefund(Loan loan, ScheduleGeneratorDTO scheduleGeneratorDTO,
+            LoanTransactionType loanTransactionType, LocalDate transactionDate, BigDecimal transactionAmount, PaymentDetail paymentDetail,
+            ExternalId txnExternalId, Boolean interestRefundCalculationOverride);
+
+    void updateAndSavePostDatedChecksForIndividualAccount(Loan loan, LoanTransaction transaction);
+
+    LoanTransaction applyInterestRefund(Loan loan, LoanRefundRequestData loanRefundRequest);
+
+    void updateAndSaveLoanCollateralTransactionsForIndividualAccounts(Loan loan, LoanTransaction transaction);
+
+    LoanTransaction createManualInterestRefundWithAmount(Loan loan, LoanTransaction targetTransaction, BigDecimal amount,
+            PaymentDetail paymentDetail, ExternalId txnExternalId);
 }

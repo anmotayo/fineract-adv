@@ -42,8 +42,6 @@ public interface SavingsAccountReadPlatformService {
 
     SavingsAccountData retrieveOne(Long savingsId);
 
-    SavingsAccountData retrieveTemplate(Long clientId, Long groupId, Long productId, boolean staffInSelectedOfficeOnly);
-
     SavingsAccountTransactionData retrieveDepositTransactionTemplate(Long savingsId, DepositAccountType depositAccountType);
 
     Collection<SavingsAccountTransactionData> retrieveAllTransactions(Long savingsId, DepositAccountType depositAccountType);
@@ -74,6 +72,5 @@ public interface SavingsAccountReadPlatformService {
 
     Long retrieveAccountIdByExternalId(ExternalId externalId);
 
-    Collection<SavingsAccrualData> retrievePeriodicAccrualData(LocalDate tillDate, SavingsAccount savings);
-
+    List<SavingsAccrualData> retrievePeriodicAccrualData(LocalDate tillDate, SavingsAccount savings);
 }

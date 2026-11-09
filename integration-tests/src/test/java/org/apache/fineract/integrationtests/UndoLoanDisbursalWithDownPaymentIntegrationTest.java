@@ -19,21 +19,17 @@
 package org.apache.fineract.integrationtests;
 
 import static java.lang.Boolean.TRUE;
-import static org.apache.fineract.infrastructure.businessdate.domain.BusinessDateType.BUSINESS_DATE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.math.BigDecimal;
-import org.apache.fineract.client.models.BusinessDateRequest;
+import org.apache.fineract.client.models.BusinessDateUpdateRequest;
 import org.apache.fineract.client.models.GetLoanProductsProductIdResponse;
 import org.apache.fineract.client.models.PostLoanProductsRequest;
 import org.apache.fineract.client.models.PostLoanProductsResponse;
 import org.apache.fineract.integrationtests.common.ClientHelper;
-import org.apache.fineract.integrationtests.common.loans.LoanTestLifecycleExtension;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
-@ExtendWith(LoanTestLifecycleExtension.class)
 public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanIntegrationTest {
 
     public static final BigDecimal DOWN_PAYMENT_PERCENTAGE = new BigDecimal(25);
@@ -799,8 +795,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -913,8 +909,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("10 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("10 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             addRepaymentForLoan(loanId, 300.0, "10 January 2023");
 
@@ -924,8 +920,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     transaction(300.0, "Repayment", "10 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1051,8 +1047,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1170,8 +1166,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1205,8 +1201,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(1050.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("20 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("20 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // make an additional repayment after the 2nd disbursal
             addRepaymentForLoan(loanId, 50.0, "20 January 2023");
@@ -1262,8 +1258,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1300,8 +1296,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(1050.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("20 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("20 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // make an additional repayment after the 2nd disbursal
             addRepaymentForLoan(loanId, 50.0, "20 January 2023");
@@ -1354,8 +1350,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1476,8 +1472,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1598,8 +1594,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1633,8 +1629,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(1050.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("20 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("20 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // make an additional repayment after the 2nd disbursal
             addRepaymentForLoan(loanId, 50.0, "20 January 2023");
@@ -1734,8 +1730,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(750.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("15 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("15 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // 2nd Disburse Loan
             disburseLoan(loanId, BigDecimal.valueOf(400.0), "15 January 2023");
@@ -1771,8 +1767,8 @@ public class UndoLoanDisbursalWithDownPaymentIntegrationTest extends BaseLoanInt
                     installment(1050.0, false, "31 January 2023") //
             );
 
-            businessDateHelper.updateBusinessDate(new BusinessDateRequest().type(BUSINESS_DATE.getName()).date("20 January 2023")
-                    .dateFormat(DATETIME_PATTERN).locale("en"));
+            businessDateHelper.updateBusinessDate(new BusinessDateUpdateRequest().type(BusinessDateUpdateRequest.TypeEnum.BUSINESS_DATE)
+                    .date("20 January 2023").dateFormat(DATETIME_PATTERN).locale("en"));
 
             // make an additional repayment after the 2nd disbursal
             addRepaymentForLoan(loanId, 50.0, "20 January 2023");

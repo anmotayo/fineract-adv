@@ -108,10 +108,10 @@ public class RecurringDepositProductWritePlatformServiceJpaRepositoryImpl implem
 
             if (changes.containsKey(chargesParamName) || changes.containsKey(accrualChargesParamName)) {
                 final Set<Charge> savingsProductCharges = depositProductAssembler.assembleListOfSavingsProductCharges(command,
-                        product.currency().getCode(), chargesParamName);
+                        product.currency().getCode(), chargesParamName, DepositAccountType.RECURRING_DEPOSIT);
 
                 final Set<Charge> savingsProductAccrualCharges = depositProductAssembler.assembleListOfSavingsProductCharges(command,
-                        product.currency().getCode(), accrualChargesParamName);
+                        product.currency().getCode(), accrualChargesParamName, DepositAccountType.RECURRING_DEPOSIT);
 
                 final boolean updated = product.update(savingsProductCharges, savingsProductAccrualCharges);
                 if (!updated) {

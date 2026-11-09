@@ -74,7 +74,7 @@ public class JournalEntriesImportHandler implements ImportHandler {
     public Count process(final Workbook workbook, final String locale, final String dateFormat) {
 
         List<JournalEntryData> glTransactions = readExcelFile(workbook, locale, dateFormat);
-        return importEntity(workbook, glTransactions, dateFormat);
+        return importEntity(workbook, glTransactions, dateFormat, locale);
     }
 
     public BulkImportValidationResultData validate(final Workbook workbook, final String locale, final String dateFormat) {
@@ -203,13 +203,14 @@ public class JournalEntriesImportHandler implements ImportHandler {
 
     }
 
-    private Count importEntity(final Workbook workbook, final List<JournalEntryData> glTransactions, String dateFormat) {
+    private Count importEntity(final Workbook workbook, final List<JournalEntryData> glTransactions, String dateFormat,
+            final String locale) {
         Sheet addJournalEntriesSheet = workbook.getSheet(TemplatePopulateImportConstants.JOURNAL_ENTRY_SHEET_NAME);
         int successCount = 0;
         int errorCount = 0;
         String errorMessage = "";
         GsonBuilder gsonBuilder = GoogleGsonSerializerHelper.createGsonBuilder();
-        gsonBuilder.registerTypeAdapter(LocalDate.class, new DateSerializer(dateFormat));
+        gsonBuilder.registerTypeAdapter(LocalDate.class, new DateSerializer(dateFormat, locale));
         gsonBuilder.registerTypeAdapter(CurrencyData.class, new CurrencyDateCodeSerializer());
 
         for (JournalEntryData transaction : glTransactions) {

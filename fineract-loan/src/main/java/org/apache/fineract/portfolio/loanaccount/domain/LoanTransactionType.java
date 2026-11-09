@@ -64,6 +64,18 @@ public enum LoanTransactionType {
     REAGE(29, "loanTransactionType.reAge"), //
     REAMORTIZE(30, "loanTransactionType.reAmortize"), //
     INTEREST_PAYMENT_WAIVER(31, "loanTransactionType.interestPaymentWaiver"), //
+    ACCRUAL_ACTIVITY(32, "loanTransactionType.accrualActivity"), //
+    INTEREST_REFUND(33, "loanTransactionType.interestRefund"), //
+    ACCRUAL_ADJUSTMENT(34, "loanTransactionType.accrualAdjustment"), //
+    CAPITALIZED_INCOME(35, "loanTransactionType.capitalizedIncome"), //
+    CAPITALIZED_INCOME_AMORTIZATION(36, "loanTransactionType.capitalizedIncomeAmortization"), //
+    CAPITALIZED_INCOME_ADJUSTMENT(37, "loanTransactionType.capitalizedIncomeAdjustment"), //
+    CONTRACT_TERMINATION(38, "loanTransactionType.contractTermination"), //
+    CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT(39, "loanTransactionType.capitalizedIncomeAmortizationAdjustment"), //
+    BUY_DOWN_FEE(40, "loanTransactionType.buyDownFee"), //
+    BUY_DOWN_FEE_ADJUSTMENT(41, "loanTransactionType.buyDownFeeAdjustment"), //
+    BUY_DOWN_FEE_AMORTIZATION(42, "loanTransactionType.buyDownFeeAmortization"), //
+    BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT(43, "loanTransactionType.buyDownFeeAmortizationAdjustment"), //
     ;
 
     private final Integer value;
@@ -111,6 +123,18 @@ public enum LoanTransactionType {
             case 29 -> LoanTransactionType.REAGE;
             case 30 -> LoanTransactionType.REAMORTIZE;
             case 31 -> LoanTransactionType.INTEREST_PAYMENT_WAIVER;
+            case 32 -> LoanTransactionType.ACCRUAL_ACTIVITY;
+            case 33 -> LoanTransactionType.INTEREST_REFUND;
+            case 34 -> LoanTransactionType.ACCRUAL_ADJUSTMENT;
+            case 35 -> LoanTransactionType.CAPITALIZED_INCOME;
+            case 36 -> LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION;
+            case 37 -> LoanTransactionType.CAPITALIZED_INCOME_ADJUSTMENT;
+            case 38 -> LoanTransactionType.CONTRACT_TERMINATION;
+            case 39 -> LoanTransactionType.CAPITALIZED_INCOME_AMORTIZATION_ADJUSTMENT;
+            case 40 -> LoanTransactionType.BUY_DOWN_FEE;
+            case 41 -> LoanTransactionType.BUY_DOWN_FEE_ADJUSTMENT;
+            case 42 -> LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION;
+            case 43 -> LoanTransactionType.BUY_DOWN_FEE_AMORTIZATION_ADJUSTMENT;
             default -> LoanTransactionType.INVALID;
         };
     }
@@ -214,5 +238,37 @@ public enum LoanTransactionType {
 
     public boolean isDownPayment() {
         return this.equals(LoanTransactionType.DOWN_PAYMENT);
+    }
+
+    public boolean isAccrualActivity() {
+        return this.equals(LoanTransactionType.ACCRUAL_ACTIVITY);
+    }
+
+    public boolean isInterestRefund() {
+        return this.equals(LoanTransactionType.INTEREST_REFUND);
+    }
+
+    public boolean isAccrualAdjustment() {
+        return this == LoanTransactionType.ACCRUAL_ADJUSTMENT;
+    }
+
+    public boolean isCapitalizedIncome() {
+        return this == LoanTransactionType.CAPITALIZED_INCOME;
+    }
+
+    public boolean isCapitalizedIncomeAdjustment() {
+        return this == LoanTransactionType.CAPITALIZED_INCOME_ADJUSTMENT;
+    }
+
+    public boolean isContractTermination() {
+        return this == LoanTransactionType.CONTRACT_TERMINATION;
+    }
+
+    public boolean isBuyDownFee() {
+        return this == LoanTransactionType.BUY_DOWN_FEE;
+    }
+
+    public boolean isBuyDownFeeAdjustment() {
+        return this == LoanTransactionType.BUY_DOWN_FEE_ADJUSTMENT;
     }
 }

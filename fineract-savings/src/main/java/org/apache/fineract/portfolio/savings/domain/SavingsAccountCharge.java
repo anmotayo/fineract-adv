@@ -288,8 +288,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 this.amountWrittenOff = null;
             break;
             case PERCENT_OF_INTEREST:
-                this.percentage = null;
-                this.amount = null;
+                // Keep the configured percentage; amounts are NOT NULL columns, so zero until interest is posted.
+                this.percentage = chargeAmount;
+                this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;
                 this.amountPaid = null;
                 this.amountOutstanding = BigDecimal.ZERO;
@@ -364,6 +365,22 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         updateToPreviousDueDate();
     }
 
+    /**
+     * Applies and fully pays a caller-computed amount (e.g. {@code PERCENT_OF_INTEREST}). {@code amountPaid} stays a
+     * running lifetime total across applications on this reused row.
+     */
+    public Money payExternallyComputedCharge(final MonetaryCurrency currency, final BigDecimal amount) {
+        final Money priorAmountPaid = getAmountPaid(currency);
+        this.amount = amount;
+        this.amountPaid = BigDecimal.ZERO;
+        this.amountOutstanding = amount;
+
+        final Money remainingOutstanding = pay(currency, Money.of(currency, amount));
+
+        this.amountPaid = priorAmountPaid.plus(this.amountPaid).getAmount();
+        return remainingOutstanding;
+    }
+
     public Money pay(final MonetaryCurrency currency, final Money amountPaid) {
         Money amountPaidToDate = Money.of(currency, this.amountPaid);
         Money amountOutstanding = Money.of(currency, this.amountOutstanding);
@@ -429,9 +446,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = amount;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -504,9 +521,9 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 break;
                 case PERCENT_OF_INTEREST:
                     this.percentage = newValue;
-                    this.amount = null;
+                    this.amount = BigDecimal.ZERO;
                     this.amountPercentageAppliedTo = null;
-                    this.amountOutstanding = null;
+                    this.amountOutstanding = BigDecimal.ZERO;
                 break;
                 case PERCENT_OF_DISBURSEMENT_AMOUNT:
                     log.error("TODO Implement update ChargeCalculationType for PERCENT_OF_DISBURSEMENT_AMOUNT");
@@ -562,6 +579,14 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         }
 
         return percentageOf;
+    }
+
+    /**
+     * Configured percentage, or null for types without one. For {@code PERCENT_OF_INTEREST} the account-level override
+     * wins over the charge definition's amount.
+     */
+    public BigDecimal getPercentage() {
+        return this.percentage;
     }
 
     public BigDecimal amount() {
@@ -718,6 +743,10 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
 
     public boolean isWithdrawalFee() {
         return ChargeTimeType.fromInt(this.chargeTime).isWithdrawalFee();
+    }
+
+    public boolean isPercentageOfInterest() {
+        return this.chargeCalculation != null && ChargeCalculationType.fromInt(this.chargeCalculation).isPercentageOfInterest();
     }
 
     public boolean isOverdraftFee() {
@@ -886,7 +915,7 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
         return DateUtils.isAfter(getDueDate(), nextDueDate) && MathUtil.isGreaterThanZero(amountPaid());
     }
 
-    private BigDecimal amountPaid() {
+    public BigDecimal amountPaid() {
         return this.amountPaid;
     }
 

@@ -1,0 +1,480 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package com.advancly.fineract.portfolio.savings.service;
+
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME;
+import static com.advancly.fineract.portfolio.savings.DynamicDepositApiConstants.linkedAccountParamName;
+
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccount;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountAssembler;
+import com.advancly.fineract.portfolio.savings.domain.DynamicDepositAccountRepository;
+import com.advancly.fineract.portfolio.savings.exception.DynamicDepositAccountNotFoundException;
+import com.advancly.fineract.portfolio.savings.validator.DynamicDepositAccountDataValidator;
+import jakarta.persistence.PersistenceException;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormat;
+import org.apache.fineract.infrastructure.accountnumberformat.domain.AccountNumberFormatRepositoryWrapper;
+import org.apache.fineract.infrastructure.accountnumberformat.domain.EntityAccountType;
+import org.apache.fineract.infrastructure.core.api.JsonCommand;
+import org.apache.fineract.infrastructure.core.data.ApiParameterError;
+import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
+import org.apache.fineract.infrastructure.core.data.CommandProcessingResultBuilder;
+import org.apache.fineract.infrastructure.core.data.DataValidatorBuilder;
+import org.apache.fineract.infrastructure.core.domain.ExternalId;
+import org.apache.fineract.infrastructure.core.exception.ErrorHandler;
+import org.apache.fineract.infrastructure.core.exception.PlatformApiDataValidationException;
+import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
+import org.apache.fineract.organisation.monetary.domain.Money;
+import org.apache.fineract.portfolio.account.PortfolioAccountType;
+import org.apache.fineract.portfolio.account.data.AccountTransferDTO;
+import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
+import org.apache.fineract.portfolio.account.domain.AccountAssociationType;
+import org.apache.fineract.portfolio.account.domain.AccountAssociations;
+import org.apache.fineract.portfolio.account.domain.AccountAssociationsRepository;
+import org.apache.fineract.portfolio.account.domain.AccountTransferType;
+import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
+import org.apache.fineract.portfolio.account.service.AccountNumberGenerator;
+import org.apache.fineract.portfolio.account.service.AccountTransfersWritePlatformService;
+import org.apache.fineract.portfolio.client.domain.Client;
+import org.apache.fineract.portfolio.client.exception.ClientNotActiveException;
+import org.apache.fineract.portfolio.group.domain.Group;
+import org.apache.fineract.portfolio.group.exception.CenterNotActiveException;
+import org.apache.fineract.portfolio.group.exception.GroupNotActiveException;
+import org.apache.fineract.portfolio.note.domain.Note;
+import org.apache.fineract.portfolio.note.domain.NoteRepository;
+import org.apache.fineract.portfolio.savings.DepositAccountType;
+import org.apache.fineract.portfolio.savings.DepositsApiConstants;
+import org.apache.fineract.portfolio.savings.data.DepositAccountDataValidator;
+import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
+import org.apache.fineract.portfolio.savings.domain.DepositAccountAssembler;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
+import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransactionSummaryWrapper;
+import org.apache.fineract.portfolio.savings.domain.SavingsHelper;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountApplicationTransitionApiJsonValidator;
+import org.apache.fineract.portfolio.savings.service.SavingsAccountWritePlatformService;
+import org.apache.fineract.useradministration.domain.AppUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** Write side for Dynamic Deposit accounts; mirrors the fixed-deposit branch of the deposit application service. */
+@Service
+public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implements DynamicDepositAccountWritePlatformService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl.class);
+
+    private final PlatformSecurityContext context;
+    private final DynamicDepositAccountRepository dynamicDepositAccountRepository;
+    private final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator;
+    private final DynamicDepositAccountAssembler dynamicDepositAccountAssembler;
+    private final AccountNumberGenerator accountNumberGenerator;
+    private final AccountNumberFormatRepositoryWrapper accountNumberFormatRepository;
+    private final NoteRepository noteRepository;
+    private final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator;
+    private final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator;
+    private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
+    private final DepositAccountAssembler depositAccountAssembler;
+    private final DepositAccountDataValidator depositAccountDataValidator;
+    private final AccountAssociationsRepository accountAssociationsRepository;
+    private final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper;
+    private final SavingsHelper savingsHelper;
+    private final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator;
+    private final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
+    private final AccountTransfersWritePlatformService accountTransfersWritePlatformService;
+    private final DynamicDepositMaturityAmountService maturityAmountService;
+
+    public DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl(final PlatformSecurityContext context,
+            final DynamicDepositAccountRepository dynamicDepositAccountRepository,
+            final DynamicDepositAccountDataValidator dynamicDepositAccountDataValidator,
+            final DynamicDepositAccountAssembler dynamicDepositAccountAssembler, final AccountNumberGenerator accountNumberGenerator,
+            final AccountNumberFormatRepositoryWrapper accountNumberFormatRepository, final NoteRepository noteRepository,
+            final SavingsAccountApplicationTransitionApiJsonValidator savingsAccountApplicationTransitionApiJsonValidator,
+            final SavingsAccountTransactionDataValidator savingsAccountTransactionDataValidator,
+            final SavingsAccountWritePlatformService savingsAccountWritePlatformService,
+            final DepositAccountAssembler depositAccountAssembler, final DepositAccountDataValidator depositAccountDataValidator,
+            final AccountAssociationsRepository accountAssociationsRepository,
+            final SavingsAccountTransactionSummaryWrapper savingsAccountTransactionSummaryWrapper, final SavingsHelper savingsHelper,
+            final AdvanclyChargeInterestRuleValidator chargeInterestRuleValidator,
+            final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
+            final AccountTransfersWritePlatformService accountTransfersWritePlatformService,
+            final DynamicDepositMaturityAmountService maturityAmountService) {
+        this.context = context;
+        this.dynamicDepositAccountRepository = dynamicDepositAccountRepository;
+        this.dynamicDepositAccountDataValidator = dynamicDepositAccountDataValidator;
+        this.dynamicDepositAccountAssembler = dynamicDepositAccountAssembler;
+        this.accountNumberGenerator = accountNumberGenerator;
+        this.accountNumberFormatRepository = accountNumberFormatRepository;
+        this.noteRepository = noteRepository;
+        this.savingsAccountApplicationTransitionApiJsonValidator = savingsAccountApplicationTransitionApiJsonValidator;
+        this.savingsAccountTransactionDataValidator = savingsAccountTransactionDataValidator;
+        this.savingsAccountWritePlatformService = savingsAccountWritePlatformService;
+        this.depositAccountAssembler = depositAccountAssembler;
+        this.depositAccountDataValidator = depositAccountDataValidator;
+        this.accountAssociationsRepository = accountAssociationsRepository;
+        this.savingsAccountTransactionSummaryWrapper = savingsAccountTransactionSummaryWrapper;
+        this.savingsHelper = savingsHelper;
+        this.chargeInterestRuleValidator = chargeInterestRuleValidator;
+        this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
+        this.accountTransfersWritePlatformService = accountTransfersWritePlatformService;
+        this.maturityAmountService = maturityAmountService;
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult submitApplication(final JsonCommand command) {
+        try {
+            this.dynamicDepositAccountDataValidator.validateForCreate(command.json());
+            this.context.authenticatedUser();
+
+            final DynamicDepositAccount account = this.dynamicDepositAccountAssembler.assembleFrom(command);
+
+            this.dynamicDepositAccountRepository.saveAndFlush(account);
+
+            if (account.isAccountNumberRequiresAutoGeneration()) {
+                final AccountNumberFormat accountNumberFormat = this.accountNumberFormatRepository
+                        .findByAccountType(EntityAccountType.SAVINGS);
+                account.updateAccountNo(this.accountNumberGenerator.generate(account, accountNumberFormat));
+                this.dynamicDepositAccountRepository.save(account);
+            }
+
+            final Long linkedSavingsAccountId = command.longValueOfParameterNamed(DepositsApiConstants.linkedAccountParamName);
+            if (linkedSavingsAccountId != null) {
+                final SavingsAccount linkedSavingsAccount = this.depositAccountAssembler.assembleFrom(linkedSavingsAccountId,
+                        DepositAccountType.SAVINGS_DEPOSIT);
+                this.depositAccountDataValidator.validatelinkedSavingsAccount(linkedSavingsAccount, account);
+                final AccountAssociations accountAssociations = AccountAssociations.associateSavingsAccount(account, linkedSavingsAccount,
+                        AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue(), true);
+                this.accountAssociationsRepository.save(accountAssociations);
+            }
+
+            final Long savingsId = account.getId();
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(savingsId) //
+                    .withOfficeId(account.officeId()) //
+                    .withClientId(account.clientId()) //
+                    .withGroupId(account.groupId()) //
+                    .withSavingsId(savingsId) //
+                    .build();
+        } catch (final DataAccessException dve) {
+            handleDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
+            return CommandProcessingResult.empty();
+        } catch (final PersistenceException dve) {
+            handleDataIntegrityIssues(command, ExceptionUtils.getRootCause(dve.getCause()), dve);
+            return CommandProcessingResult.empty();
+        }
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult modifyApplication(final Long accountId, final JsonCommand command) {
+        try {
+            this.dynamicDepositAccountDataValidator.validateForUpdate(command.json());
+
+            final DynamicDepositAccount account = findAccount(accountId);
+            checkClientOrGroupActive(account);
+
+            final Map<String, Object> changes = new LinkedHashMap<>(20);
+            account.modifyApplication(command, changes);
+            account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
+            this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
+
+            // As in modifyFDApplication: omitting linkAccountId when an association exists is not an error.
+            final boolean isLinkedAccRequired = account.accountTermAndPreClosure().isTransferInterestToLinkedAccount();
+            final Long linkedSavingsAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
+
+            AccountAssociations accountAssociations = this.accountAssociationsRepository.findBySavingsIdAndType(accountId,
+                    AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue());
+            if (linkedSavingsAccountId == null) {
+                if (accountAssociations != null) {
+                    if (command.parameterExists(linkedAccountParamName)) {
+                        this.accountAssociationsRepository.delete(accountAssociations);
+                        changes.put(linkedAccountParamName, null);
+                        this.dynamicDepositAccountDataValidator
+                                .validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired, null);
+                    }
+                } else {
+                    this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(isLinkedAccRequired,
+                            null);
+                }
+            } else {
+                boolean isModified = false;
+                if (accountAssociations == null) {
+                    isModified = true;
+                } else {
+                    final SavingsAccount linkedSavingsAccount = accountAssociations.linkedSavingsAccount();
+                    if (linkedSavingsAccount == null || !linkedSavingsAccount.getId().equals(linkedSavingsAccountId)) {
+                        isModified = true;
+                    }
+                }
+                if (isModified) {
+                    final SavingsAccount linkedSavingsAccount = this.depositAccountAssembler.assembleFrom(linkedSavingsAccountId,
+                            DepositAccountType.SAVINGS_DEPOSIT);
+                    this.depositAccountDataValidator.validatelinkedSavingsAccount(linkedSavingsAccount, account);
+                    if (accountAssociations == null) {
+                        accountAssociations = AccountAssociations.associateSavingsAccount(account, linkedSavingsAccount,
+                                AccountAssociationType.LINKED_ACCOUNT_ASSOCIATION.getValue(), true);
+                    } else {
+                        accountAssociations.updateLinkedSavingsAccount(linkedSavingsAccount);
+                    }
+                    changes.put(linkedAccountParamName, linkedSavingsAccountId);
+                    this.accountAssociationsRepository.save(accountAssociations);
+                }
+            }
+
+            if (!changes.isEmpty()) {
+                // Deposit period or submitted date may have changed.
+                account.updateMaturityDate();
+                this.dynamicDepositAccountRepository.saveAndFlush(account);
+            }
+
+            return new CommandProcessingResultBuilder() //
+                    .withCommandId(command.commandId()) //
+                    .withEntityId(accountId) //
+                    .withOfficeId(account.officeId()) //
+                    .withClientId(account.clientId()) //
+                    .withGroupId(account.groupId()) //
+                    .withSavingsId(accountId) //
+                    .with(changes) //
+                    .build();
+        } catch (final DataAccessException dve) {
+            handleDataIntegrityIssues(command, dve.getMostSpecificCause(), dve);
+            return CommandProcessingResult.empty();
+        } catch (final PersistenceException dve) {
+            handleDataIntegrityIssues(command, ExceptionUtils.getRootCause(dve.getCause()), dve);
+            return CommandProcessingResult.empty();
+        }
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult deleteApplication(final Long accountId) {
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        if (account.isNotSubmittedAndPendingApproval()) {
+            final List<ApiParameterError> dataValidationErrors = new java.util.ArrayList<>();
+            final DataValidatorBuilder baseDataValidator = new DataValidatorBuilder(dataValidationErrors)
+                    .resource(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME + ".delete");
+            baseDataValidator.reset().parameter("activatedOnDate")
+                    .failWithCodeNoParameterAddedToErrorCode("not.in.submittedandpendingapproval.state");
+            if (!dataValidationErrors.isEmpty()) {
+                throw new PlatformApiDataValidationException(dataValidationErrors);
+            }
+        }
+
+        final List<Note> relatedNotes = this.noteRepository.findBySavingsAccount(account);
+        this.noteRepository.deleteAllInBatch(relatedNotes);
+
+        this.dynamicDepositAccountRepository.delete(account);
+
+        return new CommandProcessingResultBuilder() //
+                .withEntityId(accountId) //
+                .withOfficeId(account.officeId()) //
+                .withClientId(account.clientId()) //
+                .withGroupId(account.groupId()) //
+                .withSavingsId(accountId) //
+                .build();
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult approveApplication(final Long accountId, final JsonCommand command) {
+        final AppUser currentUser = this.context.authenticatedUser();
+        this.savingsAccountApplicationTransitionApiJsonValidator.validateApproval(command.json());
+
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        final Map<String, Object> changes = account.approveApplication(currentUser, command);
+        return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult undoApplicationApproval(final Long accountId, final JsonCommand command) {
+        this.context.authenticatedUser();
+        this.savingsAccountApplicationTransitionApiJsonValidator.validateForUndo(command.json());
+
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        final Map<String, Object> changes = account.undoApplicationApproval();
+        return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult rejectApplication(final Long accountId, final JsonCommand command) {
+        final AppUser currentUser = this.context.authenticatedUser();
+        this.savingsAccountApplicationTransitionApiJsonValidator.validateRejection(command.json());
+
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        final Map<String, Object> changes = account.rejectApplication(currentUser, command);
+        return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult withdrawApplication(final Long accountId, final JsonCommand command) {
+        final AppUser currentUser = this.context.authenticatedUser();
+        this.savingsAccountApplicationTransitionApiJsonValidator.validateApplicantWithdrawal(command.json());
+
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        final Map<String, Object> changes = account.applicantWithdrawsFromApplication(currentUser, command);
+        return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    @Transactional
+    @Override
+    public CommandProcessingResult activate(final Long accountId, final JsonCommand command) {
+        final AppUser currentUser = this.context.authenticatedUser();
+        this.savingsAccountTransactionDataValidator.validateActivation(command);
+
+        final DynamicDepositAccount account = findAccount(accountId);
+        checkClientOrGroupActive(account);
+
+        final Map<String, Object> changes = account.activate(currentUser, command);
+        if (!changes.isEmpty()) {
+            // Maturity is now anchored on the activation date rather than the submitted date.
+            account.updateMaturityDate();
+            // Creates the opening deposit, which the first rate-history row is keyed to.
+            final Locale locale = command.extractLocale();
+            final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(locale);
+            fundOpeningDepositFromLinkedAccount(account, locale, fmt);
+            final Set<Long> existingTransactionIds = new HashSet<>();
+            final Set<Long> existingReversedTransactionIds = new HashSet<>();
+            this.savingsAccountWritePlatformService.processPostActiveActions(account, fmt, existingTransactionIds,
+                    existingReversedTransactionIds);
+            this.maturityAmountService.storeProjectedMaturityAmount(account);
+        }
+        return saveAndBuildTransitionResult(account, command, changes);
+    }
+
+    /** As for FD: with a linked account, the opening deposit is a transfer from it, not an unfunded deposit. */
+    private void fundOpeningDepositFromLinkedAccount(final DynamicDepositAccount account, final Locale locale,
+            final DateTimeFormatter fmt) {
+        final Money openingDeposit = account.activateWithBalance();
+        if (!openingDeposit.isGreaterThanZero()) {
+            return;
+        }
+        final PortfolioAccountData linkedAccount = this.accountAssociationsReadPlatformService
+                .retriveSavingsLinkedAssociation(account.getId());
+        if (linkedAccount == null) {
+            return;
+        }
+        // The transfer re-resolves the account by id, so the activation must be visible to it first.
+        this.dynamicDepositAccountRepository.saveAndFlush(account);
+
+        final SavingsAccount fromSavingsAccount = null;
+        final boolean isRegularTransaction = false;
+        final boolean isExceptionForBalanceCheck = false;
+        final AccountTransferDTO accountTransferDTO = new AccountTransferDTO(account.getActivationDate(), openingDeposit.getAmount(),
+                PortfolioAccountType.SAVINGS, PortfolioAccountType.SAVINGS, linkedAccount.getId(), account.getId(), "Account Transfer",
+                locale, fmt, null, null, null, null, null, AccountTransferType.ACCOUNT_TRANSFER.getValue(), null, null, ExternalId.empty(),
+                null, account, fromSavingsAccount, isRegularTransaction, isExceptionForBalanceCheck);
+        this.accountTransfersWritePlatformService.transferFunds(accountTransferDTO);
+        account.markOpeningDepositFundedByLinkedTransfer();
+    }
+
+    private CommandProcessingResult saveAndBuildTransitionResult(final DynamicDepositAccount account, final JsonCommand command,
+            final Map<String, Object> changes) {
+        if (!changes.isEmpty()) {
+            this.dynamicDepositAccountRepository.saveAndFlush(account);
+
+            final String noteText = command.stringValueOfParameterNamed("note");
+            if (StringUtils.isNotBlank(noteText)) {
+                final Note note = Note.savingNote(account, noteText);
+                changes.put("note", noteText);
+                this.noteRepository.save(note);
+            }
+        }
+
+        return new CommandProcessingResultBuilder() //
+                .withCommandId(command.commandId()) //
+                .withEntityId(account.getId()) //
+                .withOfficeId(account.officeId()) //
+                .withClientId(account.clientId()) //
+                .withGroupId(account.groupId()) //
+                .withSavingsId(account.getId()) //
+                .with(changes) //
+                .build();
+    }
+
+    private DynamicDepositAccount findAccount(final Long accountId) {
+        final DynamicDepositAccount account = this.dynamicDepositAccountRepository.findById(accountId)
+                .orElseThrow(() -> new DynamicDepositAccountNotFoundException(accountId));
+        account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
+        return account;
+    }
+
+    private void checkClientOrGroupActive(final DynamicDepositAccount account) {
+        final Client client = account.getClient();
+        if (client != null && client.isNotActive()) {
+            throw new ClientNotActiveException(client.getId());
+        }
+        final Group group = account.group();
+        if (group != null && group.isNotActive()) {
+            if (group.isCenter()) {
+                throw new CenterNotActiveException(group.getId());
+            }
+            throw new GroupNotActiveException(group.getId());
+        }
+    }
+
+    private void handleDataIntegrityIssues(final JsonCommand command, final Throwable realCause, final Exception dve) {
+        String msgCode = "error.msg.dynamicdepositaccount";
+        String msg = "Unknown data integrity issue with dynamic deposit account.";
+        String param = null;
+        Object[] msgArgs;
+        final Throwable checkEx = realCause == null ? dve : realCause;
+        if (checkEx.getMessage() != null && checkEx.getMessage().contains("sa_account_no_UNIQUE")) {
+            final String accountNo = command.stringValueOfParameterNamed("accountNo");
+            msgCode += ".duplicate.accountNo";
+            msg = "Dynamic deposit account with accountNo " + accountNo + " already exists";
+            param = "accountNo";
+            msgArgs = new Object[] { accountNo, dve };
+        } else if (checkEx.getMessage() != null && checkEx.getMessage().contains("sa_external_id_UNIQUE")) {
+            final String externalId = command.stringValueOfParameterNamed("externalId");
+            msgCode += ".duplicate.externalId";
+            msg = "Dynamic deposit account with externalId " + externalId + " already exists";
+            param = "externalId";
+            msgArgs = new Object[] { externalId, dve };
+        } else {
+            msgCode += ".unknown.data.integrity.issue";
+            msgArgs = new Object[] { dve };
+        }
+        LOG.error("Error occurred.", dve);
+        throw ErrorHandler.getMappable(dve, msgCode, msg, param, msgArgs);
+    }
+}

@@ -23,6 +23,7 @@ import com.google.gson.GsonBuilder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import org.apache.fineract.accounting.journalentry.data.CreditDebit;
 import org.apache.fineract.accounting.journalentry.data.JournalEntryData;
@@ -78,11 +79,25 @@ public class JournalEntriesImportHandler implements ImportHandler {
     }
 
     public BulkImportValidationResultData validate(final Workbook workbook, final String locale, final String dateFormat) {
-        List<JournalEntryData> glTransactions = readExcelFile(workbook, locale, dateFormat);
-        return validateEntity(glTransactions, dateFormat);
+        final List<BulkImportValidationErrorData> rowErrors = new ArrayList<>();
+        List<JournalEntryData> glTransactions = readExcelFile(workbook, locale, dateFormat, rowErrors);
+        return validateEntity(glTransactions, rowErrors, dateFormat);
     }
 
     private List<JournalEntryData> readExcelFile(final Workbook workbook, final String locale, final String dateFormat) {
+        return readExcelFile(workbook, locale, dateFormat, null);
+    }
+
+    /**
+     * Reads the journal entries sheet.
+     *
+     * @param rowErrors
+     *            when {@code null} (import), rows are counted up to the first blank Transaction Id, as before. When
+     *            non-null (validation only), rows are counted up to the first fully blank row, and every row with a
+     *            blank Transaction Id is reported into this list instead of silently ending the sheet.
+     */
+    private List<JournalEntryData> readExcelFile(final Workbook workbook, final String locale, final String dateFormat,
+            final List<BulkImportValidationErrorData> rowErrors) {
         List<JournalEntryData> glTransactions = new ArrayList<>();
         String currentTransactionId = null;
         String prevTransactionId = null;
@@ -90,12 +105,28 @@ public class JournalEntriesImportHandler implements ImportHandler {
         LocalDate transactionDate = null;
 
         Sheet addJournalEntriesSheet = workbook.getSheet(TemplatePopulateImportConstants.JOURNAL_ENTRY_SHEET_NAME);
-        Integer noOfEntries = ImportHandlerUtils.getNumberOfRows(addJournalEntriesSheet, 4);
+        Integer noOfEntries = rowErrors == null
+                ? ImportHandlerUtils.getNumberOfRows(addJournalEntriesSheet, JournalEntryConstants.TRANSACTION_ID_COL)
+                : getNumberOfJournalEntryRows(addJournalEntriesSheet);
         for (int rowIndex = 1; rowIndex <= noOfEntries; rowIndex++) {
             Row row;
             row = addJournalEntriesSheet.getRow(rowIndex);
 
             currentTransactionId = ImportHandlerUtils.readAsString(JournalEntryConstants.TRANSACTION_ID_COL, row);
+
+            if (currentTransactionId == null) {
+                // Only reachable in validation mode: import stops counting at the first blank Transaction Id.
+                if (rowErrors != null) {
+                    rowErrors.add(BulkImportValidationErrorData.instance(rowIndex + 1, "Transaction Id is required"));
+                }
+                // Close the current group so following rows are not merged across the invalid row.
+                if (journalEntry != null) {
+                    glTransactions.add(journalEntry);
+                    journalEntry = null;
+                }
+                prevTransactionId = null;
+                continue;
+            }
 
             if (currentTransactionId.equals(prevTransactionId)) {
                 if (journalEntry != null) {
@@ -142,6 +173,31 @@ public class JournalEntriesImportHandler implements ImportHandler {
             glTransactions.add(journalEntry);
         }
         return glTransactions;
+    }
+
+    /**
+     * Counts data rows up to the first row whose data columns (Office through Debit Amount) are all blank, so a blank
+     * Transaction Id does not hide the rows below it.
+     */
+    private int getNumberOfJournalEntryRows(final Sheet sheet) {
+        int count = 0;
+        for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            final Row row = sheet.getRow(rowIndex);
+            if (row == null || isBlankJournalEntryRow(row)) {
+                break;
+            }
+            count++;
+        }
+        return count;
+    }
+
+    private boolean isBlankJournalEntryRow(final Row row) {
+        for (int col = JournalEntryConstants.OFFICE_NAME_COL; col <= JournalEntryConstants.AMOUNT_DEBIT_COL; col++) {
+            if (ImportHandlerUtils.readAsString(col, row) != null) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private JournalEntryData readAddJournalEntries(final Workbook workbook, final Row row, LocalDate transactionDate, final String locale,
@@ -241,11 +297,15 @@ public class JournalEntriesImportHandler implements ImportHandler {
         return Count.instance(successCount, errorCount);
     }
 
-    private BulkImportValidationResultData validateEntity(final List<JournalEntryData> glTransactions, String dateFormat) {
+    private BulkImportValidationResultData validateEntity(final List<JournalEntryData> glTransactions,
+            final List<BulkImportValidationErrorData> rowErrors, String dateFormat) {
         int successCount = 0;
-        int errorCount = 0;
-        List<BulkImportValidationErrorData> errors = new ArrayList<>();
+        int errorCount = rowErrors.size();
+        List<BulkImportValidationErrorData> errors = new ArrayList<>(rowErrors);
         List<String> validationMessages = new ArrayList<>();
+        for (BulkImportValidationErrorData rowError : rowErrors) {
+            validationMessages.add("row " + rowError.getRowNumber() + ": " + rowError.getMessage());
+        }
         GsonBuilder gsonBuilder = GoogleGsonSerializerHelper.createGsonBuilder();
         gsonBuilder.registerTypeAdapter(LocalDate.class, new DateSerializer(dateFormat));
         gsonBuilder.registerTypeAdapter(CurrencyData.class, new CurrencyDateCodeSerializer());
@@ -269,11 +329,12 @@ public class JournalEntriesImportHandler implements ImportHandler {
                 errors.add(BulkImportValidationErrorData.instance(rowNumber, errorMessage));
             }
         }
+        errors.sort(Comparator.comparing(BulkImportValidationErrorData::getRowNumber, Comparator.nullsLast(Comparator.naturalOrder())));
         if (!validationMessages.isEmpty()) {
             LOG.warn("Journal entries bulk validation completed with {} validation error(s): {}", validationMessages.size(),
                     validationMessages);
         }
-        return BulkImportValidationResultData.instance(glTransactions.size(), successCount, errorCount, errors);
+        return BulkImportValidationResultData.instance(glTransactions.size() + rowErrors.size(), successCount, errorCount, errors);
     }
 
 }

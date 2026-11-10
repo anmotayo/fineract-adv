@@ -259,7 +259,7 @@ public class JournalEntriesImportHandler implements ImportHandler {
                 }
                 String payload = gson.toJson(transaction);
                 JsonCommand command = JsonCommand.from(payload, this.fromApiJsonHelper.parse(payload), this.fromApiJsonHelper,
-                        "JOURNALENTRY", null, null, null, null, null, null, null, "/journalentries/template", null, null, null, null);
+                        "JOURNALENTRY", null, null, null, null, null, null, null, "/journalentries/template", null, null, null, null, null);
                 this.journalEntryValidator.validateJournalEntry(command);
                 successCount++;
             } catch (RuntimeException ex) {

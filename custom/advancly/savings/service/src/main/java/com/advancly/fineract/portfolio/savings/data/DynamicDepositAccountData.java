@@ -261,6 +261,14 @@ public class DynamicDepositAccountData implements Serializable {
         return this.id;
     }
 
+    public String externalId() {
+        return this.externalId;
+    }
+
+    public Long clientId() {
+        return this.clientId;
+    }
+
     public Long savingsProductId() {
         return this.savingsProductId;
     }

@@ -321,6 +321,8 @@ public class AuditReadPlatformServiceImpl implements AuditReadPlatformService {
                     final DepositProductData depositProduct = this.depositProductReadPlatformService
                             .retrieveOne(DepositAccountType.FIXED_DEPOSIT, productId);
                     commandAsJsonMap.put("productName", depositProduct.getName());
+                } else if (auditResult.getEntityName().equalsIgnoreCase("DYNAMICDEPOSITACCOUNT")) {
+                    commandAsJsonMap.put("productName", retrieveDynamicDepositProductName(productId));
                 } else {
                     commandAsJsonMap.put("productName", "");
                 }
@@ -358,6 +360,13 @@ public class AuditReadPlatformServiceImpl implements AuditReadPlatformService {
         auditResult.setCommandAsJson(newAuditAsJson);
 
         return auditResult;
+    }
+
+    private String retrieveDynamicDepositProductName(final Long productId) {
+        final List<String> names = this.jdbcTemplate.queryForList(
+                "select name from m_savings_product where id = ? and deposit_type_enum = ?", String.class, productId,
+                DepositAccountType.DYNAMIC_DEPOSIT.getValue());
+        return names.isEmpty() ? "" : names.get(0);
     }
 
     private void updateEnumerations(Map<String, Object> commandAsJsonMap, JsonObject auditObject, String entityName) {

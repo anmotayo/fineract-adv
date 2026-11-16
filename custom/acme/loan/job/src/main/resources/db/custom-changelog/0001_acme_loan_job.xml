@@ -44,7 +44,7 @@
             <column name="scheduler_group" valueNumeric="0"/>
             <column name="is_misfired" valueBoolean="false"/>
             <column name="node_id" valueNumeric="1"/>
-            <column name="is_mismatched_job" valueBoolean="true"/>
+            <column name="is_mismatched_job" valueBoolean="false"/>
         </insert>
     </changeSet>
     <changeSet author="acme" id="2">
@@ -54,6 +54,17 @@
         </preConditions>
         <update tableName="job">
             <column name="short_name" value="ACM_NOOP"/>
+            <where>name='Acme Noop Job'</where>
+        </update>
+    </changeSet>
+    <changeSet author="advancly" id="3">
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">SELECT COUNT(*) FROM job WHERE name = 'Acme Noop Job'</sqlCheck>
+        </preConditions>
+        <update tableName="job">
+            <column name="is_mismatched_job" valueBoolean="false"/>
+            <column name="is_active" valueBoolean="false"/>
             <where>name='Acme Noop Job'</where>
         </update>
     </changeSet>

@@ -304,7 +304,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                 && (loan.getAccruedTill() == null || !DateUtils.isEqual(foreClosureDate, loan.getAccruedTill()))) {
             final LoanRepaymentScheduleInstallment foreCloseDetail = loanBalanceService.fetchLoanForeclosureDetail(loan, foreClosureDate);
             MonetaryCurrency currency = loan.getCurrency();
-            reverseTransactionsAfter(loan, ACCRUAL_TYPES, foreClosureDate, false);
+            reverseTransactionsAfter(loan, ACCRUAL_TYPES, foreClosureDate, true, true);
 
             final Map<String, Money> incomeDetails = determineReceivableIncomeForeClosure(loan, foreClosureDate);
 
@@ -1253,17 +1253,28 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
 
     private void reverseTransactionsAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate effectiveDate,
             final boolean addEvent) {
+        reverseTransactionsAfter(loan, types, effectiveDate, addEvent, false);
+    }
+
+    private void reverseTransactionsAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate effectiveDate,
+            final boolean addEvent, final boolean manuallyReversed) {
         loanTransactionRepository.findNonReversedByLoanAndTypesAndAfterDate(loan, types, effectiveDate)
-                .forEach(transaction -> reverseAccrual(transaction, addEvent));
+                .forEach(transaction -> reverseAccrual(transaction, addEvent, manuallyReversed));
     }
 
     private void reverseTransactionsOnOrAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate date) {
         loanTransactionRepository.findNonReversedByLoanAndTypesAndOnOrAfterDate(loan, types, date)
-                .forEach(transaction -> reverseAccrual(transaction, true));
+                .forEach(transaction -> reverseAccrual(transaction, true, false));
     }
 
-    private void reverseAccrual(final LoanTransaction transaction, final boolean addEvent) {
+    private void reverseAccrual(final LoanTransaction transaction, final boolean addEvent, final boolean manuallyReversed) {
         transaction.reverse();
+        if (manuallyReversed) {
+            // Marks this as a user-initiated reversal (as opposed to a routine internal accrual
+            // supersession) so it is retained and shown as reversed on the loan transactions list,
+            // the same way an explicit "undo" of a transaction is.
+            transaction.manuallyAdjustedOrReversed();
+        }
         if (addEvent) {
             journalEntryPoster.postJournalEntriesForLoanTransaction(transaction, false, false);
             final LoanTransactionBusinessEvent businessEvent = new LoanAccrualAdjustmentTransactionBusinessEvent(transaction);

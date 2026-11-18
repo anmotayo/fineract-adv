@@ -171,4 +171,43 @@ class UpdateTrialBalanceDetailsTaskletTest {
         assertEquals(1, savedBalances.size());
         assertEquals(createdDate, savedBalances.get(0).getTransactionDate());
     }
+
+    @Test
+    void testExecuteHandlesOffsetDateTimeForBothEntryDateAndTransactionDate() throws Exception {
+        LocalDate businessDate = LocalDate.of(2026, 11, 15);
+        LocalDate entryDate = LocalDate.of(2026, 11, 10);
+        LocalDate baselineDate = LocalDate.of(2026, 11, 1);
+        OffsetDateTime entryDateTime = OffsetDateTime.of(2026, 11, 10, 8, 0, 0, 0, ZoneOffset.UTC);
+        OffsetDateTime createdDateTime = OffsetDateTime.of(2026, 11, 10, 14, 30, 0, 0, ZoneOffset.UTC);
+
+        mockedDateUtils.when(DateUtils::getBusinessLocalDate).thenReturn(businessDate);
+        mockedDateUtils.when(() -> DateUtils.getExactDifferenceInDays(entryDate, businessDate)).thenReturn(5);
+
+        when(dataSourceServiceFactory.determineDataSourceService()).thenReturn(routingDataSourceService);
+        when(routingDataSourceService.retrieveDataSource()).thenReturn(dataSource);
+
+        when(trialBalanceRepository.findMaxCreatedDate()).thenReturn(baselineDate);
+        when(journalEntryRepository.findTransactionDatesAfter(baselineDate)).thenReturn(List.of(entryDate));
+
+        Object[] row = new Object[] { 1L, 100L, BigDecimal.valueOf(500.00), entryDateTime, createdDateTime, BigDecimal.valueOf(1500.00) };
+        when(journalEntryRepository.findTrialBalanceLinesForDate(entryDate)).thenReturn(Collections.singletonList(row));
+        when(trialBalanceRepository.findDistinctOfficeIdsWithNullClosingBalance()).thenReturn(List.of());
+
+        StepContribution stepContribution = mock(StepContribution.class);
+        ChunkContext chunkContext = mock(ChunkContext.class);
+
+        RepeatStatus status = tasklet.execute(stepContribution, chunkContext);
+
+        assertEquals(RepeatStatus.FINISHED, status);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TrialBalance>> captor = ArgumentCaptor.forClass(List.class);
+        verify(trialBalanceRepositoryWrapper).save(captor.capture());
+
+        List<TrialBalance> savedBalances = captor.getValue();
+        assertEquals(1, savedBalances.size());
+        TrialBalance tb = savedBalances.get(0);
+        assertEquals(entryDate, tb.getEntryDate());
+        assertEquals(LocalDate.of(2026, 11, 10), tb.getTransactionDate());
+    }
 }

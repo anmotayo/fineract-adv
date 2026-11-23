@@ -326,7 +326,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                 && (loan.getAccruedTill() == null || !DateUtils.isEqual(foreClosureDate, loan.getAccruedTill()))) {
             final LoanRepaymentScheduleInstallment foreCloseDetail = loanBalanceService.fetchLoanForeclosureDetail(loan, foreClosureDate);
             MonetaryCurrency currency = loan.getCurrency();
-            reverseTransactionsAfter(loan, ACCRUAL_TYPES, foreClosureDate, false);
+            reverseTransactionsAfter(loan, ACCRUAL_TYPES, foreClosureDate, true, true);
 
             final Map<String, Money> incomeDetails = determineReceivableIncomeForeClosure(loan, foreClosureDate);
 
@@ -961,7 +961,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
         for (LoanTransaction accrualTransaction : accrualTransactions) {
             if (accrualTransaction.getInterestPortion(loan.getCurrency()).isGreaterThanZero()) {
                 if (accrualTransaction.getInterestPortion(loan.getCurrency()).isNotEqualTo(interestApplied)) {
-                    reverseTransaction(accrualTransaction, addEvent);
+                    reverseTransaction(accrualTransaction, addEvent, false);
                     if (isExternalIdAutoGenerationEnabled) {
                         externalId = ExternalId.generate();
                     }
@@ -982,7 +982,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                     LoanCharge loanCharge = chargePaidBy.getLoanCharge();
                     Money chargeAmount = loanCharge.getAmount(loan.getCurrency());
                     if (chargeAmount.isNotEqualTo(accrualTransaction.getAmount(loan.getCurrency()))) {
-                        reverseTransaction(accrualTransaction, addEvent);
+                        reverseTransaction(accrualTransaction, addEvent, false);
                         final LoanTransaction applyLoanChargeTransaction = loanChargeService.handleChargeAppliedTransaction(loan,
                                 loanCharge, accrualTransaction.getTransactionDate());
                         if (applyLoanChargeTransaction != null) {
@@ -1019,7 +1019,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                     interest = interest.minus(accrualTransaction.getInterestPortion(currency));
                     fee = fee.minus(accrualTransaction.getFeeChargesPortion(currency));
                     penalty = penalty.minus(accrualTransaction.getPenaltyChargesPortion(currency));
-                    reverseTransaction(accrualTransaction, addEvent);
+                    reverseTransaction(accrualTransaction, addEvent, false);
                 }
             }
         }
@@ -1125,7 +1125,7 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                     Set.of(LoanTransactionType.ACCRUAL, LoanTransactionType.ACCRUAL_ADJUSTMENT), compoundingDetail.getEffectiveDate());
 
             if (accrualTransaction.isEmpty() || !MathUtil.isEqualTo(accrualTransaction.get().getAmount(), compoundingDetail.getAmount())) {
-                accrualTransaction.ifPresent(accrualTrans -> reverseTransaction(accrualTrans, addEvent));
+                accrualTransaction.ifPresent(accrualTrans -> reverseTransaction(accrualTrans, addEvent, false));
                 LoanTransaction accrual = LoanTransaction.accrueTransaction(loan, loan.getOffice(), compoundingDetail.getEffectiveDate(),
                         compoundingDetail.getAmount(), interest, fee, penalties, externalId);
                 updateLoanChargesPaidBy(loan, accrual, feeDetails, null);
@@ -1391,13 +1391,18 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
 
     private void reverseTransactionsAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate effectiveDate,
             final boolean addEvent) {
+        reverseTransactionsAfter(loan, types, effectiveDate, addEvent, false);
+    }
+
+    private void reverseTransactionsAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate effectiveDate,
+            final boolean addEvent, final boolean manuallyReversed) {
         loanTransactionRepository.findNonReversedByLoanAndTypesAndAfterDate(loan, types, effectiveDate)
-                .forEach(transaction -> reverseTransaction(transaction, addEvent));
+                .forEach(transaction -> reverseTransaction(transaction, addEvent, manuallyReversed));
     }
 
     private void reverseTransactionsOnOrAfter(final Loan loan, final Set<LoanTransactionType> types, final LocalDate date) {
         loanTransactionRepository.findNonReversedByLoanAndTypesAndOnOrAfterDate(loan, types, date)
-                .forEach(transaction -> reverseTransaction(transaction, true));
+                .forEach(transaction -> reverseTransaction(transaction, true, false));
     }
 
     /**
@@ -1454,8 +1459,14 @@ public class LoanAccrualsProcessingServiceImpl implements LoanAccrualsProcessing
                 .count();
     }
 
-    private void reverseTransaction(final LoanTransaction transaction, final boolean addEvent) {
+    private void reverseTransaction(final LoanTransaction transaction, final boolean addEvent, final boolean manuallyReversed) {
         transaction.reverse();
+        if (manuallyReversed) {
+            // Marks this as a user-initiated reversal (as opposed to a routine internal accrual
+            // supersession) so it is retained and shown as reversed on the loan transactions list,
+            // the same way an explicit "undo" of a transaction is.
+            transaction.manuallyAdjustedOrReversed();
+        }
         if (addEvent) {
             journalEntryPoster.postJournalEntriesForLoanTransaction(transaction, false, false);
             final LoanTransactionBusinessEvent businessEvent = new LoanAccrualAdjustmentTransactionBusinessEvent(transaction);

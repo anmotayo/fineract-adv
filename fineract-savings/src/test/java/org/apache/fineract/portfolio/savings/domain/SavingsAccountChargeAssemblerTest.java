@@ -30,11 +30,7 @@ import org.apache.fineract.portfolio.charge.exception.ChargeCannotBeAppliedToExc
 import org.apache.fineract.portfolio.savings.DepositAccountType;
 import org.junit.jupiter.api.Test;
 
-/**
- * Tests {@link SavingsAccountChargeAssembler#validateChargeAllowedForDepositAccountType(Charge, DepositAccountType)}.
- * {@code PERCENT_OF_INTEREST} is allowed for savings account charges under the charge-driven early-withdrawal model;
- * {@code PERCENT_OF_AMOUNT_AND_INTEREST} remains rejected for every savings account type, Dynamic Deposit included.
- */
+/** PERCENT_OF_INTEREST is allowed for savings charges; PERCENT_OF_AMOUNT_AND_INTEREST is rejected for every type. */
 class SavingsAccountChargeAssemblerTest {
 
     private static final Long CHARGE_ID = 77L;
@@ -68,7 +64,7 @@ class SavingsAccountChargeAssemblerTest {
 
     @Test
     void percentOfAmountAndInterestCharge_onDynamicDepositAccount_isRejected() {
-        // Out of scope for savings charges entirely - not even Dynamic Deposit may use it.
+        // Not allowed even for Dynamic Deposit.
         final Charge charge = mockCharge(ChargeCalculationType.PERCENT_OF_AMOUNT_AND_INTEREST);
 
         assertThatThrownBy(

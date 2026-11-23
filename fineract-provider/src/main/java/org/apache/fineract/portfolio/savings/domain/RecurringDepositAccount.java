@@ -1091,7 +1091,6 @@ public class RecurringDepositAccount extends SavingsAccount {
          * "recurring.frequency.not.before.deposit.period"); }
          */
 
-        // check there should be a withHoldTaxPostingType when withHoldTax is true
         if (this.withHoldTax && this.accountTermAndPreClosure.getWithHoldTaxPostingType() == null) {
             baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("withhold.tax.posting.type.required");
         }

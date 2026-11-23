@@ -90,23 +90,8 @@ import org.apache.fineract.portfolio.savings.exception.SavingsProductNotFoundExc
 import org.springframework.stereotype.Component;
 
 /**
- * Builds a {@link DynamicDepositAccount} from a submission {@link JsonCommand}. Structurally mirrors
- * {@code DepositAccountAssembler#assembleFrom}'s fixed-deposit branch, implementing the account-creation resolution
- * rules from the implementation plan (section 3):
- *
- * <ol>
- * <li>Read the product's {@link DepositProductDynamicDetail}.</li>
- * <li>{@code allowWithdrawal} / {@code dynamicRateEnabled}: use the request value if present, else inherit from the
- * product.</li>
- * <li>Persist the resolved values into {@link DepositAccountDynamicDetail}.</li>
- * <li>Validate that a linked savings account is present whenever {@code transferInterestToSavings} is enabled -
- * independent of {@code allowWithdrawal}, since transferring interest is not a regular (withdrawal-style)
- * transaction.</li>
- * <li>Resolve the initial interest rate: the request's {@code nominalAnnualInterestRate} if present, otherwise the
- * interest rate chart (via {@link DepositAccountInterestRateChart#getApplicableInterestRate}) using the initial
- * invested amount and fixed tenor - this chart fallback applies regardless of {@code dynamicRateEnabled} (business rule
- * 6) - falling back further to the product's flat nominal rate if no chart is configured.</li>
- * </ol>
+ * Builds a {@link DynamicDepositAccount} from a submission command, mirroring the fixed-deposit branch of
+ * {@code DepositAccountAssembler#assembleFrom}.
  */
 @Component
 public class DynamicDepositAccountAssembler {
@@ -225,7 +210,6 @@ public class DynamicDepositAccountAssembler {
             withHoldTax = command.booleanPrimitiveValueOfParameterNamed(withHoldTaxParamName);
         }
 
-        // --- dynamic-detail inheritance (plan section 3, steps 1-3) ---
         final boolean allowWithdrawal = command.parameterExists(allowWithdrawalParamName)
                 ? command.booleanPrimitiveValueOfParameterNamed(allowWithdrawalParamName)
                 : product.isAllowWithdrawal();
@@ -235,8 +219,7 @@ public class DynamicDepositAccountAssembler {
 
         final boolean transferInterestToSavings = command.booleanPrimitiveValueOfParameterNamed(transferInterestToSavingsParamName);
 
-        // --- linked account required when transfer-interest-to-savings is enabled (independent of allowWithdrawal -
-        // transfer-interest-to-savings is not a regular transaction) ---
+        // Required independently of allowWithdrawal: transferring interest is not a regular transaction.
         final Long linkedAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
         this.dynamicDepositAccountDataValidator.validateLinkedAccountRequiredWhenTransferInterestEnabled(transferInterestToSavings,
                 linkedAccountId);
@@ -251,9 +234,7 @@ public class DynamicDepositAccountAssembler {
         this.dynamicDepositAccountDataValidator.validateDepositAmountAndTermWithinProductRange(depositAmount, depositPeriod,
                 depositPeriodFrequency, productTermAndPreClosure);
 
-        // --- withholding-tax posting type: the account's own override when sent, else inherited from the product
-        // (Section D fix - previously never populated, which forced DynamicDepositAccount#isWithHoldTaxApplicable to
-        // hard-code WHT as always-interest-posting; see that class's javadoc) ---
+        // Account override when sent, else inherited from the product.
         WithHoldTaxPostingType withHoldTaxPostingType = null;
         if (command.parameterExists(withHoldTaxPostingTypeIdParamName)) {
             final Integer withHoldTaxPostingTypeId = command.integerValueOfParameterNamed(withHoldTaxPostingTypeIdParamName);
@@ -262,16 +243,12 @@ public class DynamicDepositAccountAssembler {
             withHoldTaxPostingType = WithHoldTaxPostingType.fromInt(productTermAndPreClosure.withHoldTaxPostingType());
         }
 
-        // --- account-level interest rate chart snapshot (this correction): captured once, here, at submission time -
-        // so a later edit to the product's chart never retroactively changes the rate an already-open account
-        // resolves against. Both the initial rate resolution below and every later re-resolution
-        // (DynamicDepositRateResolutionService, via DynamicDepositRateHistoryService) read this same snapshot, never
-        // the product's chart directly.
+        // Snapshot the product chart at submission so later product edits never change an open account's rate;
+        // all later rate resolution reads this snapshot.
         final InterestRateChart productChart = product.applicableChart(submittedOnDate);
         final DepositAccountInterestRateChart accountChart = productChart == null ? null
                 : DepositAccountInterestRateChart.from(productChart);
 
-        // --- initial interest rate resolution (plan section 3, step 6) ---
         BigDecimal interestRate = command.bigDecimalValueOfParameterNamed(nominalAnnualInterestRateParamName);
         if (interestRate == null) {
             interestRate = resolveInitialRateFromChart(product, accountChart, depositAmount, submittedOnDate, depositPeriod,
@@ -297,11 +274,7 @@ public class DynamicDepositAccountAssembler {
                 dynamicRateEnabled);
         account.setDynamicDetail(dynamicDetail);
 
-        // Phase 4 prerequisite: compute and store the maturity date at submission time, mirroring how
-        // DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl#submitFDApplication calls
-        // FixedDepositAccount#updateMaturityDateAndAmountBeforeAccountActivation right after assembly. Anchored on
-        // submittedOnDate here (the account is not activated yet) and recomputed against the activation date in
-        // DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl#activate, exactly as FD does.
+        // Anchored on submittedOnDate; recomputed against the activation date on activate, as FD does.
         account.updateMaturityDate();
 
         account.setHelpers(this.savingsAccountTransactionSummaryWrapper, this.savingsHelper);
@@ -310,26 +283,14 @@ public class DynamicDepositAccountAssembler {
         return account;
     }
 
-    /**
-     * The product's charge-driven early-withdrawal penalty charge. The supported configuration is the interest rule
-     * attached to a charge that is itself attached to the product.
-     */
+    /** The early-withdrawal penalty: the charge-interest rule whose charge is attached to the product. */
     private Charge resolveProductEarlyWithdrawalCharge(final DynamicDepositProduct product) {
         return this.chargeInterestRuleValidator.resolveSingleInterestCharge(product);
     }
 
     /**
-     * Merges the product's early-withdrawal penalty charge into the account's own charges, unless the request already
-     * supplied that charge - in which case the caller's account-level percentage override is kept untouched, which is
-     * the "use the account charge percentage when the client/account has an override" half of implementation plan
-     * Section 11's rule.
-     *
-     * Only this one charge is inherited. Dynamic Deposit deliberately does not use core's
-     * {@code SavingsAccountChargeAssembler#fromSavingsProduct}, which would pull in every product charge and change
-     * long-standing behaviour for this product type; the early-withdrawal charge has to be attached because
-     * charge-driven interest penalties resolve the account-level charge and percentage from the account itself.
-     *
-     * Static (and visible to tests) so the merge rule can be exercised without a Spring context.
+     * Adds the product's early-withdrawal charge unless the request already supplied it (keeping its percentage
+     * override). Only this charge is inherited, not every product charge as core's fromSavingsProduct would.
      */
     static Set<SavingsAccountCharge> withEarlyWithdrawalCharge(final Set<SavingsAccountCharge> requestCharges,
             final Charge earlyWithdrawalCharge) {
@@ -351,12 +312,8 @@ public class DynamicDepositAccountAssembler {
     }
 
     /**
-     * Resolves the initial rate from the account's own interest rate chart snapshot (business rule 6: this fallback
-     * applies regardless of {@code dynamicRateEnabled}), using the initial invested amount and a simple additive
-     * estimate of the fixed tenor's end date. Falls back to the product's flat nominal rate when no chart is
-     * configured. This is deliberately a lean, initial-rate-only resolution for Phase 1 - the full
-     * transaction-history-based dynamic rate re-resolution (business rule 7) is Phase 2/3 work (dynamic rate history +
-     * interest engine).
+     * Initial rate from the account's chart snapshot (regardless of dynamicRateEnabled), using an additive tenor-end
+     * estimate; falls back to the product's nominal rate when no chart is configured.
      */
     private BigDecimal resolveInitialRateFromChart(final DynamicDepositProduct product, final DepositAccountInterestRateChart accountChart,
             final BigDecimal depositAmount, final LocalDate submittedOnDate, final Integer depositPeriod,

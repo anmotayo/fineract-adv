@@ -59,11 +59,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
-/**
- * The deposit a closing Dynamic Deposit is reinvested into is opened through the same assembly a normal submission
- * uses, then approved and activated on the closure date. These tests pin the request it is assembled from - what is
- * carried over from the closing account and, as importantly, what deliberately is not - and the order of the steps.
- */
+/** The reinvestment deposit: what is (and isn't) carried over, and the order of submit/approve/activate. */
 class DynamicDepositReinvestmentServiceTest {
 
     private static final LocalDate ACTIVATION_DATE = LocalDate.of(2026, 7, 1);
@@ -129,10 +125,9 @@ class DynamicDepositReinvestmentServiceTest {
         assertThat(submitted.get("transferInterestToSavings").getAsBoolean()).isTrue();
         assertThat(submitted.get("allowWithdrawal").getAsBoolean()).isFalse();
         assertThat(submitted.get("dynamicRateEnabled").getAsBoolean()).isTrue();
-        // A dynamic deposit's rate depends on how much is invested, so it is resolved for the new amount, not copied.
+        // Rate is resolved for the new amount, not copied.
         assertThat(submitted.has("nominalAnnualInterestRate")).isFalse();
-        // Fees are not carried over (as for a reinvested Fixed Deposit); the product's own early-withdrawal charge is
-        // attached by the assembly itself.
+        // Fees are not carried over; the assembly attaches the product's own charge.
         assertThat(submitted.has("charges")).isFalse();
         assertThat(submitted.has("accountNo")).isFalse();
     }
@@ -179,7 +174,7 @@ class DynamicDepositReinvestmentServiceTest {
         assertThat(assembledRequest().get("linkAccountId").getAsLong()).isEqualTo(LINKED_ACCOUNT_ID);
         verify(this.depositAccountDataValidator).validatelinkedSavingsAccount(linkedSavings, this.reinvested);
         verify(this.accountAssociationsRepository).save(any(AccountAssociations.class));
-        // The money is the closing account's payout - activation must not also debit the linked account for it.
+        // The payout funds it; activation must not also debit the linked account.
         verify(this.savingsAccountWritePlatformService).processPostActiveActions(eq(this.reinvested), any(), any(), any());
         verify(this.reinvested, never()).markOpeningDepositFundedByLinkedTransfer();
     }

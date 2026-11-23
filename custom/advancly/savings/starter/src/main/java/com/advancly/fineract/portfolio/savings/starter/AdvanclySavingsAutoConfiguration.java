@@ -171,10 +171,6 @@ public class AdvanclySavingsAutoConfiguration {
                 gsimRepository, configurationDomainService, externalIdFactory, fineractProperties);
     }
 
-    /**
-     * Creates an instance of the core SavingsAccountDomainServiceJpa so the custom AdvanclySavingsAccountDomainService
-     * can delegate non-optimized methods (handleDeposit, handleWithdrawal, etc.) to the core implementation.
-     */
     @Bean("coreSavingsAccountDomainService")
     public SavingsAccountDomainService coreSavingsAccountDomainService(SavingsAccountRepositoryWrapper savingsAccountRepository,
             SavingsAccountTransactionRepository savingsAccountTransactionRepository,
@@ -187,11 +183,6 @@ public class AdvanclySavingsAutoConfiguration {
                 depositAccountOnHoldTransactionRepository, businessEventNotifierService);
     }
 
-    /**
-     * Creates an instance of the core SavingsAccountWritePlatformServiceJpaRepositoryImpl. This allows the custom
-     * WritePlatformService to delegate non-optimized methods (activate, close, charges, etc.) to the core
-     * implementation.
-     */
     @Bean("coreSavingsAccountWritePlatformService")
     public SavingsAccountWritePlatformServiceJpaRepositoryImpl coreSavingsAccountWritePlatformService(PlatformSecurityContext context,
             SavingsAccountDataValidator fromApiJsonDeserializer, SavingsAccountRepositoryWrapper savingAccountRepositoryWrapper,
@@ -221,11 +212,6 @@ public class AdvanclySavingsAutoConfiguration {
                 errorHandler);
     }
 
-    /**
-     * Creates the core savings-application service so {@code AdvanclySavingsApplicationProcessWritePlatformService} can
-     * delegate all ordinary application work, then validate the final account state for charge-driven early-withdrawal
-     * rules in the same transaction.
-     */
     @Bean("coreSavingsApplicationProcessWritePlatformService")
     public SavingsApplicationProcessWritePlatformServiceJpaRepositoryImpl coreSavingsApplicationProcessWritePlatformService(
             PlatformSecurityContext context, SavingsAccountRepositoryWrapper savingAccountRepository,
@@ -247,11 +233,6 @@ public class AdvanclySavingsAutoConfiguration {
                 gsimWritePlatformService);
     }
 
-    /**
-     * Creates an instance of the core SavingsProductWritePlatformServiceJpaRepositoryImpl so the custom
-     * AdvanclySavingsProductWritePlatformService can delegate the actual product create/update to the core
-     * implementation before layering on early-withdrawal-charge reconciliation.
-     */
     @Bean("coreSavingsProductWritePlatformService")
     public SavingsProductWritePlatformServiceJpaRepositoryImpl coreSavingsProductWritePlatformService(PlatformSecurityContext context,
             SavingsProductRepository savingProductRepository, SavingsProductDataValidator fromApiJsonDataValidator,
@@ -263,26 +244,8 @@ public class AdvanclySavingsAutoConfiguration {
     }
 
     /**
-     * Registers {@link AdvanclySavingsSchedularInterestPoster} as a {@code SavingsSchedularInterestPoster} bean.
-     *
-     * <p>
-     * Note on {@code @ConditionalOnMissingBean}: core's own {@code savingsSchedularInterestPoster()} bean method in
-     * {@code SavingsConfiguration} is guarded by
-     * {@code @ConditionalOnMissingBean(SavingsSchedularInterestPoster.class)}, but {@code SavingsConfiguration} is a
-     * plain, eagerly component-scanned {@code @Configuration} (picked up by
-     * {@code @ComponentScan(basePackages = "org.apache.fineract.**")}), whereas this class is a deferred
-     * {@code @AutoConfiguration}. Spring registers bean definitions from eagerly-scanned configuration classes before
-     * it processes deferred auto-configuration imports, so by the time core's condition is evaluated, this bean does
-     * not exist yet - the condition is satisfied regardless, and core's bean gets registered too. This was verified
-     * empirically (a throwaway {@code ApplicationContextRunner} probe reproducing this exact eager-vs-deferred
-     * relationship showed both beans present). {@code @Primary} is therefore required so that any by-type resolution -
-     * including {@code applicationContext.getBean(...)} - deterministically picks this bean over core's orphaned one,
-     * exactly like every other override in this class ({@code AdvanclySavingsAccountWritePlatformService},
-     * {@code AdvanclySavingsAccountDomainService}, etc.) already does.
-     *
-     * <p>
-     * Dynamic Deposit scheduled posting uses the same DTO/JDBC batch path as core; this override adds a bulk
-     * rate-history reader for the current page of accounts before delegating to the same posting/write flow.
+     * {@code @Primary} is required: core's {@code @ConditionalOnMissingBean} poster in the eagerly scanned
+     * {@code SavingsConfiguration} is evaluated before this deferred auto-configuration, so both beans get registered.
      */
     @Bean
     @Primary
@@ -295,19 +258,7 @@ public class AdvanclySavingsAutoConfiguration {
                 savingsAccountReadPlatformService, platformSecurityContext, dynamicRateHistoryReadPlatformService);
     }
 
-    /**
-     * Registers {@link AdvanclySavingsSchedularInterestPosterTask} as a {@code SavingsSchedularInterestPosterTask}
-     * bean, wrapping the {@link AdvanclySavingsSchedularInterestPoster} bean above.
-     *
-     * <p>
-     * {@code @Primary} is required here for the same reason as on the poster bean above: core's own
-     * {@code savingsSchedularInterestPosterTask()} bean in {@code SavingsConfiguration} also ends up registered (its
-     * {@code @ConditionalOnMissingBean} check runs before this deferred auto-configuration exists), so without
-     * {@code @Primary} here, {@code PostInterestForSavingTasklet}'s
-     * {@code applicationContext.getBean(SavingsSchedularInterestPosterTask.class)} would be ambiguous between the two
-     * and throw {@code NoUniqueBeanDefinitionException} the first time the job runs. With {@code @Primary}, that lookup
-     * deterministically resolves to this bean - no change needed to {@code PostInterestForSavingTasklet} itself.
-     */
+    /** {@code @Primary} for the same reason as the poster above, or the tasklet's getBean lookup is ambiguous. */
     @Bean
     @Primary
     @Scope("prototype")

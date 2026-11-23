@@ -141,8 +141,7 @@ public class DepositAccountWritePlatformServiceJpaRepositoryImpl implements Depo
     private final WorkingDaysRepositoryWrapper workingDaysRepository;
     private final DepositAccountOnHoldTransactionRepository depositAccountOnHoldTransactionRepository;
 
-    // Not a constructor argument: the bean is built by an explicit @Bean method, and a deployment without any module
-    // supplying an updater must still start. See DepositAccountMaturityUpdater.
+    // Field injection: the bean comes from an explicit @Bean method, and no updater may be present.
     @Autowired(required = false)
     private List<DepositAccountMaturityUpdater> maturityUpdaters = List.of();
 

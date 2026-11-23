@@ -385,7 +385,6 @@ public class SavingsAccountAssembler {
                 }
 
                 if (savingsAccountTransactions != null && savingsAccountTransactions.size() > 0) {
-                    // Update transient variable
                     account.setSavingsAccountTransactions(savingsAccountTransactions);
                 }
             } else {
@@ -428,9 +427,7 @@ public class SavingsAccountAssembler {
             if (account.hasStartInterestCalculationDate()) {
                 for (int i = account.getSavingsAccountTransactionData().size() - 1; i >= 0; i--) {
                     SavingsAccountTransactionData savingsAccountTransaction = account.getSavingsAccountTransactionData().get(i);
-                    // Exclude interest posting, accrual, overdraft interest, withhold tax, interest charges and
-                    // interest forfeitures so that the pivot balance only reflects principal transactions — required
-                    // for No Compounding / Simple Interest
+                    // Only principal transactions count toward the pivot balance (No Compounding / Simple Interest).
                     if (savingsAccountTransaction.getTransactionDate().isBefore(account.getStartInterestCalculationDate())
                             && savingsAccountTransaction.isNotReversed() && !savingsAccountTransaction.isReversalTransaction()
                             && !savingsAccountTransaction.isAccrualAndNotReversed()

@@ -27,36 +27,13 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateCh
 import org.springframework.stereotype.Component;
 
 /**
- * Resolves the interest rate applicable to a Dynamic Deposit account for a given invested amount and period, or falls
- * back to the account's flat nominal rate - shared by the initial-rate resolution (business rule 6) and every
- * subsequent rate re-resolution on a principal-changing transaction (business rule 7).
- *
- * Resolves against the account's OWN interest rate chart snapshot ({@link DepositAccountInterestRateChart}, captured
- * once at submission time by {@code DynamicDepositAccountAssembler} - mirroring how core
- * {@code FixedDepositAccount}/{@code RecurringDepositAccount} snapshot their product's chart) rather than the product's
- * chart directly, so a later edit to the product's chart never retroactively changes the rate an already-open account
- * resolves against. Also reports which chart/slab matched and whether the result came from the chart or the nominal
- * fallback, since Section 4 of the implementation plan requires that provenance to be captured on every
- * {@code DepositAccountDynamicRateHistory} row.
+ * Resolves a Dynamic Deposit's rate from the account's own chart snapshot (so product chart edits never affect open
+ * accounts), falling back to the nominal rate, and reports which chart/slab matched for the rate history.
  */
 @Component
 public class DynamicDepositRateResolutionService {
 
-    /**
-     * @param accountChart
-     *            the account's own interest rate chart snapshot (nullable - no chart configured falls back to
-     *            {@code nominalAnnualInterestRate}).
-     * @param nominalAnnualInterestRate
-     *            the flat rate to fall back to when no chart is configured or no slab matches.
-     * @param investedAmount
-     *            the invested amount to resolve a slab against.
-     * @param periodStartDate
-     *            start of the period the resolved rate applies from (typically the transaction date).
-     * @param depositPeriod
-     *            the account's fixed tenor length (business rule 1: tenor never changes).
-     * @param depositPeriodFrequencyType
-     *            the fixed tenor's frequency unit.
-     */
+    /** Falls back to {@code nominalAnnualInterestRate} when {@code accountChart} is null or no slab matches. */
     public ResolvedRate resolve(final DepositAccountInterestRateChart accountChart, final BigDecimal nominalAnnualInterestRate,
             final BigDecimal investedAmount, final LocalDate periodStartDate, final Integer depositPeriod,
             final SavingsPeriodFrequencyType depositPeriodFrequencyType) {

@@ -60,13 +60,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Guards against a regression to the defect fixed here: {@code createAccountCommand(...)} alone never populates
- * {@code CommandWrapper#getSavingsId()}, which both {@code CalculateInterestDynamicDepositAccountCommandHandler} and
- * {@code PostInterestDynamicDepositAccountCommandHandler} depend on ({@code command.getSavingsId()} being non-null) to
- * function at all - so the built command must carry the account id through {@code getSavingsId()}, not just
- * {@code getEntityId()}.
- */
+/** The interest command handlers need {@code getSavingsId()} set, not just {@code getEntityId()}. */
 class DynamicDepositAccountsApiResourceTest {
 
     private static final Long ACCOUNT_ID = 42L;

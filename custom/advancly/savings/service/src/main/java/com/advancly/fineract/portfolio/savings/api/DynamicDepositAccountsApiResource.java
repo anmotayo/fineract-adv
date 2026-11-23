@@ -69,11 +69,6 @@ import org.apache.fineract.portfolio.savings.service.SavingsAccountChargeReadPla
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-/**
- * REST resource for the Dynamic Deposit account (deposit_type_enum = 500). Lifecycle-only for Phase 1 (create / update
- * / delete / submit-application transitions) - deposit/withdrawal/interest-posting/close are later-phase work, see the
- * implementation plan.
- */
 @Path("/v1/dynamicdepositaccounts")
 @Component
 public class DynamicDepositAccountsApiResource {
@@ -173,8 +168,7 @@ public class DynamicDepositAccountsApiResource {
         if (CommandParameterUtil.is(commandParam, "approve")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "approve").build();
         } else if (CommandParameterUtil.is(commandParam, "undoapproval")) {
-            // actionName must read APPROVALUNDO to match the m_permission row seeded for this action (mirrors the
-            // fixed deposit convention) - createAccountCommand upper-cases the raw command string it is given.
+            // Upper-cased to APPROVALUNDO to match the seeded m_permission row, as for fixed deposits.
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "approvalundo").build();
         } else if (CommandParameterUtil.is(commandParam, "reject")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "reject").build();

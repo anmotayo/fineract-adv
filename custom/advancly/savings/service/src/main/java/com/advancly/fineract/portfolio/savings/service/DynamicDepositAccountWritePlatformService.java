@@ -21,10 +21,6 @@ package com.advancly.fineract.portfolio.savings.service;
 import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
 
-/**
- * Lifecycle-only operations (Phase 1 scope) for the {@code DYNAMICDEPOSITACCOUNT} entity. Deliberately excludes
- * deposit/withdrawal/interest-posting/close/prematureClose - those are later-phase work (see the implementation plan).
- */
 public interface DynamicDepositAccountWritePlatformService {
 
     CommandProcessingResult submitApplication(JsonCommand command);

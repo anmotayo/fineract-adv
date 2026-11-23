@@ -180,7 +180,7 @@ public class CashBasedAccountingProcessorForSavings implements AccountingProcess
                         savingsId, transactionId, transactionDate, amount, isReversal, savingsTransactionDTO.getTaxPayments());
             }
 
-            /** Handle interest charges (always penalty-flagged; excluded from the interest-bearing balance) **/
+            /** Handle interest charges (always penalty-flagged) **/
             else if (savingsTransactionDTO.getTransactionType().isInterestCharge()) {
                 this.helper.createCashBasedJournalEntriesAndReversalsForSavingsCharges(office, currencyCode,
                         CashAccountsForSavings.SAVINGS_CONTROL, CashAccountsForSavings.INCOME_FROM_PENALTIES, savingsProductId,

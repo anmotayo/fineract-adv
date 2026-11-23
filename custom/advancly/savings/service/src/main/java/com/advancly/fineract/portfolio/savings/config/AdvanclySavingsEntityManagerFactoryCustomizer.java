@@ -22,12 +22,7 @@ import java.util.Set;
 import org.apache.fineract.infrastructure.core.config.jpa.EntityManagerFactoryCustomizer;
 import org.springframework.stereotype.Component;
 
-/**
- * Registers {@code com.advancly.fineract.portfolio.savings.domain} (where the new Dynamic Deposit JPA entities live) as
- * an additional package for the core {@code JPAConfig} to scan, since it only scans {@code org.apache.fineract} by
- * default. Being an {@code @Component} under the base-package that {@code AdvanclySavingsAutoConfiguration} already
- * {@code @ComponentScan}s, it is picked up automatically - no further wiring is required.
- */
+/** Adds the Advancly savings domain package to JPAConfig's scan, which only covers org.apache.fineract by default. */
 @Component
 public class AdvanclySavingsEntityManagerFactoryCustomizer implements EntityManagerFactoryCustomizer {
 

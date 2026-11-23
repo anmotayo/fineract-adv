@@ -22,10 +22,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * One row of the interest-calculation preview's posting-period breakdown - the interest earned within a single
- * compounding/posting period boundary, as computed by {@code SavingsAccount.calculateInterestUsing(...)}.
- */
+/** One posting-period row of the interest-calculation preview. */
 public class PostingPeriodData implements Serializable {
 
     private final LocalDate fromDate;

@@ -56,7 +56,6 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepositor
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentType;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
@@ -73,10 +72,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-/**
- * Optimized WritePlatformService that overrides deposit() and withdrawal() with O(1)/O(k) path selection. All other
- * methods delegate to the core SavingsAccountWritePlatformServiceJpaRepositoryImpl via the delegate.
- */
+/** Adds an O(1) append path for deposit/withdrawal; everything else delegates to core. */
 @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 @Slf4j
 @Service
@@ -131,10 +127,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         this.configurationDomainService = configurationDomainService;
     }
 
-    // Setter injection, and lazy: the closure goes through the account-transfer and interest-charge services, which in
-    // turn
-    // reach back to this bean to post interest, so a constructor parameter would close the same bean cycle
-    // CumulativeInterestForfeitureService already breaks with @Lazy.
+    // Lazy setter injection breaks a bean cycle: the closure services reach back to this bean to post interest.
     private AdvanclySavingsClosureTransferService closureTransferService;
 
     @Autowired
@@ -162,11 +155,10 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         final SavingsAccount account = assembled.getAccount();
 
-        // The O(1) append path builds SavingsAccountTransaction rows directly rather than calling
-        // SavingsAccount#deposit(...), so any deposit-type-specific entity override (e.g. DynamicDepositAccount's) is
-        // never invoked here. Deposit-type accounts (FD/RD/Dynamic Deposit) always go through the core path instead,
-        // where their entity overrides run correctly; only plain savings uses the optimized path.
-        if (!account.depositAccountType().isSavingsDeposit() || accrualWouldBeReversed(account, transactionDate)) {
+        // Deposit-type accounts go through core so their entity overrides run; the append path bypasses them.
+        // isBackdated(...) re-checks under the lock: the pre-lock check can miss a concurrent writer's transaction.
+        if (assembled.isBackdated(transactionDate) || !account.depositAccountType().isSavingsDeposit()
+                || accrualWouldBeReversed(account, transactionDate)) {
             return delegate.deposit(savingsId, command);
         }
         SavingsTransactionRules.validateClientAndGroupActive(account);
@@ -198,11 +190,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
         boolean isBackdated = lastTxnDate.isPresent() && transactionDate.isBefore(lastTxnDate.get());
 
-        // Resolved (and the account-rule guard applied) BEFORE the backdated branch decides whether to delegate to
-        // core - otherwise a backdated withdrawal would reach `delegate.withdrawal(...)` (core Fineract, which has no
-        // notion of this account-level rule) without ever being checked. assembleForAppendPath(...) is a read-only
-        // lookup (no persisted side effects), so resolving it here purely for the guard - even on the path that then
-        // delegates rather than using this instance - is safe; delegate.withdrawal(...) does its own fresh load.
+        // Guard before any delegation: core knows nothing of the account-level withdrawal rule.
         final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
         final SavingsAccount account = assembled.getAccount();
 
@@ -211,12 +199,9 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                     "Withdrawal is not allowed for this account while withdrawals are disabled for it.", account.getId());
         }
 
-        // See the equivalent check in deposit(...) - deposit-type accounts (FD/RD/Dynamic Deposit) always go through
-        // the core path so their entity-level overrides (e.g. DynamicDepositAccount#withdraw) actually run.
-        // A withdrawal fee is paid by core inside the withdrawal, and core reverses the accruals dated on or after it:
-        // neither happens on the append path, so a withdrawal that needs either goes through core too.
-        if (isBackdated || !account.depositAccountType().isSavingsDeposit() || SavingsTransactionRules.hasAutoPayableWithdrawalFee(account)
-                || accrualWouldBeReversed(account, transactionDate)) {
+        // As in deposit(...); withdrawal fees and accrual reversal also only happen in core.
+        if (isBackdated || assembled.isBackdated(transactionDate) || !account.depositAccountType().isSavingsDeposit()
+                || SavingsTransactionRules.hasAutoPayableWithdrawalFee(account) || accrualWouldBeReversed(account, transactionDate)) {
             final CommandProcessingResult result = delegate.withdrawal(savingsId, command);
             applyInterestChargeIfApplicable(savingsId, result, command);
             return result;
@@ -231,11 +216,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final SavingsAccountTransaction withdrawal = domainService.handleWithdrawalOptimized(account, transactionDate, transactionAmount,
                 paymentDetail, true, lastRunningBalance, account.getCurrency(), assembled.getLastBalanceBearingTransaction(), false);
 
-        // `withdrawal` was appended via addTransactionToExisting(...) (handleWithdrawalOptimized(...) above), i.e. it
-        // lives in the account's pivot-config transient list, not its JPA-managed transactions collection. The
-        // charge transaction and its journal entries must be added/derived through that same mechanism, so appendPath
-        // must be true here - passing false made the charge land in the wrong collection (invisible to
-        // deriveAccountingBridgeData(...), so no journal entries were ever posted for it).
+        // appendPath=true: the withdrawal lives in the pivot-config transient list, so the charge must go there too.
         this.interestChargeApplicationService.applyIfApplicable(account, withdrawal, command, true, false);
 
         handleGsimWithdrawal(account, transactionAmount, withdrawal);
@@ -245,18 +226,14 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
                 .withClientId(account.clientId()).withGroupId(account.groupId()).withSavingsId(savingsId).with(changes).build();
     }
 
-    /**
-     * Core reverses the accruals dated on or after a new transaction; the append path does not. Only an account whose
-     * product accounts on an accrual basis has accruals, so no one else pays for the lookup.
-     */
     private boolean accrualWouldBeReversed(final SavingsAccount account, final LocalDate transactionDate) {
-        return account.savingsProduct().isAccrualBasedAccountingEnabled() && advanclyTransactionRepository
-                .existsAccrualOnOrAfter(account.getId(), SavingsAccountTransactionType.ACCRUAL.getValue(), transactionDate);
+        return SavingsTransactionRules.accrualWouldBeReversed(account, transactionDate);
     }
 
-    /** A bulk request that holds a fee-bearing withdrawal, or reaches back over an accrual, is served by core. */
-    private boolean bulkNeedsCore(final SavingsAccount account, final JsonArray transactions, final String dateFormat,
+    /** Fee-bearing, accrual-reversing, or backdated-under-the-lock bulk requests go through core. */
+    private boolean bulkNeedsCore(final AssembledSavingsAccount assembled, final JsonArray transactions, final String dateFormat,
             final java.util.Locale locale) {
+        final SavingsAccount account = assembled.getAccount();
         boolean hasWithdrawal = false;
         LocalDate earliest = null;
         for (int i = 0; i < transactions.size(); i++) {
@@ -268,7 +245,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             }
         }
         return (hasWithdrawal && SavingsTransactionRules.hasAutoPayableWithdrawalFee(account))
-                || (earliest != null && accrualWouldBeReversed(account, earliest));
+                || (earliest != null && (assembled.isBackdated(earliest) || accrualWouldBeReversed(account, earliest)));
     }
 
     private void applyInterestChargeIfApplicable(final Long savingsId, final CommandProcessingResult result, final JsonCommand command) {
@@ -281,13 +258,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         if (withdrawal == null || withdrawal.getSavingsAccount() == null || !savingsId.equals(withdrawal.getSavingsAccount().getId())) {
             return;
         }
-        // This branch always goes through delegate.withdrawal(...) (core), never the O(1) append path. Core's own
-        // SavingsAccountWritePlatformServiceJpaRepositoryImpl decides which collection the withdrawal itself was
-        // added through purely from this tenant-wide config - NOT from whether this specific transaction is
-        // backdated relative to this account's own history, which is a different, unrelated concept despite both
-        // loosely being called "backdated" (this method used to conflate them). The charge must defer to the exact
-        // same config value core used, or it can land in the wrong collection regardless of this transaction's own
-        // backdated-ness.
+        // Core picks the transaction collection from the tenant pivot config, so the charge must use the same value.
         final boolean corePivotConfigStatus = configurationDomainService.retrievePivotDateConfig();
         this.interestChargeApplicationService.applyIfApplicable(withdrawal.getSavingsAccount(), withdrawal, command, false,
                 corePivotConfigStatus);
@@ -316,7 +287,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final String dateFormat = fromApiJsonHelper.extractDateFormatParameter(rootJson);
         final java.util.Locale locale = fromApiJsonHelper.extractLocaleParameter(rootJson);
 
-        // Check if any transaction is backdated — if so, delegate each individually to core
         Optional<LocalDate> lastTxnDate = advanclyTransactionRepository.findLastTransactionDate(savingsId);
         if (lastTxnDate.isPresent()) {
             for (int i = 0; i < transactions.size(); i++) {
@@ -331,9 +301,7 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         final AssembledSavingsAccount assembled = assembler.assembleForAppendPath(savingsId);
         final SavingsAccount account = assembled.getAccount();
 
-        // See the equivalent check in deposit(...)/withdrawal(...) - deposit-type accounts always go through core,
-        // one transaction at a time, so their entity-level overrides run correctly.
-        if (!account.depositAccountType().isSavingsDeposit() || bulkNeedsCore(account, transactions, dateFormat, locale)) {
+        if (!account.depositAccountType().isSavingsDeposit() || bulkNeedsCore(assembled, transactions, dateFormat, locale)) {
             return delegateBulkTransactionToCore(savingsId, transactions, dateFormat, locale);
         }
         SavingsTransactionRules.validateClientAndGroupActive(account);
@@ -401,7 +369,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             final String type = fromApiJsonHelper.extractStringNamed("type", txn);
             final String receiptNumber = fromApiJsonHelper.extractStringNamed("receiptNumber", txn);
 
-            // Add root-level dateFormat and locale to the per-transaction JSON for the delegate
             final JsonObject txnWithFormat = txn.deepCopy();
             txnWithFormat.addProperty("dateFormat", dateFormat);
             txnWithFormat.addProperty("locale", locale.toLanguageTag());
@@ -423,8 +390,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
 
         return new CommandProcessingResultBuilder().withSavingsId(savingsId).with(changes).build();
     }
-
-    // === Helper methods ===
 
     private void handleGsimDeposit(SavingsAccount account, BigDecimal transactionAmount, SavingsAccountTransaction deposit) {
         if (account.getGsim() != null && deposit.getId() != null) {
@@ -449,8 +414,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
             noteRepository.save(note);
         }
     }
-
-    // === Delegate all other methods to core implementation ===
 
     @Override
     public CommandProcessingResult activate(Long savingsId, JsonCommand command) {
@@ -483,9 +446,6 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         return delegate.adjustSavingsTransaction(savingsId, transactionId, command);
     }
 
-    // @Transactional is retained for consistency with deposit(...)/withdrawal(...); close command handlers already call
-    // this synchronously inside a transaction, but keeping the boundary here makes the delegate path safe from future
-    // callers too.
     @Transactional
     @Override
     public CommandProcessingResult close(final Long savingsId, final JsonCommand command) {
@@ -667,20 +627,8 @@ public class AdvanclySavingsAccountWritePlatformService implements SavingsAccoun
         delegate.selectAccountId(accountTransaction, savingsAccountData);
     }
 
-    // Core's selectAccountId has no branch for INTEREST_CHARGE, so the custom savings batch pipeline resolves it
-    // against the product's base savings-control/penalty-income mapping here.
-    // findProductIdAndProductTypeAndFinancialAccountTypeAndChargeId(...) is deliberately NOT used here even though
-    // it looks like the natural fit: it is a hand-written @Query ("mapping.charge.id = :chargeId"), not a Spring
-    // Data derived query, so passing a null charge id does not get rewritten to "IS NULL" - in JPQL/SQL, "x = NULL"
-    // is never true, so it can never match a row. Every existing caller of it (AccountingProcessorHelper, for
-    // loan/savings/share charges) always passes an actual, non-null charge id for a charge-specific override; there
-    // is no null-charge-id precedent anywhere in this codebase. An INTEREST_CHARGE transaction has no such
-    // charge - it is a system-generated interest charge, not tied to any m_charge row - so the mapping we want
-    // is the product's base, no-charge SAVINGS_CONTROL/INCOME_FROM_PENALTIES row (the one
-    // SavingsProductToGLAccountMappingHelper's mergeSavingsToLiabilityAccountMappingChanges/
-    // mergeSavingsToIncomeAccountMappingChanges create without a charge attached). findCoreProductToFinAccountMapping
-    // is exactly that lookup, documented and used everywhere else in core for "paymentType is NULL and charge is
-    // NULL...".
+    // Core's selectAccountId has no INTEREST_CHARGE branch. Uses the product's base (no-charge) mapping:
+    // the ...AndChargeId query compares "charge.id = :chargeId", which never matches a null charge.
     private void resolvePenaltyIncomeAccounts(final SavingsAccountTransactionData accountTransaction,
             final SavingsAccountData savingsAccountData) {
         final Long productId = savingsAccountData.getProductId();

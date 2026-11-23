@@ -109,9 +109,6 @@ public final class PostingPeriod {
 
         for (final SavingsAccountTransactionDetailsForPostingPeriod transaction : orderedListOfTransactions) {
             boolean shouldNotAffectInterestPosting = false;
-            // this check is to make sure to add interest if withdrawal is
-            // happened for already
-            // if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
             if (transaction.getId() == null) {
                 interestTransfered = isInterestTransfer;
                 shouldNotAffectInterestPosting = isInterestTransfer;
@@ -121,7 +118,6 @@ public final class PostingPeriod {
             } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestChargeAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
-            // }
 
             if (transaction.fallsWithin(periodInterval)) {
                 // the balance of the transaction falls entirely within this
@@ -142,9 +138,7 @@ public final class PostingPeriod {
 
         }
 
-        // Fill gap between period start and the first EndOfDayBalance entry.
-        // This occurs when the pivot transaction (opening balance) is not in the
-        // loaded transaction list and the first loaded transaction starts after the period.
+        // Fill the gap before the first EndOfDayBalance when the pivot transaction was not loaded.
         if (!accountEndOfDayBalances.isEmpty() && DateUtils.isAfter(accountEndOfDayBalances.get(0).date(), periodInterval.startDate())) {
             final LocalDate gapStart = periodInterval.startDate();
             final LocalDate gapEnd = accountEndOfDayBalances.get(0).date().minusDays(1);
@@ -201,9 +195,6 @@ public final class PostingPeriod {
 
         for (final SavingsAccountTransactionData transaction : orderedListOfTransactions) {
             boolean shouldNotAffectInterestPosting = false;
-            // this check is to make sure to add interest if withdrawal is
-            // happened for already
-            // if (transaction.occursOn(periodInterval.endDate().plusDays(1))) {
             if (transaction.getId() == null) {
                 interestTransfered = isInterestTransfer;
                 shouldNotAffectInterestPosting = isInterestTransfer;
@@ -213,7 +204,6 @@ public final class PostingPeriod {
             } else if (transaction.isWithHoldTaxAndNotReversed() || transaction.isInterestChargeAndNotReversed()) {
                 shouldNotAffectInterestPosting = true;
             }
-            // }
 
             if (transaction.fallsWithin(periodInterval)) {
                 // the balance of the transaction falls entirely within this

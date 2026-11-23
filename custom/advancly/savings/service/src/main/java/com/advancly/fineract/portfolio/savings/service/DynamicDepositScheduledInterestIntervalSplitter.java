@@ -26,10 +26,7 @@ import org.apache.fineract.infrastructure.core.domain.LocalDateInterval;
 import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountDynamicRateData;
 
-/**
- * DTO counterpart to {@code DynamicDepositInterestIntervalSplitter}: split scheduled posting periods at Dynamic Deposit
- * rate-history dates without loading {@code DynamicDepositAccount} entities.
- */
+/** DTO counterpart to {@code DynamicDepositInterestIntervalSplitter}, for scheduled posting without entities. */
 final class DynamicDepositScheduledInterestIntervalSplitter {
 
     private DynamicDepositScheduledInterestIntervalSplitter() {

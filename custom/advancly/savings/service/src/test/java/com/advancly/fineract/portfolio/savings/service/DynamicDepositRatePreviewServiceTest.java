@@ -51,10 +51,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * The preview must resolve exactly what a real principal change would, without persisting anything: a top-up that
- * crosses a slab boundary changes the rate, a fixed-rate account keeps its rate, and nothing is ever saved.
- */
+/** The preview resolves what a real principal change would, without saving anything. */
 class DynamicDepositRatePreviewServiceTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);

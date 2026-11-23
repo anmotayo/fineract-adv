@@ -130,15 +130,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * Phase 4 closure collection, unified design: closing a Dynamic Deposit account with {@code withdrawBalance=true} must
- * settle the final period first - posting the interest, any withholding tax, and ONE capped interest charge that covers
- * both the charges still pending from earlier withdrawals in that period AND the penalty this very closure incurs - and
- * only then withdraw the resulting balance in exactly ONE transaction, leaving precisely zero behind for
- * {@code SavingsAccount#close(...)}'s own {@code results.in.balance.not.zero} check.
- *
- * The early-withdrawal charge service is deliberately REAL here (only its repositories are mocked), so that the
- * suppression that stops the settlement withdrawal creating a second, never-applicable pending row for the same closure
- * is actually exercised rather than assumed.
+ * Closing a Dynamic Deposit with withdrawBalance=true settles the final period, then withdraws the balance in one
+ * transaction leaving zero. The early-withdrawal charge service is real so its suppression is actually exercised.
  */
 @ExtendWith(MockitoExtension.class)
 class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
@@ -216,22 +209,14 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
     @Mock
 
     private SavingsAccountWritePlatformServiceJpaRepositoryImpl service;
-    /**
-     * Deliberately REAL: the cumulative-mode closure scenarios below exist to prove that a real forfeiture against a
-     * real account really does deduct itself from the balance the closure then pays out, and really does get its own
-     * journal entries - neither of which a mock can show.
-     */
+    /** Real, so the forfeiture's balance deduction and journal entries are actually exercised. */
     private CumulativeInterestForfeitureService cumulativeInterestForfeitureService;
     private DynamicDepositAccount account;
     private Office office;
 
-    /** Charge-ledger application rows written during the call under test. */
     private final List<DepositInterestChargeApplication> savedApplications = new ArrayList<>();
-    /** Every withdrawal the (mocked) domain service was asked to make, to prove there is exactly one. */
     private final List<SavingsAccountTransaction> withdrawals = new ArrayList<>();
-    /** Every transaction handed to the accounting bridge across all journal-posting calls, in order. */
     private final List<Map<String, Object>> journalledTransactions = new ArrayList<>();
-    /** Stands in for the database's IDENTITY sequence - see {@link #assignDatabaseIdsOnFlush()}. */
     private long nextTransactionId = 1000L;
 
     @BeforeEach
@@ -258,14 +243,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 entityDatatableChecksWritePlatformService, appuserRepository, standingInstructionRepository, businessEventNotifierService,
                 gsimRepository, savingsAccountInterestPostingService, errorHandler);
 
-        // Real, wired to the very service under test: its force-posting call goes through the same
-        // postInterest(account, true, date, false) path production uses, not a stub.
+        // Real and wired to the service under test, so force-posting takes the production path.
         this.cumulativeInterestForfeitureService = new CumulativeInterestForfeitureService(this.chargeInterestRuleRepository,
                 this.interestChargeApplicationRepository, this.service, this.noteRepository, this.savingAccountRepositoryWrapper,
                 this.journalEntryWritePlatformService);
 
-        // Everything handed to the accounting bridge, from every journal-posting call in the flow, so a test can ask
-        // what actually reached the ledger rather than assuming.
         lenient().doAnswer(invocation -> {
             final Map<String, Object> bridgeData = invocation.getArgument(0);
             @SuppressWarnings("unchecked")
@@ -274,9 +256,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
             return null;
         }).when(this.journalEntryWritePlatformService).createJournalEntriesForSavings(any());
 
-        // DynamicDepositAccount's postInterest/calculateInterestUsing/closure-settlement overrides resolve their
-        // collaborators through this static locator rather than Spring DI (see DynamicDepositAccountInterestTest for
-        // the same pattern).
+        // DynamicDepositAccount resolves its collaborators via this static locator, not Spring DI.
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
         lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
@@ -284,8 +264,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         ReflectionTestUtils.setField(DynamicDepositServiceLocator.class, "applicationContext", applicationContext);
     }
 
-    // Scenario 1: closure at/after maturity is not an early withdrawal - no charge at all, exactly as closure behaved
-    // before this feature existed.
     @Test
     void closingAtOrAfterMaturityChargesNothingAndStillSettlesToZero() {
         prepareDynamicDepositClosure(MATURITY_BEFORE_CLOSURE, accountCharge(new BigDecimal("60")));
@@ -293,23 +271,17 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.service.close(1L, closeCommandFor(1L, true));
 
         assertThat(this.account.isClosed()).isTrue();
-        // Posted ON MATURITY_BEFORE_CLOSURE, not CLOSED_DATE: this closure is at/after maturity, so the interest
-        // transaction is dated at maturity (mirrors FixedDepositAccount#postMaturityInterest), even though the
-        // accrual itself is capped at MATURITY_BEFORE_CLOSURE.minusDays(1) - interest must never be calculated for
-        // the maturity day itself (see DynamicDepositAccount#postInterest's javadoc).
+        // Posted on the maturity date (like FixedDepositAccount#postMaturityInterest); accrual stops the day before.
         final BigDecimal grossInterest = singleInterestPosting(MATURITY_BEFORE_CLOSURE).getAmount();
         assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
         assertThat(payChargeTransactions()).isEmpty();
         assertThat(this.savedApplications).isEmpty();
 
-        // One withdrawal, for principal plus the whole (uncharged) interest, and nothing left over.
         assertThat(this.withdrawals).hasSize(1);
         assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE.add(grossInterest));
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Scenario 2: no charge-driven rule configured - same outcome as closing at maturity, even though the closure date
-    // itself is well before maturity.
     @Test
     void closingEarlyWithoutAChargeDrivenRuleChargesNothing() {
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE, accountCharge(new BigDecimal("60")));
@@ -326,15 +298,10 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Scenario 3: regression guard - a plain savings account closes exactly as it always did.
     @Test
     void closingAPlainSavingsAccountWithWithdrawBalanceNeverPostsExtraInterest() {
-        // Even with withdrawBalance=true and a positive balance - the exact condition that makes a Dynamic Deposit
-        // account reach the new settlement - a plain SavingsAccount (depositAccountType() -> SAVINGS_DEPOSIT, the
-        // base-class default) must behave exactly as before: handleWithdrawal runs, and nothing else.
-        // configurationDomainService is the sole dependency the settlement's postInterest(...) call reaches for
-        // (isSavingsInterestPostingAtCurrentPeriodEnd()/retrieveFinancialYearBeginningMonth()) that no other step of
-        // close() touches, so zero interactions with it is decisive proof the new branch was never entered.
+        // configurationDomainService is only used by the DD settlement's postInterest(...), so zero interactions
+        // proves a plain account never enters that branch.
         final SavingsAccount plainAccount = new SavingsAccountTestBuilder().withId(2L).withSummary(
                 new SavingsAccountSummaryTestBuilder().withAccountBalance(OPENING_BALANCE).withTotalDeposits(OPENING_BALANCE).build())
                 .withActivationDate(ACTIVATION_DATE).build();
@@ -349,9 +316,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                             null, CLOSED_DATE, Money.of(CURRENCY, OPENING_BALANCE), "test-withdrawal-ref");
                     ReflectionTestUtils.setField(withdrawal, "id", 901L);
                     plainAccount.addTransaction(withdrawal);
-                    // The real handleWithdrawal implementation (mocked away here) updates the account summary as
-                    // part of the withdrawal itself; replicate just that net effect so account.close()'s own
-                    // "results.in.balance.not.zero" check - unrelated to this fix - sees what it would in production.
+                    // Mimic the real handleWithdrawal's balance update so close()'s zero-balance check passes.
                     ReflectionTestUtils.setField(plainAccount.getSummary(), "accountBalance", BigDecimal.ZERO);
                     return withdrawal;
                 });
@@ -366,15 +331,8 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         verify(this.savingsAccountTransactionRepository, never()).save(any());
     }
 
-    // Scenario 4 (final-review findings C1/C2/C3): every other scenario in this file avoids the cumulative rule, so
-    // none of them ever reaches beginClosureSettlement's cumulative branch. These last two do - and they run the REAL
-    // CumulativeInterestForfeitureService against this real account, not a mock, which is what makes them able to
-    // observe the three things a mocked forfeiture service structurally cannot:
-    // (a) the account balance the closure reads to size its payout really is net of the forfeiture (it is not, unless
-    // SavingsAccountTransactionSummaryWrapper counts INTEREST_CHARGE and the service refreshes the summary
-    // afterwards), (b) the forfeiture transaction really reaches the accounting bridge (it does not, if it is written
-    // before the caller takes its "already existing transaction ids" snapshot and nobody journals it here), and
-    // (c) the closure still settles to exactly zero.
+    // Runs the real CumulativeInterestForfeitureService: the payout must be net of the forfeiture, the forfeiture
+    // must be journalled, and the closure must still settle to zero.
     @Test
     void aCumulativeModeClosureForfeitsEverythingSettlesToZeroAndJournalsItsOwnForfeiture() {
         withBusinessDateOn(CLOSED_DATE);
@@ -387,33 +345,26 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(result).isNotNull();
         assertThat(this.account.isClosed()).isTrue();
 
-        // The closing interest really was force-posted by the forfeiture service - dated exactly where core's own
-        // per-period closure path posts it, not a day earlier.
         final BigDecimal grossInterest = singleInterestPosting().getAmount();
         assertThat(grossInterest).isGreaterThan(BigDecimal.ZERO);
 
-        // ...and all of it charged, as one INTEREST_CHARGE transaction - not a per-period charge.
         final SavingsAccountTransaction forfeiture = singleForfeitureTransaction();
         assertThat(forfeiture.getAmount()).isEqualByComparingTo(grossInterest);
         assertThat(forfeiture.getTransactionDate()).isEqualTo(CLOSED_DATE);
         assertThat(payChargeTransactions()).isEmpty();
 
-        // (a) The balance core read to size the settlement withdrawal is principal - it deducted the forfeiture.
-        // Before the summary fix this would have been OPENING_BALANCE + grossInterest.
+        // Payout is principal only: the forfeiture was deducted from the balance.
         assertThat(this.withdrawals).hasSize(1);
         assertThat(this.withdrawals.get(0).getAmount()).isEqualByComparingTo(OPENING_BALANCE);
 
-        // (b) Both the forced posting and the forfeiture reached the accounting bridge, each exactly once, carrying
-        // the ids the flush assigned them - the forfeiture is what regressed here, the posting is the control.
+        // Both the forced posting and the forfeiture are journalled exactly once, with their flushed ids.
         assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_POSTING)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE).get(0).get("id")).isEqualTo(forfeiture.getId());
         assertThat(forfeiture.getId()).isNotNull();
 
-        // (c) Exactly zero left behind, which is core's own close() invariant.
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
-        // The application-ledger row is written so a later reversal/report can see what was taken.
         assertThat(this.savedApplications).hasSize(1);
         assertThat(this.savedApplications.get(0).interestBasisMode()).isEqualTo(InterestBasisMode.CUMULATIVE);
         assertThat(this.savedApplications.get(0).appliedAmount()).isEqualByComparingTo(forfeiture.getAmount());
@@ -433,31 +384,26 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         final SavingsAccountTransaction forfeiture = singleForfeitureTransaction();
         final SavingsAccountTransaction tax = singleWithholdTaxTransaction();
 
-        // The forced posting keeps the account's real WHT configuration, so tax is computed by the normal posting
-        // flow. The cumulative forfeiture then charges 50% of the posted interest net of that WHT.
+        // Forfeiture is 50% of the posted interest net of WHT.
         assertThat(tax.getAmount()).isEqualByComparingTo(
                 grossInterest.multiply(new BigDecimal("0.1")).setScale(tax.getAmount().scale(), MoneyHelper.getRoundingMode()));
         final BigDecimal netInterest = grossInterest.subtract(tax.getAmount());
         assertThat(forfeiture.getAmount()).isEqualByComparingTo(
                 netInterest.multiply(new BigDecimal("0.5")).setScale(forfeiture.getAmount().scale(), MoneyHelper.getRoundingMode()));
 
-        // Principal plus whatever interest survived both, paid out in one withdrawal, leaving exactly zero.
         assertThat(this.withdrawals).hasSize(1);
         assertThat(this.withdrawals.get(0).getAmount())
                 .isEqualByComparingTo(OPENING_BALANCE.add(grossInterest).subtract(forfeiture.getAmount()).subtract(tax.getAmount()));
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
 
-        // Both of the transactions this service writes after the forced posting are journalled here, since nothing
-        // downstream would ever classify them as new again.
+        // Transactions written after the forced posting must be journalled here; nothing downstream sees them as new.
         assertThat(journalledOfType(SavingsAccountTransactionType.INTEREST_CHARGE)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
         assertThat(journalledOfType(SavingsAccountTransactionType.WITHHOLD_TAX).get(0).get("id")).isEqualTo(tax.getId());
     }
 
-    // The backdated-closure guard: the forfeiture service force-posts through the public postInterest(...) overload,
-    // whose interest-calculation bound is always today's business date - so on a closure dated earlier it would credit
-    // (and then partly forfeit) interest for days after the account closed. The business date is left at the default
-    // MoneyHelperInitializer sets, which is well after CLOSED_DATE, making this closure backdated.
+    // The forced posting is bounded by the business date, so a backdated cumulative closure would credit interest past
+    // the closure date. The business date stays at MoneyHelperInitializer's default, after CLOSED_DATE.
     @Test
     void aBackdatedCumulativeClosureIsRejectedRatherThanPostingInterestPastTheClosureDate() {
         cumulativeProduct();
@@ -472,10 +418,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEmpty();
     }
 
-    // Phase 0.2 (DD closure parity): pins today's behaviour for a per-period (non-cumulative) rule. A premature closure
-    // applies NO per-period charge - the Advancly withdrawal and transfer wrappers call applyIfApplicable(...), but
-    // core
-    // close() does not. Decision: this stays as it is, and the new closure path must not start applying one.
+    // Core close() applies no per-period charge on premature closure; only the withdrawal/transfer wrappers do.
     @Test
     void aPerPeriodRuleAppliesNoChargeOnPrematureClosure() {
         final AdvanclyChargeInterestRule rule = mock(AdvanclyChargeInterestRule.class);
@@ -497,12 +440,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Phase 0.3 / 2.3 (DD closure parity): A closure payout that goes through an account
-    // transfer is followed by AdvanclyAccountTransfersWritePlatformService calling
-    // AdvanclyInterestChargeApplicationService#applyIfApplicable on the transfer's withdrawal, and an early DD
-    // withdrawal always counts as "requested". With a cumulative rule that re-runs the forfeiture after
-    // beginClosureSettlement has already forfeited; CumulativeForfeitureCalculator takes pct x (net interest -
-    // alreadyForfeited), so any partial percentage forfeits a second time. A closure must forfeit at most once.
+    // A transfer payout re-runs applyIfApplicable on its withdrawal; a closure must still forfeit only once.
     @Test
     void aCumulativeForfeitureIsNotAppliedAgainWhenTheClosurePayoutIsAnAccountTransfer() {
         withBusinessDateOn(CLOSED_DATE);
@@ -514,13 +452,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 this.savingAccountRepositoryWrapper, mock(SavingsAccountTransactionHelper.class), this.journalEntryWritePlatformService,
                 this.cumulativeInterestForfeitureService);
 
-        // Settlement exactly as the closure path runs it: forced interest posting, then the 50% forfeiture.
         final boolean coreStillOwesInterestPosting = this.account.beginClosureSettlement(CLOSED_DATE);
         assertThat(coreStillOwesInterestPosting).isFalse();
         final BigDecimal forfeitedOnce = singleForfeitureTransaction().getAmount();
         assertThat(this.savedApplications).hasSize(1);
 
-        // The transfer's withdrawal, then what the transfer wrapper does with it.
         final SavingsAccountTransaction transferWithdrawal = SavingsAccountTransaction.withdrawal(this.account, this.office, null,
                 CLOSED_DATE, Money.of(CURRENCY, this.account.getSummary().getAccountBalance()), "test-transfer-ref");
         ReflectionTestUtils.setField(transferWithdrawal, "id", 950L);
@@ -533,10 +469,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         assertThat(singleForfeitureTransaction().getAmount()).isEqualByComparingTo(forfeitedOnce);
     }
 
-    // Phase 2.4 (DD closure parity): a per-period rule applies no charge on closure - and that must stay true when the
-    // payout is an account transfer. The transfer wrapper runs applyIfApplicable(...) on the transfer's withdrawal, an
-    // early DD withdrawal always counts as "requested", and a per-period rule would then either charge the closure or
-    // throw because the closure request carries no selectedFromDate/selectedToDate.
+    // The transfer wrapper's applyIfApplicable must not charge (or throw for missing dates) on a closure payout.
     @Test
     void aPerPeriodRuleIsNotAppliedWhenTheClosurePayoutIsAnAccountTransfer() {
         withBusinessDateOn(CLOSED_DATE);
@@ -566,8 +499,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEmpty();
     }
 
-    // Phase 4 (DD closure parity): the preview must show exactly what the closure then pays out. Each scenario
-    // previews on one account, then really closes a fresh identical one and compares.
+    // Preview scenarios preview one account, then close a fresh identical one and compare.
     @Test
     void thePreviewOfAPartialCumulativeEarlyClosureEqualsWhatTheClosureWithdraws() {
         withBusinessDateOn(CLOSED_DATE);
@@ -607,7 +539,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
 
         assertThat(overridden.getForfeiturePercentage()).isEqualByComparingTo(new BigDecimal("100"));
         assertThat(overridden.getForfeitureAmount()).isGreaterThan(atConfiguredPercentage.getForfeitureAmount());
-        // Everything forfeited: the customer is left with principal only.
         assertThat(overridden.getMaturityAmount()).isEqualByComparingTo(OPENING_BALANCE);
     }
 
@@ -686,8 +617,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isInstanceOf(PlatformApiDataValidationException.class);
     }
 
-    // A closure writes the tax configured to be withheld at maturity (see AdvanclyDepositAccountDomainService), so the
-    // preview of it must too, or it would show a larger payout than the closure pays.
+    // A closure withholds MATURITY-type tax (see AdvanclyDepositAccountDomainService), so the preview must too.
     @Test
     void thePreviewTaxesInterestThatIsConfiguredToBeWithheldAtMaturityAsTheClosureDoes() {
         withBusinessDateOn(CLOSED_DATE);
@@ -705,9 +635,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEqualByComparingTo(OPENING_BALANCE.add(preview.getInterestPosted()).subtract(preview.getWithholdTax()));
     }
 
-    // Reinvesting the principal only sends the interest less tax to the linked savings account, so the closure screen
-    // is
-    // told which account that is - or that there is none and the interest is paid out.
     @Test
     void theTemplateNamesTheLinkedAccountTheInterestWillBeSentTo() {
         withBusinessDateOn(CLOSED_DATE);
@@ -761,9 +688,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         return JsonQuery.from(json, JsonParser.parseString(json), fromJsonHelper);
     }
 
-    // A premature closure may carry its own early-withdrawal charge percentage. It must reach the forfeiture the
-    // closure
-    // takes - the preview already honours it, and the two must agree.
     @Test
     void aPercentageOverrideSetOnTheAccountIsTheOneTheClosureForfeitsAt() {
         withBusinessDateOn(CLOSED_DATE);
@@ -790,10 +714,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
                 .isEqualByComparingTo(singleInterestPosting().getAmount().multiply(new BigDecimal("0.5")));
     }
 
-    // This is the generic savings close route (core SavingsAccountWritePlatformServiceJpaRepositoryImpl#close), which
-    // still rejects a fund-withdrawing closure of an account whose withdrawals are disabled, outright - before any
-    // settlement (interest posting, charge collection) or the withdrawal itself runs. The dedicated
-    // /dynamicdepositaccounts prematureClose route (AdvanclyDepositAccountDomainService) deliberately allows it.
+    // The generic savings close route rejects this; the dedicated DD prematureClose route allows it.
     @Test
     void closingEarlyWithAFundWithdrawalIsRejectedOnTheGenericSavingsRouteWhenWithdrawalIsDisallowed() {
         prepareDynamicDepositClosure(MATURITY_AFTER_CLOSURE);
@@ -812,15 +733,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         return singleInterestPosting(CLOSED_DATE);
     }
 
-    /**
-     * @param expectedPostingDate
-     *            CLOSED_DATE for every premature-closure scenario in this file (uncapped - see
-     *            SavingsAccount#interestPostingUpToForClosure's javadoc), or the account's maturityDate for a normal
-     *            (at-or-after-maturity) closure - the posting transaction itself still lands ON the maturity day (it is
-     *            the day after the last day interest accrues, maturityDate.minusDays(1); see
-     *            DynamicDepositAccount#postInterest's javadoc for why the guard is deliberately left uncapped while
-     *            only the accrual math is capped).
-     */
+    /** Expected posting date: CLOSED_DATE for premature closures, the maturity date otherwise. */
     private SavingsAccountTransaction singleInterestPosting(final LocalDate expectedPostingDate) {
         final List<SavingsAccountTransaction> postings = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
@@ -847,7 +760,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         return taxTransactions.get(0);
     }
 
-    /** What actually reached the accounting bridge, of one transaction type, across every journal-posting call. */
     private List<Map<String, Object>> journalledOfType(final SavingsAccountTransactionType type) {
         return this.journalledTransactions.stream()
                 .filter(transaction -> ((SavingsAccountTransactionEnumData) transaction.get("type")).getTransactionTypeEnum() == type)
@@ -861,11 +773,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         lenient().when(this.chargeInterestRuleRepository.findBySavingsProductId(PRODUCT_ID)).thenReturn(List.of(rule));
     }
 
-    /**
-     * Cumulative mode rejects a BACKDATED premature closure (see DynamicDepositAccount#beginClosureSettlement), so the
-     * only closure date it can ever see in production is today's business date - which is also what bounds the forced
-     * interest posting. Aligning the two here is what makes these scenarios the shape production actually allows.
-     */
+    /** Cumulative mode rejects backdated closures, so these tests close on the business date as production must. */
     private void withBusinessDateOn(final LocalDate businessDate) {
         final HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
         businessDates.put(BusinessDateType.BUSINESS_DATE, businessDate);
@@ -873,12 +781,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         ThreadLocalContextUtil.setBusinessDates(businessDates);
     }
 
-    /**
-     * Stands in for Hibernate's IDENTITY id assignment on flush. Without it every transaction created during the call
-     * keeps a null id, and {@code SavingsAccount#deriveAccountingBridgeData}'s "was this id already there?" test - the
-     * exact mechanism finding C3 is about - cannot be exercised at all, since a null id is indistinguishable from the
-     * null a not-yet-flushed transaction contributed to the snapshot.
-     */
+    /** Fakes IDENTITY id assignment on flush so deriveAccountingBridgeData can tell new transactions from old. */
     private void assignDatabaseIdsOnFlush() {
         lenient().when(this.savingAccountRepositoryWrapper.saveAndFlush(any(SavingsAccount.class))).thenAnswer(invocation -> {
             for (final SavingsAccountTransaction transaction : this.account.getTransactions()) {
@@ -890,7 +793,6 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         });
     }
 
-    /** A tax group whose single component withholds {@code percentage}% whenever it is consulted. */
     private void withholdingTaxAt(final BigDecimal percentage) {
         final TaxComponent component = mock(TaxComponent.class);
         lenient().when(component.getApplicablePercentage(any())).thenReturn(percentage);
@@ -908,16 +810,11 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         this.account.setWithHoldTax(true);
     }
 
-    /**
-     * Builds the Dynamic Deposit account under test and stubs everything close() needs, including a domain service that
-     * behaves like the real one: it withdraws whatever amount close() asks for and leaves a real, dated, id-bearing
-     * withdrawal transaction behind.
-     */
+    /** Stubs close()'s collaborators; the domain service performs a real, id-bearing withdrawal. */
     private void prepareDynamicDepositClosure(final LocalDate maturityDate, final SavingsAccountCharge... charges) {
         this.account = buildAccount(maturityDate, charges);
 
-        // Single rate-history row (2% APR from activation) so calculateInterestUsing can resolve a rate for the final
-        // partial period (Jan 1 - Jan 19).
+        // Single 2% rate-history row from activation.
         final SavingsAccountTransaction openingDeposit = depositTransaction(1L, ACTIVATION_DATE, OPENING_BALANCE);
         lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
                 .thenReturn(List.of(DepositAccountDynamicRateHistory.createNew(this.account, openingDeposit, ACTIVATION_DATE,
@@ -927,21 +824,18 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         lenient().when(this.configurationDomainService.isSavingsInterestPostingAtCurrentPeriodEnd()).thenReturn(false);
         lenient().when(this.configurationDomainService.retrieveFinancialYearBeginningMonth()).thenReturn(1);
 
-        // lenient: the settlement-only scenarios drive the account directly and never reach close().
+        // lenient: settlement-only scenarios never reach close().
         lenient().when(this.context.authenticatedUser()).thenReturn(mock(AppUser.class));
         lenient().when(this.savingAccountAssembler.assembleFrom(1L, false)).thenReturn(this.account);
 
-        // lenient: the Task 3 withdrawal-lock test deliberately never reaches this call - the guard rejects the
-        // closure before any withdrawal is attempted - so this stub goes unused there by design.
+        // lenient: unused where a guard rejects the closure first.
         lenient().when(
                 this.savingsAccountDomainService.handleWithdrawal(eq(this.account), any(), eq(CLOSED_DATE), any(), any(), any(), eq(false)))
                 .thenAnswer(invocation -> {
                     final BigDecimal amount = invocation.getArgument(3);
                     final SavingsAccountTransaction withdrawal = SavingsAccountTransaction.withdrawal(this.account, this.office, null,
                             CLOSED_DATE, Money.of(CURRENCY, amount), "test-withdrawal-ref");
-                    // A real id, exactly as the database would have assigned by this point in production (the real
-                    // domain service persists the withdrawal to generate one before returning) - the closure's own
-                    // charge row references this transaction.
+                    // Real id, as the DB would have assigned; the closure's charge row references it.
                     ReflectionTestUtils.setField(withdrawal, "id", 900L + this.withdrawals.size());
                     this.account.addTransaction(withdrawal);
                     final BigDecimal balanceBefore = this.account.getSummary().getAccountBalance();
@@ -1029,9 +923,7 @@ class SavingsAccountWritePlatformServiceCloseDynamicDepositTest {
         lenient().when(product.getId()).thenReturn(PRODUCT_ID);
         ReflectionTestUtils.setField(newAccount, "product", product);
 
-        // Withdrawals allowed by default - the account-rule withdrawal lock (Phase 5) is opt-in per test via
-        // setDynamicDetail(...) with allowWithdrawal=false; every scenario here relies on withdrawals being possible
-        // unless it says otherwise.
+        // Withdrawals allowed by default; tests opt into the lock via setDynamicDetail(...).
         newAccount.setDynamicDetail(DepositAccountDynamicDetail.createNew(newAccount, true, false));
 
         return newAccount;

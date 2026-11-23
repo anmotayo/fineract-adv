@@ -36,10 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * The amount invested is the principal that is still in the account: deposits less the PRINCIPAL part of withdrawals.
- * An interest transfer to the linked account takes interest only; the closing payout (the withdrawal that leaves the
- * account empty, counting the early-withdrawal charge posted right after it) sweeps what interest is left and then
- * principal; every other withdrawal is principal withdrawn in full, whatever interest the account holds at the time.
+ * Invested amount = deposits less the principal part of withdrawals. Interest transfers take interest only; the closing
+ * payout sweeps interest first; any other withdrawal is all principal.
  */
 class DynamicDepositInvestedAmountCalculatorTest {
 
@@ -76,7 +74,6 @@ class DynamicDepositInvestedAmountCalculatorTest {
         assertThat(invested(withdrawal)).isEqualByComparingTo("600");
     }
 
-    // The closed account that read -24.93: 1000 invested, 24.93 interest, and a closing withdrawal of 1024.93.
     @Test
     void closingWithdrawalOfPrincipalAndInterestLeavesNothingInvestedNotANegativeAmount() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
@@ -91,7 +88,6 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "24.93");
         add(SavingsAccountTransactionType.WITHHOLD_TAX, MAR_1, "2.49");
-        // transferInterestToSavings: the interest less tax, 22.44, is paid out to the linked account.
         final SavingsAccountTransaction interestTransfer = addInterestTransfer(MAR_1, "22.44");
 
         assertThat(invested(interestTransfer)).isEqualByComparingTo("1000");
@@ -105,11 +101,9 @@ class DynamicDepositInvestedAmountCalculatorTest {
         addInterestTransfer(MAR_1, "22.44");
         final SavingsAccountTransaction principal = add(SavingsAccountTransactionType.WITHDRAWAL, APR_1, "1000");
 
-        // No phantom interest is left to be mislabelled: the tax already took its share of the posting out.
         assertThat(invested(principal)).isEqualByComparingTo("0");
     }
 
-    // The bug: 300 of interest is sitting in the account and a customer takes out 5000 of their own money.
     @Test
     void aPrincipalWithdrawalIsPrincipalEvenWhileTheAccountHoldsInterest() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "100000");
@@ -124,14 +118,12 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
         add(SavingsAccountTransactionType.INTEREST_POSTING, MAR_1, "20");
         add(SavingsAccountTransactionType.INTEREST_CHARGE, MAR_1, "10");
-        // 1010 left in the account: 1000 principal and 10 of surviving interest.
         final SavingsAccountTransaction closing = addEmptyingWithdrawal(MAR_1, "1010");
 
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
-    // 1000 principal + 24.93 interest, 5.00 early-withdrawal charge: the payout is 1019.93 and leaves the 5.00 for the
-    // charge, which is posted right after it and is what brings the account to zero.
+    // The 5.00 charge posted right after the 1019.93 payout is what empties the account.
     @Test
     void theClosingPayoutIsRecognisedWhenTheEarlyWithdrawalChargeTakesTheLastOfTheBalance() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");
@@ -169,7 +161,6 @@ class DynamicDepositInvestedAmountCalculatorTest {
         add(SavingsAccountTransactionType.INTEREST_POSTING, JAN_1.plusDays(60), "10");
         final SavingsAccountTransaction closing = addEmptyingWithdrawal(JAN_1.plusDays(61), "1014");
 
-        // 14 of interest was still there for the closing payout to sweep, so all 1000 of principal leaves.
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
@@ -205,7 +196,6 @@ class DynamicDepositInvestedAmountCalculatorTest {
         assertThat(invested(closing)).isEqualByComparingTo("0");
     }
 
-    // The one-pass form used to re-derive every rate-history row must agree with asking about each transaction in turn.
     @Test
     void theOnePassFormAgreesWithAskingAboutEachTransactionInTurn() {
         add(SavingsAccountTransactionType.DEPOSIT, JAN_1, "1000");

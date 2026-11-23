@@ -87,11 +87,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Closing a Dynamic Deposit against a REAL account: what interest and withholding-tax transactions the closure writes
- * and journals, and where the money goes for a principal-only reinvestment. Collaborators outside the account (the
- * payout, the transfer, the reinvestment) are mocked and record what they are asked to do.
- */
+/** Dynamic Deposit closure against a real account; collaborators outside the account are mocked. */
 class AdvanclyDepositAccountDomainServiceSettlementTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
@@ -116,7 +112,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
     private Office office;
     private SavingsAccount linkedAccount;
 
-    /** Every payout leg, in the order it happened: "withdrawal" or "transfer", with its amount. */
     private final List<String> payoutLegs = new ArrayList<>();
     private final List<BigDecimal> payoutAmounts = new ArrayList<>();
     private final List<AccountTransferDTO> transfers = new ArrayList<>();
@@ -156,7 +151,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         when(this.depositAccountAssembler.assembleFrom(LINKED_ACCOUNT_ID, DepositAccountType.SAVINGS_DEPOSIT))
                 .thenReturn(this.linkedAccount);
 
-        // The database's id sequence: the interest posting and tax transactions get ids when the account is flushed.
+        // Simulates id assignment on flush.
         when(savingsAccountRepository.saveAndFlush(any(SavingsAccount.class))).thenAnswer(invocation -> {
             for (final SavingsAccountTransaction transaction : this.account.getTransactions()) {
                 if (transaction.getId() == null) {
@@ -165,7 +160,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
             }
             return invocation.getArgument(0);
         });
-        // What reached the accounting bridge, from every journal-posting call.
         org.mockito.Mockito.doAnswer(invocation -> {
             final Map<String, Object> bridgeData = invocation.getArgument(0);
             @SuppressWarnings("unchecked")
@@ -174,7 +168,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
             return null;
         }).when(journalEntryWritePlatformService).createJournalEntriesForSavings(any());
 
-        // A withdrawal and a transfer both take the amount out of the real account, as the real ones do.
         when(this.coreDomainService.handleWithdrawal(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     final BigDecimal amount = invocation.getArgument(3);
@@ -198,7 +191,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
                 this.accountAssociationsReadPlatformService);
     }
 
-    // ---- interest and withholding tax are written, and journalled, by the closure ----
+    // ---- closure writes and journals interest and withholding tax ----
 
     @Test
     void aMaturityClosureWritesAndJournalsTheInterestPostingAndTheWithholdingTaxWhenTaxIsWithheldAtMaturity() {
@@ -218,8 +211,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(this.account.getSummary().getAccountBalance()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
-    // Closing the account - early or not - is when tax configured to be withheld at maturity is written, as it is for
-    // Fixed and Recurring Deposits.
     @Test
     void aPrematureClosureAlsoWritesAndJournalsTheTaxConfiguredToBeWithheldAtMaturity() {
         withholdingTax(WithHoldTaxPostingType.MATURITY, true);
@@ -247,11 +238,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
     }
 
-    // ---- maturing: the interest and tax are settled by the maturity, and the closure that follows settles nothing
-    // ----
-
-    // Tax withheld at each interest posting: the final posting, written when the account matures, is taxed there and
-    // then, like every posting before it.
+    // ---- maturing ----
     @Test
     void maturingAnAccountTaxedAtInterestPostingWithholdsTaxOnTheFinalPostingAndMarksItMatured() {
         withholdingTax(WithHoldTaxPostingType.INTEREST_POSTING, true);
@@ -270,7 +257,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).hasSize(1);
     }
 
-    // Tax withheld at maturity: it is written when the account matures, on all the interest posted.
     @Test
     void maturingAnAccountTaxedAtMaturityWithholdsTheTaxOnTheInterestPostedOnce() {
         withholdingTax(WithHoldTaxPostingType.MATURITY, true);
@@ -295,8 +281,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
     }
 
-    // The closure of a matured account pays out what the maturity left - principal and the interest less tax - and
-    // posts no second interest or tax, whichever way the tax is configured.
     @Test
     void closingAMaturedAccountPostsNoSecondInterestOrTaxAndPaysOutPrincipalPlusInterestLessTax() {
         for (final WithHoldTaxPostingType postingType : new WithHoldTaxPostingType[] { WithHoldTaxPostingType.INTEREST_POSTING,
@@ -330,8 +314,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         assertThat(journalled(SavingsAccountTransactionType.WITHHOLD_TAX)).isEmpty();
     }
 
-    // ---- reinvest principal only: the principal moves on, the interest less tax goes to the linked account or is paid
-    // out ----
+    // ---- reinvest principal only ----
 
     @Test
     void reinvestingThePrincipalOnlySendsTheInterestLessTaxToTheLinkedAccountFirstThenMovesThePrincipalAndClosesTheAccount() {
@@ -344,8 +327,7 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
         final SavingsAccountTransaction posting = single(SavingsAccountTransaction::isInterestPostingAndNotReversed);
         final SavingsAccountTransaction tax = single(SavingsAccountTransaction::isWithHoldTaxAndNotReversed);
         final BigDecimal netInterest = posting.getAmount().subtract(tax.getAmount());
-        // The interest leaves FIRST, so the engine's interest-first labelling books it as interest and the principal
-        // withdrawal that follows as principal.
+        // Interest leaves first so it is booked as interest, not principal.
         assertThat(this.payoutLegs).containsExactly("transfer", "withdrawal");
         assertThat(this.payoutAmounts).usingElementComparator(BigDecimal::compareTo).containsExactly(netInterest, PRINCIPAL);
         assertThat(this.transfers.get(0).getToSavingsAccount()).isSameAs(this.linkedAccount);
@@ -509,7 +491,6 @@ class AdvanclyDepositAccountDomainServiceSettlementTest {
                         BigDecimal.valueOf(2), DynamicDepositRateSource.INTEREST_RATE_CHART)));
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(rateHistoryRepository);
-        // An early closure asks whether a cumulative forfeiture rule applies; none does here.
         final CumulativeInterestForfeitureService forfeitureService = mock(CumulativeInterestForfeitureService.class);
         when(applicationContext.getBean(CumulativeInterestForfeitureService.class)).thenReturn(forfeitureService);
         ReflectionTestUtils.setField(com.advancly.fineract.portfolio.savings.service.DynamicDepositServiceLocator.class,

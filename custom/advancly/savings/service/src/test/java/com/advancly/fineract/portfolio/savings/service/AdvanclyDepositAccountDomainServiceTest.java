@@ -72,12 +72,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
-/**
- * Orchestration of a Dynamic Deposit closure in {@link AdvanclyDepositAccountDomainService}: what is settled first,
- * what the payout is, which closure type moves the money where, and the rules that reject a closure before anything is
- * written. The money arithmetic of settlement (forfeiture, interest, tax) lives in the account and its services and is
- * covered by {@code SavingsAccountWritePlatformServiceCloseDynamicDepositTest}.
- */
+/** Closure orchestration; settlement math is tested in SavingsAccountWritePlatformServiceCloseDynamicDepositTest. */
 class AdvanclyDepositAccountDomainServiceTest {
 
     private static final Long ACCOUNT_ID = 7L;
@@ -176,7 +171,7 @@ class AdvanclyDepositAccountDomainServiceTest {
                 eq(BigDecimal.valueOf(700)), eq(paymentDetail), eq(false), eq(false));
         order.verify(this.account).close(any(AppUser.class), any(JsonCommand.class));
         verify(this.accountTransfersWritePlatformService, never()).transferFunds(any());
-        // The settlement already posted the closing interest, so the service must not post it a second time.
+        // The settlement already posted the closing interest.
         verify(this.account, never()).postInterest(any(), any(), anyBoolean(), anyBoolean(), any(), any(), anyBoolean(), anyBoolean());
     }
 
@@ -554,8 +549,7 @@ class AdvanclyDepositAccountDomainServiceTest {
         verify(this.account, org.mockito.Mockito.times(2)).markClosingAtMaturity(false);
     }
 
-    // isEarlyWithdrawal(...) is false for an account with no maturity date, so "not early" alone would let such an
-    // account through a maturity closure - and past the withdrawal lock. Maturity must be positively established.
+    // "Not early" is also true without a maturity date, so maturity must be positively established.
     @Test
     void aMaturityClosureOfAnAccountWithNoMaturityDateIsRejectedAndNeverLiftsTheLock() {
         when(this.account.isEarlyWithdrawal(CLOSED_DATE)).thenReturn(false);

@@ -24,18 +24,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Read-side reporting summary for a Dynamic Deposit account's interest position (implementation plan Section 9). Purely
- * a reporting surface over data already produced by the interest-calculation engine ({@code account.getSummary()}) and
- * the rate-history table ({@code DepositAccountDynamicRateHistory}) - it adds no new business logic of its own.
- *
- * {@code interestWithdrawn} is always {@link BigDecimal#ZERO}; withdrawals are no longer separately attributed by
- * posted-interest source.
- *
- * {@code interestTransferredToSavings} is always {@link BigDecimal#ZERO} this phase; Phase 5 of the implementation plan
- * (Transfers And Withdrawal Lock) is responsible for populating it.
- *
- * {@code interestCharges} is the life-to-date total actually applied through the charge-application ledger and is on
- * the same life-to-date footing as {@code interestPosted} and {@code withholdingTax}.
+ * Read-only interest summary for a Dynamic Deposit account. {@code interestWithdrawn} and
+ * {@code interestTransferredToSavings} are always zero for now.
  */
 public class DynamicDepositInterestSummaryData {
 

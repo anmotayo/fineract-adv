@@ -81,7 +81,6 @@ class CumulativeForfeitureCalculatorTest {
 
     @Test
     void nothingIsForfeitedWhenNoInterestHasPostedYet() {
-        // The 5,000,000-deposited-then-withdrawn-after-three-weeks case: nothing posted, nothing to take.
         final BigDecimal forfeit = CumulativeForfeitureCalculator.forfeitureAmount(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("100"));
 
@@ -98,7 +97,7 @@ class CumulativeForfeitureCalculatorTest {
 
     @Test
     void theResultNeverExceedsTheInterestStillInTheAccount() {
-        // Defensive: even with a nonsensical over-100 percentage the cap holds, so principal is untouchable.
+        // Even an over-100 percentage cannot reach principal.
         final BigDecimal forfeit = CumulativeForfeitureCalculator.forfeitureAmount(new BigDecimal("100"), BigDecimal.ZERO,
                 new BigDecimal("30"), new BigDecimal("500"));
 

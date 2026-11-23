@@ -49,11 +49,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
-/**
- * Lean, self-contained read-side implementation for the Dynamic Deposit product (deposit_type_enum = 500). Joins the
- * same {@code m_deposit_product_term_and_preclosure} table FD/RD use for min/max deposit term, min/default/max deposit
- * amount and the withholding-tax posting type.
- */
+/** Dynamic Deposit product reads (deposit_type_enum = 500), joining the FD/RD term-and-preclosure table. */
 @Service
 public class DynamicDepositProductReadPlatformServiceImpl implements DynamicDepositProductReadPlatformService {
 

@@ -394,8 +394,7 @@ public class InteropServiceImpl implements InteropService {
             SavingsAccountTransaction holdTransaction = SavingsAccountTransaction.holdAmount(savingsAccount, savingsAccount.office(),
                     paymentDetail, transactionDate, Money.of(savingsAccount.getCurrency(), total), false);
             MonetaryCurrency accountCurrency = savingsAccount.getCurrency().copy();
-            holdTransaction.setRunningBalance(
-                    Money.of(accountCurrency, savingsAccount.getWithdrawableBalance().subtract(holdTransaction.getAmount())));
+            holdTransaction.setRunningBalance(Money.of(accountCurrency, savingsAccount.getAccountBalance()));
             holdTransaction.updateCumulativeBalanceAndDates(accountCurrency, transactionDate);
 
             savingsAccount.holdAmount(total);
@@ -444,8 +443,11 @@ public class InteropServiceImpl implements InteropService {
             }
 
             if (holdTransaction.getReleaseIdOfHoldAmountTransaction() == null) {
-                SavingsAccountTransaction releaseTransaction = savingsAccountTransactionRepository
-                        .saveAndFlush(releaseAmount(holdTransaction, transactionDate));
+                SavingsAccountTransaction releaseTransaction = releaseAmount(holdTransaction, transactionDate);
+                MonetaryCurrency accountCurrency = savingsAccount.getCurrency().copy();
+                releaseTransaction.setRunningBalance(Money.of(accountCurrency, savingsAccount.getAccountBalance()));
+                releaseTransaction.updateCumulativeBalanceAndDates(accountCurrency, transactionDate);
+                releaseTransaction = savingsAccountTransactionRepository.saveAndFlush(releaseTransaction);
                 holdTransaction.updateReleaseId(releaseTransaction.getId());
                 savingsAccount.releaseOnHoldAmount(holdTransaction.getAmount());
                 savingsAccount.addTransaction(releaseTransaction);
@@ -485,8 +487,7 @@ public class InteropServiceImpl implements InteropService {
         if (holdTransaction != null && holdTransaction.getReleaseIdOfHoldAmountTransaction() == null) {
             SavingsAccountTransaction releaseTransaction = releaseAmount(holdTransaction, transactionDate);
             MonetaryCurrency accountCurrency = savingsAccount.getCurrency().copy();
-            releaseTransaction
-                    .setRunningBalance(Money.of(accountCurrency, savingsAccount.getWithdrawableBalance().add(holdTransaction.getAmount())));
+            releaseTransaction.setRunningBalance(Money.of(accountCurrency, savingsAccount.getAccountBalance()));
             releaseTransaction.updateCumulativeBalanceAndDates(accountCurrency, transactionDate);
             releaseTransaction = savingsAccountTransactionRepository.saveAndFlush(releaseTransaction);
             holdTransaction.updateReleaseId(releaseTransaction.getId());

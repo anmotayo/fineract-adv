@@ -19,7 +19,12 @@
 package org.apache.fineract.accounting.glaccount.jobs.updatetrialbalancedetails;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,8 +81,8 @@ public class UpdateTrialBalanceDetailsTasklet implements Tasklet {
             tb.setOfficeId((Long) row[0]);
             tb.setGlAccountId((Long) row[1]);
             tb.setAmount((BigDecimal) row[2]);
-            tb.setEntryDate((LocalDate) row[3]);
-            tb.setTransactionDate((LocalDate) row[4]);
+            tb.setEntryDate(toLocalDate(row[3]));
+            tb.setTransactionDate(toLocalDate(row[4]));
             tb.setClosingBalance((BigDecimal) row[5]);
             return tb;
         }).toList();
@@ -125,5 +130,39 @@ public class UpdateTrialBalanceDetailsTasklet implements Tasklet {
             }
             row.setClosingBalance(closingBalance);
         }
+    }
+
+    private static LocalDate toLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.toLocalDate();
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.toLocalDate();
+        }
+        if (value instanceof ZonedDateTime zonedDateTime) {
+            return zonedDateTime.toLocalDate();
+        }
+        if (value instanceof Instant instant) {
+            return instant.atZone(ZoneId.systemDefault()).toLocalDate();
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toLocalDateTime().toLocalDate();
+        }
+        if (value instanceof java.util.Date date) {
+            return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        }
+        if (value instanceof String string && !string.isBlank()) {
+            return LocalDate.parse(string.contains("T") ? string.substring(0, string.indexOf('T')) : string);
+        }
+        throw new IllegalArgumentException("Cannot convert value of type " + value.getClass().getName() + " to LocalDate: " + value);
     }
 }

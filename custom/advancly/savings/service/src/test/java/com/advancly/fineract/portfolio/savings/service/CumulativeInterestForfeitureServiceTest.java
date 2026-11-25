@@ -111,9 +111,7 @@ class CumulativeInterestForfeitureServiceTest {
 
     @Test
     void aPrematureClosureForcePostsOnTheSameDateCoresPerPeriodClosurePathUses() {
-        // closedDate - 1 would silently drop a day of accrual relative to the per-period closure path, which posts on
-        // SavingsAccount#interestPostingTransactionDateForClosure(closedDate) - invisible at 100% forfeiture but a
-        // real shortfall in what the customer keeps at any partial percentage.
+        // closedDate - 1 would lose a day of accrual compared with the per-period closure path.
         final SavingsAccount account = account(new BigDecimal("70"), BigDecimal.ZERO);
         lenient().when(account.interestPostingTransactionDateForClosure(WITHDRAWAL_DATE)).thenReturn(WITHDRAWAL_DATE);
         stubQualifyingCharge(account, new BigDecimal("100"));
@@ -151,9 +149,7 @@ class CumulativeInterestForfeitureServiceTest {
 
     @Test
     void theSummaryIsRefreshedAndTheJournalEntriesArePostedBeforeTheCallerEverSeesTheBalance() {
-        // The whole point of doing both here: the caller (a withdrawal, or a premature closure reading the balance to
-        // decide its payout) runs entirely AFTER this returns, and its own "already existing transaction ids" snapshot
-        // is taken after the flush below - so nothing it does can refresh the summary for, or journal, what this wrote.
+        // The caller snapshots transaction ids after this flush, so it can't refresh the summary or journal this.
         final SavingsAccount account = account(new BigDecimal("70"), BigDecimal.ZERO);
         stubQualifyingCharge(account, new BigDecimal("100"));
 
@@ -242,8 +238,7 @@ class CumulativeInterestForfeitureServiceTest {
 
     @Test
     void noManualTaxFlushOrJournalIsWrittenWhenNothingRemainsToForfeit() {
-        // Everything forfeitable was already consumed by a prior withdrawal. Normal postInterest still runs, with the
-        // account's real tax configuration intact, but this service does not create a separate manual tax transaction.
+        // Already fully forfeited: postInterest still runs, but no separate manual tax transaction is created.
         final SavingsAccount account = account(new BigDecimal("20"), BigDecimal.ZERO);
         lenient().when(this.interestChargeApplicationRepository.sumActiveAppliedAmountForAccount(anyLong()))
                 .thenReturn(new BigDecimal("20"));

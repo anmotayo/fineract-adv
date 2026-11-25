@@ -23,19 +23,8 @@ import java.math.MathContext;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 
 /**
- * The cumulative early-withdrawal forfeiture amount: how much of the net, un-forfeited interest still sitting in the
- * account is taken back by this withdrawal.
- *
- * The percentage applies to the remaining available interest at the time of the withdrawal. Prior forfeitures are
- * removed from the basis first, so a later withdrawal only charges against the interest balance that remains plus any
- * new interest posted since the earlier withdrawal.
- *
- * The basis is net of withholding tax because tax has already debited part of the posted interest from the balance (see
- * SavingsAccountSummary's WITHHOLD_TAX case), so the customer only ever received gross minus tax. Forfeiting the gross
- * figure would overshoot into principal by exactly the tax amount.
- *
- * Together those two rules make principal structurally untouchable: the result can never exceed
- * {@code basis - alreadyForfeited}, which is precisely the interest still sitting in the account.
+ * Cumulative early-withdrawal forfeiture on interest net of withholding tax and prior forfeitures, so it can never
+ * reach into principal.
  */
 public final class CumulativeForfeitureCalculator {
 
@@ -43,8 +32,7 @@ public final class CumulativeForfeitureCalculator {
 
     private CumulativeForfeitureCalculator() {}
 
-    // NOT a static constant: MoneyHelper.getRoundingMode() resolves the CURRENT tenant's configured rounding mode from
-    // a thread-local, so capturing it once would freeze one tenant's setting for every other tenant.
+    // Not a static constant: the rounding mode is per tenant (thread-local).
     private static MathContext percentageMathContext() {
         return new MathContext(8, MoneyHelper.getRoundingMode());
     }

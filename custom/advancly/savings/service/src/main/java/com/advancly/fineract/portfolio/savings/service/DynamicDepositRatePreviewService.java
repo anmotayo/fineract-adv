@@ -34,14 +34,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Builds the transient rate-history row for the interest-calculation preview: what
- * {@link DynamicDepositRateHistoryService#recordPrincipalChangeEvent} would record for a simulated principal change,
- * minus the save. Nothing here writes.
- *
- * The {@code account} passed in is the detached, simulation-carrying instance (see
- * {@link InterestCalculationReadPlatformServiceImpl}); its lazy {@code chart} and product can't be read outside a
- * session, so rate resolution runs against a freshly loaded instance inside this read-only transaction. That instance
- * is only read from and never mutated.
+ * Read-only preview of the rate-history row a simulated principal change would record. Rates resolve against a freshly
+ * loaded account because the detached one's lazy chart and product can't be read outside a session.
  */
 @Service
 @RequiredArgsConstructor
@@ -54,9 +48,7 @@ public class DynamicDepositRatePreviewService {
     public record RatePreview(DepositAccountDynamicRateHistory row, SimulatedRateData data) {
     }
 
-    /**
-     * @return the preview, or {@code null} if the account has no term details to resolve against.
-     */
+    /** Returns {@code null} if the account has no term details. */
     @Transactional(readOnly = true)
     public RatePreview preview(final DynamicDepositAccount account, final SavingsAccountTransaction simulatedTransaction,
             final DynamicDepositRateHistoryEventType eventType) {
@@ -68,7 +60,7 @@ public class DynamicDepositRatePreviewService {
         }
 
         final long priorRowCount = this.rateHistoryRepository.countByAccountId(account.getId());
-        // Invested amount comes from the detached account because that's the one carrying the simulated transactions.
+        // The detached account carries the simulated transactions.
         final BigDecimal investedAmountAfter = this.rateHistoryService.computeInvestedAmountAsOf(account, simulatedTransaction);
         final ResolvedRate rate = this.rateHistoryService.resolveRate(managed, term, investedAmountAfter,
                 simulatedTransaction.getTransactionDate(), priorRowCount);
@@ -78,8 +70,7 @@ public class DynamicDepositRatePreviewService {
                 term.depositPeriodFrequencyType() == null ? null : term.depositPeriodFrequencyType().getValue(), rate.interestRateChartId(),
                 rate.interestRateSlabId(), rate.baseAnnualInterestRate(), rate.annualInterestRate(), rate.source());
 
-        // getNominalAnnualInterestRate() is kept equal to the latest active history row's rate
-        // (reconcileFollowingRows).
+        // The nominal rate tracks the latest active history row (reconcileFollowingRows).
         final BigDecimal previousRate = managed.getNominalAnnualInterestRate();
         final boolean rateChanged = previousRate == null || rate.annualInterestRate().compareTo(previousRate) != 0;
         final SimulatedRateData data = new SimulatedRateData(rate.annualInterestRate(), rate.baseAnnualInterestRate(), rate.source().name(),

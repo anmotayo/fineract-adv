@@ -101,17 +101,8 @@ public class AdvanclyInterestChargeApplicationService {
     }
 
     /**
-     * @param appendPath
-     *            whether {@code withdrawalTransaction} was added via {@code addTransactionToExisting(...)} (the
-     *            pivot-config transient list) because it went through the O(1) append path specifically - as opposed to
-     *            {@code addTransaction(...)} (the JPA-managed collection).
-     * @param backdatedTxnsAllowedTill
-     *            when {@code appendPath} is false, which of the two collections core's own
-     *            {@code handleWithdrawal(...)}/{@code withdraw(...)} used for this withdrawal - i.e. the fallback this
-     *            method defers to when it isn't itself on the append path. The charge transaction, its journal entries,
-     *            and (for cumulative rules) the forfeiture transaction must all be written through whichever of the two
-     *            collections the withdrawal itself used, or they end up in the collection
-     *            {@code deriveAccountingBridgeData(...)} isn't looking at.
+     * {@code appendPath}/{@code backdatedTxnsAllowedTill} identify the transaction collection the withdrawal used; the
+     * charge must use the same one or {@code deriveAccountingBridgeData} won't see it.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
@@ -121,14 +112,7 @@ public class AdvanclyInterestChargeApplicationService {
                 selectedToDate, appendPath, backdatedTxnsAllowedTill, false);
     }
 
-    /**
-     * @param postAtClosureDate
-     *            only matters for a cumulative rule, whose charge is taken on interest posted by a forced posting
-     *            transaction: {@code false} dates that posting {@code transactionDate - 1} (an ordinary withdrawal),
-     *            {@code true} dates it on {@code transactionDate} itself, the date a closure posts its closing interest
-     *            on, so the closing interest covers the accrual through {@code transactionDate - 1}. When a posting
-     *            already exists on that date (the closure posts first, to know what it can pay out) none is added.
-     */
+    /** {@code postAtClosureDate} (cumulative only): date the forced posting on transactionDate, not the day before. */
     @Transactional(propagation = Propagation.MANDATORY)
     public SavingsAccountTransaction applyIfApplicable(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction,
             final boolean applyEarlyWithdrawalCharge, final BigDecimal percentageOverride, final LocalDate selectedFromDate,
@@ -183,10 +167,7 @@ public class AdvanclyInterestChargeApplicationService {
         return chargeTransaction;
     }
 
-    /**
-     * What a custom-period rule would charge for a withdrawal on {@code transactionDate}, or {@code null} when it would
-     * charge nothing. Writes nothing, so the closure can size its payout from it before the charge is applied.
-     */
+    /** Read-only, so a closure can size its payout before the charge is applied. */
     private CustomPeriodCharge customPeriodCharge(final SavingsAccount account, final AdvanclyChargeInterestRule rule,
             final SavingsAccountCharge accountCharge, final LocalDate transactionDate, final LocalDate selectedFromDate,
             final LocalDate selectedToDate, final BigDecimal percentageOverride) {
@@ -234,11 +215,7 @@ public class AdvanclyInterestChargeApplicationService {
             BigDecimal amount, LocalDate selectedFromDate, LocalDate selectedToDate) {
     }
 
-    /**
-     * What {@link #applyIfApplicable} would charge for a closure of {@code account} dated {@code closedDate}, rounded
-     * the way the charge transaction is, or zero when no charge applies. Writes nothing. A cumulative rule is quoted on
-     * the interest posted so far, so the caller must already have posted the closing interest on {@code closedDate}.
-     */
+    /** Read-only quote. For a cumulative rule the caller must already have posted the closing interest. */
     public BigDecimal quoteClosureCharge(final SavingsAccount account, final LocalDate closedDate, final boolean applyEarlyWithdrawalCharge,
             final BigDecimal percentageOverride, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
         if (!(account.isEarlyWithdrawal(closedDate) || applyEarlyWithdrawalCharge)) {
@@ -275,18 +252,11 @@ public class AdvanclyInterestChargeApplicationService {
             final boolean backdatedTxnsAllowedTill) {
         final SavingsAccountTransaction chargeTransaction = SavingsAccountTransaction.interestCharge(account, account.office(),
                 transactionDate, Money.of(account.getCurrency(), roundedAmount));
-        // accountCharge is a persistent, reusable rule definition (amount/amountOutstanding pinned at 0 for
-        // PERCENT_OF_INTEREST charges - see its populateDerivedFields(...)), not a per-application ledger entry, so
-        // its outstanding must be refreshed to this application's computed amount before paying it off - mirroring
-        // core's own updateWithdralFeeAmount(...) before pay(...) for withdrawal fees. payExternallyComputedCharge(...)
-        // does that refresh, pays it off (landing amountOutstanding on exactly zero instead of drifting negative),
-        // and preserves amountPaid as a running lifetime total across every application on this row.
+        // accountCharge is a reusable rule row (outstanding pinned at 0), so refresh its outstanding before paying it.
         accountCharge.payExternallyComputedCharge(account.getCurrency(), roundedAmount);
         chargeTransaction.getSavingsAccountChargesPaid()
                 .add(SavingsAccountChargePaidBy.instance(chargeTransaction, accountCharge, chargeTransaction.getAmount()));
-        // If this is the O(1) append path, the withdrawal always used addTransactionToExisting(...), so the charge
-        // must too. Otherwise, defer to whichever collection backdatedTxnsAllowedTill says core's own
-        // handleWithdrawal(...)/withdraw(...) used for this withdrawal.
+        // Use the same collection the withdrawal was added to.
         if (appendPath) {
             account.addTransactionToExisting(chargeTransaction);
         } else if (backdatedTxnsAllowedTill) {
@@ -294,10 +264,7 @@ public class AdvanclyInterestChargeApplicationService {
         } else {
             account.addTransaction(chargeTransaction);
         }
-        // The charge is appended right after the withdrawal (same transactionDate), so the withdrawal's balance
-        // window - previously open-ended because it was the trailing transaction - must be closed here. Otherwise
-        // the withdrawal keeps a stale/overlapping window instead of being confined to its own day, corrupting any
-        // balance-day calculation (interest accrual, cumulative balance) that assumes non-overlapping windows.
+        // Close the withdrawal's open-ended balance window, or balance windows would overlap.
         transactionHelper.updatePreviousTransactionBalanceEndDate(withdrawalTransaction, transactionDate, account.getCurrency());
         transactionHelper.setRunningBalanceForAppendPath(chargeTransaction, withdrawalTransaction.getRunningBalance(account.getCurrency()),
                 account.getCurrency());
@@ -314,9 +281,7 @@ public class AdvanclyInterestChargeApplicationService {
         this.journalEntryWritePlatformService.createJournalEntriesForSavings(accountingBridgeData);
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same basis.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     BigDecimal selectedPostedNetInterest(final SavingsAccount account, final LocalDate selectedFromDate, final LocalDate selectedToDate) {
         BigDecimal postedInterest = BigDecimal.ZERO;
         BigDecimal withholdingTax = BigDecimal.ZERO;
@@ -339,7 +304,7 @@ public class AdvanclyInterestChargeApplicationService {
         return transactionDate != null && !transactionDate.isBefore(selectedFromDate) && !transactionDate.isAfter(selectedToDate);
     }
 
-    /** Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same rule. */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     void validateDailyPostingPeriod(final SavingsAccount account) {
         if (SavingsPostingInterestPeriodType.fromInt(account.getInterestPostingPeriodType()) != SavingsPostingInterestPeriodType.DAILY) {
             throw new GeneralPlatformDomainRuleException(
@@ -352,9 +317,7 @@ public class AdvanclyInterestChargeApplicationService {
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
-    /**
-     * An early closure has already settled its own charges (see {@code DynamicDepositAccount#beginClosureSettlement}).
-     */
+    /** See {@code DynamicDepositAccount#beginClosureSettlement}. */
     private boolean isSettledByClosure(final SavingsAccount account, final SavingsAccountTransaction withdrawalTransaction) {
         return account instanceof DynamicDepositAccount dynamicDepositAccount
                 && dynamicDepositAccount.isClosureSettledOn(withdrawalTransaction.getTransactionDate());
@@ -370,9 +333,7 @@ public class AdvanclyInterestChargeApplicationService {
         return selectedFromDate(account, transactionDate, command.localDateValueOfParameterNamed(SELECTED_FROM_DATE), rule);
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same default.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     LocalDate selectedFromDate(final SavingsAccount account, final LocalDate transactionDate, final LocalDate selectedFromDate,
             final AdvanclyChargeInterestRule rule) {
         if (rule.isCumulative()) {
@@ -389,9 +350,7 @@ public class AdvanclyInterestChargeApplicationService {
         return selectedToDate(transactionDate, command.localDateValueOfParameterNamed(SELECTED_TO_DATE), rule);
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same default.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     LocalDate selectedToDate(final LocalDate transactionDate, final LocalDate selectedToDate, final AdvanclyChargeInterestRule rule) {
         if (rule.isCumulative()) {
             return transactionDate;
@@ -409,10 +368,7 @@ public class AdvanclyInterestChargeApplicationService {
                 : null, accountCharge);
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same
-     * resolution.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     BigDecimal resolvePercentage(final BigDecimal percentageOverride, final SavingsAccountCharge accountCharge) {
         if (percentageOverride != null) {
             return percentageOverride;
@@ -424,10 +380,7 @@ public class AdvanclyInterestChargeApplicationService {
         return accountCharge.getCharge().getAmount();
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same
-     * validation.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     void validatePercentageOverride(final BigDecimal percentageOverride) {
         if (percentageOverride != null
                 && (percentageOverride.compareTo(BigDecimal.ZERO) < 0 || percentageOverride.compareTo(ONE_HUNDRED) > 0)) {
@@ -436,17 +389,13 @@ public class AdvanclyInterestChargeApplicationService {
         }
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same lookup.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     AdvanclyChargeInterestRule resolveSingleRule(final SavingsAccount account) {
         final List<AdvanclyChargeInterestRule> rules = this.chargeInterestRuleRepository.findBySavingsProductId(account.productId());
         return rules.size() == 1 ? rules.get(0) : null;
     }
 
-    /**
-     * Package-private: also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl} to preview this same lookup.
-     */
+    /** Also used by {@code EarlyWithdrawalChargeReadPlatformServiceImpl}. */
     SavingsAccountCharge resolveAccountCharge(final SavingsAccount account, final Long chargeId) {
         for (final SavingsAccountCharge accountCharge : account.charges()) {
             if (accountCharge.getCharge() == null || !chargeId.equals(accountCharge.getCharge().getId())) {

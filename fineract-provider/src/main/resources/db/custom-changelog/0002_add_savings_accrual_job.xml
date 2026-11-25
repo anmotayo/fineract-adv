@@ -24,7 +24,7 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
     <changeSet author="fineract" id="1">
         <validCheckSum>ANY</validCheckSum>
-        <!-- The savings module's 2001_add_savings_accrual_job.xml inserts the same job, with its short_name, and runs first on a new database. -->
+        <!-- The savings module's 2001_add_savings_accrual_job.xml inserts the same job first on a new database. -->
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="0">
                 SELECT COUNT(*) FROM job WHERE name = 'Add Accrual Transactions For Savings'

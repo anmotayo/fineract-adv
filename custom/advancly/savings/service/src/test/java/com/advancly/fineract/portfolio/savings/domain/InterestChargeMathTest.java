@@ -49,7 +49,6 @@ class InterestChargeMathTest {
 
     @Test
     void cappedInterestChargeAmountCapsAtGrossMinusWithholdingTax() {
-        // gross 500, wht 50: available basis is 450. Recomputed total of 500 must be capped to 450.
         assertThat(InterestChargeMath.cappedInterestChargeAmount(new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50")))
                 .isEqualByComparingTo("450");
     }
@@ -66,12 +65,7 @@ class InterestChargeMathTest {
                 .isEqualByComparingTo("0");
     }
 
-    /**
-     * Review Finding 1 (Critical): {@code recomputedChargeAmount}/{@code cappedInterestChargeAmount} only bound
-     * significant digits, not decimal places - reproduced here with the exact figures from that review (gross
-     * {@code 57.89}, percentage {@code 33.33} -> {@code 19.294737}, scale 6) to prove {@code roundToCurrency} brings
-     * that back down to the currency's actual decimal places.
-     */
+    // MathContext bounds significant digits, not decimal places: 57.89 * 33.33% -> 19.294737.
     @Test
     void roundToCurrencyRoundsAnOverPreciseRecomputedAmountDownToTheCurrencysDecimalPlaces() {
         final BigDecimal overPrecise = InterestChargeMath.recomputedChargeAmount(new BigDecimal("57.89"), new BigDecimal("33.33"));

@@ -53,16 +53,8 @@ import org.apache.fineract.portfolio.savings.service.SavingsEnumerations;
 import org.springframework.stereotype.Service;
 
 /**
- * Backs {@code GET /interestcalculation/{savingsAccountId}} (see {@link InterestCalculationReadPlatformService}).
- *
- * Deliberately has NO {@code @Transactional} annotation of its own. {@link SavingsAccountRepositoryWrapper}'s own
- * {@code findOneWithNotFoundDetection(Long)} is independently {@code @Transactional(readOnly = true)}; called with no
- * outer transaction already open, that method starts and commits its own transaction before returning, which closes the
- * Hibernate session and detaches the entity it just loaded. Every mutation this class makes afterwards - adding a
- * simulated transaction, running {@code calculateInterestUsing(...)} (which rewrites daily balances and the in-memory
- * summary as a side effect) - therefore happens on an object nothing is tracking for a flush. This is the whole safety
- * guarantee behind "this endpoint never persists anything," so don't add {@code @Transactional} here without
- * re-deriving that guarantee some other way.
+ * Deliberately not {@code @Transactional}: the account is loaded in the repository's own read-only transaction and
+ * comes back detached, so the simulated mutations below are never flushed. Adding a transaction would persist them.
  */
 @Service
 @RequiredArgsConstructor
@@ -91,8 +83,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                 withdrawalAmount);
         SimulatedRateData simulatedRate = null;
         if (account instanceof DynamicDepositAccount dynamicDepositAccount && lastSimulatedTransaction != null) {
-            // One net row dated today, not one per leg: both legs share a date, so only the resolved rate on the net
-            // invested amount matters. Must be set before calculateInterestUsing so both runs below project it.
+            // One net row: both legs share today's date. Set before calculateInterestUsing so both runs use it.
             final BigDecimal net = defaultToZero(topUpAmount).subtract(defaultToZero(withdrawalAmount));
             if (net.signum() != 0) {
                 final RatePreview preview = this.ratePreviewService.preview(dynamicDepositAccount, lastSimulatedTransaction,
@@ -112,30 +103,20 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         final boolean backdatedTxnsAllowedTill = false;
         final boolean postReversals = false;
 
-        // Run #1, bounded by today: PostingPeriod.getPeriodInterval() always reports the FULL calendar period (e.g.
-        // the whole month), even mid-period - it is NOT capped at upToInterestCalculationDate, only the underlying
-        // day-count/balance walk is. So "sum periods whose interval ends on/before today" silently drops the
-        // in-progress period's partial accrual entirely once interest posts less often than daily. Reading
-        // totalInterestEarned straight off the summary this call just updated sidesteps that: it's the same
-        // correctly-truncated figure `command=calculateInterest` already computes, just actually returned here.
+        // Use the summary, not the periods: a period's interval is the full calendar period even mid-period, so
+        // filtering by interval end would drop the in-progress partial accrual.
         List<PostingPeriod> periods = account.calculateInterestUsing(mc, today, isInterestTransfer,
                 isSavingsInterestPostingAtCurrentPeriodEnd, financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
-        // the engine overwrites this one summary on every run, so copy run #1's figures out before run #2 clobbers them
+        // Snapshot now: the next run overwrites the summary.
         final InterestCalculationSummaryData asAtTodaySummary = InterestCalculationSummaryData.from(account.getSummary());
 
         BigDecimal maturityAmount = null;
         InterestCalculationSummaryData asAtMaturitySummary = null;
         if (maturityDate != null) {
-            // Run #2, bounded by maturity: a second full recalculation (the engine always recomputes from the
-            // beginning - see class javadoc) projecting through maturity on the amount actually invested as of
-            // today, which is also what supplies the full posting-period breakdown below.
             periods = account.calculateInterestUsing(mc, maturityDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                     financialYearBeginningMonth, null, backdatedTxnsAllowedTill, postReversals);
             asAtMaturitySummary = InterestCalculationSummaryData.from(account.getSummary());
-            // The last period's closing balance is built from the principal transactions alone, so for a Dynamic
-            // Deposit
-            // (matured or not) it leaves the interest out: the maturity amount is the amount invested plus all the
-            // interest earned up to maturity, before withholding tax.
+            // The closing balance excludes interest; Dynamic Deposit maturity is invested amount plus gross interest.
             maturityAmount = account instanceof DynamicDepositAccount dynamicDepositAccount
                     ? dynamicDepositAccount.grossMaturityAmountAfterProjection()
                     : lastClosingBalanceOf(periods, account).getAmount();
@@ -168,10 +149,6 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
                 topUpAmount, withdrawalAmount, simulatedRate);
     }
 
-    /**
-     * Maps each persisted savings transaction that is a leg of an account transfer (either side) to its transfer row,
-     * so the preview can return the transfer ids callers recorded when they initiated the transfer.
-     */
     private Map<Long, AccountTransferTransaction> transfersBySavingsTransactionId(final SavingsAccount account) {
         final List<Long> transactionIds = account.getTransactions().stream().map(SavingsAccountTransaction::getId)
                 .filter(java.util.Objects::nonNull).toList();
@@ -213,12 +190,7 @@ public class InterestCalculationReadPlatformServiceImpl implements InterestCalcu
         return null;
     }
 
-    /**
-     * Adds a transient (never persisted - see class javadoc) deposit and/or withdrawal transaction dated today, so the
-     * calculation engine's daily-balance walk reflects "what if I did this today" from that point forward while leaving
-     * every already-elapsed day untouched. Both are independently optional and can be combined. Returns the last one
-     * added, or {@code null} if nothing was simulated.
-     */
+    /** Adds transient top-up/withdrawal transactions dated today; returns the last one added, or {@code null}. */
     private SavingsAccountTransaction addSimulatedTransactionIfPresent(final SavingsAccount account, final LocalDate today,
             final BigDecimal topUpAmount, final BigDecimal withdrawalAmount) {
         SavingsAccountTransaction last = null;

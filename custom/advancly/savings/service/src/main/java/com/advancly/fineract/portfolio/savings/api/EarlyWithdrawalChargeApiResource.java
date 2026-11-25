@@ -34,18 +34,8 @@ import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.springframework.stereotype.Component;
 
 /**
- * Read-only early-withdrawal-charge preview - given an account and a prospective {@code withdrawalDate} (and, for a
- * custom-period charge rule, an explicit {@code selectedFromDate}/{@code selectedToDate}), returns the charge a
- * withdrawal on that date would incur under the account's product's early-withdrawal interest-charge rule, without ever
- * posting interest, applying a charge, or persisting anything. Is a {@code POST} (rather than a query-param
- * {@code GET}) purely so the optional custom-period selected-period parameters have somewhere natural to live.
- *
- * The request body may also carry an optional {@code earlyWithdrawalChargePercentage}, which overrides the percentage
- * configured on the charge (and any percentage override stored on the account) for this preview only - so a caller can
- * quote the charge at a percentage it is considering, exactly as the withdrawal itself can be submitted with one. It
- * must be between 0 and 100 when supplied; omitting it leaves the configured percentage in force.
- *
- * See {@link EarlyWithdrawalChargeReadPlatformService} for what it computes.
+ * Read-only early-withdrawal-charge preview. A {@code POST} so the optional custom-period dates fit in the body; an
+ * optional {@code earlyWithdrawalChargePercentage} (0-100) overrides the configured percentage for this preview only.
  */
 @Path("/v1/savingsaccounts/{accountId}/earlywithdrawalcharge")
 @Component

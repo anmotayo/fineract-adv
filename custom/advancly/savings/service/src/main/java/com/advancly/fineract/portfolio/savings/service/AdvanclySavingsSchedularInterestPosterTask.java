@@ -21,17 +21,8 @@ package com.advancly.fineract.portfolio.savings.service;
 import org.apache.fineract.portfolio.savings.service.SavingsSchedularInterestPosterTask;
 
 /**
- * Task 7 skeleton: a plain subclass of core's {@link SavingsSchedularInterestPosterTask} with zero behavior change. The
- * only reason this class exists (rather than reusing the core task type directly) is so that
- * {@code AdvanclySavingsAutoConfiguration} can construct it with an {@link AdvanclySavingsSchedularInterestPoster}
- * specifically - the type Task 8 will add plain-Savings per-period-charge logic to - while still satisfying core's
- * {@code @ConditionalOnMissingBean(SavingsSchedularInterestPosterTask.class)} check in {@code SavingsConfiguration}.
- *
- * <p>
- * All of {@code call()}, {@code setSavingAccounts(...)} and {@code setBackdatedTxnsAllowedTill(...)} are inherited
- * unchanged from core; {@code call()} invokes {@code interestPoster.postInterest()} polymorphically, so it already
- * dispatches to {@link AdvanclySavingsSchedularInterestPoster#postInterest()} at runtime without needing to be
- * overridden here.
+ * Exists so the auto-configuration can supply an {@link AdvanclySavingsSchedularInterestPoster} while still satisfying
+ * core's {@code @ConditionalOnMissingBean(SavingsSchedularInterestPosterTask.class)}.
  */
 public class AdvanclySavingsSchedularInterestPosterTask extends SavingsSchedularInterestPosterTask {
 

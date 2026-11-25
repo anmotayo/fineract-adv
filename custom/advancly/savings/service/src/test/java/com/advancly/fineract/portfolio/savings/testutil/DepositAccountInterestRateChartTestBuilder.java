@@ -27,11 +27,7 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateCh
 import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateChartSlabs;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Builds a {@link DepositAccountInterestRateChart} with amount-range-only slabs (no period gating) directly via
- * reflection, bypassing the product-side {@code InterestRateChart}/{@code InterestRateChartSlab} construction that
- * {@code DepositAccountInterestRateChart#from(...)} normally clones from.
- */
+/** Builds a {@link DepositAccountInterestRateChart} with amount-only slabs via reflection, without a product chart. */
 public class DepositAccountInterestRateChartTestBuilder {
 
     private final Set<DepositAccountInterestRateChartSlabs> slabs = new HashSet<>();

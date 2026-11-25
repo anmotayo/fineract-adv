@@ -67,10 +67,7 @@ import org.apache.fineract.portfolio.tax.domain.TaxGroup;
 import org.apache.fineract.portfolio.tax.domain.TaxGroupRepositoryWrapper;
 import org.springframework.stereotype.Component;
 
-/**
- * Builds a {@link DynamicDepositProduct} from a create/update {@link JsonCommand}. Structurally mirrors
- * {@code DepositProductAssembler#assembleFixedDepositProduct}, scoped to this product's Phase-1 fields.
- */
+/** Mirrors {@code DepositProductAssembler#assembleFixedDepositProduct}. */
 @Component
 public class DynamicDepositProductAssembler extends SavingsProductBaseAssembler {
 

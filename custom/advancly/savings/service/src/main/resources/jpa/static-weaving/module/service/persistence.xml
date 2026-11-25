@@ -31,7 +31,7 @@
     <persistence-unit name="jpa-pu" transaction-type="RESOURCE_LOCAL">
         <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
 
-        <!-- Dynamic Deposit Entities (com.advancly.fineract.portfolio.savings.domain) -->
+        <!-- Dynamic Deposit Entities -->
         <class>com.advancly.fineract.portfolio.savings.domain.DepositProductDynamicDetail</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DepositAccountDynamicDetail</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DynamicDepositProduct</class>
@@ -40,7 +40,7 @@
         <class>com.advancly.fineract.portfolio.savings.domain.AdvanclyChargeInterestRule</class>
         <class>com.advancly.fineract.portfolio.savings.domain.DepositInterestChargeApplication</class>
 
-        <!-- Core Module Entities (superclasses / relationships referenced by the Dynamic Deposit entities above) -->
+        <!-- Core Module Entities -->
         <class>org.apache.fineract.useradministration.domain.Role</class>
         <class>org.apache.fineract.portfolio.fund.domain.Fund</class>
         <class>org.apache.fineract.infrastructure.documentmanagement.domain.Image</class>
@@ -89,7 +89,7 @@
         <class>org.apache.fineract.portfolio.floatingrates.domain.FloatingRate</class>
         <class>org.apache.fineract.portfolio.floatingrates.domain.FloatingRatePeriod</class>
 
-        <!-- Savings Module Entities (superclasses / relationships referenced by the Dynamic Deposit entities above) -->
+        <!-- Savings Module Entities -->
         <class>org.apache.fineract.interoperation.domain.InteropIdentifier</class>
         <class>org.apache.fineract.portfolio.interestratechart.domain.InterestIncentives</class>
         <class>org.apache.fineract.portfolio.interestratechart.domain.InterestRateChart</class>

@@ -112,7 +112,6 @@ public class SavingsAccountTestBuilder {
         ReflectionTestUtils.setField(account, "allowOverdraft", allowOverdraft);
         ReflectionTestUtils.setField(account, "overdraftLimit", overdraftLimit);
         ReflectionTestUtils.setField(account, "activatedOnDate", activatedOnDate);
-        // An account in use: active, and not blocked or dormant.
         ReflectionTestUtils.setField(account, "status", SavingsAccountStatusType.ACTIVE.getValue());
         ReflectionTestUtils.setField(account, "sub_status", SavingsAccountSubStatusEnum.NONE.getValue());
         ReflectionTestUtils.setField(account, "currency", currency);
@@ -127,7 +126,6 @@ public class SavingsAccountTestBuilder {
         ReflectionTestUtils.setField(account, "onHoldFunds", onHoldFunds);
         ReflectionTestUtils.setField(account, "savingsOnHoldAmount", savingsOnHoldAmount);
 
-        // Set client with office mock for office() method
         Office office = Mockito.mock(Office.class);
         Mockito.lenient().when(office.getId()).thenReturn(1L);
         Client client = Mockito.mock(Client.class);
@@ -136,7 +134,6 @@ public class SavingsAccountTestBuilder {
         Mockito.lenient().when(client.getId()).thenReturn(1L);
         ReflectionTestUtils.setField(account, "client", client);
 
-        // Set product mock for journal entries
         SavingsProduct product = Mockito.mock(SavingsProduct.class);
         Mockito.lenient().when(product.getId()).thenReturn(1L);
         ReflectionTestUtils.setField(account, "product", product);

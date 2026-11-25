@@ -27,9 +27,7 @@ import org.apache.fineract.infrastructure.core.domain.FineractPlatformTenant;
 import org.apache.fineract.infrastructure.core.service.ThreadLocalContextUtil;
 import org.apache.fineract.organisation.monetary.domain.MoneyHelper;
 
-/**
- * Initializes MoneyHelper's tenant rounding mode and ThreadLocalContextUtil business dates for unit tests.
- */
+/** Sets up tenant rounding mode and business dates for unit tests. */
 public final class MoneyHelperInitializer {
 
     private static final String TEST_TENANT = "default";
@@ -37,15 +35,12 @@ public final class MoneyHelperInitializer {
     private MoneyHelperInitializer() {}
 
     public static void initialize() {
-        // Set up tenant context
         FineractPlatformTenant tenant = FineractPlatformTenant.builder().id(1L).tenantIdentifier(TEST_TENANT).name("Default")
                 .timezoneId("UTC").build();
         ThreadLocalContextUtil.setTenant(tenant);
 
-        // Initialize MoneyHelper rounding mode for the test tenant
         MoneyHelper.initializeTenantRoundingMode(TEST_TENANT, RoundingMode.HALF_EVEN.ordinal());
 
-        // Initialize ThreadLocalContextUtil business dates
         ThreadLocalContextUtil.setActionContext(ActionContext.DEFAULT);
         HashMap<BusinessDateType, LocalDate> businessDates = new HashMap<>();
         businessDates.put(BusinessDateType.BUSINESS_DATE, LocalDate.now());

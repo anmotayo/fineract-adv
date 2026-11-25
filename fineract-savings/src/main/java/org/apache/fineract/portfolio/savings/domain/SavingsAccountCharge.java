@@ -288,12 +288,7 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
                 this.amountWrittenOff = null;
             break;
             case PERCENT_OF_INTEREST:
-                // The configured percentage MUST be preserved (it is this charge's only configuration), and both
-                // `amount` and `amount_outstanding_derived` are NOT NULL columns - so they are zero, not null.
-                // Leaving `amount` null also made the constructor's own determineIfFullyPaid() ->
-                // calculateOutstanding() dereference throw. There is no amount until an interest period is posted;
-                // Advancly's interest-charge application ledger tracks the real figures and never consults these
-                // fields.
+                // Keep the configured percentage; amounts are NOT NULL columns, so zero until interest is posted.
                 this.percentage = chargeAmount;
                 this.amount = BigDecimal.ZERO;
                 this.amountPercentageAppliedTo = null;
@@ -371,18 +366,8 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
     }
 
     /**
-     * Applies and immediately fully pays an externally-computed charge amount - for charge types (e.g.
-     * {@code PERCENT_OF_INTEREST}) whose payable amount per application is computed by the caller rather than derived
-     * from a fixed {@code amount}/{@code percentage} on this row, which instead stays pinned at zero between
-     * applications (see {@code populateDerivedFields(...)}).
-     * <p>
-     * {@code amount}/{@code amountOutstanding} are refreshed to this application's amount before paying - mirroring
-     * {@link #updateWithdralFeeAmount} before {@link #pay} for withdrawal fees - so {@code amountOutstanding} lands on
-     * exactly zero instead of drifting negative, and {@code paid} correctly reflects this one application.
-     * {@code amountPaid}, however, is preserved as a running lifetime total across every application on this reused
-     * row: it is set aside before the reset and added back afterward, rather than being reset to just this
-     * application's amount, so it still answers "how much has ever been paid via this charge" instead of only "how much
-     * was paid this time."
+     * Applies and fully pays a caller-computed amount (e.g. {@code PERCENT_OF_INTEREST}). {@code amountPaid} stays a
+     * running lifetime total across applications on this reused row.
      */
     public Money payExternallyComputedCharge(final MonetaryCurrency currency, final BigDecimal amount) {
         final Money priorAmountPaid = getAmountPaid(currency);
@@ -597,10 +582,8 @@ public class SavingsAccountCharge extends AbstractAuditableWithUTCDateTimeCustom
     }
 
     /**
-     * The configured percentage for percentage-based calculation types (column {@code calculation_percentage}), or
-     * {@code null} for types that do not use one (e.g. {@code FLAT}). For a {@code PERCENT_OF_INTEREST} charge this is
-     * the account-level override when one was supplied at attachment time, and the charge definition's own amount
-     * otherwise - exactly the precedence implementation plan Section 11 requires.
+     * Configured percentage, or null for types without one. For {@code PERCENT_OF_INTEREST} the account-level override
+     * wins over the charge definition's amount.
      */
     public BigDecimal getPercentage() {
         return this.percentage;

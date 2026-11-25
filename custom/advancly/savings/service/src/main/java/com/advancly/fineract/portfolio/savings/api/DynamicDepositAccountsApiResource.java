@@ -48,6 +48,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.api.JsonQuery;
@@ -57,6 +58,7 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
@@ -69,11 +71,6 @@ import org.apache.fineract.portfolio.savings.service.SavingsAccountChargeReadPla
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-/**
- * REST resource for the Dynamic Deposit account (deposit_type_enum = 500). Lifecycle-only for Phase 1 (create / update
- * / delete / submit-application transitions) - deposit/withdrawal/interest-posting/close are later-phase work, see the
- * implementation plan.
- */
 @Path("/v1/dynamicdepositaccounts")
 @Component
 public class DynamicDepositAccountsApiResource {
@@ -91,6 +88,7 @@ public class DynamicDepositAccountsApiResource {
     private final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService;
     private final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer;
     private final FromJsonHelper fromJsonHelper;
+    private final ReadAuditService readAuditService;
 
     public DynamicDepositAccountsApiResource(final PlatformSecurityContext context,
             final DynamicDepositAccountReadPlatformService dynamicDepositAccountReadPlatformService,
@@ -101,7 +99,8 @@ public class DynamicDepositAccountsApiResource {
             final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
             final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService,
-            final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer, final FromJsonHelper fromJsonHelper) {
+            final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer, final FromJsonHelper fromJsonHelper,
+            final ReadAuditService readAuditService) {
         this.context = context;
         this.dynamicDepositAccountReadPlatformService = dynamicDepositAccountReadPlatformService;
         this.toApiJsonSerializer = toApiJsonSerializer;
@@ -113,6 +112,7 @@ public class DynamicDepositAccountsApiResource {
         this.closureReadPlatformService = closureReadPlatformService;
         this.closureToApiJsonSerializer = closureToApiJsonSerializer;
         this.fromJsonHelper = fromJsonHelper;
+        this.readAuditService = readAuditService;
     }
 
     @POST
@@ -173,8 +173,7 @@ public class DynamicDepositAccountsApiResource {
         if (CommandParameterUtil.is(commandParam, "approve")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "approve").build();
         } else if (CommandParameterUtil.is(commandParam, "undoapproval")) {
-            // actionName must read APPROVALUNDO to match the m_permission row seeded for this action (mirrors the
-            // fixed deposit convention) - createAccountCommand upper-cases the raw command string it is given.
+            // Upper-cased to APPROVALUNDO to match the seeded m_permission row, as for fixed deposits.
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "approvalundo").build();
         } else if (CommandParameterUtil.is(commandParam, "reject")) {
             commandRequest = builder.createAccountCommand(ACCOUNT_TYPE, accountId, "reject").build();
@@ -234,6 +233,8 @@ public class DynamicDepositAccountsApiResource {
         }
 
         final DynamicDepositAccountData accountData = this.dynamicDepositAccountReadPlatformService.retrieveOne(accountId);
+        this.readAuditService.auditRead("DYNAMICDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(accountData.externalId()),
+                accountData.clientId());
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final DynamicDepositAccountData accountDataWithAssociations = populateTemplateAndAssociations(accountId, accountData, chargeStatus,
                 uriInfo, mandatoryResponseParameters);

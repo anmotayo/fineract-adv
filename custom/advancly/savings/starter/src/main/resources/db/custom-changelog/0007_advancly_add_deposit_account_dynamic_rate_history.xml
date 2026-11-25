@@ -23,8 +23,6 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
-    <!-- Dynamic Deposit rate history: one row per principal-changing transaction, capturing the interest rate -->
-    <!-- resolved (or carried forward) for the interval starting at that transaction. Implementation plan Section 4. -->
     <changeSet author="advancly" id="1">
         <preConditions onFail="MARK_RAN">
             <not>

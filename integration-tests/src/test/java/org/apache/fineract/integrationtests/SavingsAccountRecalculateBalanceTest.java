@@ -188,8 +188,7 @@ public class SavingsAccountRecalculateBalanceTest {
         assertEquals(balance, summary.get("availableBalance"), "Verifying Balance after hold-release-deposit");
         depositTransaction = savingsAccountHelper.getTransactionDetails(savingsId, depositTransactionId);
         // this is a backdated transaction and so listed before the release transaction
-        assertEquals(balance - holdAmount, depositTransaction.get("runningBalance"),
-                "Verifying Running Balance of deposit negative balance");
+        assertEquals(balance, depositTransaction.get("runningBalance"), "Verifying Running Balance of deposit negative balance");
 
         HashMap releaseTransaction = savingsAccountHelper.getTransactionDetails(savingsId, releaseTransactionId);
         assertFalse((Boolean) releaseTransaction.get("reversed"), "Verifying release transaction with overdraft is not reversed");

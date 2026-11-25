@@ -50,10 +50,7 @@ import org.apache.fineract.portfolio.savings.WithHoldTaxPostingType;
 import org.apache.fineract.portfolio.savings.data.SavingsProductAccountingDataValidator;
 import org.springframework.stereotype.Component;
 
-/**
- * Validates create/update requests for the {@code DYNAMICDEPOSITPRODUCT} entity. Mirrors the shape of
- * {@code DepositProductDataValidator}'s fixed-deposit rules, scoped to the fields this Phase-1 product supports.
- */
+/** Validates DYNAMICDEPOSITPRODUCT create/update requests, mirroring DepositProductDataValidator. */
 @Component
 public class DynamicDepositProductDataValidator {
 
@@ -213,11 +210,7 @@ public class DynamicDepositProductDataValidator {
         }
     }
 
-    /**
-     * Shared by create and update: fixes the bug where update() previously skipped the "withHoldTax==true requires
-     * taxGroupId" check that create() already had, and adds the withHoldTaxPostingTypeId requirement that Dynamic
-     * Deposit never validated at all (mirrors {@code DepositProductDataValidator#validateTaxWithHoldingParams}).
-     */
+    /** Mirrors {@code DepositProductDataValidator#validateTaxWithHoldingParams}. */
     private void validateTaxWithHoldingParams(final DataValidatorBuilder baseDataValidator, final JsonElement element,
             final boolean isCreate) {
         Boolean withHoldTax = this.fromApiJsonHelper.extractBooleanNamed(withHoldTaxParamName, element);

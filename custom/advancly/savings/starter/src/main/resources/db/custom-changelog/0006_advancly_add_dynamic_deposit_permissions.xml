@@ -23,7 +23,6 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
-    <!-- Permissions for the DYNAMICDEPOSITPRODUCT entity (mirrors the FIXEDDEPOSITPRODUCT permission set). -->
     <changeSet author="advancly" id="1">
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="0">SELECT COUNT(*) FROM m_permission WHERE code = 'CREATE_DYNAMICDEPOSITPRODUCT'</sqlCheck>
@@ -79,8 +78,6 @@
         </insert>
     </changeSet>
 
-    <!-- Permissions for the DYNAMICDEPOSITACCOUNT entity (Phase 1 lifecycle actions only: -->
-    <!-- deposit/withdrawal/calculateInterest/postInterest/close/prematureClose/undo/adjust are later phases). -->
     <changeSet author="advancly" id="2">
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="0">SELECT COUNT(*) FROM m_permission WHERE code = 'CREATE_DYNAMICDEPOSITACCOUNT'</sqlCheck>

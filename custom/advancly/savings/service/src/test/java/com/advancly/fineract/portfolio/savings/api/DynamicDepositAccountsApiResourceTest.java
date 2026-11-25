@@ -39,6 +39,7 @@ import java.util.Collection;
 import java.util.List;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.api.JsonQuery;
 import org.apache.fineract.infrastructure.core.data.CommandProcessingResult;
@@ -60,13 +61,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Guards against a regression to the defect fixed here: {@code createAccountCommand(...)} alone never populates
- * {@code CommandWrapper#getSavingsId()}, which both {@code CalculateInterestDynamicDepositAccountCommandHandler} and
- * {@code PostInterestDynamicDepositAccountCommandHandler} depend on ({@code command.getSavingsId()} being non-null) to
- * function at all - so the built command must carry the account id through {@code getSavingsId()}, not just
- * {@code getEntityId()}.
- */
+/** The interest command handlers need {@code getSavingsId()} set, not just {@code getEntityId()}. */
 class DynamicDepositAccountsApiResourceTest {
 
     private static final Long ACCOUNT_ID = 42L;
@@ -79,6 +74,7 @@ class DynamicDepositAccountsApiResourceTest {
     private AccountAssociationsReadPlatformService accountAssociationsReadPlatformService;
     private DynamicDepositAccountClosureReadPlatformService closureReadPlatformService;
     private DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer;
+    private ReadAuditService readAuditService;
     private DynamicDepositAccountsApiResource resource;
 
     @BeforeEach
@@ -94,13 +90,14 @@ class DynamicDepositAccountsApiResourceTest {
         this.accountAssociationsReadPlatformService = mock(AccountAssociationsReadPlatformService.class);
         this.closureReadPlatformService = mock(DynamicDepositAccountClosureReadPlatformService.class);
         this.closureToApiJsonSerializer = mock(DefaultToApiJsonSerializer.class);
+        this.readAuditService = mock(ReadAuditService.class);
         final ApiRequestParameterHelper apiRequestParameterHelper = new ApiRequestParameterHelper();
         when(this.commandsSourceWritePlatformService.logCommandSource(any(CommandWrapper.class)))
                 .thenReturn(mock(CommandProcessingResult.class));
         this.resource = new DynamicDepositAccountsApiResource(context, this.readPlatformService, this.toApiJsonSerializer,
                 this.commandsSourceWritePlatformService, apiRequestParameterHelper, this.depositAccountReadPlatformService,
                 this.savingsAccountChargeReadPlatformService, this.accountAssociationsReadPlatformService, this.closureReadPlatformService,
-                this.closureToApiJsonSerializer, new FromJsonHelper());
+                this.closureToApiJsonSerializer, new FromJsonHelper(), this.readAuditService);
     }
 
     @Test
@@ -179,6 +176,15 @@ class DynamicDepositAccountsApiResourceTest {
         verify(this.savingsAccountChargeReadPlatformService).retrieveSavingsAccountCharges(ACCOUNT_ID, "all");
         verify(this.accountAssociationsReadPlatformService).retriveSavingsLinkedAssociation(ACCOUNT_ID);
         assertThat(ReflectionTestUtils.getField(capturedSerializedAccount(), "linkedAccount")).isSameAs(linkedAccount);
+    }
+
+    @Test
+    void retrieveOneAuditsTheRead() {
+        when(this.readPlatformService.retrieveOne(ACCOUNT_ID)).thenReturn(accountData());
+
+        this.resource.retrieveOne(ACCOUNT_ID, "all", uriInfo("all"));
+
+        verify(this.readAuditService).auditRead(eq("DYNAMICDEPOSITACCOUNT"), eq(ACCOUNT_ID), any(), eq(1L));
     }
 
     private CommandWrapper capturedCommandWrapper() {

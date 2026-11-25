@@ -18,16 +18,15 @@
  */
 package com.advancly.fineract.portfolio.savings.domain;
 
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 
 /**
- * Lightweight wrapper that carries the assembled SavingsAccount along with the last balance-bearing transaction (the
- * row whose balance window needs closing when a new transaction is appended) for the O(1) append path. This is
- * deliberately not just "the last non-reversed transaction": that row may be an interest posting/accrual/overdraft
- * interest row, which core never windows (see SavingsAccountTransaction#isBalanceBearing()).
+ * Account plus its last balance-bearing transaction for the append path. Not simply the last transaction: interest
+ * postings and accruals are never windowed (see SavingsAccountTransaction#isBalanceBearing()).
  */
 @Getter
 @RequiredArgsConstructor
@@ -35,8 +34,20 @@ public class AssembledSavingsAccount {
 
     private final SavingsAccount account;
     private final SavingsAccountTransaction lastBalanceBearingTransaction;
+    // Read under the account lock; null on the core path or with no transactions.
+    private final LocalDate lastTransactionDate;
 
     public static AssembledSavingsAccount of(SavingsAccount account, SavingsAccountTransaction lastBalanceBearingTransaction) {
-        return new AssembledSavingsAccount(account, lastBalanceBearingTransaction);
+        return new AssembledSavingsAccount(account, lastBalanceBearingTransaction, null);
+    }
+
+    public static AssembledSavingsAccount of(SavingsAccount account, SavingsAccountTransaction lastBalanceBearingTransaction,
+            LocalDate lastTransactionDate) {
+        return new AssembledSavingsAccount(account, lastBalanceBearingTransaction, lastTransactionDate);
+    }
+
+    /** Re-check under the lock: the pre-lock check can miss a transaction a concurrent writer committed meanwhile. */
+    public boolean isBackdated(final LocalDate transactionDate) {
+        return lastTransactionDate != null && transactionDate.isBefore(lastTransactionDate);
     }
 }

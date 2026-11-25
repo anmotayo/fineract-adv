@@ -49,28 +49,8 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountRepositoryWrap
 import org.springframework.stereotype.Service;
 
 /**
- * Backs {@code POST /savingsaccounts/{accountId}/earlywithdrawalcharge} (see
- * {@link EarlyWithdrawalChargeReadPlatformService}).
- *
- * Deliberately has NO {@code @Transactional} annotation of its own, for the same reason
- * {@link InterestCalculationReadPlatformServiceImpl} does not: {@code findOneWithNotFoundDetection(Long)} opens and
- * commits its own transaction, detaching the account before this class touches it, so every mutation this class makes
- * afterwards (posting the interest on its in-memory copy) happens on an object nothing is tracking for a flush. This is
- * what makes it safe to call this endpoint as often as needed without ever charging or posting anything for real.
- *
- * Cumulative mode quotes what the real exit charges, by doing what it does to the copy: force-post the interest on the
- * date {@link CumulativeInterestForfeitureService#forcedPostingDate} picks (skipped when a posting already sits on that
- * date), then take the percentage of the interest posted net of the tax posted with it, less what was already
- * forfeited. {@code forClosure} selects the date a closure posts on (the closure date, which accrues through the day
- * before it) instead of the one an ordinary withdrawal uses (the day before the withdrawal). Custom-period mode reuses
- * {@link AdvanclyInterestChargeApplicationService#selectedPostedNetInterest} on the interest posted in the period: for
- * a withdrawal only what has really posted, for a closure (which posts its closing interest before it charges) what the
- * closure would have posted. Both rules report {@code accountBalanceAfterPosting}, the balance once that posting is in,
- * which a closure pays out of.
- *
- * An optional {@code earlyWithdrawalChargePercentage} in the request body is threaded through to the same resolution
- * the real withdrawal uses ({@code resolveQualifyingChargeWithPercentage(...)} / {@code resolvePercentage(...)}, both
- * of which already take an override), so the preview and the charge that actually gets applied agree on the percentage.
+ * Backs {@code POST /savingsaccounts/{accountId}/earlywithdrawalcharge}. Deliberately not {@code @Transactional}: the
+ * account is loaded detached, so the interest posted on it for the quote is never flushed.
  */
 @Service
 @RequiredArgsConstructor
@@ -133,10 +113,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                     "No active penalty charge qualifies for this account's cumulative early-withdrawal rule.");
         }
 
-        // Do what the real exit does, so the quote is the charge: force-post the interest on the same date, then take
-        // the
-        // percentage of the interest posted net of the tax posted with it. A closure dates that posting on the closure
-        // date (the accrual through the day before it), an ordinary withdrawal the day before the withdrawal.
+        // Mirror the real exit: force-post on the same date, then charge the percentage of interest net of its tax.
         final LocalDate basisDate = this.cumulativeInterestForfeitureService.forcedPostingDate(account, withdrawalDate, forClosure);
         if (this.cumulativeInterestForfeitureService.latestInterestPostingOn(account, basisDate) == null) {
             postInterestOn(account, basisDate,
@@ -148,8 +125,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
         final BigDecimal totalInterestPosted = zeroIfNull(account.getSummary().getTotalInterestPosted());
         final BigDecimal totalWithholdTax = zeroIfNull(account.getSummary().getTotalWithholdTax());
         final BigDecimal basisAmount = totalInterestPosted.subtract(totalWithholdTax).subtract(alreadyForfeited).max(BigDecimal.ZERO);
-        // Rounded to the currency, as the forfeiture transaction is when it is written, so the quote is the amount
-        // charged.
+        // Rounded to currency as the forfeiture transaction is, so the quote equals the charge.
         final BigDecimal chargeAmount = Money.of(account.getCurrency(), CumulativeForfeitureCalculator.forfeitureAmount(totalInterestPosted,
                 totalWithholdTax, alreadyForfeited, qualifying.percentage())).getAmount();
 
@@ -170,11 +146,8 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
         }
         this.advanclyInterestChargeApplicationService.validateDailyPostingPeriod(account);
 
-        // A closure posts its closing interest before it takes the charge, so the interest posted in the period is what
-        // the
-        // closure will see, not just what the daily postings have reached; the withdrawal of a period only charges what
-        // is
-        // posted. The balance after that posting is what the closure pays out of.
+        // A closure posts its closing interest before charging, so it sees the projected period interest; a withdrawal
+        // only charges what is posted. The closure pays out of the balance after that posting.
         BigDecimal accountBalanceAfterPosting = null;
         if (forClosure) {
             final LocalDate postingDate = account.interestPostingTransactionDateForClosure(withdrawalDate);
@@ -222,10 +195,7 @@ public class EarlyWithdrawalChargeReadPlatformServiceImpl implements EarlyWithdr
                 resolvedSelectedFromDate, resolvedSelectedToDate, accountBalanceAfterPosting);
     }
 
-    /**
-     * Posts the interest on {@code postingDate} the way a real exit does, on this detached copy of the account only, so
-     * the interest and the tax it posts can be read back from the summary.
-     */
+    /** Posts interest as a real exit does, on this detached copy only. */
     private void postInterestOn(final SavingsAccount account, final LocalDate postingDate, final LocalDate interestPostingUpToDate) {
         final MathContext mc = new MathContext(10, MoneyHelper.getRoundingMode());
         final boolean isSavingsInterestPostingAtCurrentPeriodEnd = this.configurationDomainService

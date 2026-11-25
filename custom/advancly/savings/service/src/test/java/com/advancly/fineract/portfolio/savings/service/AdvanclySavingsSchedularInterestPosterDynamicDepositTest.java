@@ -50,12 +50,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/**
- * Covers Dynamic Deposit scheduled posting after removal of the old entity side-loop. Dynamic Deposit accounts are now
- * normal DTO batch members: the poster only bulk-loads their rate history and then calls the same
- * {@link SavingsAccountWritePlatformService#postInterest(SavingsAccountData, boolean, LocalDate, boolean)} path used by
- * the rest of the scheduled chunk.
- */
+/** Dynamic Deposit accounts are normal DTO members of scheduled posting; only their rate history is bulk-loaded. */
 class AdvanclySavingsSchedularInterestPosterDynamicDepositTest {
 
     private SavingsAccountWritePlatformService writePlatformService;

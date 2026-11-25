@@ -27,24 +27,8 @@ import org.apache.fineract.portfolio.paymenttype.data.PaymentTypeData;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountData;
 
 /**
- * What closing a Dynamic Deposit on {@code closedOnDate} would pay out, and the options to close it with. Backs both
- * {@code GET dynamicdepositaccounts/{id}/template?command=close} and {@code POST
- * dynamicdepositaccounts/{id}?command=calculatePrematureAmount}. Read-only: computing it writes nothing.
- *
- * {@code maturityAmount} is the net payout - the balance after the closing interest has posted (net of withholding tax)
- * and after any early-withdrawal forfeiture. It carries that name because that is the field the Fixed and Recurring
- * Deposit closure templates use for it and the closure screens already bind to it.
- *
- * {@code principal} is the account balance before the closing interest posts; {@code depositAmount} is the amount
- * invested, which is what reinvesting the principal only carries over (reinvesting principal and interest carries
- * {@code maturityAmount}).
- *
- * {@code linkedAccountId}/{@code linkedAccountNo} name the savings account linked to the deposit, if any: where the
- * interest, less tax, goes when the principal only is reinvested (it is paid out when there is none).
- *
- * {@code forfeiture*} describe the early-withdrawal forfeiture a premature closure incurs; {@code forfeitureApplicable}
- * is {@code false} - and the amount zero - when the account's product has no qualifying cumulative rule, or the closure
- * is not early.
+ * What closing a Dynamic Deposit on {@code closedOnDate} would pay out. {@code maturityAmount} is the net payout (named
+ * as in the FD/RD closure templates); {@code depositAmount} is what a principal-only reinvestment carries over.
  */
 public class DynamicDepositClosureData implements Serializable {
 

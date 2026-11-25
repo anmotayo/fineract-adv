@@ -80,7 +80,6 @@ class SavingsAccountTransactionHelperTest {
         SavingsAccountSummary summary = new SavingsAccountSummaryTestBuilder().withAccountBalance(BigDecimal.valueOf(1000)).build();
         SavingsAccount account = new SavingsAccountTestBuilder().withSummary(summary).build();
 
-        // Should not throw
         helper.validateBalanceForAppendPath(account, BigDecimal.valueOf(500), currency);
     }
 
@@ -170,6 +169,27 @@ class SavingsAccountTransactionHelperTest {
     }
 
     @Test
+    void testRecalculateDailyBalancesFromDate_withHoldAndReleasePreservesRunningBalance() {
+        List<SavingsAccountTransaction> transactions = new ArrayList<>();
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(1L).withType(SavingsAccountTransactionType.DEPOSIT)
+                .withDate(LocalDate.of(2025, 7, 1)).withAmount(BigDecimal.valueOf(500)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(2L).withType(SavingsAccountTransactionType.AMOUNT_HOLD)
+                .withDate(LocalDate.of(2025, 7, 2)).withAmount(BigDecimal.valueOf(100)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(3L).withType(SavingsAccountTransactionType.AMOUNT_RELEASE)
+                .withDate(LocalDate.of(2025, 7, 3)).withAmount(BigDecimal.valueOf(100)).build());
+        transactions.add(new SavingsAccountTransactionTestBuilder().withId(4L).withType(SavingsAccountTransactionType.WITHDRAWAL)
+                .withDate(LocalDate.of(2025, 7, 4)).withAmount(BigDecimal.valueOf(200)).build());
+
+        Money openingBalance = Money.of(currency, BigDecimal.valueOf(1000));
+        helper.recalculateDailyBalancesFromDate(transactions, openingBalance, currency);
+
+        assertThat(transactions.get(0).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+        assertThat(transactions.get(1).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+        assertThat(transactions.get(2).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
+        assertThat(transactions.get(3).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1300));
+    }
+
+    @Test
     void testRecalculateDailyBalancesFromDate_skipsReversed() {
         List<SavingsAccountTransaction> transactions = new ArrayList<>();
         transactions.add(new SavingsAccountTransactionTestBuilder().withId(1L).withType(SavingsAccountTransactionType.DEPOSIT)
@@ -183,7 +203,6 @@ class SavingsAccountTransactionHelperTest {
         helper.recalculateDailyBalancesFromDate(transactions, openingBalance, currency);
 
         assertThat(transactions.get(0).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1500));
-        // Reversed transaction should have zeroed balance
         assertThat(transactions.get(2).getRunningBalance(currency).getAmount()).isEqualByComparingTo(BigDecimal.valueOf(1600));
     }
 
@@ -196,7 +215,6 @@ class SavingsAccountTransactionHelperTest {
         SavingsAccount account = new SavingsAccountTestBuilder().build();
         Money openingBalance = Money.of(currency, BigDecimal.valueOf(1000));
 
-        // Should not throw
         helper.validateBalanceDoesNotBecomeNegative(account, transactions, openingBalance, currency);
     }
 

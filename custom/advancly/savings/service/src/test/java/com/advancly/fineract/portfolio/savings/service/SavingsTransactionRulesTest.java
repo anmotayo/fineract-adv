@@ -42,10 +42,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * The checks core makes before a deposit or a withdrawal that the append path has to make too. Each failure carries
- * core's own error code, so a client sees the same response whichever path served the request.
- */
+/** Core's pre-deposit/withdrawal checks that the append path repeats, with core's error codes. */
 class SavingsTransactionRulesTest {
 
     // Within an account activated on 2025-01-01 and no later than today.
@@ -192,8 +189,7 @@ class SavingsTransactionRulesTest {
         assertThat(SavingsTransactionRules.hasAutoPayableWithdrawalFee(this.account)).isTrue();
     }
 
-    // The early-withdrawal interest charge is a withdrawal-related, percent-of-interest charge: core does not pay it in
-    // the withdrawal, and AdvanclyInterestChargeApplicationService applies it after, on both paths.
+    // The early-withdrawal interest charge isn't paid inside the withdrawal; it is applied afterwards on both paths.
     @Test
     void aPercentOfInterestWithdrawalChargeIsNotOneCorePays() {
         withCharges(charge(true, true, true));

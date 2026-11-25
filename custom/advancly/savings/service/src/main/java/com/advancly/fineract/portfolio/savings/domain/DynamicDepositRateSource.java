@@ -18,10 +18,7 @@
  */
 package com.advancly.fineract.portfolio.savings.domain;
 
-/**
- * Where a {@link DepositAccountDynamicRateHistory} row's {@code resolved_annual_interest_rate} came from - implements
- * the {@code rate_source} column from the implementation plan (Section 4).
- */
+/** Where a rate-history row's resolved rate came from ({@code rate_source}). */
 public enum DynamicDepositRateSource {
 
     ACCOUNT_NOMINAL, //

@@ -38,9 +38,6 @@ public class SavingsAccountTransactionHelper {
 
     private final SavingsAccountTransactionSummaryWrapper summaryWrapper;
 
-    /**
-     * O(1) — Set running balance for a transaction appended at the end of the timeline.
-     */
     public void setRunningBalanceForAppendPath(SavingsAccountTransaction transaction, Money lastRunningBalance, MonetaryCurrency currency) {
         Money transactionAmount = transaction.getAmount(currency);
         Money newBalance;
@@ -52,10 +49,7 @@ public class SavingsAccountTransactionHelper {
         transaction.setRunningBalance(newBalance);
     }
 
-    /**
-     * O(1) — Update the previous last transaction's balance end date and cumulative balance fields when appending a new
-     * transaction. The previous transaction's balance period is closed at (newTransactionDate - 1).
-     */
+    /** Closes the previous transaction's balance window at newTransactionDate - 1. */
     public void updatePreviousTransactionBalanceEndDate(SavingsAccountTransaction previousTransaction, LocalDate newTransactionDate,
             MonetaryCurrency currency) {
         if (previousTransaction != null) {
@@ -64,18 +58,11 @@ public class SavingsAccountTransactionHelper {
         }
     }
 
-    /**
-     * O(1) — Incremental summary update for a single new transaction. Delegates to the existing
-     * SavingsAccountSummary.updateSummaryWithPivotConfig switch logic.
-     */
     public void updateSummaryIncremental(SavingsAccount account, SavingsAccountTransaction transaction, MonetaryCurrency currency) {
         account.getSummary().updateSummaryWithPivotConfig(currency, summaryWrapper, transaction,
                 account.getSavingsAccountTransactionsWithPivotConfig());
     }
 
-    /**
-     * O(1) — Validate withdrawal doesn't exceed available balance for append path.
-     */
     public void validateBalanceForAppendPath(SavingsAccount account, BigDecimal withdrawalAmount, MonetaryCurrency currency) {
         Money withdrawal = Money.of(currency, withdrawalAmount);
         Money availableBalance = Money.of(currency, account.getWithdrawableBalance());
@@ -86,10 +73,7 @@ public class SavingsAccountTransactionHelper {
         }
     }
 
-    /**
-     * O(k) — Recalculate running balances for a list of transactions from a given opening balance. Transactions must be
-     * pre-sorted by date.
-     */
+    /** Transactions must be pre-sorted by date. */
     public void recalculateDailyBalancesFromDate(List<SavingsAccountTransaction> sortedTransactions, Money openingBalance,
             MonetaryCurrency currency) {
         Money runningBalance = openingBalance;
@@ -107,9 +91,6 @@ public class SavingsAccountTransactionHelper {
         }
     }
 
-    /**
-     * O(k) — Validate balance never goes negative from a set of pre-recalculated transactions.
-     */
     public void validateBalanceDoesNotBecomeNegative(SavingsAccount account, List<SavingsAccountTransaction> sortedTransactions,
             Money openingBalance, MonetaryCurrency currency) {
         Money runningBalance = openingBalance;
@@ -136,10 +117,7 @@ public class SavingsAccountTransactionHelper {
         }
     }
 
-    /**
-     * O(n) single-pass — Calculate all 11 summary totals, running balance, and last interest posting date in one
-     * iteration. Replaces the 12-pass updateSummary() + updateRunningBalanceAndPivotDate() for the insert path.
-     */
+    /** Single-pass replacement for core's multi-pass updateSummary() on the insert path. */
     public void calculateAndUpdateSummaryInSinglePass(SavingsAccount account, List<SavingsAccountTransaction> transactions,
             MonetaryCurrency currency) {
         Money totalDeposits = Money.zero(currency);
@@ -217,10 +195,6 @@ public class SavingsAccountTransactionHelper {
         summary.setAccountBalance(accountBalance);
     }
 
-    /**
-     * Check if the transaction date falls before the last interest posting period. Uses a pre-loaded list of interest
-     * and overdraft transactions.
-     */
     public boolean isBeforeLastPostingPeriod(LocalDate transactionDate, List<SavingsAccountTransaction> interestAndOverdraftTransactions) {
         for (SavingsAccountTransaction transaction : interestAndOverdraftTransactions) {
             if ((transaction.isInterestPostingAndNotReversed() || transaction.isOverdraftInterestAndNotReversed())

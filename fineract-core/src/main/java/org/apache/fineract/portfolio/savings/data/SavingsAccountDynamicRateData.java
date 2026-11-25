@@ -21,8 +21,6 @@ package org.apache.fineract.portfolio.savings.data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/**
- * Lightweight rate-history row used by scheduled DTO interest posting for Dynamic Deposit accounts.
- */
+/** Rate-history row for scheduled DTO interest posting of Dynamic Deposit accounts. */
 public record SavingsAccountDynamicRateData(Long accountId, LocalDate transactionDate, BigDecimal resolvedAnnualInterestRate) {
 }

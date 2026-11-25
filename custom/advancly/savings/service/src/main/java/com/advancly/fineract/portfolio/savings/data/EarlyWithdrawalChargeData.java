@@ -23,19 +23,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Response for {@code POST /savingsaccounts/{accountId}/earlywithdrawalcharge} - a read-only, never-persisted preview
- * of the early-withdrawal interest charge a withdrawal on {@code withdrawalDate} would incur, computed the same way the
- * real cumulative/custom-period early-withdrawal charge logic does, just without writing anything.
- *
- * {@code chargeApplicable} is {@code false} (with {@code reason} explaining why) when the account's product has no
- * qualifying early-withdrawal charge rule, no qualifying active penalty charge, or (custom-period mode only) the
- * selected period has already had a charge applied under an "once per selected period" policy.
- *
- * {@code percentage} is the percentage the charge was actually computed with - the request's
- * {@code earlyWithdrawalChargePercentage} override when one was supplied, otherwise whatever is configured on the
- * charge (or overridden on the account).
+ * Never-persisted preview for {@code POST /savingsaccounts/{accountId}/earlywithdrawalcharge}. {@code percentage} is
+ * the request override when supplied, else the configured (or account-overridden) percentage.
  */
-public class EarlyWithdrawalChargeData implements Serializable {
+public final class EarlyWithdrawalChargeData implements Serializable {
 
     private final Long accountId;
     private final LocalDate withdrawalDate;
@@ -74,10 +65,6 @@ public class EarlyWithdrawalChargeData implements Serializable {
         return notApplicable(accountId, withdrawalDate, reason, null);
     }
 
-    /**
-     * See the {@code accountBalanceAfterPosting} parameter of
-     * {@link #applicable(Long, LocalDate, String, Long, String, BigDecimal, BigDecimal, BigDecimal, LocalDate, LocalDate, BigDecimal)}.
-     */
     public static EarlyWithdrawalChargeData notApplicable(final Long accountId, final LocalDate withdrawalDate, final String reason,
             final BigDecimal accountBalanceAfterPosting) {
         return new EarlyWithdrawalChargeData(accountId, withdrawalDate, false, reason, null, null, null, null, null, null, null, null,
@@ -92,12 +79,8 @@ public class EarlyWithdrawalChargeData implements Serializable {
     }
 
     /**
-     * @param accountBalanceAfterPosting
-     *            what the account would hold once the exit has posted its interest, and the tax withheld on it, and
-     *            before the charge is taken; {@code null} when no interest was posted to work it out. A full
-     *            liquidation pays out this less the charge, so it is the figure to quote a payout from. Only the
-     *            early-withdrawal charge call can produce it: it simulates that posting on a copy of the account and
-     *            persists nothing.
+     * {@code accountBalanceAfterPosting}: the balance after the exit posts interest and tax but before the charge
+     * ({@code null} when nothing was posted); a full liquidation pays out this less the charge.
      */
     public static EarlyWithdrawalChargeData applicable(final Long accountId, final LocalDate withdrawalDate, final String interestBasisMode,
             final Long chargeId, final String chargeName, final BigDecimal percentage, final BigDecimal basisAmount,

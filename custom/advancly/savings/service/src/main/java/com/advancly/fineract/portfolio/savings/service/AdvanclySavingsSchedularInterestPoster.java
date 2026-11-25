@@ -56,38 +56,15 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Advancly override for scheduled savings interest posting. It keeps the core DTO/JDBC batch-posting behavior while
- * attaching Dynamic Deposit scheduled rate history before interest is calculated.
- *
- * <p>
- * Two access-modifier constraints on the superclass shape this whole class:
- *
- * <ol>
- * <li>{@code SavingsSchedularInterestPoster} is {@code @Setter}-annotated (Lombok, class-level) - it generates public
- * *setters* for {@code savingAccounts}/{@code backdatedTxnsAllowedTill}, but no getters. This subclass can call
- * {@code super.setSavingAccounts(...)} but cannot read {@code super}'s copy back, so it keeps its own shadow copy
- * ({@link #savingAccountsShadow}/{@link #backdatedTxnsAllowedTillShadow}), populated by overriding both setters to
- * write to both the superclass (for any code that only knows about the supertype) and this subclass's own field.</li>
- * <li>{@code batchUpdate(...)}, {@code batchUpdateJournalEntries(...)} and their SQL-builder helpers are
- * {@code private} on the superclass, not {@code protected} - so {@code postInterest()} cannot be composed as "our new
- * logic, then {@code super.postInterest()}" (that would run the DTO interest engine twice per account, double-posting
- * interest), nor as "call some batch-write-only half of {@code super}" (no such method exists). The only viable
- * approach is to copy those private methods into this subclass verbatim and call this class's own copies - the same
- * "vendor and extend" tradeoff {@code AdvanclySavingsAccountWritePlatformService} already takes for
- * {@code deposit}/{@code withdrawal} relative to core. Those copied methods reference
- * {@code this.jdbcTemplate}/{@code this.platformSecurityContext}/{@code this.savingsAccountReadPlatformService}/
- * {@code this.savingsAccountWritePlatformService}, all of which are likewise {@code private} on the superclass and so
- * are shadowed here too, under the exact same names so the copied method bodies resolve them unchanged.</li>
- * </ol>
+ * Core scheduled interest posting plus Dynamic Deposit rate history. Core's batch-write helpers are private, so they
+ * are copied here rather than calling super.postInterest() (which would post interest twice).
  */
 @Slf4j
 public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInterestPoster {
 
     private static final String SAVINGS_TRANSACTION_IDENTIFIER = "S";
 
-    // Shadow fields for the superclass's private constructor-injected dependencies (see class javadoc point 2). Named
-    // identically to the superclass's own private fields so the nine methods copied verbatim below - which reference
-    // them unqualified or via `this.` - resolve to these without any changes to their bodies.
+    // Shadow the superclass's private fields under the same names so the copied methods compile unchanged.
     private final SavingsAccountWritePlatformService savingsAccountWritePlatformService;
     private final JdbcTemplate jdbcTemplate;
     private final SavingsAccountReadPlatformService savingsAccountReadPlatformService;
@@ -95,7 +72,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
 
     private final DynamicDepositScheduledRateHistoryReadPlatformService dynamicRateHistoryReadPlatformService;
 
-    // Shadow fields for the superclass's private, setter-only state (see class javadoc point 1).
+    // Shadows of the superclass's setter-only state, which has no getters.
     private Collection<SavingsAccountData> savingAccountsShadow = new ArrayList<>();
     private boolean backdatedTxnsAllowedTillShadow;
 
@@ -143,9 +120,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         }
         if (errors.isEmpty()) {
             try {
-                batchUpdate(postedAccounts); // this class's own copy (see class javadoc), not the superclass's
-                                             // private
-                                             // one
+                batchUpdate(postedAccounts); // this class's copy; the superclass's is private
             } catch (final Exception e) {
                 errors.add(e);
             }
@@ -174,12 +149,8 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         return DepositAccountType.fromInt(savingsAccountData.getDepositTypeId()).isDynamicDeposit();
     }
 
-    // ---------------------------------------------------------------------------------------------------------
-    // The nine methods below are copied verbatim from core's SavingsSchedularInterestPoster (fineract-savings),
-    // which declares them all `private` with no getters for the fields they close over - see this class's javadoc.
-    // Do not "clean up" or restructure them independently of core; any behavioral fix belongs in core first and then
-    // ported here, to keep this vendored copy from silently drifting out of parity.
-    // ---------------------------------------------------------------------------------------------------------
+    // The methods below are copied verbatim from core's SavingsSchedularInterestPoster (private there).
+    // Keep them in parity with core; fix behavior in core first.
 
     private void batchUpdateJournalEntries(final List<SavingsAccountData> savingsAccountDataList,
             final HashMap<String, SavingsAccountTransactionData> savingsAccountTransactionDataHashMap)
@@ -194,18 +165,16 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
             for (SavingsAccountTransactionData savingsAccountTransactionData : savingsAccountTransactionDataList) {
                 if (savingsAccountTransactionData.getId() == null && !MathUtil.isZero(savingsAccountTransactionData.getAmount())) {
                     final String key = savingsAccountTransactionData.getRefNo();
-                    if (savingsAccountTransactionDataHashMap.containsKey(key)) {
-                        final SavingsAccountTransactionData dataFromFetch = savingsAccountTransactionDataHashMap.get(key);
-                        savingsAccountTransactionData.setId(dataFromFetch.getId());
-                        if (savingsAccountData.getGlAccountIdForSavingsControl() != 0
-                                && savingsAccountData.getGlAccountIdForInterestOnSavings() != 0) {
-                            if (savingsAccountTransactionData.isWithHoldTax()) {
-                                createJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
-                                        paramsForGLInsertion, currencyCode, userId);
-                            } else {
-                                createJournalEntries(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion, currencyCode,
-                                        userId);
-                            }
+                    final SavingsAccountTransactionData dataFromFetch = savingsAccountTransactionDataHashMap.get(key);
+                    savingsAccountTransactionData.setId(dataFromFetch.getId());
+                    if (savingsAccountData.getGlAccountIdForSavingsControl() != 0
+                            && savingsAccountData.getGlAccountIdForInterestOnSavings() != 0) {
+                        if (savingsAccountTransactionData.isWithHoldTax()) {
+                            createJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
+                                    currencyCode, userId);
+                        } else {
+                            createJournalEntries(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion, currencyCode,
+                                    userId);
                         }
                     }
                 } else if (savingsAccountTransactionData.isReversed()
@@ -336,15 +305,18 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         String queryForSavingsUpdate = batchQueryForSavingsSummaryUpdate();
         String queryForTransactionInsertion = batchQueryForTransactionInsertion();
         String queryForTransactionUpdate = batchQueryForTransactionsUpdate();
-        List<Object[]> paramsForTransactionInsertion = new ArrayList<>();
-        List<Object[]> paramsForSavingsSummary = new ArrayList<>();
-        List<Object[]> paramsForTransactionUpdate = new ArrayList<>();
-        List<String> transRefNo = new ArrayList<>();
         LocalDate currentDate = DateUtils.getBusinessLocalDate();
         Long userId = platformSecurityContext.authenticatedUser().getId();
+
+        List<Object[]> paramsForSavingsSummary = new ArrayList<>();
+        List<List<String>> perAccountRefNos = new ArrayList<>();
+        List<List<Object[]>> perAccountInsertionParams = new ArrayList<>();
+        List<List<Object[]>> perAccountUpdateParams = new ArrayList<>();
+
         for (SavingsAccountData savingsAccountData : savingsAccountDataList) {
             OffsetDateTime auditTime = DateUtils.getAuditOffsetDateTime();
             SavingsAccountSummaryData savingsAccountSummaryData = savingsAccountData.getSummary();
+
             paramsForSavingsSummary.add(new Object[] { savingsAccountSummaryData.getTotalDeposits(),
                     savingsAccountSummaryData.getTotalWithdrawals(), savingsAccountSummaryData.getTotalInterestEarned(),
                     savingsAccountSummaryData.getTotalInterestPosted(), savingsAccountSummaryData.getTotalWithdrawalFees(),
@@ -354,14 +326,19 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
                     savingsAccountSummaryData.getLastInterestCalculationDate(),
                     savingsAccountSummaryData.getInterestPostedTillDate() != null ? savingsAccountSummaryData.getInterestPostedTillDate()
                             : savingsAccountSummaryData.getLastInterestCalculationDate(),
-                    auditTime, userId, savingsAccountData.getId() });
+                    auditTime, userId, savingsAccountData.getId(), savingsAccountData.getVersion() });
+
+            List<String> transRefNo = new ArrayList<>();
+            List<Object[]> insertionParams = new ArrayList<>();
+            List<Object[]> updateParams = new ArrayList<>();
+
             List<SavingsAccountTransactionData> savingsAccountTransactionDataList = savingsAccountData.getSavingsAccountTransactionData();
             for (SavingsAccountTransactionData savingsAccountTransactionData : savingsAccountTransactionDataList) {
                 if (savingsAccountTransactionData.getId() == null && !MathUtil.isZero(savingsAccountTransactionData.getAmount())) {
                     UUID uuid = UUID.randomUUID();
                     savingsAccountTransactionData.setRefNo(uuid.toString());
                     transRefNo.add(uuid.toString());
-                    paramsForTransactionInsertion.add(new Object[] { savingsAccountData.getId(), savingsAccountData.getOfficeId(),
+                    insertionParams.add(new Object[] { savingsAccountData.getId(), savingsAccountData.getOfficeId(),
                             savingsAccountTransactionData.isReversed(), savingsAccountTransactionData.getTransactionType().getId(),
                             savingsAccountTransactionData.getTransactionDate(), savingsAccountTransactionData.getAmount(),
                             savingsAccountTransactionData.getBalanceEndDate(), savingsAccountTransactionData.getBalanceNumberOfDays(),
@@ -370,35 +347,58 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
                             savingsAccountTransactionData.getRefNo(), savingsAccountTransactionData.isReversalTransaction(),
                             savingsAccountTransactionData.getOverdraftAmount(), currentDate });
                 } else {
-                    paramsForTransactionUpdate.add(new Object[] { savingsAccountTransactionData.isReversed(),
-                            savingsAccountTransactionData.getAmount(), savingsAccountTransactionData.getOverdraftAmount(),
-                            savingsAccountTransactionData.getBalanceEndDate(), savingsAccountTransactionData.getBalanceNumberOfDays(),
-                            savingsAccountTransactionData.getRunningBalance(), savingsAccountTransactionData.getCumulativeBalance(),
-                            savingsAccountTransactionData.isReversalTransaction(), auditTime, userId,
-                            savingsAccountTransactionData.getId() });
+                    updateParams.add(new Object[] { savingsAccountTransactionData.isReversed(), savingsAccountTransactionData.getAmount(),
+                            savingsAccountTransactionData.getOverdraftAmount(), savingsAccountTransactionData.getBalanceEndDate(),
+                            savingsAccountTransactionData.getBalanceNumberOfDays(), savingsAccountTransactionData.getRunningBalance(),
+                            savingsAccountTransactionData.getCumulativeBalance(), savingsAccountTransactionData.isReversalTransaction(),
+                            auditTime, userId, savingsAccountTransactionData.getId() });
                 }
             }
             savingsAccountData.setUpdatedTransactions(savingsAccountTransactionDataList);
+
+            perAccountRefNos.add(transRefNo);
+            perAccountInsertionParams.add(insertionParams);
+            perAccountUpdateParams.add(updateParams);
         }
 
-        if (transRefNo.size() > 0) {
-            this.jdbcTemplate.batchUpdate(queryForSavingsUpdate, paramsForSavingsSummary);
-            this.jdbcTemplate.batchUpdate(queryForTransactionInsertion, paramsForTransactionInsertion);
-            this.jdbcTemplate.batchUpdate(queryForTransactionUpdate, paramsForTransactionUpdate);
-            log.debug("`Total No Of Interest Posting:` {}", transRefNo.size());
-            List<SavingsAccountTransactionData> savingsAccountTransactionDataList = fetchTransactionsFromIds(transRefNo);
-            if (savingsAccountDataList != null) {
-                log.debug("Fetched Transactions from DB: {}", savingsAccountTransactionDataList.size());
+        boolean anyNewTransactions = perAccountRefNos.stream().anyMatch(list -> !list.isEmpty());
+        if (!anyNewTransactions) {
+            return;
+        }
+
+        int[] updateCounts = this.jdbcTemplate.batchUpdate(queryForSavingsUpdate, paramsForSavingsSummary);
+
+        List<String> allTransRefNo = new ArrayList<>();
+        List<Object[]> allInsertionParams = new ArrayList<>();
+        List<Object[]> allUpdateParams = new ArrayList<>();
+        List<SavingsAccountData> successfulAccounts = new ArrayList<>();
+
+        for (int i = 0; i < updateCounts.length; i++) {
+            if (updateCounts[i] == 0) {
+                log.warn("Optimistic lock failure for savings account id={} — concurrent modification detected."
+                        + " Skipping. Will retry on next run.", savingsAccountDataList.get(i).getId());
+                continue;
             }
+            allTransRefNo.addAll(perAccountRefNos.get(i));
+            allInsertionParams.addAll(perAccountInsertionParams.get(i));
+            allUpdateParams.addAll(perAccountUpdateParams.get(i));
+            successfulAccounts.add(savingsAccountDataList.get(i));
+        }
+
+        if (!allTransRefNo.isEmpty()) {
+            this.jdbcTemplate.batchUpdate(queryForTransactionInsertion, allInsertionParams);
+            this.jdbcTemplate.batchUpdate(queryForTransactionUpdate, allUpdateParams);
+            log.debug("`Total No Of Interest Posting:` {}", allTransRefNo.size());
+            List<SavingsAccountTransactionData> fetchedTransactions = fetchTransactionsFromIds(allTransRefNo);
+            log.debug("Fetched Transactions from DB: {}", fetchedTransactions.size());
 
             HashMap<String, SavingsAccountTransactionData> savingsAccountTransactionMap = new HashMap<>();
-            for (SavingsAccountTransactionData savingsAccountTransactionData : savingsAccountTransactionDataList) {
+            for (SavingsAccountTransactionData savingsAccountTransactionData : fetchedTransactions) {
                 final String key = savingsAccountTransactionData.getRefNo();
                 savingsAccountTransactionMap.put(key, savingsAccountTransactionData);
             }
-            batchUpdateJournalEntries(savingsAccountDataList, savingsAccountTransactionMap);
+            batchUpdateJournalEntries(successfulAccounts, savingsAccountTransactionMap);
         }
-
     }
 
     private String batchQueryForTransactionInsertion() {
@@ -413,7 +413,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
         return "update m_savings_account set total_deposits_derived=?, total_withdrawals_derived=?, total_interest_earned_derived=?, total_interest_posted_derived=?, total_withdrawal_fees_derived=?, "
                 + "total_fees_charge_derived=?, total_penalty_charge_derived=?, total_annual_fees_derived=?, account_balance_derived=?, total_overdraft_interest_derived=?, total_withhold_tax_derived=?, "
                 + "last_interest_calculation_date=?, interest_posted_till_date=?, " + LAST_MODIFIED_DATE_DB_FIELD + " = ?, "
-                + LAST_MODIFIED_BY_DB_FIELD + " = ? WHERE id=? ";
+                + LAST_MODIFIED_BY_DB_FIELD + " = ?, version = version + 1 WHERE id=? AND version=?";
     }
 
     private String batchQueryForTransactionsUpdate() {

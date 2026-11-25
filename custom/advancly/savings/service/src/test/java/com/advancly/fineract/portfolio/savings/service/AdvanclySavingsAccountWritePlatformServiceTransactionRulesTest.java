@@ -57,7 +57,6 @@ import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetail;
 import org.apache.fineract.portfolio.paymentdetail.domain.PaymentDetailRepository;
 import org.apache.fineract.portfolio.paymentdetail.service.PaymentDetailWritePlatformService;
 import org.apache.fineract.portfolio.paymenttype.domain.PaymentTypeRepositoryWrapper;
-import org.apache.fineract.portfolio.savings.SavingsAccountTransactionType;
 import org.apache.fineract.portfolio.savings.data.SavingsAccountTransactionDataValidator;
 import org.apache.fineract.portfolio.savings.domain.GSIMRepositoy;
 import org.apache.fineract.portfolio.savings.domain.SavingsAccount;
@@ -72,11 +71,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Which plain-savings transactions the append path serves and which go through core. The append path builds the row
- * itself, so core is used whenever the transaction needs something only core does: paying a withdrawal fee, reversing
- * the accruals dated on or after it. It also has to refuse a client or group that is not active, as core does.
- */
+/** Routing between the append path and core: withdrawal fees and accrual reversals need core. */
 @ExtendWith(MockitoExtension.class)
 class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
 
@@ -146,8 +141,7 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
                 anyBoolean());
     }
 
-    // The early-withdrawal interest charge is percent-of-interest: core does not pay it in the withdrawal and the
-    // append path applies it afterwards, so such an account is still served by the append path.
+    // The early-withdrawal interest charge is applied after the withdrawal, so the append path can still serve it.
     @Test
     void aWithdrawalWithOnlyAPercentOfInterestChargeIsServedByTheAppendPath() {
         withCharge(true, true, true);
@@ -180,7 +174,6 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
         verify(this.domainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
-    // A fee only matters to a withdrawal: a bulk request of deposits is served by the append path whatever fees exist.
     @Test
     void aBulkRequestOfOnlyDepositsIsServedByTheAppendPathEvenWhenTheAccountHasAWithdrawalFee() {
         withCharge(true, true, false);
@@ -228,9 +221,10 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
                 anyBoolean());
     }
 
-    // Only an accrual-accounting product has accruals; nobody else pays for the lookup.
+    // Only an accrual-accounting product has accruals to reverse, whatever its accrued-till date says.
     @Test
     void anAccountThatIsNotOnAccrualAccountingIsNeverAskedAboutAccruals() {
+        this.account.setAccruedTillDate(DAY);
         stubAssembled();
         final JsonCommand command = command(DAY, 1000);
         final SavingsAccountTransaction deposit = new SavingsAccountTransactionTestBuilder().withId(101L).withSavingsAccount(this.account)
@@ -242,7 +236,23 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
 
         this.service.deposit(SAVINGS_ID, command);
 
-        verify(this.advanclyTransactionRepository, never()).existsAccrualOnOrAfter(any(), any(), any());
+        verify(this.delegate, never()).deposit(any(), any());
+    }
+
+    @Test
+    void anAccrualAccountThatWasNeverAccruedIsServedByTheAppendPath() {
+        when(this.account.savingsProduct().isAccrualBasedAccountingEnabled()).thenReturn(true);
+        stubAssembled();
+        final JsonCommand command = command(DAY, 1000);
+        final SavingsAccountTransaction deposit = new SavingsAccountTransactionTestBuilder().withId(101L).withSavingsAccount(this.account)
+                .withRunningBalance(BigDecimal.valueOf(6000)).build();
+        when(this.paymentDetailWritePlatformService.createAndPersistPaymentDetail(eq(command), any()))
+                .thenReturn(Mockito.mock(PaymentDetail.class));
+        when(this.domainService.handleDepositOptimized(eq(this.account), eq(DAY), any(), any(), any(Money.class), any(), any(), eq(false)))
+                .thenReturn(deposit);
+
+        this.service.deposit(SAVINGS_ID, command);
+
         verify(this.delegate, never()).deposit(any(), any());
     }
 
@@ -297,7 +307,38 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
         verify(this.domainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
     }
 
+    // ---- made backdated by a concurrent writer (pre-lock check saw nothing later) ----
+
+    @Test
+    void aDepositMadeBackdatedByAConcurrentWriterGoesThroughCore() {
+        stubAssembledWithLastTransactionOn(DAY.plusDays(1));
+        final JsonCommand command = command(DAY, 1000);
+        final CommandProcessingResult delegateResult = new CommandProcessingResultBuilder().withEntityId(999L).build();
+        when(this.delegate.deposit(SAVINGS_ID, command)).thenReturn(delegateResult);
+
+        assertThat(this.service.deposit(SAVINGS_ID, command)).isSameAs(delegateResult);
+
+        verify(this.domainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void aBulkRequestMadeBackdatedByAConcurrentWriterGoesThroughCore() {
+        stubAssembledWithLastTransactionOn(DAY.plusDays(1));
+        when(this.delegate.deposit(eq(SAVINGS_ID), any())).thenReturn(new CommandProcessingResultBuilder().withEntityId(999L).build());
+
+        this.service.bulkTransaction(SAVINGS_ID, bulkCommand("deposit", "deposit"));
+
+        verify(this.delegate, Mockito.times(2)).deposit(any(), any());
+        verify(this.domainService, never()).handleDepositOptimized(any(), any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
     // ---- helpers ----
+
+    private void stubAssembledWithLastTransactionOn(final LocalDate lastTransactionDate) {
+        when(this.advanclyTransactionRepository.findLastTransactionDate(SAVINGS_ID)).thenReturn(Optional.empty());
+        when(this.assembler.assembleForAppendPath(SAVINGS_ID))
+                .thenReturn(AssembledSavingsAccount.of(this.account, null, lastTransactionDate));
+    }
 
     private void stubAssembled() {
         when(this.advanclyTransactionRepository.findLastTransactionDate(SAVINGS_ID)).thenReturn(Optional.empty());
@@ -316,10 +357,10 @@ class AdvanclySavingsAccountWritePlatformServiceTransactionRulesTest {
         ReflectionTestUtils.setField(this.account, "charges", new HashSet<>(List.of(charge)));
     }
 
+    // The tests transact on DAY: accrued till DAY puts the accruals in the way, accrued till the day before does not.
     private void accrualAccountWithAccrualOnOrAfter(final boolean accrualInTheWay) {
         when(this.account.savingsProduct().isAccrualBasedAccountingEnabled()).thenReturn(true);
-        when(this.advanclyTransactionRepository.existsAccrualOnOrAfter(eq(SAVINGS_ID), eq(SavingsAccountTransactionType.ACCRUAL.getValue()),
-                any(LocalDate.class))).thenReturn(accrualInTheWay);
+        this.account.setAccruedTillDate(accrualInTheWay ? DAY : DAY.minusDays(1));
     }
 
     private JsonCommand command(final LocalDate transactionDate, final int amount) {

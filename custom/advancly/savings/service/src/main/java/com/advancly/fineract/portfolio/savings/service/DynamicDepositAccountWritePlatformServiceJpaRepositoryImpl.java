@@ -83,15 +83,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Lean, self-contained write-side implementation for the {@code DYNAMICDEPOSITACCOUNT} entity. Structurally mirrors
- * {@code DepositApplicationProcessWritePlatformServiceJpaRepositoryImpl}'s fixed-deposit branch, reusing the generic
- * (core, not fixed-deposit-specific) {@link SavingsAccountApplicationTransitionApiJsonValidator} for the
- * approve/undo/reject/withdraw transition-guard validation. Mirrors the same class's linked-savings-account association
- * wiring in {@code submitApplication(...)} (Phase 5 Task 4), so an account submitted with {@code linkAccountId} set
- * gets a real {@code m_portfolio_account_associations} row; still excludes business-event notification wiring for Phase
- * 1 leanness (see the implementation report).
- */
+/** Write side for Dynamic Deposit accounts; mirrors the fixed-deposit branch of the deposit application service. */
 @Service
 public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implements DynamicDepositAccountWritePlatformService {
 
@@ -213,12 +205,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             account.validateNewApplicationState(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME);
             this.chargeInterestRuleValidator.validateAccountUsesDailyPostingForCustomPeriodInterestCharge(account);
 
-            // --- linked-account association sync (mirrors modifyFDApplication's linked-account update block) ---
-            // Validation only runs in the two branches below where linkAccountId is null (mirroring FD's own
-            // throwLinkedAccountRequiredError() placement exactly): either the request explicitly clears an
-            // existing association, or there was never one to begin with. When the request simply omits
-            // linkAccountId and an association already exists, this must be a no-op - an untouched field is not a
-            // validation failure, even if transferInterestToSavings is (already) true.
+            // As in modifyFDApplication: omitting linkAccountId when an association exists is not an error.
             final boolean isLinkedAccRequired = account.accountTermAndPreClosure().isTransferInterestToLinkedAccount();
             final Long linkedSavingsAccountId = command.longValueOfParameterNamed(linkedAccountParamName);
 
@@ -262,8 +249,7 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             }
 
             if (!changes.isEmpty()) {
-                // depositPeriod / depositPeriodFrequencyId / submittedOnDate may all have changed, so the stored
-                // maturity date has to be recomputed before the account is saved (mirrors modifyFDApplication).
+                // Deposit period or submitted date may have changed.
                 account.updateMaturityDate();
                 this.dynamicDepositAccountRepository.saveAndFlush(account);
             }
@@ -380,15 +366,9 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
 
         final Map<String, Object> changes = account.activate(currentUser, command);
         if (!changes.isEmpty()) {
-            // Re-anchor the maturity date on the activation date now that it exists -
-            // accountSubmittedOrActivationDate()
-            // switches from submittedOnDate to activatedOnDate the moment the account is activated, mirroring
-            // DepositAccountWritePlatformServiceJpaRepositoryImpl#activateFDAccount.
+            // Maturity is now anchored on the activation date rather than the submitted date.
             account.updateMaturityDate();
-            // Mirrors SavingsAccountWritePlatformServiceJpaRepositoryImpl#activate: without this call, activation
-            // never creates the opening-balance deposit transaction, so a Dynamic Deposit account would have no
-            // transaction to key its first m_deposit_account_dynamic_rate_history row to (implementation plan,
-            // Section 3 step 7 / Section 6). Reused directly rather than duplicated - see plan's "Confirmed gap".
+            // Creates the opening deposit, which the first rate-history row is keyed to.
             final Locale locale = command.extractLocale();
             final DateTimeFormatter fmt = DateTimeFormatter.ofPattern(command.dateFormat()).withLocale(locale);
             fundOpeningDepositFromLinkedAccount(account, locale, fmt);
@@ -396,19 +376,12 @@ public class DynamicDepositAccountWritePlatformServiceJpaRepositoryImpl implemen
             final Set<Long> existingReversedTransactionIds = new HashSet<>();
             this.savingsAccountWritePlatformService.processPostActiveActions(account, fmt, existingTransactionIds,
                     existingReversedTransactionIds);
-            // The opening deposit is in now, so what the account will be worth at maturity can be projected.
             this.maturityAmountService.storeProjectedMaturityAmount(account);
         }
         return saveAndBuildTransitionResult(account, command, changes);
     }
 
-    /**
-     * Mirrors {@code DepositAccountWritePlatformServiceJpaRepositoryImpl#activateFDAccount}: when the account has a
-     * linked savings account, the opening deposit is funded by a transfer out of that account (so it is debited)
-     * instead of being credited from nowhere by {@code processPostActiveActions}. The account is flagged so that
-     * {@code processPostActiveActions} does not post the opening deposit a second time. Accounts without a linked
-     * account keep the unfunded opening deposit.
-     */
+    /** As for FD: with a linked account, the opening deposit is a transfer from it, not an unfunded deposit. */
     private void fundOpeningDepositFromLinkedAccount(final DynamicDepositAccount account, final Locale locale,
             final DateTimeFormatter fmt) {
         final Money openingDeposit = account.activateWithBalance();

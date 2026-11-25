@@ -54,11 +54,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * Verifies {@link DynamicDepositAccount#calculateInterestUsing} varies the interest rate per rate-history interval
- * within a single core posting period, while still producing exactly one {@code INTEREST_POSTING} transaction per
- * posting-period boundary (matching {@code SavingsAccount.postInterest}'s own invariant for every other account type).
- */
+/** Rate varies per rate-history interval inside a posting period, still one INTEREST_POSTING per boundary. */
 class DynamicDepositAccountInterestTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
@@ -75,8 +71,7 @@ class DynamicDepositAccountInterestTest {
         this.rateHistoryService = mock(DynamicDepositRateHistoryService.class);
         final ApplicationContext applicationContext = mock(ApplicationContext.class);
         lenient().when(applicationContext.getBean(DepositAccountDynamicRateHistoryRepository.class)).thenReturn(this.rateHistoryRepository);
-        // Only exercised by undoTransaction(...) - DynamicDepositAccount#undoTransaction resolves the rate-history
-        // service through the locator to reverse the invested-amount rate-history row for the undone transaction.
+        // Used only by undoTransaction(...).
         lenient().when(applicationContext.getBean(DynamicDepositRateHistoryService.class)).thenReturn(this.rateHistoryService);
         lenient().when(applicationContext.getBean(CumulativeInterestForfeitureService.class))
                 .thenReturn(mock(CumulativeInterestForfeitureService.class));
@@ -101,9 +96,7 @@ class DynamicDepositAccountInterestTest {
                 .thenReturn(rateHistory);
 
         final MathContext mc = MoneyHelper.getMathContext();
-        // A monthly posting job runs on Feb 1st to post January's interest - the posting-period boundary
-        // (dateOfPostingTransaction) for a period ending Jan 31 is Feb 1, so upToInterestCalculationDate must reach
-        // at least Feb 1 for the transaction to actually be created (see SavingsAccount.postInterest's date filter).
+        // January's posting is dated Feb 1, so the bound must reach Feb 1.
         this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
@@ -111,9 +104,7 @@ class DynamicDepositAccountInterestTest {
 
         assertThat(interestPostings).hasSize(1);
 
-        // Hand-computed expected amount: plain (non-compounding) daily-balance interest, 365 days/year -
-        // 14 days at 1000 @ 2%, then 17 days at 2000 @ 3% (top-up lands on day 15, splitting the Jan 1-31 core
-        // posting period at the rate-history transaction date).
+        // 14 days at 1000 @ 2%, then 17 days at 2000 @ 3% (simple interest, 365-day year).
         final BigDecimal dailyFractionAt2Pct = BigDecimal.valueOf(2).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
                 mc);
         final BigDecimal dailyFractionAt3Pct = BigDecimal.valueOf(3).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
@@ -150,17 +141,12 @@ class DynamicDepositAccountInterestTest {
         assertThat(afterFirstCall).hasSize(1);
         final BigDecimal amountAfterFirstCall = afterFirstCall.get(0).getAmount();
 
-        // Re-run with identical arguments - PostingPeriod.createFrom recomputes the same amount for the same
-        // (unchanged) transaction history, so postingTransaction.hasNotAmount(...) must be false and no
-        // reversal/recreation should happen.
         this.account.postInterest(mc, LocalDate.of(2026, 2, 1), false, false, 1, null, false, true);
         final List<SavingsAccountTransaction> afterSecondCall = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
 
         assertThat(afterSecondCall).hasSize(1);
         assertThat(afterSecondCall.get(0).getAmount()).isEqualByComparingTo(amountAfterFirstCall);
-        // The no-op path must not reverse the original transaction - it should be the very same live transaction,
-        // not a reversal followed by a freshly-created replacement.
         assertThat(afterSecondCall.get(0)).isSameAs(afterFirstCall.get(0));
         assertThat(this.account.getTransactions().stream().filter(SavingsAccountTransaction::isReversed).toList()).isEmpty();
     }
@@ -183,9 +169,7 @@ class DynamicDepositAccountInterestTest {
                 .thenReturn(rateHistory);
 
         final MathContext mc = MoneyHelper.getMathContext();
-        // Post through March 1st so both the January and February core posting-period boundaries have their
-        // dateOfPostingTransaction (Feb 1 and Mar 1 respectively) within range - 2026 is not a leap year, so
-        // February has 28 days.
+        // Through Mar 1 so both the Feb 1 and Mar 1 postings are created.
         this.account.postInterest(mc, LocalDate.of(2026, 3, 1), false, false, 1, null, false, true);
 
         final List<SavingsAccountTransaction> interestPostings = this.account.getTransactions().stream()
@@ -204,11 +188,9 @@ class DynamicDepositAccountInterestTest {
         final BigDecimal dailyFractionAt3Pct = BigDecimal.valueOf(3).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
                 mc);
 
-        // January boundary: 14 days at 1000 @ 2%, then 17 days at 2000 @ 3% - identical to the single-boundary test.
         final BigDecimal expectedJanuary = BigDecimal.valueOf(1000).multiply(dailyFractionAt2Pct).multiply(BigDecimal.valueOf(14))
                 .add(BigDecimal.valueOf(2000).multiply(dailyFractionAt3Pct).multiply(BigDecimal.valueOf(17)))
                 .setScale(2, MoneyHelper.getRoundingMode());
-        // February boundary: whole month at 2000 @ 3% (28 days, no rate change and no transactions inside February).
         final BigDecimal expectedFebruary = BigDecimal.valueOf(2000).multiply(dailyFractionAt3Pct).multiply(BigDecimal.valueOf(28))
                 .setScale(2, MoneyHelper.getRoundingMode());
 
@@ -231,14 +213,12 @@ class DynamicDepositAccountInterestTest {
         final BigDecimal interestAfterInterestCharge = interestOverFebruary(true);
         final BigDecimal interestWithoutInterestCharge = interestOverFebruary(false);
 
-        // Under no-compounding an interest charge is not a principal-changing withdrawal, so it must be excluded from
-        // the interest-bearing-balance walk.
+        // Under no-compounding an interest charge does not reduce the interest-bearing balance.
         assertThat(interestAfterInterestCharge).isEqualByComparingTo(interestWithoutInterestCharge);
     }
 
     private BigDecimal interestOverFebruary(final boolean addInterestCharge) {
-        this.account = buildAccount(); // buildAccount() already defaults interestCompoundingPeriodType to 8
-                                       // (NO_COMPOUNDING_SIMPLE_INTEREST), which this assertion is specific to.
+        this.account = buildAccount();
 
         final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
         lenient().when(this.rateHistoryRepository.findByAccountIdOrderByTransactionDateAscIdAsc(this.account.getId()))
@@ -259,10 +239,7 @@ class DynamicDepositAccountInterestTest {
                 .orElseThrow(() -> new IllegalStateException("no February interest posting was created")).getAmount();
     }
 
-    /**
-     * The same January scenario the existing rate-splitting test uses: 1000 opening on Jan 1 at 2%, topped up to 2000
-     * on Jan 15 at 3%, giving roughly 3.56 of gross interest for the period.
-     */
+    /** 1000 at 2% from Jan 1, topped up to 2000 at 3% on Jan 15. */
     private void stubSingleRateHistoryForJanuary() {
         final SavingsAccountTransaction openingDeposit = transaction(1L, LocalDate.of(2026, 1, 1), BigDecimal.valueOf(1000));
         final SavingsAccountTransaction topUp = transaction(2L, LocalDate.of(2026, 1, 15), BigDecimal.valueOf(1000));
@@ -306,7 +283,6 @@ class DynamicDepositAccountInterestTest {
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).toList();
         assertThat(interestPostings).hasSize(1);
 
-        // Same hand-computed figure as the persisted-rows test: 14 days at 1000 @ 2%, 17 days at 2000 @ 3%.
         final BigDecimal dailyFractionAt2Pct = BigDecimal.valueOf(2).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
                 mc);
         final BigDecimal dailyFractionAt3Pct = BigDecimal.valueOf(3).divide(BigDecimal.valueOf(100), mc).divide(BigDecimal.valueOf(365),
@@ -342,8 +318,7 @@ class DynamicDepositAccountInterestTest {
 
         final SavingsAccountTransaction posting = this.account.getTransactions().stream()
                 .filter(SavingsAccountTransaction::isInterestPostingAndNotReversed).findFirst().orElseThrow();
-        // 14 days at 1000 @ 2% (0.77), then 17 days at 2000 @ 5% (4.66) - the simulated 5%, not the persisted 3%. The
-        // engine rounds each rate segment separately, hence two rounded terms rather than one rounded sum.
+        // The simulated 5% applies, not the persisted 3%; each rate segment is rounded separately.
         final BigDecimal segment1 = BigDecimal.valueOf(1000).multiply(BigDecimal.valueOf(0.02)).multiply(BigDecimal.valueOf(14))
                 .divide(BigDecimal.valueOf(365), mc).setScale(2, MoneyHelper.getRoundingMode());
         final BigDecimal segment2 = BigDecimal.valueOf(2000).multiply(BigDecimal.valueOf(0.05)).multiply(BigDecimal.valueOf(17))
@@ -363,10 +338,7 @@ class DynamicDepositAccountInterestTest {
         ReflectionTestUtils.setField(newAccount, "interestCalculationType", 1); // DAILY_BALANCE
         ReflectionTestUtils.setField(newAccount, "interestCalculationDaysInYearType", 365);
         ReflectionTestUtils.setField(newAccount, "savingsAccountTransactions", new ArrayList<SavingsAccountTransaction>());
-        // DynamicDepositAccount#withHoldTaxPostingType() dereferences accountTermAndPreClosure unconditionally
-        // (mirroring FixedDepositAccount/RecurringDepositAccount) - postInterest calls it regardless of whether
-        // withholding tax is actually configured, so it must never be null, even when these tests aren't exercising
-        // WHT themselves.
+        // postInterest always reads withHoldTaxPostingType(), which needs accountTermAndPreClosure.
         ReflectionTestUtils.setField(newAccount, "accountTermAndPreClosure",
                 DepositAccountTermAndPreClosure.createNew(null, null, null, null, null, null, null, null, null, null, false, null, null));
 

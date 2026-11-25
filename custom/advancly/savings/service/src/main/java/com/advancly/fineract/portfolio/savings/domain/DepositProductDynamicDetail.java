@@ -32,13 +32,7 @@ import org.apache.fineract.infrastructure.core.api.JsonCommand;
 import org.apache.fineract.infrastructure.core.domain.AbstractAuditableWithUTCDateTimeCustom;
 import org.apache.fineract.portfolio.savings.domain.SavingsProduct;
 
-/**
- * Product-level configuration for the Dynamic Deposit product type (deposit_type_enum = 500).
- *
- * Captures whether withdrawals are allowed on accounts created from this product and whether the interest rate is
- * re-resolved from the interest rate chart on every principal-changing transaction. New accounts inherit these values
- * unless overridden at submission (see {@link DepositAccountDynamicDetail}).
- */
+/** Product-level Dynamic Deposit config; accounts inherit it unless overridden (see DepositAccountDynamicDetail). */
 @Entity
 @Table(name = "m_deposit_product_dynamic_detail")
 public class DepositProductDynamicDetail extends AbstractAuditableWithUTCDateTimeCustom<Long> {

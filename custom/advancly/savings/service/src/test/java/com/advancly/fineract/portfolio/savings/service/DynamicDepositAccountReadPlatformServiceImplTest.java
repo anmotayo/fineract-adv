@@ -100,9 +100,7 @@ class DynamicDepositAccountReadPlatformServiceImplTest {
 
         final DynamicDepositInterestSummaryData summaryData = this.service.retrieveInterestSummary(ACCOUNT_ID);
 
-        // netInterest = interestPosted - withholdingTax - interestCharges (interestCharges is always zero
-        // this phase), not the current unposted accrual (totalInterestForPeriod = 120 - 100 = 20, which would make
-        // netInterest negative here and is the defect this test guards against).
+        // netInterest is based on posted interest, not the unposted accrual.
         final BigDecimal netInterest = (BigDecimal) ReflectionTestUtils.getField(summaryData, "netInterest");
         assertThat(netInterest).isEqualByComparingTo("90");
         assertThat(netInterest).isNotNegative();

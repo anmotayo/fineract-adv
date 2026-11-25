@@ -26,15 +26,8 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Component;
 
 /**
- * Bridges plain JPA entities (which are not Spring-managed and cannot be {@code @Autowired}) to the
- * {@link DynamicDepositRateHistoryService} bean.
- *
- * Needed specifically because a few write paths call {@code DynamicDepositAccount#deposit(...)}/{@code #withdraw(...)}
- * /{@code #undoTransaction(Long)} directly with no domain-service layer in between - notably
- * {@code SavingsAccountWritePlatformServiceJpaRepositoryImpl#adjustSavingsTransaction} (replacement transaction) and
- * backdated account transfers (via the core {@code SavingsAccountDomainServiceJpa}, bypassing the Advancly wrapper).
- * Those paths cannot be reached from {@code AdvanclySavingsAccountDomainService} (which handles the optimized
- * append-path and reversal cases via ordinary constructor injection instead - see that class).
+ * Gives non-Spring-managed entities access to {@link DynamicDepositRateHistoryService}: some write paths call
+ * {@code DynamicDepositAccount} deposit/withdraw/undo directly, bypassing the service layer.
  */
 @Component
 public class DynamicDepositServiceLocator implements ApplicationContextAware {

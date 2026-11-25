@@ -76,18 +76,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Closes a Dynamic Deposit the way {@link DepositAccountDomainServiceJpa} closes a Fixed or Recurring Deposit: the
- * closure type picks what happens to the money (withdraw it, or transfer it to a savings account).
- *
- * Core's {@code DepositAccountDomainService} is not modified. This {@code @Primary} implementation delegates every
- * method core declares, unchanged, to {@link DepositAccountDomainServiceJpa} and adds the two Dynamic Deposit closures,
- * which core cannot declare because it has no compile-time visibility of {@link DynamicDepositAccount}.
- *
- * <b>Order matters.</b> The closure settles first - forced interest posting, withholding tax and, before maturity, the
- * early-withdrawal forfeiture ({@link DynamicDepositAccount#beginClosureSettlement}) - and only then pays out whatever
- * is left, as ONE withdrawal or ONE transfer. Settlement and payout each journal their own transactions as they write
- * them, exactly as core's closure does, so there is deliberately no closing journal pass here: a pass keyed on a
- * "transaction ids that already existed" snapshot taken before settlement would journal the forfeiture a second time.
+ * Delegates to {@link DepositAccountDomainServiceJpa} and adds Dynamic Deposit closures, which core can't see.
+ * Settlement runs before the payout and each journals its own transactions, so there is no closing journal pass (one
+ * would journal the forfeiture twice).
  */
 @Service
 @Primary
@@ -123,17 +114,13 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         this.accountAssociationsReadPlatformService = accountAssociationsReadPlatformService;
     }
 
-    /**
-     * @return the id of the closing withdrawal, or {@code null} when the closure was a transfer (the transfer owns its
-     *         own withdrawal and deposit legs) or the balance was already zero.
-     */
+    /** Returns the closing withdrawal id, or {@code null} for a transfer or a zero balance. */
     @Transactional
     public Long handleDynamicDepositPreMatureClosure(final DynamicDepositAccount account, final PaymentDetail paymentDetail,
             final AppUser user, final JsonCommand command, final Map<String, Object> changes) {
         return settleAndClose(account, paymentDetail, user, command, changes, true);
     }
 
-    /** See {@link #handleDynamicDepositPreMatureClosure}. */
     @Transactional
     public Long handleDynamicDepositClosure(final DynamicDepositAccount account, final PaymentDetail paymentDetail, final AppUser user,
             final JsonCommand command, final Map<String, Object> changes) {
@@ -150,25 +137,20 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
 
         validateClosure(account, closedDate, closureType, isPreMatureClosure);
         if (!isPreMatureClosure) {
-            // A maturity closure closes a matured account. One that has reached its maturity date but has not yet been
-            // matured by the maturity job is matured here first, so the final interest is posted exactly once - by the
-            // maturity - and never again by the closure.
+            // Mature it here if the maturity job hasn't yet, so the final interest is posted exactly once.
             matureAccount(account);
         }
         final SavingsAccount transferDestination = closureType.isTransferToSavings() ? resolveTransferDestination(account, command) : null;
-        // Reinvesting the principal only sends the interest, less tax, to the linked savings account when there is one.
         final SavingsAccount interestDestination = closureType.isReinvestPrincipal() ? resolveLinkedAccount(account) : null;
 
         Long savingsTransactionId = null;
-        // A premature closure may carry its own early-withdrawal charge percentage; the forfeiture settlement reads it
-        // from the account, so it is set for the duration of the closure only.
+        // The forfeiture settlement reads the override from the account, so set it for this closure only.
         final boolean hasPercentageOverride = command.parameterExists(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE)
                 && command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE) != null;
         if (hasPercentageOverride) {
             account.setWithdrawalChargePercentageOverride(command.bigDecimalValueOfParameterNamed(EARLY_WITHDRAWAL_CHARGE_PERCENTAGE));
         }
-        // allowWithdrawal=false stops manual withdrawals and transfers out, not the closure of the account (at maturity
-        // or premature): lift it for the payout (the transfer wrapper checks it too), and put it back whatever happens.
+        // allowWithdrawal=false must not block closure: lift it for the payout and restore it in finally.
         if (isPreMatureClosure) {
             account.markClosingPrematurely(true);
         } else {
@@ -176,28 +158,21 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         }
         try {
             if (account.getSummary().getAccountBalance().signum() > 0) {
-                // Only a premature closure settles interest, tax and the early-withdrawal charge: at maturity they were
-                // settled when the account matured.
+                // At maturity, interest and tax were already settled by matureAccount.
                 if (isPreMatureClosure && account.beginClosureSettlement(closedDate)) {
                     postClosureInterest(account, account.interestPostingTransactionDateForClosure(closedDate), closedDate);
                 }
 
-                // Read AFTER settlement (premature) or maturity: this is principal plus the final interest, net of
-                // withholding tax and any forfeiture - the customer's complete payout.
+                // Read after settlement: net of tax and forfeiture.
                 final BigDecimal payout = account.getSummary().getAccountBalance();
                 if (payout.signum() > 0) {
-                    // The maturity amount stored at activation was a projection; the closed account keeps what it
-                    // actually paid out - the figure the closure template calls the maturity amount.
+                    // Replace the projected maturity amount with what was actually paid out.
                     account.accountTermAndPreClosure().updateMaturityDetails(payout, account.maturityDate());
                     if (transferDestination != null) {
                         transferPayout(account, transferDestination, payout, closedDate, fmt, locale,
                                 command.stringValueOfParameterNamed(transferDescriptionParamName));
                     } else if (closureType.isReinvestPrincipal()) {
-                        // The principal moves to the new deposit; the interest, less tax, goes to the linked account or
-                        // is
-                        // paid out. The interest leaves FIRST: the engine labels a withdrawal as interest first, so
-                        // this
-                        // one is booked as interest and the principal withdrawal after it as principal.
+                        // Interest leaves first: the engine books withdrawals against interest before principal.
                         final BigDecimal reinvestAmount = principalOf(account).min(payout);
                         final BigDecimal interestLessTax = payout.subtract(reinvestAmount);
                         if (interestLessTax.signum() > 0) {
@@ -235,8 +210,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         account.accountTermAndPreClosure().updateOnAccountClosureStatus(closureType);
         changes.putAll(account.close(user, command));
         if (isPreMatureClosure) {
-            // close() finalises every account as CLOSED; a premature closure is recorded as PRE_MATURE_CLOSURE, the
-            // status Fixed and Recurring Deposits end up in, so clients can tell it from a normal closure.
+            // Match FD/RD: premature closures end as PRE_MATURE_CLOSURE, not CLOSED.
             account.setStatus(SavingsAccountStatusType.PRE_MATURE_CLOSURE.getValue());
             changes.put(SavingsApiConstants.statusParamName, SavingsEnumerations.status(SavingsAccountStatusType.PRE_MATURE_CLOSURE));
         }
@@ -244,14 +218,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         return savingsTransactionId;
     }
 
-    /**
-     * Brings an account that has reached its maturity date to the matured state. The final interest, and any tax
-     * configured to be withheld at maturity, are posted on the maturity date - the settlement a maturity closure used
-     * to make itself - and the account is marked matured, after which it takes no transaction but its closure.
-     *
-     * @return whether the account was matured: {@code false} for one that is not active, has no maturity date, or has
-     *         not reached it
-     */
+    /** Posts final interest and maturity tax on the maturity date and marks the account matured. */
     @Transactional
     public boolean matureAccount(final DynamicDepositAccount account) {
         final LocalDate maturityDate = account.maturityDate();
@@ -265,12 +232,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         return true;
     }
 
-    /**
-     * The amount invested - what a principal-only reinvestment carries over - as it stands now, after the closing
-     * interest and tax have been written and before any of the payout leaves. Computed from the transactions, not read
-     * from the {@code deposit_amount} cache, which an account that predates the correct calculation may still hold
-     * wrongly.
-     */
+    /** Computed from transactions, not the {@code deposit_amount} cache, which older accounts may hold wrongly. */
     private static BigDecimal principalOf(final DynamicDepositAccount account) {
         final List<SavingsAccountTransaction> transactions = account.getTransactions();
         if (transactions.isEmpty()) {
@@ -297,8 +259,6 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
                 .resource(DYNAMIC_DEPOSIT_ACCOUNT_RESOURCE_NAME
                         + (isPreMatureClosure ? DepositsApiConstants.preMatureCloseAction : SavingsApiConstants.closeAction));
 
-        // A premature closure is of an active account; a maturity closure is of one that has matured, or that has
-        // reached its maturity date and is about to be matured by the closure itself.
         final boolean isActive = SavingsAccountStatusType.ACTIVE.hasStateOf(account.getStatus());
         if (isPreMatureClosure ? !isActive : !(isActive || account.isMatured())) {
             baseDataValidator.reset().failWithCodeNoParameterAddedToErrorCode("not.in.active.state");
@@ -306,9 +266,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
             baseDataValidator.reset().parameter(SavingsApiConstants.closedOnDateParamName).value(closedDate)
                     .failWithCode("must.be.before.maturity.date");
         } else if (!isPreMatureClosure && (account.maturityDate() == null || account.isEarlyWithdrawal(closedDate))) {
-            // isEarlyWithdrawal(...) is false for an account with no maturity date, so "not early" is not enough: a
-            // maturity closure - which lifts the withdrawal lock for its payout - needs maturity positively
-            // established.
+            // isEarlyWithdrawal is false with no maturity date, so require one explicitly.
             baseDataValidator.reset().parameter(SavingsApiConstants.closedOnDateParamName).value(closedDate)
                     .failWithCode("must.be.on.or.after.maturity.date");
         }
@@ -329,10 +287,6 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         }
     }
 
-    /**
-     * The destination of a closure transfer must be an active savings account of the same client - or, for a group
-     * account, the same group - as the deposit being closed. Currency is checked by the transfer itself.
-     */
     private SavingsAccount resolveTransferDestination(final DynamicDepositAccount account, final JsonCommand command) {
         final Long toSavingsAccountId = command.longValueOfParameterNamed(toSavingsAccountIdParamName);
         final SavingsAccount destination = this.depositAccountAssembler.assembleFrom(toSavingsAccountId,
@@ -352,7 +306,6 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         return destination;
     }
 
-    /** The savings account interest is transferred to, or {@code null} when the account has none. */
     private SavingsAccount resolveLinkedAccount(final DynamicDepositAccount account) {
         final PortfolioAccountData linked = this.accountAssociationsReadPlatformService.retriveSavingsLinkedAssociation(account.getId());
         if (linked == null) {
@@ -377,11 +330,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         this.accountTransfersWritePlatformService.transferFunds(accountTransferDTO);
     }
 
-    /**
-     * What core's {@code close()} does for its closure interest: post through the account's own
-     * {@code postInterest(...)}, bounded by the closure date rather than today's business date so a backdated closure
-     * cannot earn interest for days after it. Core keeps that method private, hence this copy.
-     */
+    /** Copy of core's private closure posting, bounded by the closure date so backdating earns no extra days. */
     private void postClosureInterest(final DynamicDepositAccount account, final LocalDate postingDate,
             final LocalDate interestPostingUpToDate) {
         if (account.getNominalAnnualInterestRate().signum() <= 0) {
@@ -399,7 +348,7 @@ public class AdvanclyDepositAccountDomainService implements DepositAccountDomain
         final boolean postReversals = false;
         account.postInterest(mc, interestPostingUpToDate, isInterestTransfer, isSavingsInterestPostingAtCurrentPeriodEnd,
                 financialYearBeginningMonth, postingDate, backdatedTxnsAllowedTill, postReversals);
-        // Tax configured to be withheld at maturity is not written by the posting above; write it with the interest.
+        // postInterest doesn't write maturity-withheld tax.
         account.withholdMaturityTaxAtClosure(postingDate);
 
         for (final SavingsAccountTransaction transaction : account.getTransactions()) {

@@ -23,8 +23,7 @@
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
 
-    <!-- Dynamic Deposit product-level configuration: whether withdrawals are allowed and whether the -->
-    <!-- interest rate is re-resolved from the interest rate chart on every principal-changing transaction. -->
+    <!-- Product-level: allow withdrawals, and re-resolve the rate from the chart on principal changes. -->
     <changeSet author="advancly" id="1">
         <preConditions onFail="MARK_RAN">
             <not>

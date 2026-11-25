@@ -238,11 +238,9 @@ class AdvanclyInterestChargeApplicationServiceTest {
         verify(transactionRepository).save(chargeTransaction);
         verify(savingsAccountRepository).saveAndFlush(account);
         verify(journalEntryWritePlatformService).createJournalEntriesForSavings(any());
-        // Regression guard: the withdrawal's balance window must be closed when the charge is appended right after
-        // it, otherwise it keeps a stale/open-ended window instead of being confined to its own day.
+        // The withdrawal's balance window must be closed when the charge is appended right after it.
         verify(transactionHelper).updatePreviousTransactionBalanceEndDate(withdrawalTransaction, transactionDate, CURRENCY);
-        // Regression guard: neither appendPath nor backdatedTxnsAllowedTill is set, so the charge must go through the
-        // JPA-managed collection, matching core's own non-append, non-backdated write path.
+        // Neither flag set: the charge goes through the JPA-managed collection, like core's default path.
         verify(account).addTransaction(chargeTransaction);
         verify(account, never()).addTransactionToExisting(any());
     }
@@ -252,8 +250,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccount account = mock(SavingsAccount.class);
         final SavingsAccountTransaction chargeTransaction = applyCustomPeriodChargeAndCaptureTransaction(account, true, false);
 
-        // appendPath must win on its own: the withdrawal was added via addTransactionToExisting(...) because it went
-        // through the O(1) append path, independent of whatever backdatedTxnsAllowedTill happens to be.
+        // appendPath alone selects addTransactionToExisting, regardless of backdatedTxnsAllowedTill.
         verify(account).addTransactionToExisting(chargeTransaction);
         verify(account, never()).addTransaction(any());
     }
@@ -263,17 +260,11 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccount account = mock(SavingsAccount.class);
         final SavingsAccountTransaction chargeTransaction = applyCustomPeriodChargeAndCaptureTransaction(account, false, true);
 
-        // Not on the append path, but core's own handleWithdrawal(...)/withdraw(...) used the pivot-config
-        // collection for this withdrawal (backdatedTxnsAllowedTill=true), so the charge must follow suit.
+        // Core used the pivot-config collection here (backdatedTxnsAllowedTill=true), so the charge must too.
         verify(account).addTransactionToExisting(chargeTransaction);
         verify(account, never()).addTransaction(any());
     }
 
-    /**
-     * Shared scaffolding for the appendPath/backdatedTxnsAllowedTill collection-selection tests above: applies a
-     * custom-period charge with the given flags and returns the resulting charge transaction so the caller can assert
-     * which of {@code account.addTransaction(...)}/{@code addTransactionToExisting(...)} received it.
-     */
     private SavingsAccountTransaction applyCustomPeriodChargeAndCaptureTransaction(final SavingsAccount account, final boolean appendPath,
             final boolean backdatedTxnsAllowedTill) {
         final AdvanclyChargeInterestRuleRepository ruleRepository = mock(AdvanclyChargeInterestRuleRepository.class);
@@ -341,7 +332,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransactionRepository transactionRepository = mock(SavingsAccountTransactionRepository.class);
         final SavingsAccountRepositoryWrapper savingsAccountRepository = mock(SavingsAccountRepositoryWrapper.class);
         final SavingsAccountTransactionSummaryWrapper summaryWrapper = mock(SavingsAccountTransactionSummaryWrapper.class);
-        // Real helper (not a mock) so the fix's actual effect on the withdrawal's balance window is asserted.
+        // Real helper so the actual effect on the balance window is asserted.
         final SavingsAccountTransactionHelper transactionHelper = new SavingsAccountTransactionHelper(summaryWrapper);
         final JournalEntryWritePlatformService journalEntryWritePlatformService = mock(JournalEntryWritePlatformService.class);
         final CumulativeInterestForfeitureService cumulativeInterestForfeitureService = mock(CumulativeInterestForfeitureService.class);
@@ -360,8 +351,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
         final SavingsAccountTransaction withdrawalTransaction = SavingsAccountTransaction.withdrawal(account, office, null, transactionDate,
                 Money.of(CURRENCY, new BigDecimal("25")), null);
         withdrawalTransaction.setRunningBalance(Money.of(CURRENCY, new BigDecimal("1000")));
-        // Still open-ended, exactly as the O(1) append path leaves the trailing balance-bearing row before the
-        // charge is appended after it.
+        // Still open-ended, as the append path leaves it before the charge is appended.
         assertThat(withdrawalTransaction.getEndOfBalanceDate()).isNull();
 
         final SavingsAccountTransaction interestPosting = SavingsAccountTransaction.interestPosting(account, office,
@@ -403,10 +393,7 @@ class AdvanclyInterestChargeApplicationServiceTest {
                 selectedFromDate, selectedToDate, false, false);
 
         assertThat(chargeTransaction).isNotNull();
-        // The withdrawal's window is now closed (end date clamped to its own transaction date, contributing 0 days
-        // since the charge transaction takes over the balance on that same day) instead of staying null/open-ended
-        // and overlapping with the charge transaction that now follows it. This matches how core's own
-        // resetAccountTransactionsEndOfDayBalances resolves same-day balance-bearing transactions.
+        // Closed on its own date, matching core's resetAccountTransactionsEndOfDayBalances for same-day rows.
         assertThat(withdrawalTransaction.getEndOfBalanceDate()).isEqualTo(transactionDate);
         assertThat(withdrawalTransaction.getBalanceNumberOfDays()).isEqualTo(0);
     }

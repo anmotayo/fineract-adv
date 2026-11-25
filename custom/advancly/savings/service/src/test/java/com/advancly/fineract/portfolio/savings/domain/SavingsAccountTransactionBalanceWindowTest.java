@@ -30,11 +30,6 @@ import org.apache.fineract.portfolio.savings.domain.SavingsAccountTransaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * A balance window holds the balance for a number of days that is never negative. When the date the window is closed at
- * is before the transaction it belongs to - the business date, or a deposit's maturity, being earlier than a
- * transaction already on the account - the window holds the balance for no days at all.
- */
 class SavingsAccountTransactionBalanceWindowTest {
 
     private static final MonetaryCurrency CURRENCY = new MonetaryCurrency("USD", 2, null);
@@ -46,7 +41,7 @@ class SavingsAccountTransactionBalanceWindowTest {
 
     @Test
     void aWindowClosedBeforeItsTransactionHoldsTheBalanceForNoDaysNotANegativeNumber() {
-        // The deposit of 2026-10-20 on an account whose interest was posted up to the business date 2026-09-29.
+        // Interest posted up to 2026-09-29, before the deposit.
         final SavingsAccountTransaction deposit = transaction(LocalDate.of(2026, 10, 20), "106465");
 
         deposit.updateCumulativeBalanceAndDates(CURRENCY, LocalDate.of(2026, 9, 29));

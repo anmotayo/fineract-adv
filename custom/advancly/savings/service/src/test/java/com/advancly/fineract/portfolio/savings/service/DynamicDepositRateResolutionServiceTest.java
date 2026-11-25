@@ -31,10 +31,6 @@ import org.apache.fineract.portfolio.savings.domain.DepositAccountInterestRateCh
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Verifies rate resolution against an account's own {@link DepositAccountInterestRateChart} snapshot (this correction)
- * - slab matching by invested amount, and the nominal-rate fallback when no chart/slab applies.
- */
 class DynamicDepositRateResolutionServiceTest {
 
     private final DynamicDepositRateResolutionService service = new DynamicDepositRateResolutionService();

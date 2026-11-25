@@ -32,11 +32,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.springframework.stereotype.Component;
 
-/**
- * Read-only interest-calculation preview, spanning plain Savings, Fixed Deposit, Recurring Deposit and Dynamic Deposit
- * accounts - see {@link InterestCalculationReadPlatformService} for what it computes and the guarantee that it never
- * persists anything, including when {@code topUpAmount}/{@code withdrawalAmount} simulate a hypothetical transaction.
- */
+/** Never-persisted interest preview for Savings/FD/RD/DD; see {@link InterestCalculationReadPlatformService}. */
 @Path("/v1/interestcalculation")
 @Component
 @RequiredArgsConstructor

@@ -19,8 +19,10 @@
 package org.apache.fineract.portfolio.loanaccount.service;
 
 import jakarta.annotation.PostConstruct;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.fineract.infrastructure.core.service.DateUtils;
 import org.apache.fineract.infrastructure.event.business.BusinessEventListener;
 import org.apache.fineract.infrastructure.event.business.domain.loan.LoanBalanceChangedBusinessEvent;
 import org.apache.fineract.infrastructure.event.business.domain.loan.LoanCloseBusinessEvent;
@@ -50,8 +52,7 @@ public class LoanAccrualEventService {
             LoanStatus status = loan.getStatus();
             if (status.isClosedObligationsMet() || status.isOverpaid()) {
                 log.debug("Loan closure on accrual for loan {}", loan.getId());
-                // Foreclosure already runs its own final accrual catch-up (processAccrualsOnLoanForeClosure /
-                if (!loan.isForeclosure()) {
+                if (!isForeclosureAccrualAlreadyPosted(loan)) {
                     loanAccrualsProcessingService.processAccrualsOnLoanClosure(loan, true);
                 }
                 loanAccrualActivityProcessingService.processAccrualActivityForLoanClosure(loan);
@@ -67,11 +68,28 @@ public class LoanAccrualEventService {
             LoanStatus status = loan.getStatus();
             if (status.isClosedObligationsMet() || status.isOverpaid()) {
                 log.debug("Loan balance change on accrual for loan {}", loan.getId());
-                if (!loan.isForeclosure()) {
+                if (!isForeclosureAccrualAlreadyPosted(loan)) {
                     loanAccrualsProcessingService.processAccrualsOnLoanClosure(loan, true);
                 }
                 loanAccrualActivityProcessingService.processAccrualActivityForLoanClosure(loan);
             }
         }
+    }
+
+    /**
+     * Foreclosure runs its own final accrual catch-up (processAccrualsOnLoanForeClosure) before this event fires, so
+     * the generic closure accrual here would double-post the same interest/fee/penalty when that catch-up already
+     * created a transaction. But the catch-up is a no-op when the loan was already accrued through the foreclosure
+     * date (e.g. a periodic/EOD job already ran that day) — in that case nothing has recognized the final period yet
+     * and this generic closure accrual is still needed, the same as for a non-foreclosure closure. So only skip it
+     * when a non-reversed accrual already exists on the closure date.
+     */
+    private boolean isForeclosureAccrualAlreadyPosted(final Loan loan) {
+        if (!loan.isForeclosure()) {
+            return false;
+        }
+        final LocalDate closedOnDate = loan.getClosedOnDate();
+        return closedOnDate != null && loan.getLoanTransactions().stream()
+                .anyMatch(t -> t.isNotReversed() && t.isAccrual() && DateUtils.isEqual(t.getTransactionDate(), closedOnDate));
     }
 }

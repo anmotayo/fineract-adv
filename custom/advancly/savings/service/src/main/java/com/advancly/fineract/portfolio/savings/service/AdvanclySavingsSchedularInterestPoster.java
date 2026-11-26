@@ -168,18 +168,16 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
             for (SavingsAccountTransactionData savingsAccountTransactionData : savingsAccountTransactionDataList) {
                 if (savingsAccountTransactionData.getId() == null && !MathUtil.isZero(savingsAccountTransactionData.getAmount())) {
                     final String key = savingsAccountTransactionData.getRefNo();
-                    if (savingsAccountTransactionDataHashMap.containsKey(key)) {
-                        final SavingsAccountTransactionData dataFromFetch = savingsAccountTransactionDataHashMap.get(key);
-                        savingsAccountTransactionData.setId(dataFromFetch.getId());
-                        if (savingsAccountData.getGlAccountIdForSavingsControl() != 0
-                                && savingsAccountData.getGlAccountIdForInterestOnSavings() != 0) {
-                            if (savingsAccountTransactionData.isWithHoldTax()) {
-                                createJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData,
-                                        paramsForGLInsertion, currencyCode, userId);
-                            } else {
-                                createJournalEntries(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion, currencyCode,
-                                        userId);
-                            }
+                    final SavingsAccountTransactionData dataFromFetch = savingsAccountTransactionDataHashMap.get(key);
+                    savingsAccountTransactionData.setId(dataFromFetch.getId());
+                    if (savingsAccountData.getGlAccountIdForSavingsControl() != 0
+                            && savingsAccountData.getGlAccountIdForInterestOnSavings() != 0) {
+                        if (savingsAccountTransactionData.isWithHoldTax()) {
+                            createJournalEntriesForWithHoldingTax(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion,
+                                    currencyCode, userId);
+                        } else {
+                            createJournalEntries(savingsAccountData, savingsAccountTransactionData, paramsForGLInsertion, currencyCode,
+                                    userId);
                         }
                     }
                 } else if (savingsAccountTransactionData.isReversed()
@@ -323,6 +321,7 @@ public class AdvanclySavingsSchedularInterestPoster extends SavingsSchedularInte
             SavingsAccountSummaryData savingsAccountSummaryData = savingsAccountData.getSummary();
             // The last value is the version read with the account: a concurrent deposit/withdrawal bumps it, and the
             // update then matches nothing, so the stale balances are not written back.
+
             paramsForSavingsSummary.add(new Object[] { savingsAccountSummaryData.getTotalDeposits(),
                     savingsAccountSummaryData.getTotalWithdrawals(), savingsAccountSummaryData.getTotalInterestEarned(),
                     savingsAccountSummaryData.getTotalInterestPosted(), savingsAccountSummaryData.getTotalWithdrawalFees(),

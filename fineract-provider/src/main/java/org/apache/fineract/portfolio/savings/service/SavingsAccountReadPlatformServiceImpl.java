@@ -624,6 +624,10 @@ public class SavingsAccountReadPlatformServiceImpl implements SavingsAccountRead
 
                     savingsAccountData.setGlAccountIdForInterestOnSavings(glAccountIdForInterestOnSavings);
                     savingsAccountData.setGlAccountIdForSavingsControl(glAccountIdForSavingsControl);
+                    savingsAccountData.setMaturityDate(maturityDate);
+                    savingsAccountData.setStartInterestCalculationDate(startInterestCalculationDate);
+                    final Integer version = JdbcSupport.getInteger(rs, "version");
+                    savingsAccountData.setVersion(version);
                 }
 
                 if (!transMap.containsValue(transactionId)) {

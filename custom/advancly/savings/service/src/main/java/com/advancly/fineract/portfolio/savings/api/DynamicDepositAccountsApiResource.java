@@ -48,6 +48,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.fineract.commands.domain.CommandWrapper;
 import org.apache.fineract.commands.service.CommandWrapperBuilder;
 import org.apache.fineract.commands.service.PortfolioCommandSourceWritePlatformService;
+import org.apache.fineract.commands.service.ReadAuditService;
 import org.apache.fineract.infrastructure.core.api.ApiParameterHelper;
 import org.apache.fineract.infrastructure.core.api.ApiRequestParameterHelper;
 import org.apache.fineract.infrastructure.core.api.JsonQuery;
@@ -57,6 +58,7 @@ import org.apache.fineract.infrastructure.core.serialization.ApiRequestJsonSeria
 import org.apache.fineract.infrastructure.core.serialization.DefaultToApiJsonSerializer;
 import org.apache.fineract.infrastructure.core.serialization.FromJsonHelper;
 import org.apache.fineract.infrastructure.core.service.CommandParameterUtil;
+import org.apache.fineract.infrastructure.core.service.ExternalIdFactory;
 import org.apache.fineract.infrastructure.security.service.PlatformSecurityContext;
 import org.apache.fineract.portfolio.account.data.PortfolioAccountData;
 import org.apache.fineract.portfolio.account.service.AccountAssociationsReadPlatformService;
@@ -86,6 +88,7 @@ public class DynamicDepositAccountsApiResource {
     private final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService;
     private final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer;
     private final FromJsonHelper fromJsonHelper;
+    private final ReadAuditService readAuditService;
 
     public DynamicDepositAccountsApiResource(final PlatformSecurityContext context,
             final DynamicDepositAccountReadPlatformService dynamicDepositAccountReadPlatformService,
@@ -96,7 +99,8 @@ public class DynamicDepositAccountsApiResource {
             final SavingsAccountChargeReadPlatformService savingsAccountChargeReadPlatformService,
             final AccountAssociationsReadPlatformService accountAssociationsReadPlatformService,
             final DynamicDepositAccountClosureReadPlatformService closureReadPlatformService,
-            final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer, final FromJsonHelper fromJsonHelper) {
+            final DefaultToApiJsonSerializer<DynamicDepositClosureData> closureToApiJsonSerializer, final FromJsonHelper fromJsonHelper,
+            final ReadAuditService readAuditService) {
         this.context = context;
         this.dynamicDepositAccountReadPlatformService = dynamicDepositAccountReadPlatformService;
         this.toApiJsonSerializer = toApiJsonSerializer;
@@ -108,6 +112,7 @@ public class DynamicDepositAccountsApiResource {
         this.closureReadPlatformService = closureReadPlatformService;
         this.closureToApiJsonSerializer = closureToApiJsonSerializer;
         this.fromJsonHelper = fromJsonHelper;
+        this.readAuditService = readAuditService;
     }
 
     @POST
@@ -228,6 +233,8 @@ public class DynamicDepositAccountsApiResource {
         }
 
         final DynamicDepositAccountData accountData = this.dynamicDepositAccountReadPlatformService.retrieveOne(accountId);
+        this.readAuditService.auditRead("DYNAMICDEPOSITACCOUNT", accountId, ExternalIdFactory.produce(accountData.externalId()),
+                accountData.clientId());
         final Set<String> mandatoryResponseParameters = new HashSet<>();
         final DynamicDepositAccountData accountDataWithAssociations = populateTemplateAndAssociations(accountId, accountData, chargeStatus,
                 uriInfo, mandatoryResponseParameters);
